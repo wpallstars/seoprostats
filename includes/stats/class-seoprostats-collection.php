@@ -27,6 +27,12 @@ final class SEOProStats_Collection {
     /** Collector state (autoload off): ping key, fast endpoint test result. */
     const STATE_OPTION = 'seoprostats_collector';
 
+    /**
+     * Where the tracker posts, 'fast' or 'rest' (autoloaded: visitor pages
+     * read it with no query). Written by test_fast_endpoint().
+     */
+    const ENDPOINT_OPTION = 'seoprostats_endpoint';
+
     /** Hourly cron hook: salts, config and the loopback test. */
     const CRON_HOOK = 'seoprostats_hourly';
 
@@ -64,6 +70,11 @@ final class SEOProStats_Collection {
         }
         if (!wp_next_scheduled(self::PROCESS_HOOK)) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, 'seoprostats_minute', self::PROCESS_HOOK);
+        }
+        if (get_option(self::ENDPOINT_OPTION) === false) {
+            // Sites from before the option: the last test's answer, until the next test.
+            $state = self::state();
+            update_option(self::ENDPOINT_OPTION, empty($state['fast']) ? 'rest' : 'fast', true);
         }
     }
 
@@ -133,7 +144,34 @@ final class SEOProStats_Collection {
      * @return array<string,mixed>
      */
     public static function config() {
-        $salts = get_option(self::SALTS_OPTION, array());
+        $config = self::filtered_config();
+
+        $salts              = get_option(self::SALTS_OPTION, array());
+        $config['salts']    = is_array($salts) ? $salts : array();
+        $config['tz']       = wp_timezone_string();
+        $config['ping_key'] = self::ping_key();
+        return $config;
+    }
+
+    /**
+     * The hosts the tracker may post from: the site's, with and without
+     * www., and any the seoprostats_collector_config filter adds. No query.
+     *
+     * @return string[] Lower-case host names.
+     */
+    public static function hosts() {
+        $config = self::filtered_config();
+        $hosts  = isset($config['hosts']) && is_array($config['hosts']) ? $config['hosts'] : array();
+        return array_values(array_unique(array_map('strtolower', array_filter($hosts, 'is_string'))));
+    }
+
+    /**
+     * The collector config before the salts, time zone and ping key: the
+     * owner's part, through the seoprostats_collector_config filter.
+     *
+     * @return array<string,mixed>
+     */
+    private static function filtered_config() {
         $host  = strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST));
         $hosts = array($host);
         // The same site with and without www.
@@ -154,12 +192,7 @@ final class SEOProStats_Collection {
             'ip_header'      => '',
             'country_header' => '',
         ));
-        $config = is_array($config) ? $config : array();
-
-        $config['salts']    = is_array($salts) ? $salts : array();
-        $config['tz']       = wp_timezone_string();
-        $config['ping_key'] = self::ping_key();
-        return $config;
+        return is_array($config) ? $config : array();
     }
 
     /**
@@ -243,6 +276,7 @@ final class SEOProStats_Collection {
             $state['fast']    = false;
             $state['checked'] = time();
             update_option(self::STATE_OPTION, $state, false);
+            update_option(self::ENDPOINT_OPTION, 'rest', true);
             return false;
         }
         $nonce    = wp_generate_password(32, false);
@@ -259,6 +293,7 @@ final class SEOProStats_Collection {
         $state['fast']    = $works;
         $state['checked'] = time();
         update_option(self::STATE_OPTION, $state, false);
+        update_option(self::ENDPOINT_OPTION, $works ? 'fast' : 'rest', true);
         return $works;
     }
 
@@ -276,13 +311,12 @@ final class SEOProStats_Collection {
 
     /**
      * Where the tracker posts: collect.php when the loopback test passed,
-     * else the REST route.
+     * else the REST route. No query (an autoloaded option).
      *
      * @return string
      */
     public static function endpoint() {
-        $state = self::state();
-        if (!empty($state['fast'])) {
+        if (get_option(self::ENDPOINT_OPTION) === 'fast') {
             return add_query_arg('s', get_current_blog_id(), self::fast_url());
         }
         return rest_url(self::REST_NAMESPACE . '/collect');
@@ -340,6 +374,7 @@ final class SEOProStats_Collection {
         wp_clear_scheduled_hook(self::PROCESS_HOOK);
         delete_option(self::SALTS_OPTION);
         delete_option(self::STATE_OPTION);
+        delete_option(self::ENDPOINT_OPTION);
         delete_option(self::PROCESS_OPTION);
     }
 

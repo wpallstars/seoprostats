@@ -7,7 +7,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "wp-scripts build --config webpack.config.js",
+    "build": "wp-scripts build --config webpack.config.js && npm run --silent build:tracker",
+    "build:tracker": "esbuild packages/tracker/src/index.ts --bundle --minify --format=iife --target=es2018 --legal-comments=none --log-level=warning --outfile=assets/build/tracker.js",
     "start": "wp-scripts start --config webpack.config.js",
     "check": "tsc -p tsconfig.json"
   },
@@ -23,6 +24,7 @@
     "@wordpress/i18n": "^6.29.0",
     "@wordpress/scripts": "^36.0.0",
     "@wordpress/url": "^4.56.0",
+    "esbuild": "^0.28.2",
     "typescript": "~5.9.3"
   }
 }

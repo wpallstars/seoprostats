@@ -100,6 +100,11 @@ final class SEOProStats_Setup {
         });
         SEOProStats_Collection::init();
         SEOProStats_API::init();
+        if (!is_admin()) {
+            // Prints the tracker on front-end pages.
+            require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-tracker.php';
+            SEOProStats_Tracker::init();
+        }
 
         if (defined('WP_CLI') && WP_CLI) {
             SEOProStats_API::load();

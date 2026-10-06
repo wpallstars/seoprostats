@@ -131,6 +131,27 @@ Actions:
 
 Read a setting with `SEOProStats_Settings::get( 'key' )`.
 
+### Tracking
+
+Front-end pages get a small script (about 2.5 KB compressed), printed inline in the footer. It sets no cookies and stores nothing in the browser. It counts pageviews (including address changes in single-page apps), visible time and scroll depth, outbound links and file downloads. People logged in who can edit posts are not counted, and neither are feeds, previews or the customizer.
+
+Send your own events from JavaScript, at any time on the page:
+
+```js
+seoprostats( 'Signup', { props: { plan: 'pro' }, revenue: { amount: 29, currency: 'USD' } } );
+```
+
+Or mark an element, with no script: `<button data-sps-event="Signup" data-sps-prop-plan="pro">`. Up to 30 properties per event; values are text, numbers or true/false, cut to 300 characters.
+
+Filters:
+
+- `seoprostats_track`: whether the current page gets the tracker.
+- `seoprostats_tracker_skip_capability`: logged-in people with this capability are not counted (default `edit_posts`; `''` counts everyone).
+- `seoprostats_tracker_config`: `q` (query parameters kept in page addresses, besides UTM tags), `dnt` (true: skip browsers that send Do Not Track or Global Privacy Control), `x` (paths not counted; `*` matches any characters, for example `/checkout/*`), `h` (the site's own hosts: links elsewhere are outbound) and `u` (the collector address).
+- `seoprostats_page_props`: properties sent with the page's pageview, for example its author or category.
+- `seoprostats_tracker_inline`: false loads the tracker as a file (`assets/build/tracker.js`), for a Content Security Policy without inline scripts.
+- `seoprostats_collector_config`: other hosts the site answers on, IP addresses or ranges not counted (`exclude_ips`), and the headers that hold the visitor's address and country behind a proxy or CDN.
+
 ### Statistics for scripts and AI agents
 
 The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the dashboard, from one report engine (`includes/stats/class-seoprostats-query.php`). The contract is `docs/api/openapi.yaml`; metric definitions are in `docs/architecture.md` → Reports.
@@ -154,6 +175,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 
 - New: statistics collection without cookies: a collector that runs without loading WordPress (or the REST route on the WordPress.org build), daily-salted visitor hashes, and a processor that turns hits into visits, pageviews, events and properties every minute.
 - New: reports for scripts and AI agents: the REST API (`stats`, `timeseries`, `breakdown`, `realtime`, `markers`) and `wp seoprostats` commands, with ranges, comparisons and filters.
+- New: the tracker, printed inline on front-end pages with no cookies or browser storage: pageviews (single-page apps too), visible time and scroll depth, outbound links, file downloads, and your own events with `seoprostats()` or `data-sps-event`.
 
 ### 0.1.0
 
