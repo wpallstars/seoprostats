@@ -19,7 +19,7 @@ what is SEO Pro Stats's own.
 | `{Prefix}` | `SEOProStats` |
 | `{PREFIX}` | `SEOPROSTATS` |
 | `{Name}` | SEO Pro Stats |
-| `{css}` | `wps` |
+| `{css}` | `spst` |
 
 User docs: `README.md` (developers, and the Read Me tab) and `readme.txt`.
 Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:

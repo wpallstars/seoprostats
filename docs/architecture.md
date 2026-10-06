@@ -321,7 +321,7 @@ Stack, and why:
 | Language | TypeScript, strict | One contract from the OpenAPI file to the screen |
 
 Styles use CSS custom properties from `DESIGN.md` and
-`--wp-admin-theme-color`, `{css}` = `wps` class prefix, no CSS framework.
+`--wp-admin-theme-color`, `{css}` = `spst` class prefix, no CSS framework.
 Every chart has a table view for screen readers.
 
 ## Integrations
