@@ -154,13 +154,11 @@ final class SEOProStats_API {
     /**
      * GET /realtime.
      *
-     * @return WP_REST_Response
+     * @return WP_REST_Response|WP_Error
      */
     public static function realtime() {
         self::short_floats();
-        $response = rest_ensure_response(SEOProStats_Query::realtime());
-        $response->header('Cache-Control', 'no-store');
-        return $response;
+        return rest_ensure_response(SEOProStats_Query::realtime());
     }
 
     /**
@@ -203,10 +201,10 @@ final class SEOProStats_API {
         if (is_wp_error($answer)) {
             return $answer;
         }
+        // WordPress sends no-cache headers to signed-in users; the engine
+        // caches answers on the server instead.
         self::short_floats();
-        $response = rest_ensure_response($answer);
-        $response->header('Cache-Control', 'private, max-age=60');
-        return $response;
+        return rest_ensure_response($answer);
     }
 
     /**
