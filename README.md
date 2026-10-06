@@ -71,7 +71,9 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ## Where to find it
 
-Go to **Settings → SEO Pro Stats**. The screen has two groups of tabs:
+**SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick, and where visits came from, what they viewed, where and on what. Choose a period and comparison at the top; choose any row to show only those visits, and remove the filter from the bar above the chart. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days.
+
+Go to **Settings → SEO Pro Stats** (or **SEO Pro Stats → Settings**) for the settings. The screen has two groups of tabs:
 
 - **Settings**: General, empty until features add settings. Changes save instantly; there is no Save button. **Search features** (next to the plugin name) finds settings on every tab.
 - **About**: this Read Me.

@@ -1,0 +1,13 @@
+{
+  "name": "@seoprostats/wp-admin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The SEO Pro Stats dashboard in wp-admin: React and components from WordPress.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "dependencies": {
+    "@seoprostats/charts": "*",
+    "@seoprostats/core": "*",
+    "@tanstack/react-query": "^5.104.1"
+  }
+}

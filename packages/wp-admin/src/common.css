@@ -1,0 +1,93 @@
+/*
+ * Shared by the screen and the Dashboard widget. WordPress's admin greys
+ * and the admin colour scheme's accent (--wp-admin-theme-color); DESIGN.md.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+.spst-app,
+.spst-widget {
+	--spst-accent: var(--wp-admin-theme-color, #2271b1);
+	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
+	--spst-text: #1d2327;
+	--spst-muted: #50575e;
+	--spst-subtle: #646970;
+	--spst-border: #dcdcde;
+	--spst-hover: #f6f7f7;
+	--spst-good: #007017;
+	--spst-bad: #b32d2e;
+	font-variant-numeric: tabular-nums;
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-app,
+	.spst-widget {
+		--spst-accent-soft: color-mix(in srgb, var(--spst-accent) 11%, transparent);
+	}
+}
+
+.spst-change {
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+}
+
+.spst-change.is-good {
+	color: var(--spst-good);
+}
+
+.spst-change.is-bad {
+	color: var(--spst-bad);
+}
+
+.spst-change.is-flat {
+	color: var(--spst-subtle);
+}
+
+.spst-spark {
+	display: block;
+	flex: none;
+	overflow: visible;
+}
+
+.spst-spark__line {
+	fill: none;
+	stroke: var(--spst-accent);
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+
+.spst-spark__area {
+	fill: var(--spst-accent-soft);
+	stroke: none;
+}
+
+.spst-skeleton {
+	display: inline-block;
+	width: 60%;
+	min-width: 3em;
+	height: 0.9em;
+	border-radius: 2px;
+	background: linear-gradient(90deg, #f0f0f1 25%, #e5e5e7 50%, #f0f0f1 75%);
+	background-size: 200% 100%;
+	animation: spst-shimmer 1.4s ease-in-out infinite;
+	vertical-align: middle;
+}
+
+@keyframes spst-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+
+	to {
+		background-position: -200% 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.spst-skeleton {
+		animation: none;
+	}
+}

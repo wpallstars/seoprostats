@@ -33,13 +33,13 @@ Made from WP Plugin Starter (https://github.com/wpallstars/wp-plugin-starter-tem
 == Installation ==
 
 1. Upload the `seoprostats` folder to `/wp-content/plugins/`, or install the zip from Plugins → Add New → Upload Plugin.
-2. Activate it, then open Settings → SEO Pro Stats.
+2. Activate it, then open SEO Pro Stats in the admin menu, under Dashboard. Settings are at Settings → SEO Pro Stats.
 
 == Frequently Asked Questions ==
 
-= Does it do anything on its own? =
+= Where are the statistics? =
 
-No. It adds an empty settings screen and a Read Me tab, ready for a plugin's features.
+SEO Pro Stats in the admin menu, under Dashboard, and a widget on the Dashboard. They need visits: open the site logged out, or in a private window, and they show within a minute or two.
 
 = Where do I get help? =
 
