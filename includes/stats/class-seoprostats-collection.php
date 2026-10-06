@@ -183,21 +183,25 @@ final class SEOProStats_Collection {
         $hosts = array($host);
         // The same site with and without www.
         $hosts[] = strpos($host, 'www.') === 0 ? substr($host, 4) : 'www.' . $host;
+        $hosts   = array_merge($hosts, SEOProStats_Statistics::hosts());
 
         /**
-         * Filters the collector config: extra hosts the tracker may post
-         * from (a site under several domains), addresses to ignore (single
-         * or CIDR), and the request headers holding the visitor's address
-         * and country behind a proxy or CDN ($_SERVER keys, such as
-         * HTTP_X_FORWARDED_FOR). Settings will set these later.
+         * Filters the collector config, after the settings (Tracking and
+         * Privacy) have set it: whether hits are stored ('off' true: not;
+         * pages cached with the tracker keep sending), the hosts the
+         * tracker may post from (a site under several domains), addresses
+         * to ignore (single or CIDR), and the request headers holding the
+         * visitor's address and country behind a proxy or CDN ($_SERVER
+         * keys, such as HTTP_X_FORWARDED_FOR).
          *
          * @param array<string,mixed> $config Collector config.
          */
         $config = apply_filters('seoprostats_collector_config', array(
+            'off'            => !SEOProStats_Statistics::collecting(),
             'hosts'          => array_values(array_unique($hosts)),
-            'exclude_ips'    => array(),
-            'ip_header'      => '',
-            'country_header' => '',
+            'exclude_ips'    => SEOProStats_Statistics::excluded_ips(),
+            'ip_header'      => SEOProStats_Statistics::ip_header(),
+            'country_header' => SEOProStats_Statistics::country_header(),
         ));
         return is_array($config) ? $config : array();
     }

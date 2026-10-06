@@ -2,12 +2,12 @@
 /**
  * Prints the tracker (packages/tracker, built to assets/build/tracker.js)
  * on front-end pages: inline in the footer, so there is no extra request,
- * or as a file when the seoprostats_tracker_inline filter says so (a page
- * cache or Content Security Policy that needs it).
+ * or as a file when Settings → Tracking or the seoprostats_tracker_inline
+ * filter says so (a page cache or Content Security Policy that needs it).
  *
  * A tiny stub in the head queues seoprostats('Name', {...}) calls made
  * before the tracker runs. Costs no query: the endpoint and settings come
- * from autoloaded options and filters. Design: docs/architecture.md →
+ * from autoloaded options (SEOProStats_Statistics). Design: docs/architecture.md →
  * Collection → Tracker.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -42,10 +42,11 @@ final class SEOProStats_Tracker {
     }
 
     /**
-     * Whether this page gets the tracker. Not for feeds, previews, the
-     * customizer or embeds, nor for logged-in people who can edit posts
-     * (by default), nor on excluded paths. Do Not Track and Global Privacy
-     * Control are checked in the browser, so page caches can keep one copy.
+     * Whether this page gets the tracker. Not while collection is off, nor
+     * for feeds, previews, the customizer or embeds, nor for logged-in
+     * people with a role that is not counted (Settings → Tracking), nor on
+     * excluded paths. Do Not Track and Global Privacy Control are checked
+     * in the browser, so page caches can keep one copy.
      *
      * @return bool
      */
@@ -53,19 +54,13 @@ final class SEOProStats_Tracker {
         if (self::$track !== null) {
             return self::$track;
         }
-        $track = !is_admin() && !is_feed() && !is_preview() && !is_customize_preview() && !is_embed()
+        $track = SEOProStats_Statistics::collecting()
+            && !is_admin() && !is_feed() && !is_preview() && !is_customize_preview() && !is_embed()
             && !wp_doing_ajax() && !(defined('REST_REQUEST') && REST_REQUEST)
             && is_file(SEOPROSTATS_DIR . self::FILE);
 
         if ($track && is_user_logged_in()) {
-            /**
-             * Filters the capability whose holders are not tracked; '' tracks
-             * every logged-in person.
-             *
-             * @param string $capability Default edit_posts.
-             */
-            $capability = (string) apply_filters('seoprostats_tracker_skip_capability', 'edit_posts');
-            $track      = $capability === '' || !current_user_can($capability);
+            $track = !array_intersect((array) wp_get_current_user()->roles, SEOProStats_Statistics::skip_roles());
         }
 
         if ($track) {
@@ -116,16 +111,17 @@ final class SEOProStats_Tracker {
      */
     public static function config() {
         /**
-         * Filters the tracker's config. Settings will set these later.
+         * Filters the tracker's config, after the settings (Tracking and
+         * Privacy) have set it.
          *
          * @param array<string,mixed> $config u, h, q, dnt and x (see above).
          */
         $config = apply_filters('seoprostats_tracker_config', array(
             'u'   => SEOProStats_Collection::endpoint(),
             'h'   => SEOProStats_Collection::hosts(),
-            'q'   => array(),
-            'dnt' => false,
-            'x'   => array(),
+            'q'   => SEOProStats_Statistics::params(),
+            'dnt' => SEOProStats_Statistics::respect_signals(),
+            'x'   => SEOProStats_Statistics::excluded_paths(),
         ));
         $config = is_array($config) ? $config : array();
         $list   = static function ($key) use ($config) {
@@ -190,9 +186,9 @@ final class SEOProStats_Tracker {
          * or loaded from its file (for a Content Security Policy without
          * inline scripts, or a cache that should keep it apart).
          *
-         * @param bool $inline Default true.
+         * @param bool $inline Default true, unless Settings → Tracking loads it as a file.
          */
-        if (apply_filters('seoprostats_tracker_inline', true)) {
+        if (apply_filters('seoprostats_tracker_inline', !SEOProStats_Statistics::as_file())) {
             // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- our own built file, not a remote request.
             $script = file_get_contents(SEOPROSTATS_DIR . self::FILE);
             if (is_string($script) && $script !== '') {

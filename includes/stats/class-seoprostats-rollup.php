@@ -332,11 +332,11 @@ final class SEOProStats_Rollup {
         /**
          * Filters how many months visits (with their pageviews and
          * properties) and events are kept; 0 keeps them forever. Daily
-         * summaries are always kept. Settings will set these later.
+         * summaries are always kept.
          *
-         * @param array{visits:int,events:int} $months Months by kind.
+         * @param array{visits:int,events:int} $months Months by kind, from Settings → Data.
          */
-        $months = apply_filters('seoprostats_retention', self::RETENTION);
+        $months = apply_filters('seoprostats_retention', SEOProStats_Statistics::retention());
         $out    = self::RETENTION;
         foreach ($out as $kind => $default) {
             $out[$kind] = is_array($months) && isset($months[$kind]) && is_numeric($months[$kind]) && (int) $months[$kind] >= 0 ? (int) $months[$kind] : $default;

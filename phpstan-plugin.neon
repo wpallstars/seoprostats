@@ -6,17 +6,12 @@ parameters:
 	paths:
 		- collect.php
 	ignoreErrors:
-		# SEO Pro Stats has no settings features or tabs to rename yet: those
-		# lists in SEOProStats_Setup are empty, so PHPStan reads the core code
-		# that uses them as having no effect. Drop each ignore once its list
-		# is filled.
+		# SEO Pro Stats has no optional features yet: that list in
+		# SEOProStats_Setup is empty, so PHPStan reads the core code that uses
+		# it as having no effect. Drop the ignore once the list is filled.
 		-
 			identifier: foreach.emptyArray
 			path: includes/class-seoprostats.php
-		-
-			identifier: function.impossibleType
-			message: '#array_key_exists\(\) with mixed and array\{\}#'
-			path: includes/class-seoprostats-settings.php
 		# The WP-CLI commands: the starter's dev dependencies have no WP-CLI
 		# stubs, so PHPStan does not know WP_CLI and its format_items().
 		# The commands run in the smoke test and on the preview site.

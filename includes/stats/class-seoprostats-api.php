@@ -4,8 +4,8 @@
  * breakdown, realtime and markers. Contract: docs/api/openapi.yaml.
  *
  * Reading needs the view_seoprostats capability: administrators (anyone
- * with manage_options) for now; roles the owner allows come with the
- * settings. Agents use Application Passwords. The report engine loads
+ * with manage_options) and the roles Settings → Data allows. Agents use
+ * Application Passwords. The report engine loads
  * only on REST and WP-CLI requests.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -29,20 +29,29 @@ final class SEOProStats_API {
      * Register hooks.
      */
     public static function init() {
-        add_filter('map_meta_cap', array(__CLASS__, 'map_meta_cap'), 10, 2);
+        add_filter('map_meta_cap', array(__CLASS__, 'map_meta_cap'), 10, 3);
         add_action('rest_api_init', array(__CLASS__, 'register_routes'));
     }
 
     /**
-     * view_seoprostats is granted to whoever can manage options.
+     * view_seoprostats is granted to whoever can manage options, and to
+     * people with a role Settings → Data allows.
      *
-     * @param string[] $caps Primitive capabilities required.
-     * @param string   $cap  Capability checked.
+     * @param string[] $caps    Primitive capabilities required.
+     * @param string   $cap     Capability checked.
+     * @param int      $user_id User checked.
      * @return string[]
      */
-    public static function map_meta_cap($caps, $cap) {
+    public static function map_meta_cap($caps, $cap, $user_id = 0) {
         if ($cap !== self::CAP) {
             return $caps;
+        }
+        $roles = SEOProStats_Statistics::viewer_roles();
+        if ($roles && $user_id) {
+            $user = get_userdata((int) $user_id);
+            if ($user && array_intersect((array) $user->roles, $roles)) {
+                return array('read');
+            }
         }
         /**
          * Filters the capabilities a user needs to read SEO Pro Stats.
