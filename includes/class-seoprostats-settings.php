@@ -1,19 +1,19 @@
 <?php
 /**
- * WP Plugin Starter settings store.
+ * SEO Pro Stats settings store.
  *
- * Every setting lives in a single `wpstarter_options` array and is described
+ * Every setting lives in a single `seoprostats_options` array and is described
  * by a schema entry (type, default, UI metadata) declared by its feature.
- * Features read values with WPStarter_Settings::get(); the admin UI renders
+ * Features read values with SEOProStats_Settings::get(); the admin UI renders
  * cards from the same schema; the AJAX endpoint and the Settings API sanitize
- * through it. Add settings with the `wpstarter_settings_schema` filter or by
- * registering a feature (see WPStarter_Feature).
+ * through it. Add settings with the `seoprostats_settings_schema` filter or by
+ * registering a feature (see SEOProStats_Feature).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  * @since 0.3.0
  */
 
@@ -21,22 +21,22 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class WPStarter_Settings {
+class SEOProStats_Settings {
 
     /** Option that stores every setting. */
-    const OPTION = 'wpstarter_options';
+    const OPTION = 'seoprostats_options';
 
     /** Settings API group. */
-    const GROUP = 'wpstarter_settings';
+    const GROUP = 'seoprostats_settings';
 
     /** Nonce action shared by admin AJAX requests. */
-    const NONCE = 'wpstarter_admin';
+    const NONCE = 'seoprostats_admin';
 
     /** Stored schema version, used for one-off migrations. */
-    const DB_VERSION_OPTION = 'wpstarter_db_version';
+    const DB_VERSION_OPTION = 'seoprostats_db_version';
 
-    /** Current schema version; its history is in WPStarter_Setup. */
-    const DB_VERSION = WPStarter_Setup::DB_VERSION;
+    /** Current schema version; its history is in SEOProStats_Setup. */
+    const DB_VERSION = SEOProStats_Setup::DB_VERSION;
 
     /** Seconds after which a save lock is taken as left behind (see lock()). */
     const LOCK_TIMEOUT = 10;
@@ -86,27 +86,27 @@ class WPStarter_Settings {
      * Register hooks.
      */
     public static function init() {
-        // Priority 0, before WPStarter::boot_features() so features read
+        // Priority 0, before SEOProStats::boot_features() so features read
         // migrated values, and before widgets_init (init:1).
         add_action('init', array(__CLASS__, 'maybe_migrate'), 0);
         add_action('admin_init', array(__CLASS__, 'register_setting'));
-        add_action('wp_ajax_wpstarter_save_setting', array(__CLASS__, 'ajax_save'));
+        add_action('wp_ajax_seoprostats_save_setting', array(__CLASS__, 'ajax_save'));
         add_filter('option_page_capability_' . self::GROUP, array(__CLASS__, 'capability'));
     }
 
     /**
-     * Whether the current user may change WP Plugin Starter's settings.
+     * Whether the current user may change SEO Pro Stats's settings.
      *
      * @return bool
      */
     public static function can_change() {
         /**
-         * Filter whether the current user may change WP Plugin Starter's settings
+         * Filter whether the current user may change SEO Pro Stats's settings
          * (on top of the manage_options check).
          *
          * @param bool $can Whether they may.
          */
-        return current_user_can('manage_options') && (bool) apply_filters('wpstarter_can_change_settings', true);
+        return current_user_can('manage_options') && (bool) apply_filters('seoprostats_can_change_settings', true);
     }
 
     /**
@@ -133,7 +133,7 @@ class WPStarter_Settings {
      * - replaces:    top-level only; plugin slug => name this setting replaces
      * - panel:       top-level only; true to show the Options panel even with
      *                no visible child settings, for a feature that renders its
-     *                own controls there (wpstarter_setting_panel)
+     *                own controls there (seoprostats_setting_panel)
      * - hidden:      child only; true for wiring set by starter data or code,
      *                which the panel does not show
      * - reload:      true when the change shows only after a page load; the
@@ -152,7 +152,7 @@ class WPStarter_Settings {
         }
 
         $schema = array();
-        foreach (WPStarter::features() as $class) {
+        foreach (SEOProStats::features() as $class) {
             $schema += (array) $class::settings();
         }
 
@@ -161,7 +161,7 @@ class WPStarter_Settings {
          *
          * @param array $schema Setting definitions keyed by setting key.
          */
-        $schema = (array) apply_filters('wpstarter_settings_schema', $schema);
+        $schema = (array) apply_filters('seoprostats_settings_schema', $schema);
 
         foreach ($schema as $key => $field) {
             if (isset($field['tab']) && is_string($field['tab'])) {
@@ -252,7 +252,7 @@ class WPStarter_Settings {
     public static function set($key, $value) {
         $schema = self::schema();
         if (!isset($schema[$key])) {
-            return new WP_Error('wpstarter_unknown_setting', __('Unknown setting.', 'wp-plugin-starter-template'));
+            return new WP_Error('seoprostats_unknown_setting', __('Unknown setting.', 'seoprostats'));
         }
 
         $clean = self::sanitize_value($value, $schema[$key]);
@@ -261,7 +261,7 @@ class WPStarter_Settings {
         // and writes it all back. The lock stops two saves at once (two tabs,
         // two admins) each writing back a copy without the other's change.
         if (!self::lock()) {
-            return new WP_Error('wpstarter_not_saved', __('The setting could not be saved. Please try again.', 'wp-plugin-starter-template'));
+            return new WP_Error('seoprostats_not_saved', __('The setting could not be saved. Please try again.', 'seoprostats'));
         }
         try {
             // Read what is stored now, not the copy loaded when this request
@@ -277,7 +277,7 @@ class WPStarter_Settings {
         }
 
         if (!$saved) {
-            return new WP_Error('wpstarter_not_saved', __('The setting could not be saved. Please try again.', 'wp-plugin-starter-template'));
+            return new WP_Error('seoprostats_not_saved', __('The setting could not be saved. Please try again.', 'seoprostats'));
         }
         return $clean;
     }
@@ -375,13 +375,13 @@ class WPStarter_Settings {
 
     /**
      * Map a renamed tab slug to its current slug
-     * (WPStarter_Setup::RENAMED_TABS).
+     * (SEOProStats_Setup::RENAMED_TABS).
      *
      * @param string $tab Tab slug.
      * @return string
      */
     public static function resolve_tab($tab) {
-        $renamed = WPStarter_Setup::RENAMED_TABS;
+        $renamed = SEOProStats_Setup::RENAMED_TABS;
         return array_key_exists($tab, $renamed) ? $renamed[$tab] : $tab;
     }
 
@@ -799,7 +799,7 @@ class WPStarter_Settings {
         check_ajax_referer(self::NONCE, 'nonce');
 
         if (!self::can_change()) {
-            wp_send_json_error(array('message' => __('You are not allowed to change these settings.', 'wp-plugin-starter-template')), 403);
+            wp_send_json_error(array('message' => __('You are not allowed to change these settings.', 'seoprostats')), 403);
         }
 
         $key = isset($_POST['key']) ? sanitize_key(wp_unslash($_POST['key'])) : '';
@@ -817,22 +817,22 @@ class WPStarter_Settings {
          * @param string $key   Setting key.
          * @param mixed  $value Sanitized value.
          */
-        do_action('wpstarter_setting_saved', $key, $value);
+        do_action('seoprostats_setting_saved', $key, $value);
 
         $schema = self::schema();
         $reload = !empty($schema[$key]['reload']);
         wp_send_json_success(array(
             'key'     => $key,
             'value'   => $value,
-            'message' => $reload ? __('Saved. Reload the page to see the change.', 'wp-plugin-starter-template') : __('Saved', 'wp-plugin-starter-template'),
+            'message' => $reload ? __('Saved. Reload the page to see the change.', 'seoprostats') : __('Saved', 'seoprostats'),
             'reload'  => $reload,
         ));
     }
 
     /**
-     * One-off migrations, once per DB_VERSION: WPStarter_Setup::migrate()
+     * One-off migrations, once per DB_VERSION: SEOProStats_Setup::migrate()
      * (imports that belong to no feature), then each feature's migrate().
-     * The history of versions is in WPStarter_Setup::DB_VERSION.
+     * The history of versions is in SEOProStats_Setup::DB_VERSION.
      *
      * Old options are left in place so a downgrade keeps working;
      * uninstall.php removes ours. Other plugins' options are never touched.
@@ -845,9 +845,9 @@ class WPStarter_Settings {
 
         $options = get_option(self::OPTION, array());
         $options = is_array($options) ? $options : array();
-        $options = (array) WPStarter_Setup::migrate($options, $from);
+        $options = (array) SEOProStats_Setup::migrate($options, $from);
 
-        foreach (WPStarter::features() as $class) {
+        foreach (SEOProStats::features() as $class) {
             $options = (array) $class::migrate($options, $from);
         }
 

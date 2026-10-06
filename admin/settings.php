@@ -1,24 +1,24 @@
 <?php
 /**
- * WP Plugin Starter admin loader.
+ * SEO Pro Stats admin loader.
  *
  * Loads the settings screen, the Read Me tab and the Plugins screen notes
  * for replaced plugins, then the plugin's own admin parts
- * (WPStarter_Setup::admin()). Included from the main plugin file for
+ * (SEOProStats_Setup::admin()). Included from the main plugin file for
  * admin requests only.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  */
 
 if (!defined('ABSPATH')) {
     exit;
 }
 
-$wpstarter_admin_files = array(
+$seoprostats_admin_files = array(
     'admin/data/readme.php',
     'admin/includes/class-settings-manager.php',
     'admin/includes/class-readme-manager.php',
@@ -26,11 +26,11 @@ $wpstarter_admin_files = array(
     'admin/includes/class-replaced-plugins.php',
 );
 
-foreach ($wpstarter_admin_files as $wpstarter_file) {
-    require_once WPSTARTER_DIR . $wpstarter_file;
+foreach ($seoprostats_admin_files as $seoprostats_file) {
+    require_once SEOPROSTATS_DIR . $seoprostats_file;
 }
-unset($wpstarter_admin_files, $wpstarter_file);
+unset($seoprostats_admin_files, $seoprostats_file);
 
-WPStarter_Admin_Manager::init();
-WPStarter_Replaced_Plugins::init();
-WPStarter_Setup::admin();
+SEOProStats_Admin_Manager::init();
+SEOProStats_Replaced_Plugins::init();
+SEOProStats_Setup::admin();

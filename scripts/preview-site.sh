@@ -14,7 +14,7 @@
 # what a release build contains (.distignore applied). A checkout whose copy
 # of this script differs from origin/main's runs origin/main's, so an old
 # worktree cannot leave PRs out (<PREFIX>_PREVIEW_OWN=1 runs its own; the
-# prefix is the plugin's constant prefix, such as WPSTARTER).
+# prefix is the plugin's constant prefix, such as SEOPROSTATS).
 #
 # Usage: scripts/preview-site.sh [--dry-run] [<site>]
 #   <site>     WordPress folder of the test site (the one with wp-load.php).

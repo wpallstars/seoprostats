@@ -1,16 +1,16 @@
 /**
- * WP Plugin Starter admin screen.
+ * SEO Pro Stats admin screen.
  *
  * One delegated controller per concern:
- * - Settings: instant save for [data-wps-setting] controls.
+ * - Settings: instant save for [data-spst-setting] controls.
  * - Panels: expandable setting options.
  * - Tokens: insert pattern tokens into text fields.
  * - Media fields: choose a Media Library picture with the media dialog.
  *
- * The plugin's own tabs bring their own script (wpstarter_admin_enqueue),
- * which can use window.wpstarterAdmin.api.
+ * The plugin's own tabs bring their own script (seoprostats_admin_enqueue),
+ * which can use window.seoprostatsAdmin.api.
  *
- * Localized data: window.wpstarterAdmin (see WPStarter_Admin_Manager::enqueue_assets()).
+ * Localized data: window.seoprostatsAdmin (see SEOProStats_Admin_Manager::enqueue_assets()).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -82,14 +82,14 @@
 		queue: $.Deferred().resolve().promise(),
 
 		init: function () {
-			$(document).on('change', '[data-wps-setting]', function () {
+			$(document).on('change', '[data-spst-setting]', function () {
 				Settings.save($(this));
 			});
 			// "Select all" and "Clear" for long checkbox lists: one save for the lot.
-			$(document).on('click', '[data-wps-check-all], [data-wps-check-none]', function () {
-				var all = this.hasAttribute('data-wps-check-all');
+			$(document).on('click', '[data-spst-check-all], [data-spst-check-none]', function () {
+				var all = this.hasAttribute('data-spst-check-all');
 				// By id, so the attribute is never read as a selector.
-				var group = document.getElementById(this.getAttribute(all ? 'data-wps-check-all' : 'data-wps-check-none'));
+				var group = document.getElementById(this.getAttribute(all ? 'data-spst-check-all' : 'data-spst-check-none'));
 				if (!group) {
 					return;
 				}
@@ -97,15 +97,15 @@
 				Settings.save($(group));
 			});
 			// Forms that change data elsewhere ask first.
-			$(document).on('submit', 'form[data-wps-confirm]', function (event) {
-				if (!window.confirm($(this).attr('data-wps-confirm'))) {
+			$(document).on('submit', 'form[data-spst-confirm]', function (event) {
+				if (!window.confirm($(this).attr('data-spst-confirm'))) {
 					event.preventDefault();
 				}
 			});
 		},
 
 		valueOf: function ($input) {
-			if ($input.is('[data-wps-multi]')) {
+			if ($input.is('[data-spst-multi]')) {
 				return $input.find(':checkbox:checked').map(function () {
 					return this.value;
 				}).get();
@@ -117,7 +117,7 @@
 		},
 
 		status: function (key, state, text, keep) {
-			var $status = $('[data-wps-status="' + key + '"]');
+			var $status = $('[data-spst-status="' + key + '"]');
 			$status.removeClass('is-saving is-saved is-error').addClass(state ? 'is-' + state : '').text(text || '');
 			clearTimeout($status.data('timer'));
 			// "Reload the page" stays until the next change.
@@ -129,9 +129,9 @@
 		},
 
 		save: function ($input) {
-			var key = $input.data('wps-setting');
+			var key = $input.data('spst-setting');
 			var value = this.valueOf($input);
-			var previous = $input.data('wps-saved');
+			var previous = $input.data('spst-saved');
 			var seq = ++this.sequence;
 
 			if (previous === undefined) {
@@ -150,24 +150,24 @@
 					return;
 				}
 				var saved = response.data.value;
-				if ($input.is('[data-wps-multi]')) {
+				if ($input.is('[data-spst-multi]')) {
 					var chosen = $.map(saved || [], String);
 					$input.find(':checkbox').each(function () {
 						this.checked = $.inArray(this.value, chosen) !== -1;
 					});
 				} else if ($input.is(':checkbox')) {
-					$input.data('wps-saved', saved ? '1' : '0');
+					$input.data('spst-saved', saved ? '1' : '0');
 				} else if (saved !== undefined && String(saved) !== String($input.val())) {
 					$input.val(saved); // Show the sanitized value.
 				}
 				if (!$input.is(':checkbox')) {
-					$input.data('wps-saved', $input.val());
+					$input.data('spst-saved', $input.val());
 				}
 				var reload = !!response.data.reload;
 				var message = reload && response.data.message ? response.data.message : i18n.saved;
 				Settings.status(key, 'saved', message, reload);
 				speak(message);
-				$(document).trigger('wpstarter:setting-saved', [key, saved]);
+				$(document).trigger('seoprostats:setting-saved', [key, saved]);
 			};
 			var failed = function (xhr) {
 				if (Settings.pending[key] === seq) {
@@ -175,7 +175,7 @@
 				}
 			};
 			var run = function () {
-				return post('wpstarter_save_setting', { key: key, value: value })
+				return post('seoprostats_save_setting', { key: key, value: value })
 					.done(done)
 					.fail(failed);
 			};
@@ -216,11 +216,11 @@
 			if (panel) {
 				panel.hidden = expanded;
 			}
-			$button.closest('.wps-setting').toggleClass('is-expanded', !expanded);
+			$button.closest('.spst-setting').toggleClass('is-expanded', !expanded);
 		},
 
 		init: function () {
-			$(document).on('click', '.wps-setting__expand', function (event) {
+			$(document).on('click', '.spst-setting__expand', function (event) {
 				event.stopPropagation();
 				Panels.toggle($(this));
 			});
@@ -228,17 +228,17 @@
 			// Mouse convenience: clicking anywhere on the header opens/closes the
 			// options. The switch (and any other control) keeps its own behaviour;
 			// keyboard users use the Options button.
-			$(document).on('click', '[data-wps-panel-toggle]', function (event) {
-				if ($(event.target).closest('input, button, a, label, select, textarea, .wps-switch').length) {
+			$(document).on('click', '[data-spst-panel-toggle]', function (event) {
+				if ($(event.target).closest('input, button, a, label, select, textarea, .spst-switch').length) {
 					return;
 				}
 				if (window.getSelection && String(window.getSelection()).length) {
 					return; // Let people select text.
 				}
-				Panels.toggle($(this).find('.wps-setting__expand').first());
+				Panels.toggle($(this).find('.spst-setting__expand').first());
 			});
 
-			$(document).on('click', '.wps-token', function () {
+			$(document).on('click', '.spst-token', function () {
 				var input = document.getElementById($(this).data('target'));
 				var token = String($(this).data('token'));
 				if (!input) {
@@ -260,16 +260,16 @@
 
 	var MediaField = {
 		init: function () {
-			$(document).on('click', '.wps-media__choose', function () {
-				MediaField.open($(this).closest('[data-wps-media]'));
+			$(document).on('click', '.spst-media__choose', function () {
+				MediaField.open($(this).closest('[data-spst-media]'));
 			});
-			$(document).on('click', '.wps-media__remove', function () {
-				MediaField.set($(this).closest('[data-wps-media]'), 0, '');
-				$(this).siblings('.wps-media__choose').trigger('focus');
+			$(document).on('click', '.spst-media__remove', function () {
+				MediaField.set($(this).closest('[data-spst-media]'), 0, '');
+				$(this).siblings('.spst-media__choose').trigger('focus');
 			});
 			// A saved 0 means the choice was not a picture.
-			$(document).on('wpstarter:setting-saved', function (event, key, value) {
-				var $field = $('[data-wps-media]').has('[data-wps-setting="' + key + '"]');
+			$(document).on('seoprostats:setting-saved', function (event, key, value) {
+				var $field = $('[data-spst-media]').has('[data-spst-setting="' + key + '"]');
 				if ($field.length && !parseInt(value, 10)) {
 					MediaField.preview($field, '');
 				}
@@ -280,7 +280,7 @@
 			if (!wp || !wp.media) {
 				return;
 			}
-			var frame = $field.data('wps-frame');
+			var frame = $field.data('spst-frame');
 			if (!frame) {
 				frame = wp.media({
 					title: i18n.chooseImage,
@@ -297,29 +297,29 @@
 					var url = data.sizes && data.sizes.thumbnail ? data.sizes.thumbnail.url : data.url;
 					MediaField.set($field, data.id, url);
 				});
-				$field.data('wps-frame', frame);
+				$field.data('spst-frame', frame);
 			}
 			frame.open();
 		},
 
 		set: function ($field, id, url) {
 			this.preview($field, url);
-			$field.find('[data-wps-setting]').val(String(id || 0)).trigger('change');
+			$field.find('[data-spst-setting]').val(String(id || 0)).trigger('change');
 		},
 
 		preview: function ($field, url) {
-			var $img = $field.find('.wps-media__preview');
+			var $img = $field.find('.spst-media__preview');
 			if (url) {
 				$img.attr('src', url).prop('hidden', false);
 			} else {
 				$img.removeAttr('src').prop('hidden', true);
 			}
-			$field.find('.wps-media__remove').prop('hidden', !url);
+			$field.find('.spst-media__remove').prop('hidden', !url);
 		}
 	};
 
 	// For the plugin's own admin scripts, which load after this one
-	// (wpstarter_admin_enqueue): the same AJAX, screen reader and error helpers.
+	// (seoprostats_admin_enqueue): the same AJAX, screen reader and error helpers.
 	cfg.api = { post: post, speak: speak, errorMessage: errorMessage };
 
 	$(function () {
@@ -327,4 +327,4 @@
 		Panels.init();
 		MediaField.init();
 	});
-})(jQuery, window.wp, window.wpstarterAdmin);
+})(jQuery, window.wp, window.seoprostatsAdmin);

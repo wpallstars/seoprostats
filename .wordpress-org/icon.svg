@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  WP Plugin Starter icon (WordPress.org icons).
+  SEO Pro Stats icon (WordPress.org icons).
   Source: .wordpress-org/icon.svg. Edit that, then run scripts/build-banner.sh,
   which exports icon-256x256.png and icon-128x128.png from it.
   The banner's picture (.wordpress-org/banner.svg) on its own: the wpallstars
@@ -9,7 +9,7 @@
   128 pixels. Keep the picture in step with the banner's.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="256" height="256" viewBox="0 0 256 256">
-  <title>WP Plugin Starter</title>
+  <title>SEO Pro Stats</title>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#000c1f"/>

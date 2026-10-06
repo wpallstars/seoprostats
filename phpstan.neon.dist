@@ -31,7 +31,7 @@ parameters:
 	# Result cache, kept between CI runs so only changed files are analysed again.
 	tmpDir: .cache/phpstan
 	paths:
-		- wp-plugin-starter-template.php
+		- seoprostats.php
 		- uninstall.php
 		- includes
 		- admin

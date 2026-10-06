@@ -1,13 +1,13 @@
 <?php
 /**
- * WP Plugin Starter bootstrap and feature registry. The features and anything
- * else only this plugin needs come from WPStarter_Setup.
+ * SEO Pro Stats bootstrap and feature registry. The features and anything
+ * else only this plugin needs come from SEOProStats_Setup.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  * @since 0.3.0
  */
 
@@ -15,11 +15,11 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class WPStarter {
+final class SEOProStats {
 
     /**
-     * Feature classes whose files are loaded: WPStarter_Setup::FEATURES,
-     * plus each of WPStarter_Setup::OPTIONAL_FEATURES this build has.
+     * Feature classes whose files are loaded: SEOProStats_Setup::FEATURES,
+     * plus each of SEOProStats_Setup::OPTIONAL_FEATURES this build has.
      *
      * @var string[]
      */
@@ -36,18 +36,18 @@ final class WPStarter {
      * Load files and register hooks.
      */
     public static function load() {
-        require_once WPSTARTER_DIR . 'includes/class-wpstarter-settings.php';
-        require_once WPSTARTER_DIR . 'includes/class-wpstarter-feature.php';
-        require_once WPSTARTER_DIR . 'includes/class-wpstarter-setup.php';
-        WPStarter_Setup::load();
+        require_once SEOPROSTATS_DIR . 'includes/class-seoprostats-settings.php';
+        require_once SEOPROSTATS_DIR . 'includes/class-seoprostats-feature.php';
+        require_once SEOPROSTATS_DIR . 'includes/class-seoprostats-setup.php';
+        SEOProStats_Setup::load();
 
-        foreach (WPStarter_Setup::FEATURES as $class) {
+        foreach (SEOProStats_Setup::FEATURES as $class) {
             require_once self::feature_file($class);
             self::$core_features[] = $class;
         }
         // Features that some builds leave out (the WordPress.org build has
         // no GitHub updates) load only when their file is present.
-        foreach (WPStarter_Setup::OPTIONAL_FEATURES as $class) {
+        foreach (SEOProStats_Setup::OPTIONAL_FEATURES as $class) {
             if (is_readable(self::feature_file($class))) {
                 require_once self::feature_file($class);
                 self::$core_features[] = $class;
@@ -56,18 +56,18 @@ final class WPStarter {
 
         // The shared GitHub updater (GitHub builds only): registers this
         // copy; the newest copy on the site loads on plugins_loaded.
-        if (is_readable(WPSTARTER_DIR . 'includes/github-updater/load.php')) {
-            require_once WPSTARTER_DIR . 'includes/github-updater/load.php';
+        if (is_readable(SEOPROSTATS_DIR . 'includes/github-updater/load.php')) {
+            require_once SEOPROSTATS_DIR . 'includes/github-updater/load.php';
         }
 
-        WPStarter_Settings::init();
-        WPStarter_Setup::init();
-        // Priority 0, added after WPStarter_Settings::maybe_migrate() so features
+        SEOProStats_Settings::init();
+        SEOProStats_Setup::init();
+        // Priority 0, added after SEOProStats_Settings::maybe_migrate() so features
         // read migrated values, and early enough to hook widgets_init (init:1).
         add_action('init', array(__CLASS__, 'boot_features'), 0);
 
         if (is_admin()) {
-            require_once WPSTARTER_DIR . 'admin/settings.php';
+            require_once SEOPROSTATS_DIR . 'admin/settings.php';
         }
     }
 
@@ -78,7 +78,7 @@ final class WPStarter {
      * @return string
      */
     private static function feature_file($class) {
-        return WPSTARTER_DIR . 'includes/features/class-' . str_replace('_', '-', strtolower($class)) . '.php';
+        return SEOPROSTATS_DIR . 'includes/features/class-' . str_replace('_', '-', strtolower($class)) . '.php';
     }
 
     /**
@@ -89,13 +89,13 @@ final class WPStarter {
     public static function features() {
         if (null === self::$features) {
             /**
-             * Filter the feature classes. Each must extend WPStarter_Feature.
+             * Filter the feature classes. Each must extend SEOProStats_Feature.
              *
              * @param string[] $features Class names.
              */
-            $features       = (array) apply_filters('wpstarter_features', self::$core_features);
+            $features       = (array) apply_filters('seoprostats_features', self::$core_features);
             self::$features = array_values(array_filter($features, function ($class) {
-                return is_string($class) && class_exists($class) && is_subclass_of($class, 'WPStarter_Feature');
+                return is_string($class) && class_exists($class) && is_subclass_of($class, 'SEOProStats_Feature');
             }));
         }
         return self::$features;
