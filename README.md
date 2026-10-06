@@ -71,7 +71,7 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ## Where to find it
 
-**SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick, and where visits came from, what they viewed, where and on what. Choose a period and comparison at the top; choose any row to show only those visits, and remove the filter from the bar above the chart. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days.
+**SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick (the day, hour or month still being counted is dotted), where visits came from, what they viewed, where and on what, and their events with the share of visits that had each. Choose a period and comparison at the top; choose any row to show only those visits, and remove the filter from the bar above the chart. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days.
 
 Go to **SEO Pro Stats → Settings** for the settings. The screen has two groups of tabs:
 
@@ -190,6 +190,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 - New: daily summaries, so long ranges stay fast, and retention: visits and pageviews are kept 75 months and events 120 months (`seoprostats_retention` filter); `wp seoprostats rollup` and `prune`.
 - New: settings on the Tracking, Privacy and Data tabs: collection on or off, roles not counted, kept query parameters, other domains, proxy headers, Do Not Track and Global Privacy Control, excluded IP addresses and pages, retention months, and roles that may see the statistics. Removed the `seoprostats_tracker_skip_capability` filter: the roles setting replaces it.
 - New: known page caches are purged after an update and after a tracker setting changes, so cached pages print the current tracker; `wp seoprostats purge-caches`.
+- New: an Events card on the Overview; the chart dots the day, hour or month still being counted; shares too small to round show as <0.1% rather than 0%.
 
 ### 0.1.0
 
