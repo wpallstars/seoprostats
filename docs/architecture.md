@@ -237,7 +237,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `lang_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `source`, `import_id` (revenue is per event, in its currency) |
 | `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
-| `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (for retention) |
+| `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (reports by period, and retention) |
 | `clicks` | click or form submit | `id`, `session_id`, `ts`, `seq`, `path_id`, `kind`, `selector_id`, `label_id`, `target_id`, `flags` (dead, outbound, affiliate, download) |
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
@@ -253,13 +253,22 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `imports` | import run | source, status, rows, days covered; imported rows carry its id so it can be undone |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
-option arrays with autoload off.
+option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
+funnels (`seoprostats_funnels`, up to 20, of 2 to 12 steps) belong to a
+data set, so demo data has its own (`_demo` after the name;
+`SEOProStats_Goals`). Each goal or step is a name, a kind (`page` viewed or
+`event` sent) and a match (a path or event name; `*` is any text), with a
+random id.
 
 Indexes: `ts` on every fact table (ranges and retention), `(session_id,
-seq)` for journeys, `(path_id, ts)` for page reports, `(started)` and
-`(day, visitor)` on sessions, `(dim, val, day)` on `daily`. Add one only
-for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
-Performance).
+seq)` for journeys and funnels, `(path_id, ts)` for page reports and
+`(name_id, ts)` for events, `(started)` and `(day, visitor)` on sessions,
+`(dim, val, day)` on `daily`. `props` has `(owner, ts)` for listing keys
+and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
+with the primary key both cover the reports, which read no rows. Add one
+only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
+Performance). `dbDelta()` only adds keys, so a key a version replaces is
+listed in `SEOProStats_Schema::OLD_KEYS` and dropped on upgrade.
 
 ### Retention
 
@@ -330,8 +339,12 @@ widget follows the same choice and says when it shows demo data.
 | Visit duration | average of each visit's visible time (time accrues only while the tab is visible) |
 | Time on page | median visible time of pageviews of the page (average until the daily summaries keep medians) |
 | Scroll depth | median deepest scroll % of pageviews of the page (average until then) |
+| Conversions | visits that reached the goal (viewed its page or sent its event) |
 | Conversion rate | visits that reached the goal ÷ visits |
 | Revenue | sum of event revenue in the goal's currency; currencies are never added together |
+| Funnel step | visits that reached every step up to this one, in order, within the visit (other hits may come between) |
+| Funnel completion rate | visits at the last step ÷ visits at the first |
+| Drop-off | visits at the step before that did not reach this one |
 | Search position | impression-weighted: Σ(position × impressions) ÷ Σ impressions |
 
 ### Report engine
@@ -358,6 +371,23 @@ transients) by a hash of the request and data set, checked against the data vers
 (the processor's last run), with one entry per request so they never pile
 up. Realtime is never cached.
 
+Conversions (`SEOProStats_Conversions`) read the fact tables, with the
+same ranges, filters, comparison and cache:
+
+- **Goals**: per goal, one query over `events` by `(name_id, ts)` or
+  `pageviews` by `(path_id, ts)`, joined to its visits, and for event
+  goals one more for revenue per currency.
+- **Funnels**: one query per funnel. Step 1 takes each visit's first hit
+  of the step (its `seq`); each later step joins, by `(session_id, seq)`,
+  the visit's first hit of that step after the previous one. Each visit's
+  depth (steps reached in order) is counted once, so the steps never rise.
+  `seq` counts pageviews and events together within a visit, so a step
+  can be either.
+- **Properties**: keys sent with events and pageviews, or one key's values
+  (optionally of one event), by `props` keys `(owner, ts)` and `(key_id,
+  ts, value_id)` (forced, so only the period is read), with the revenue of
+  the events that carried each value.
+
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
 months, last year, all time, custom; comparison with the previous period
@@ -372,15 +402,19 @@ in the future meets the same length of the other period.
   need `manage_options`. Agents authenticate with Application Passwords.
   Report routes take `data=live|demo` (Storage → Demo data); `demo`
   makes and removes the demo data and `view` saves each person's choice.
-  Routes: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`, `demo`, `view`,
-  `pages`, `page`, `flow`, `journeys`, `clicks`, `goals`, `funnels`,
-  `properties`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
+  `goals` and `funnels` answer reports on GET and add, change and delete
+  definitions (`/goals/{id}`) for administrators, on the data set asked for.
+  Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
+  `goals`, `funnels`, `properties`, `demo`, `view`; planned: `pages`,
+  `page`, `flow`, `journeys`, `clicks`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
   `backlinks`, `changes`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
-  `stats`, `breakdown`, `pages`, `search`, `changes`, `annotate`,
-  `import`, `export`, `process`, `rollup`, `prune`, `doctor`, `demo`
-  (`make`, `status`, `remove`); reports take `--data=demo`.
+  `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
+  `delete` too), `properties [<key>]`, `pages`, `search`, `changes`,
+  `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
+  `demo` (`make`, `status`, `remove`); reports and definitions take
+  `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter.
@@ -420,6 +454,14 @@ Sections: Overview · Behaviour (Flow, Journeys, Clicks, Funnels, Goals,
 Properties) · Pages (All, New, Not found, Site search, page detail) ·
 Search (Rankings, Opportunities, Backlinks) · Health (Speed, Errors,
 Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
+
+Built so far: Overview, Goals, Funnels and Properties, as WordPress tabs
+at the top of the screen and as submenu items (links to the hash, marked
+current by the app). The period, comparison, Live/Demo switch and filters
+are shared by every section. Choosing a breakdown row, goal or funnel step
+filters every report by it; choosing it again takes the filter out.
+Administrators add, change and delete goals and funnels in a modal; pages
+and events seen in the last 90 days are offered as they type.
 
 The page state lives in the URL hash (`#/pages?range=30d&compare=prev&f=…`),
 so every view can be bookmarked and shared with another admin, and the
