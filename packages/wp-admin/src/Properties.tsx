@@ -16,6 +16,7 @@ import { locale } from './boot';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Money } from './components/Money';
+import { TableScroll } from './components/TableScroll';
 
 export function Properties({ state }: ViewProps) {
 	const [key, setKey] = useState('');
@@ -103,41 +104,43 @@ export function Properties({ state }: ViewProps) {
 						</div>
 					)}
 					{rows.length > 0 && (
-						<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
-							<thead>
-								<tr>
-									<th scope="col">{key ? __('Value', 'seoprostats') : __('Property', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Times sent', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Visits', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Of all visits', 'seoprostats')}</th>
-									{hasRevenue && <th scope="col" className="num">{__('Revenue', 'seoprostats')}</th>}
-								</tr>
-							</thead>
-							<tbody>
-								{rows.map((row) => (
-									<tr key={row.value}>
-										<td className="spst-table__bar-cell">
-											<span className="spst-table__bar" style={{ width: `${(row.count / top) * 100}%` }} aria-hidden="true" />
-											{key ? (
-												<span>{row.label}</span>
-											) : (
-												<Button variant="link" onClick={() => setKey(row.value)}>
-													{row.label}
-												</Button>
-											)}
-										</td>
-										<td className="num">{formatNumber(row.count, locale)}</td>
-										<td className="num">{formatNumber(row.visits, locale)}</td>
-										<td className="num">{formatPercent(row.share, locale)}</td>
-										{hasRevenue && (
-											<td className="num">
-												<Money revenue={row.revenue} />
-											</td>
-										)}
+						<TableScroll label={key ? sprintf(/* translators: %s: a property name. */ __('Values of %s', 'seoprostats'), key) : __('Properties', 'seoprostats')}>
+							<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
+								<thead>
+									<tr>
+										<th scope="col">{key ? __('Value', 'seoprostats') : __('Property', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Times sent', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Visits', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Of all visits', 'seoprostats')}</th>
+										{hasRevenue && <th scope="col" className="num">{__('Revenue', 'seoprostats')}</th>}
 									</tr>
-								))}
-							</tbody>
-						</table>
+								</thead>
+								<tbody>
+									{rows.map((row) => (
+										<tr key={row.value}>
+											<td className="spst-table__bar-cell">
+												<span className="spst-table__bar" style={{ width: `${(row.count / top) * 100}%` }} aria-hidden="true" />
+												{key ? (
+													<span>{row.label}</span>
+												) : (
+													<Button variant="link" onClick={() => setKey(row.value)}>
+														{row.label}
+													</Button>
+												)}
+											</td>
+											<td className="num">{formatNumber(row.count, locale)}</td>
+											<td className="num">{formatNumber(row.visits, locale)}</td>
+											<td className="num">{formatPercent(row.share, locale)}</td>
+											{hasRevenue && (
+												<td className="num">
+													<Money revenue={row.revenue} />
+												</td>
+											)}
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</TableScroll>
 					)}
 					{!key && rows.length > 0 && <p className="spst-note">{__('Choose a property to see its values.', 'seoprostats')}</p>}
 				</CardBody>

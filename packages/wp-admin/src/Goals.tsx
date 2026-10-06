@@ -29,6 +29,7 @@ import { Change } from './components/Change';
 import { DefinitionModal } from './components/DefinitionModal';
 import { Money } from './components/Money';
 import { StepFields, kindLabel } from './components/StepFields';
+import { TableScroll } from './components/TableScroll';
 
 /** The filter a goal or step stands for: its page or event. */
 export function stepFilter(step: GoalStep): { dimension: 'page' | 'event'; value: string; op: Operator } {
@@ -126,78 +127,80 @@ export function Goals({ state, update }: ViewProps) {
 						</div>
 					)}
 					{answer && answer.goals.length > 0 && (
-						<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
-							<thead>
-								<tr>
-									<th scope="col">{__('Goal', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Visitors', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Conversions', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Conversion rate', 'seoprostats')}</th>
-									<th scope="col" className="num">{__('Revenue', 'seoprostats')}</th>
-									{boot.canManage && (
-										<th scope="col">
-											<span className="screen-reader-text">{__('Actions', 'seoprostats')}</span>
-										</th>
-									)}
-								</tr>
-							</thead>
-							<tbody>
-								{answer.goals.map((goal) => {
-									const name = goal.name || goal.match;
-									const active = hasStep(state.filters, goal);
-									return (
-										<tr key={goal.id}>
-											<td>
-												<button
-													type="button"
-													className={`spst-link${active ? ' is-active' : ''}`}
-													aria-pressed={active}
-													title={
-														active
-															? __('Remove this filter', 'seoprostats')
-															: __('Show only visits that reached this goal', 'seoprostats')
-													}
-													onClick={() => update({ filters: toggleStep(state.filters, goal) })}
-												>
-													{name}
-												</button>
-												<span className="spst-meta">
-													{kindLabel(goal.kind)}: <code>{goal.match}</code>
-												</span>
-											</td>
-											<td className="num">{formatNumber(goal.visitors, locale)}</td>
-											<td className="num" title={sprintf(/* translators: %s: a number of times. */ __('Reached %s times', 'seoprostats'), formatNumber(goal.completions, locale, false))}>
-												{formatNumber(goal.visits, locale)}
-												{comparing && <Change change={goal.change?.visits} />}
-											</td>
-											<td className="num">
-												{formatPercent(goal.conversion_rate, locale)}
-												{comparing && <Change change={goal.change?.conversion_rate} />}
-											</td>
-											<td className="num">
-												<Money revenue={goal.revenue} />
-											</td>
-											{boot.canManage && (
-												<td className="spst-actions">
-													<Button variant="link" onClick={() => setEditing(goal)}>
-														{__('Edit', 'seoprostats')}
-														<span className="screen-reader-text"> {name}</span>
-													</Button>
-													<Button
-														variant="link"
-														isDestructive
-														onClick={async () => setError(await confirmDelete(data, 'goals', goal.id, name))}
+						<TableScroll label={__('Goals', 'seoprostats')}>
+							<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
+								<thead>
+									<tr>
+										<th scope="col">{__('Goal', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Visitors', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Conversions', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Conversion rate', 'seoprostats')}</th>
+										<th scope="col" className="num">{__('Revenue', 'seoprostats')}</th>
+										{boot.canManage && (
+											<th scope="col">
+												<span className="screen-reader-text">{__('Actions', 'seoprostats')}</span>
+											</th>
+										)}
+									</tr>
+								</thead>
+								<tbody>
+									{answer.goals.map((goal) => {
+										const name = goal.name || goal.match;
+										const active = hasStep(state.filters, goal);
+										return (
+											<tr key={goal.id}>
+												<td>
+													<button
+														type="button"
+														className={`spst-link${active ? ' is-active' : ''}`}
+														aria-pressed={active}
+														title={
+															active
+																? __('Remove this filter', 'seoprostats')
+																: __('Show only visits that reached this goal', 'seoprostats')
+														}
+														onClick={() => update({ filters: toggleStep(state.filters, goal) })}
 													>
-														{__('Delete', 'seoprostats')}
-														<span className="screen-reader-text"> {name}</span>
-													</Button>
+														{name}
+													</button>
+													<span className="spst-meta">
+														{kindLabel(goal.kind)}: <code>{goal.match}</code>
+													</span>
 												</td>
-											)}
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
+												<td className="num">{formatNumber(goal.visitors, locale)}</td>
+												<td className="num" title={sprintf(/* translators: %s: a number of times. */ __('Reached %s times', 'seoprostats'), formatNumber(goal.completions, locale, false))}>
+													{formatNumber(goal.visits, locale)}
+													{comparing && <Change change={goal.change?.visits} />}
+												</td>
+												<td className="num">
+													{formatPercent(goal.conversion_rate, locale)}
+													{comparing && <Change change={goal.change?.conversion_rate} />}
+												</td>
+												<td className="num">
+													<Money revenue={goal.revenue} />
+												</td>
+												{boot.canManage && (
+													<td className="spst-actions">
+														<Button variant="link" onClick={() => setEditing(goal)}>
+															{__('Edit', 'seoprostats')}
+															<span className="screen-reader-text"> {name}</span>
+														</Button>
+														<Button
+															variant="link"
+															isDestructive
+															onClick={async () => setError(await confirmDelete(data, 'goals', goal.id, name))}
+														>
+															{__('Delete', 'seoprostats')}
+															<span className="screen-reader-text"> {name}</span>
+														</Button>
+													</td>
+												)}
+											</tr>
+										);
+									})}
+								</tbody>
+							</table>
+						</TableScroll>
 					)}
 					{answer && answer.goals.length > 0 && (
 						<p className="spst-note">
