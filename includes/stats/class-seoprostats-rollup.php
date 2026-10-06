@@ -64,8 +64,8 @@ final class SEOProStats_Rollup {
 
     /** Default retention in months (0 keeps forever): visits with their pageviews; events. */
     const RETENTION = array(
-        'visits' => 13,
-        'events' => 25,
+        'visits' => 75,
+        'events' => 120,
     );
 
     /**
