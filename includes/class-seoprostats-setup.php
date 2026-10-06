@@ -110,7 +110,12 @@ final class SEOProStats_Setup {
             SEOProStats_Tracker::init();
         }
 
+        if (wp_doing_cron()) {
+            self::page_cache();
+        }
+
         if (defined('WP_CLI') && WP_CLI) {
+            self::page_cache();
             SEOProStats_API::load();
             // Registers `wp seoprostats`.
             require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-cli.php';
@@ -162,5 +167,18 @@ final class SEOProStats_Setup {
     public static function admin() {
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-dashboard.php';
         SEOProStats_Dashboard::init();
+        self::page_cache();
+    }
+
+    /**
+     * Admin, WP-Cron and WP-CLI requests: purge page caches when the
+     * tracker or its settings change (never on visitor pages). Loads once.
+     */
+    private static function page_cache() {
+        if (class_exists('SEOProStats_Page_Cache', false)) {
+            return;
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-page-cache.php';
+        SEOProStats_Page_Cache::init();
     }
 }

@@ -141,6 +141,8 @@ SEO Pro Stats → Settings:
 - **Privacy:** respect Do Not Track and Global Privacy Control; leave out IP addresses or ranges and pages (`*` matches any characters, for example `/checkout/*`).
 - **Data:** delete old visits (visits and pageviews after 13 months, events after 25 by default; the daily summaries are kept); let other roles see the statistics.
 
+Cached pages keep the script they were cached with, so after an update (at the next WP-Cron run once an admin page has opened), and after a setting that changes the script, SEO Pro Stats purges the page caches it knows (WP-Optimize, LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, SiteGround Speed Optimizer, WP Engine, Breeze, Cache Enabler, Hummingbird, Nginx Helper and WP Fastest Cache). Purge another cache yourself, or with the `seoprostats_page_caches_purged` action.
+
 The filters below apply after the settings.
 
 Send your own events from JavaScript, at any time on the page:
@@ -157,6 +159,7 @@ Filters:
 - `seoprostats_tracker_config`: `q` (query parameters kept in page addresses, besides UTM tags), `dnt` (true: skip browsers that send Do Not Track or Global Privacy Control), `x` (paths not counted; `*` matches any characters, for example `/checkout/*`), `h` (the site's own hosts: links elsewhere are outbound) and `u` (the collector address).
 - `seoprostats_page_props`: properties sent with the page's pageview, for example its author or category.
 - `seoprostats_tracker_inline`: false loads the tracker as a file (`assets/build/tracker.js`), for a Content Security Policy without inline scripts.
+- `seoprostats_purge_page_caches`: false stops the page cache purges (reason: `tracker`, `settings` or `manual`). The `seoprostats_page_caches_purged` action runs after them (reason, caches purged).
 - `seoprostats_collector_config`: whether hits are stored (`off`), other hosts the site answers on (`hosts`), IP addresses or ranges not counted (`exclude_ips`), and the headers that hold the visitor's address and country behind a proxy or CDN (`ip_header`, `country_header`: `$_SERVER` keys).
 
 ### Statistics for scripts and AI agents
@@ -166,7 +169,7 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 - Routes: `stats` (headline metrics), `timeseries`, `breakdown` (top values of a dimension), `realtime` (the last 30 minutes) and `markers`. Parameters: `range` (`today`, `7d`, `30d`, `month`, `12mo`, `all`, `custom` with `from` and `to`, and more), `compare` (`prev` or `year`), `filters`, and for breakdowns `dimension`, `limit` and `offset`.
 - Filters are `dimension:operator:value`: operators `is`, `is_not`, `contains` and `matches` (`*` is any text); a comma means any of, and separate filters must all match. For example `channel:is:organic_search,ai` or `page:matches:/blog/*`.
 - Reading needs the `view_seoprostats` capability, which people who can manage options have, and the roles allowed under Settings → Data; change the capabilities it needs with the `seoprostats_view_caps` filter. Scripts and agents sign in with an Application Password (Users → Profile).
-- WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now), `wp seoprostats rollup` (summarise finished days now, or rebuild days with `--from` and `--to`), `wp seoprostats prune` (delete data past its retention now; `--dry-run` counts it) and `wp seoprostats doctor` (checks tables, collector, salts, cron, waiting hits and daily summaries). Add `--format=json` for the full answer.
+- WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now), `wp seoprostats rollup` (summarise finished days now, or rebuild days with `--from` and `--to`), `wp seoprostats prune` (delete data past its retention now; `--dry-run` counts it), `wp seoprostats purge-caches` (purge the known page caches now) and `wp seoprostats doctor` (checks tables, collector, salts, cron, waiting hits, daily summaries and the last page cache purge). Add `--format=json` for the full answer.
 - Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 13 months and events 25 months, then deleted; the summaries are kept. Change the months under Settings → Data, or with the `seoprostats_retention` filter (`visits`, `events`; 0 keeps forever).
 
 ```sh
@@ -186,6 +189,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 - New: the tracker, printed inline on front-end pages with no cookies or browser storage: pageviews (single-page apps too), visible time and scroll depth, outbound links, file downloads, and your own events with `seoprostats()` or `data-sps-event`.
 - New: daily summaries, so long ranges stay fast, and retention: visits and pageviews are kept 13 months and events 25 months (`seoprostats_retention` filter); `wp seoprostats rollup` and `prune`.
 - New: settings on the Tracking, Privacy and Data tabs: collection on or off, roles not counted, kept query parameters, other domains, proxy headers, Do Not Track and Global Privacy Control, excluded IP addresses and pages, retention months, and roles that may see the statistics. Removed the `seoprostats_tracker_skip_capability` filter: the roles setting replaces it.
+- New: known page caches are purged after an update and after a tracker setting changes, so cached pages print the current tracker; `wp seoprostats purge-caches`.
 
 ### 0.1.0
 

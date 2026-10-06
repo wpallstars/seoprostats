@@ -45,7 +45,7 @@ long-term record.
       are in the settings below.
 - [x] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention, roles that may see the statistics.
-- [ ] Purge known page caches (WP-Optimize, LiteSpeed, WP Rocket, W3 Total
+- [x] Purge known page caches (WP-Optimize, LiteSpeed, WP Rocket, W3 Total
       Cache…) when the plugin version or tracker settings change: cached
       pages keep the inline tracker they were cached with (seen on the
       preview, PR #10).
