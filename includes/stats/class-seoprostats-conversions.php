@@ -338,17 +338,20 @@ final class SEOProStats_Conversions {
         }
         $props  = SEOProStats_Schema::table('props');
         $window = SEOProStats_Query::fact_window($range);
+        // Read only the period: the optimizer may otherwise pick the primary
+        // key's owner prefix, which is every property ever kept.
+        $index = $key === '' ? 'owner_ts' : 'key_ts';
 
-        $parts = array("SELECT p.%i AS k, e.session_id AS sid FROM %i p INNER JOIN %i e ON e.id = p.owner_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only");
-        $args  = array_merge(array($column, $props, SEOProStats_Schema::table('events'), SEOProStats_Schema::OWNER_EVENT), $window, $keys, $names);
+        $parts = array("SELECT p.%i AS k, e.session_id AS sid FROM %i p FORCE INDEX (%i) INNER JOIN %i e ON e.id = p.owner_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only");
+        $args  = array_merge(array($column, $props, $index, SEOProStats_Schema::table('events'), SEOProStats_Schema::OWNER_EVENT), $window, $keys, $names);
         if ($event === '') {
-            $parts[] = "SELECT p.%i AS k, v.session_id AS sid FROM %i p INNER JOIN %i v ON v.id = p.owner_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter";
-            $args    = array_merge($args, array($column, $props, SEOProStats_Schema::table('pageviews'), SEOProStats_Schema::OWNER_PAGEVIEW), $window, $keys);
+            $parts[] = "SELECT p.%i AS k, v.session_id AS sid FROM %i p FORCE INDEX (%i) INNER JOIN %i v ON v.id = p.owner_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter";
+            $args    = array_merge($args, array($column, $props, $index, SEOProStats_Schema::table('pageviews'), SEOProStats_Schema::OWNER_PAGEVIEW), $window, $keys);
         }
         $union = implode(' UNION ALL ', $parts);
         $args  = array_merge($args, array(SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args'], array($limit, $offset));
 
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: props by index `ts` or `key_value`, owners and visits by primary key; $union and the where clause hold only placeholders.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: props by index `owner_ts` or `key_ts` (index only), owners and visits by primary key; $union and the where clause hold only placeholders.
         $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT u.k AS v, COUNT(*) AS n, COUNT(DISTINCT u.sid) AS visits FROM ($union) u INNER JOIN %i s ON s.id = u.sid WHERE s.started >= %d AND s.started < %d{$compiled['where']} GROUP BY u.k ORDER BY n DESC, u.k LIMIT %d OFFSET %d", $args), ARRAY_A);
         if (!$rows) {
             return array();
@@ -361,7 +364,7 @@ final class SEOProStats_Conversions {
             $holders = implode(', ', array_fill(0, count($values), '%d'));
             $margs   = array_merge(array($props, SEOProStats_Schema::table('events'), SEOProStats_Schema::table('sessions'), SEOProStats_Schema::OWNER_EVENT), $window, $keys, $names, $values, array($range['from'], $range['to']), $compiled['args']);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as above; $holders, $filter, $only and the where clause hold only placeholders.
-            $found = (array) $wpdb->get_results($wpdb->prepare("SELECT p.value_id AS v, e.currency AS c, SUM(e.revenue) AS r, COUNT(*) AS n FROM %i p INNER JOIN %i e ON e.id = p.owner_id INNER JOIN %i s ON s.id = e.session_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only AND p.value_id IN ($holders) AND e.revenue <> 0 AND s.started >= %d AND s.started < %d{$compiled['where']} GROUP BY p.value_id, e.currency ORDER BY r DESC", $margs), ARRAY_A);
+            $found = (array) $wpdb->get_results($wpdb->prepare("SELECT p.value_id AS v, e.currency AS c, SUM(e.revenue) AS r, COUNT(*) AS n FROM %i p FORCE INDEX (key_ts) INNER JOIN %i e ON e.id = p.owner_id INNER JOIN %i s ON s.id = e.session_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only AND p.value_id IN ($holders) AND e.revenue <> 0 AND s.started >= %d AND s.started < %d{$compiled['where']} GROUP BY p.value_id, e.currency ORDER BY r DESC", $margs), ARRAY_A);
             foreach ($found as $row) {
                 $money[(int) $row['v']][] = $row;
             }
