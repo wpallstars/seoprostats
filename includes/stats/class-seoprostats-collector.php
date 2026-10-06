@@ -11,13 +11,12 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
+ * Only a class, so a direct request runs nothing (it has no ABSPATH guard:
+ * collect.php loads it without WordPress).
+ *
  * @package SEOProStats
  * @since 0.2.0
  */
-
-if (!defined('ABSPATH') && !defined('SEOPROSTATS_COLLECTOR')) {
-    exit;
-}
 
 final class SEOProStats_Collector {
 

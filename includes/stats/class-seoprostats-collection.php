@@ -237,6 +237,14 @@ final class SEOProStats_Collection {
      * @return bool Whether the fast endpoint works.
      */
     public static function test_fast_endpoint() {
+        if (!is_file(SEOPROSTATS_DIR . 'collect.php')) {
+            // The WordPress.org build has no fast endpoint (.distignore-wporg).
+            $state            = self::state();
+            $state['fast']    = false;
+            $state['checked'] = time();
+            update_option(self::STATE_OPTION, $state, false);
+            return false;
+        }
         $nonce    = wp_generate_password(32, false);
         $url      = add_query_arg(array('s' => get_current_blog_id(), 'ping' => $nonce), self::fast_url());
         // sslverify off: a loopback to the site itself, often with a local

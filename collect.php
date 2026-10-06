@@ -18,8 +18,6 @@
  * @since 0.2.0
  */
 
-define('SEOPROSTATS_COLLECTOR', true);
-
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex');
 

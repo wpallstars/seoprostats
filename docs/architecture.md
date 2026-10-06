@@ -107,7 +107,10 @@ two places:
 
 - **Fast path:** `collect.php` in the plugin folder loads only the
   collector and its config file. Used when the plugin's loopback test
-  passes (some hosts block PHP files in plugin folders).
+  passes (some hosts block PHP files in plugin folders). Only in the
+  GitHub build: WordPress.org asks every PHP file to stop when requested
+  directly, so its build leaves `collect.php` out (`.distignore-wporg`)
+  and uses the REST route.
 - **Fallback:** a REST route, `POST /wp-json/seoprostats/v1/collect`.
 
 Per request it checks the size (16 KB), the JSON, and that the `Origin` or
