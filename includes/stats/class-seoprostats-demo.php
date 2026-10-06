@@ -146,11 +146,11 @@ final class SEOProStats_Demo {
     /** Share of a day's visits by site-local hour. */
     const HOURS = array(2, 1.5, 1, 1, 1, 1.5, 2.5, 4, 5.5, 6.5, 7, 7, 6.5, 6.5, 7, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 2.5);
 
-    /** Plans bought: name, weight, price by currency. */
+    /** Plans bought: weight, name, price by currency. */
     const PLANS = array(
-        array('Personal', 6, array('USD' => 49, 'GBP' => 39, 'EUR' => 45)),
-        array('Business', 3, array('USD' => 99, 'GBP' => 79, 'EUR' => 89)),
-        array('Agency', 1, array('USD' => 199, 'GBP' => 159, 'EUR' => 179)),
+        array(6, 'Personal', array('USD' => 49, 'GBP' => 39, 'EUR' => 45)),
+        array(3, 'Business', array('USD' => 99, 'GBP' => 79, 'EUR' => 89)),
+        array(1, 'Agency', array('USD' => 199, 'GBP' => 159, 'EUR' => 179)),
     );
 
     /** @var array<int,array<string,mixed>> Recent visitors of this run, to come back the same day. */
@@ -544,7 +544,7 @@ final class SEOProStats_Demo {
         if ($path === '/checkout/order-received/') {
             $plan     = self::PLANS[self::pick_index(self::PLANS)];
             $currency = $who['cc'] === 'GB' ? 'GBP' : (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true) ? 'EUR' : 'USD');
-            $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[0]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
+            $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
         }
         return $out;
     }
