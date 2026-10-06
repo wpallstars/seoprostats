@@ -5,8 +5,8 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { Overview } from './Overview';
+import { App } from './App';
 import { mount } from './mount';
 import './dashboard.css';
 
-mount('spst-dashboard', <Overview />);
+mount('spst-dashboard', <App />);
