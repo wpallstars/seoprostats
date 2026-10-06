@@ -15,6 +15,7 @@ site. A phase may start once the phases it depends on are merged.
 
 - [ ] npm workspaces: `packages/core`, `packages/tracker`,
       `packages/charts`, `packages/wp-admin`; build into `assets/build/`.
+      Done except `packages/tracker`, which comes with the tracker.
 - [x] Schema and migrations (`includes/stats/class-seoprostats-schema.php`),
       dictionary, uninstall.
 - [ ] Tracker: pageviews, SPA, engagement, events API, outbound and
@@ -30,7 +31,7 @@ long-term record.
 - [x] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
       `markers`), OpenAPI file, WP-CLI (`stats`, `timeseries`,
       `breakdown`, `realtime`, `process`, `doctor`).
-- [ ] Top-level menu at position 3 with the plugin icon; Overview:
+- [x] Top-level menu at position 3 with the plugin icon; Overview:
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
 - [ ] Tracker (above).

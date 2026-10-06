@@ -302,9 +302,20 @@ in the future meets the same length of the other period.
 
 A top-level **SEO Pro Stats** menu at position 3 (where site statistics
 usually sit) opens one admin page,
-`admin.php?page=seoprostats#/overview`, holding the React app. Submenus
-link to its sections. The settings screen stays at Settings → SEO Pro
-Stats (the starter's screen) with a Settings submenu linking to it.
+`admin.php?page=seoprostats-dashboard#/overview`, holding the React app
+(`includes/admin/class-seoprostats-dashboard.php`). Submenus link to its
+sections. The settings screen stays at Settings → SEO Pro Stats
+(`options-general.php?page=seoprostats`, the starter's screen, hence the
+app's own slug) with a Settings submenu linking to it. A Dashboard widget
+(the `widget` entry, a smaller bundle) shows today so far against
+yesterday at the same time and the last 7 days' visitors, with a link to
+the Overview.
+
+Built entries are `assets/build/dashboard.js` and `widget.js`; their
+`*.asset.php` files list WordPress's scripts as dependencies, so React
+and `@wordpress/components` are not bundled. WordPress before 6.6 has no
+`react-jsx-runtime` script; the screen then adds a small stand-in built
+on WordPress's React.
 
 Sections: Overview · Behaviour (Flow, Journeys, Clicks, Funnels, Goals,
 Properties) · Pages (All, New, Not found, Site search, page detail) ·
