@@ -34,7 +34,9 @@ export function Overview() {
 		return (
 			<div className="spst-app">
 				<div className="spst-toolbar">
-					<DemoSwitch />
+					<div className="spst-toolbar__end">
+						<DemoSwitch />
+					</div>
 				</div>
 				<DemoNotice />
 			</div>

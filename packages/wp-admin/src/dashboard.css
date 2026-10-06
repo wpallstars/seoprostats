@@ -28,6 +28,8 @@
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 16px;
+	/* On the right, also when it is alone (no demo data yet). */
+	margin-inline-start: auto;
 }
 
 .spst-demo-switch .components-toggle-control__label,
