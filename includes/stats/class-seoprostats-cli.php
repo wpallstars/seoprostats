@@ -327,8 +327,8 @@ final class SEOProStats_CLI {
     }
 
     /**
-     * Delete visits, pageviews and events past their retention now (13
-     * and 25 months by default; SEO Pro Stats → Settings → Data). Daily
+     * Delete visits, pageviews and events past their retention now (75
+     * and 120 months by default; SEO Pro Stats → Settings → Data). Daily
      * summaries are kept, and nothing newer than the last summarised day
      * goes.
      *

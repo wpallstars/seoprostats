@@ -20,6 +20,12 @@ export interface ChartSeries {
 	fill?: boolean;
 	/** Each point's own label in the tooltip (a comparison's own dates). */
 	pointLabels?: string[];
+	/**
+	 * Index of the first point still being counted (today, this hour): the
+	 * line into it and on from it is dotted, so a low number reads as
+	 * unfinished rather than a drop.
+	 */
+	partialFrom?: number;
 }
 
 export interface TimeseriesConfig {
@@ -37,6 +43,11 @@ export interface TimeseriesChart {
 	update: (config: TimeseriesConfig) => void;
 	resize: (width: number) => void;
 	destroy: () => void;
+}
+
+/** Whether a series has a partial tail inside its points. */
+function hasPartial(s: ChartSeries, length: number): s is ChartSeries & { partialFrom: number } {
+	return s.partialFrom !== undefined && s.partialFrom > 0 && s.partialFrom < length;
 }
 
 function alpha(color: string, opacity: number): string {
@@ -136,15 +147,22 @@ function options(config: TimeseriesConfig, width: number, getConfig: () => Times
 		],
 		series: [
 			{},
-			...config.series.map((s) => ({
-				label: s.label,
-				stroke: s.color,
-				width: s.dashed ? 1.5 : 2,
-				dash: s.dashed ? [5, 4] : undefined,
-				fill: s.fill ? alpha(s.color, 0.12) : undefined,
-				points: { show: false },
-				spanGaps: false,
-			})),
+			...config.series.flatMap((s) => {
+				const line: uPlot.Series = {
+					label: s.label,
+					stroke: s.color,
+					width: s.dashed ? 1.5 : 2,
+					dash: s.dashed ? [5, 4] : undefined,
+					fill: s.fill ? alpha(s.color, 0.12) : undefined,
+					points: { show: false },
+					spanGaps: false,
+				};
+				if (!hasPartial(s, config.labels.length)) {
+					return [line];
+				}
+				// The unfinished tail: a second, dotted line with a lighter fill.
+				return [line, { ...line, dash: [2, 4], fill: s.fill ? alpha(s.color, 0.05) : undefined }];
+			}),
 		],
 		plugins: [tooltipPlugin(getConfig)],
 	};
@@ -152,7 +170,16 @@ function options(config: TimeseriesConfig, width: number, getConfig: () => Times
 
 function data(config: TimeseriesConfig): uPlot.AlignedData {
 	const xs = config.labels.map((_, i) => i);
-	return [xs, ...config.series.map((s) => xs.map((i) => s.values[i] ?? null))] as uPlot.AlignedData;
+	const columns = config.series.flatMap((s) => {
+		const values = xs.map((i) => s.values[i] ?? null);
+		if (!hasPartial(s, xs.length)) {
+			return [values];
+		}
+		// Finished points solid; the tail dotted from the last finished point on.
+		const from = s.partialFrom;
+		return [values.map((v, i) => (i < from ? v : null)), values.map((v, i) => (i >= from - 1 ? v : null))];
+	});
+	return [xs, ...columns] as uPlot.AlignedData;
 }
 
 /** Draw a chart into an element; update it with new data, resize with the element. */
@@ -165,7 +192,8 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 		update(next) {
 			const shape = next.series.length !== config.series.length || next.series.some((s, i) => {
 				const was = config.series[i];
-				return !was || was.color !== s.color || was.dashed !== s.dashed || was.fill !== s.fill;
+				const length = next.labels.length;
+				return !was || was.color !== s.color || was.dashed !== s.dashed || was.fill !== s.fill || hasPartial(was, config.labels.length) !== hasPartial(s, length);
 			});
 			config = next;
 			if (shape || next.height !== plot.height) {

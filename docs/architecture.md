@@ -273,8 +273,8 @@ not summarised. `wp seoprostats prune --dry-run` counts them.
 
 | Data | Default | Why |
 |---|---|---|
-| Visits, pageviews and journeys | 13 months | Year-on-year comparison with filters |
-| Events, goals and revenue | 25 months | Low volume, high value |
+| Visits, pageviews and journeys | 75 months | Quarter-by-quarter comparisons with filters over six years |
+| Events, goals and revenue | 120 months | Low volume, high value |
 | Clicks and forms | 3 months | High volume; the summaries keep the totals |
 | Speed measurements | 3 months | Daily percentiles kept |
 | Errors | 3 months | Groups kept 13 months |
