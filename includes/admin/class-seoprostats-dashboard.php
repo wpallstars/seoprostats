@@ -42,6 +42,49 @@ final class SEOProStats_Dashboard {
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue'));
         add_action('wp_dashboard_setup', array(__CLASS__, 'register_widget'));
         add_filter('seoprostack_admin_menu_catalog', array(__CLASS__, 'menu_catalog'));
+        add_filter('seoprostack_dashboard_layout', array(__CLASS__, 'dashboard_layout'));
+    }
+
+    /**
+     * When SEO Pro Stack lays out the Dashboard ("Tidy the dashboard"), put
+     * the widget at the top of its visitors and SEO column. A place already
+     * given in its rules wins.
+     *
+     * @param mixed $rules SEO Pro Stack's Dashboard layout rules.
+     * @return mixed
+     */
+    public static function dashboard_layout($rules) {
+        if (!is_array($rules)) {
+            return $rules;
+        }
+        $columns = isset($rules['columns']) && is_array($rules['columns']) ? $rules['columns'] : array();
+        foreach ($columns as $ids) {
+            if (in_array(self::WIDGET, (array) $ids, true)) {
+                return $rules;
+            }
+        }
+        $columns['column3'] = array_merge(array(self::WIDGET), isset($columns['column3']) ? (array) $columns['column3'] : array());
+        $rules['columns']   = $columns;
+        return $rules;
+    }
+
+    /**
+     * Whether the person's saved Dashboard arrangement (or one a layout
+     * plugin gives through the same option) places the widget.
+     *
+     * @return bool
+     */
+    private static function widget_arranged() {
+        $order = get_user_option('meta-box-order_dashboard');
+        if (!is_array($order)) {
+            return false;
+        }
+        foreach ($order as $ids) {
+            if (is_string($ids) && in_array(self::WIDGET, explode(',', $ids), true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -123,13 +166,17 @@ final class SEOProStats_Dashboard {
     }
 
     /**
-     * Register the Dashboard widget for people who can read statistics.
+     * Register the Dashboard widget for people who can read statistics, at
+     * the top of the second column: the right-hand column in WordPress's
+     * usual two. Until the person arranges the Dashboard themselves, the
+     * widget's script moves it to the top of whichever column is right-most
+     * at their screen width (packages/wp-admin/src/placeWidget.ts).
      */
     public static function register_widget() {
         if (!current_user_can(SEOProStats_API::CAP)) {
             return;
         }
-        wp_add_dashboard_widget(self::WIDGET, __('SEO Pro Stats', 'seoprostats'), array(__CLASS__, 'render_widget'));
+        wp_add_dashboard_widget(self::WIDGET, __('SEO Pro Stats', 'seoprostats'), array(__CLASS__, 'render_widget'), null, null, 'side', 'high');
     }
 
     /**
@@ -179,7 +226,7 @@ final class SEOProStats_Dashboard {
         if ($shim) {
             wp_add_inline_script($handle, self::jsx_runtime_shim(), 'before');
         }
-        wp_add_inline_script($handle, 'window.seoprostatsBoot = ' . wp_json_encode(self::boot()) . ';', 'before');
+        wp_add_inline_script($handle, 'window.seoprostatsBoot = ' . wp_json_encode(self::boot($name)) . ';', 'before');
         wp_set_script_translations($handle, 'seoprostats');
 
         $style = 'assets/build/' . $name . (is_rtl() ? '-rtl' : '') . '.css';
@@ -191,15 +238,18 @@ final class SEOProStats_Dashboard {
     /**
      * What the app needs to know about the site and the user.
      *
+     * @param string $name Entry name: 'dashboard' or 'widget'.
      * @return array<string,mixed>
      */
-    private static function boot() {
+    private static function boot($name) {
         return array(
             'locale'       => get_user_locale(),
             'timezone'     => wp_timezone_string(),
             'dashboardUrl' => self::url(),
             'settingsUrl'  => SEOProStats_Admin_Manager::page_url(),
             'canManage'    => current_user_can('manage_options'),
+            // Read after wp_dashboard_setup, so a layout plugin's order counts.
+            'placeWidget'  => $name === 'widget' && !self::widget_arranged(),
         );
     }
 

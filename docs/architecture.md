@@ -364,7 +364,15 @@ Stack organises the admin menu into sections, the
 the Dashboard, unless its catalog already places it. A Dashboard widget
 (the `widget` entry, a smaller bundle) shows today so far against
 yesterday at the same time and the last 7 days' visitors, with a link to
-the Overview.
+the Overview. It starts at the top of the right-most column for the
+person's column count (one to four, by screen width and the Layout screen
+option): PHP registers it at the top of `side`, and while no saved
+arrangement in `meta-box-order_dashboard` includes it, its script measures
+the columns and moves it there, again when the column count changes,
+until the person moves a box (`placeWidget.ts`). WordPress then keeps
+their arrangement. When SEO Pro Stack tidies the Dashboard, the
+`seoprostack_dashboard_layout` filter puts it at the top of that layout's
+visitors and SEO column (`column3`), unless the rules already place it.
 
 Built entries are `assets/build/dashboard.js` and `widget.js`; their
 `*.asset.php` files list WordPress's scripts as dependencies, so React
