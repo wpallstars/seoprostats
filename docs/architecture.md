@@ -265,7 +265,8 @@ seq)` for journeys and funnels, `(path_id, ts)` for page reports and
 `(name_id, ts)` for events, `(started)` and `(day, visitor)` on sessions,
 `(dim, val, day)` on `daily`. `props` has `(owner, ts)` for listing keys
 and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
-with the primary key both cover the reports, which read no rows. Add one
+with the primary key both cover the reports, which read only the
+period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
 Performance). `dbDelta()` only adds keys, so a key a version replaces is
 listed in `SEOProStats_Schema::OLD_KEYS` and dropped on upgrade.
