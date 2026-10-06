@@ -6,7 +6,8 @@
  * Every report the REST API, WP-CLI and the dashboard show comes from
  * here, so the numbers agree everywhere. Metric definitions, ranges and
  * filters: docs/architecture.md → Reports. Answers are cached for five
- * minutes by request and data version (the processor's last run).
+ * minutes by request, data set (live or demo, SEOProStats_Schema::set())
+ * and data version (the processor's last run).
  *
  * Whole days that are summarised (SEOProStats_Rollup) come from the daily
  * table when the request has no filter, or one filter of one visit value
@@ -320,7 +321,7 @@ final class SEOProStats_Query {
         $sources = $wpdb->get_results($wpdb->prepare('SELECT ref_host_id AS v, COUNT(*) AS n FROM %i WHERE started >= %d AND ended >= %d GROUP BY ref_host_id ORDER BY n DESC LIMIT 10', $s, $now - self::LONGEST_VISIT, $since));
 
         $text  = self::texts(array_merge(wp_list_pluck((array) $pages, 'v'), wp_list_pluck((array) $sources, 'v')));
-        $state = get_option(SEOProStats_Collection::PROCESS_OPTION, array());
+        $state = get_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array());
         return array(
             'visitors'   => $visitors,
             'pageviews'  => array_sum($per),
@@ -1141,8 +1142,8 @@ final class SEOProStats_Query {
      * @return array<string,mixed>
      */
     private static function cached($name, array $req, callable $work) {
-        $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string());
-        $state   = get_option(SEOProStats_Collection::PROCESS_OPTION, array());
+        $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string() . SEOProStats_Schema::set());
+        $state   = get_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array());
         $version = is_array($state) && isset($state['last']) ? (int) $state['last'] : 0;
         $object  = wp_using_ext_object_cache();
         $hit     = $object ? wp_cache_get($key, 'seoprostats') : get_transient($key);

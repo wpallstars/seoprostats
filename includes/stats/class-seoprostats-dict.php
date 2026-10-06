@@ -28,7 +28,7 @@ final class SEOProStats_Dict {
     /** Rows per INSERT or SELECT. */
     const CHUNK = 500;
 
-    /** @var array<int,array<string,int>> Kind => text => id. */
+    /** @var array<string,array<int,array<string,int>>> Table (one per data set) => kind => text => id. */
     private static $cache = array();
 
     /**
@@ -67,7 +67,7 @@ final class SEOProStats_Dict {
         global $wpdb;
         $kind  = (int) $kind;
         $table = SEOProStats_Schema::table('dict');
-        $known = isset(self::$cache[$kind]) ? self::$cache[$kind] : array();
+        $known = isset(self::$cache[$table][$kind]) ? self::$cache[$table][$kind] : array();
         $out   = array('' => 0);
         $need  = array();
 
@@ -108,7 +108,7 @@ final class SEOProStats_Dict {
             }
         }
         // Keep the cache bounded for long batches.
-        self::$cache[$kind] = count($known) > 20000 ? array() : $known;
+        self::$cache[$table][$kind] = count($known) > 20000 ? array() : $known;
         return $out;
     }
 

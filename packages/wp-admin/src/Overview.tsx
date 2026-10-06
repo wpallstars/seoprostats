@@ -8,11 +8,13 @@
 
 import { Card, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { errorMessage, useStats, useTimeseries } from './api';
+import { errorMessage, useDemo, useStats, useTimeseries } from './api';
+import { useDataSet } from './data';
 import { rangeText } from './dates';
 import { useViewState } from './hash';
 import { BreakdownCard } from './components/BreakdownCard';
 import { Controls } from './components/Controls';
+import { DemoNotice, DemoSwitch } from './components/Demo';
 import { FilterBar } from './components/FilterBar';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
@@ -20,18 +22,36 @@ import { Realtime } from './components/Realtime';
 
 export function Overview() {
 	const [state, update] = useViewState();
+	const data = useDataSet();
+	const demo = useDemo();
 	const stats = useStats(state);
 	const series = useTimeseries(state);
 	const failed = stats.isError ? stats.error : series.isError ? series.error : null;
 	const answer = stats.data;
 	const empty = answer && answer.metrics.visits === 0;
 
+	if (data === 'demo' && demo.data.status !== 'ready') {
+		return (
+			<div className="spst-app">
+				<div className="spst-toolbar">
+					<DemoSwitch />
+				</div>
+				<DemoNotice />
+			</div>
+		);
+	}
+
 	return (
 		<div className="spst-app">
 			<div className="spst-toolbar">
 				<Controls state={state} update={update} />
-				<Realtime />
+				<div className="spst-toolbar__end">
+					<Realtime />
+					<DemoSwitch />
+				</div>
 			</div>
+
+			<DemoNotice />
 
 			<FilterBar filters={state.filters} update={update} />
 

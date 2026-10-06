@@ -111,7 +111,7 @@ final class SEOProStats_Rollup {
                 break;
             }
             $state['through'] = $day->format('Y-m-d');
-            update_option(self::STATE_OPTION, $state, false);
+            update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
             $count++;
             $day = self::due();
         }
@@ -150,6 +150,9 @@ final class SEOProStats_Rollup {
      * @return int Unix time.
      */
     public static function clear() {
+        if (SEOProStats_Schema::set() === 'demo') {
+            return time(); // Demo visits go straight to the tables, with no buffer.
+        }
         $dir = SEOProStats_Collection::dir();
         clearstatcache();
         if (!glob($dir . '/processing-*.php')) {
@@ -233,7 +236,7 @@ final class SEOProStats_Rollup {
         if (isset($jobs['visits'])) {
             // Before deleting: a day whose visits may be gone is never summarised again.
             $state['kept_from'] = max(self::kept_from(), $jobs['visits']);
-            update_option(self::STATE_OPTION, $state, false);
+            update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
         }
         foreach (self::prune_targets($jobs) as $target) {
             list($table, $column, $before, $owner) = $target;
@@ -253,7 +256,7 @@ final class SEOProStats_Rollup {
         }
         $state           = self::state();
         $state['pruned'] = wp_date('Y-m-d');
-        update_option(self::STATE_OPTION, $state, false);
+        update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
         return array('deleted' => $deleted, 'done' => true);
     }
 
@@ -401,7 +404,7 @@ final class SEOProStats_Rollup {
      * @return array<string,mixed>
      */
     public static function state() {
-        $state = get_option(self::STATE_OPTION, array());
+        $state = get_option(SEOProStats_Schema::option(self::STATE_OPTION), array());
         return is_array($state) ? $state : array();
     }
 

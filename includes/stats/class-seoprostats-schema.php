@@ -50,6 +50,15 @@ final class SEOProStats_Schema {
     const OWNER_EVENT    = 2;
 
     /**
+     * Data sets: live (the site's statistics) and demo (made-up visits in
+     * tables of their own, SEOProStats_Demo). Same layout, never mixed.
+     */
+    const SETS = array('live', 'demo');
+
+    /** @var string The data set this request reads and writes. */
+    private static $set = 'live';
+
+    /**
      * Table names without the prefix, in the order they are made.
      *
      * @return string[]
@@ -59,14 +68,49 @@ final class SEOProStats_Schema {
     }
 
     /**
-     * Full name of one of the plugin's tables on the current site.
+     * Full name of one of the plugin's tables on the current site, in the
+     * current data set (demo tables: seoprostats_demo_*).
      *
      * @param string $name Name from names().
      * @return string
      */
     public static function table($name) {
         global $wpdb;
-        return $wpdb->prefix . 'seoprostats_' . $name;
+        return $wpdb->prefix . 'seoprostats_' . (self::$set === 'demo' ? 'demo_' : '') . $name;
+    }
+
+    /**
+     * Name of an option that belongs to a data set (table version,
+     * processing and summary progress): as given for live, with _demo
+     * after it for demo.
+     *
+     * @param string $name Live option name.
+     * @return string
+     */
+    public static function option($name) {
+        return self::$set === 'demo' ? $name . '_demo' : $name;
+    }
+
+    /**
+     * Switch the data set for what follows; give the one returned back
+     * with use_set() when done. Cron and visitor requests stay on live.
+     *
+     * @param string $set live or demo.
+     * @return string The data set before.
+     */
+    public static function use_set($set) {
+        $before    = self::$set;
+        self::$set = $set === 'demo' ? 'demo' : 'live';
+        return $before;
+    }
+
+    /**
+     * The current data set.
+     *
+     * @return string live or demo.
+     */
+    public static function set() {
+        return self::$set;
     }
 
     /**
@@ -88,7 +132,7 @@ final class SEOProStats_Schema {
      * @return bool
      */
     public static function is_current() {
-        return (int) get_option(self::OPTION, 0) >= self::VERSION;
+        return (int) get_option(self::option(self::OPTION), 0) >= self::VERSION;
     }
 
     /**
@@ -109,22 +153,23 @@ final class SEOProStats_Schema {
                 return false;
             }
         }
-        // Autoloaded like the settings version: maybe_upgrade() reads it on
-        // every admin request, so it must not cost a query.
-        update_option(self::OPTION, self::VERSION);
+        // Live: autoloaded like the settings version, as maybe_upgrade()
+        // reads it on every admin request. Demo: read only when shown.
+        update_option(self::option(self::OPTION), self::VERSION, self::$set === 'live');
         return true;
     }
 
     /**
-     * Delete every table and the version option (uninstall).
+     * Delete the current data set's tables and version option (uninstall;
+     * removing demo data).
      */
     public static function drop() {
         global $wpdb;
         foreach (array_reverse(self::names()) as $name) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing our own tables on uninstall.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing our own tables on uninstall or with the demo data.
             $wpdb->query($wpdb->prepare('DROP TABLE IF EXISTS %i', self::table($name)));
         }
-        delete_option(self::OPTION);
+        delete_option(self::option(self::OPTION));
     }
 
     /**

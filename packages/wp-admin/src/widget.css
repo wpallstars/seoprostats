@@ -14,6 +14,16 @@
 	font-weight: 400;
 }
 
+/* Demo data on: WordPress's warning notice colours, so it is not missed. */
+.spst-widget__demo {
+	margin-inline-start: 8px;
+	padding: 1px 6px;
+	border-inline-start: 3px solid #dba617;
+	background: #fcf9e8;
+	color: #1d2327;
+	font-size: 12px;
+}
+
 .spst-widget__metrics {
 	display: grid;
 	grid-template-columns: repeat(3, 1fr);

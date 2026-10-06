@@ -108,6 +108,32 @@ final class SEOProStats_Processor {
     }
 
     /**
+     * Process lines that did not come through the buffer (demo data,
+     * SEOProStats_Demo), the same way as buffered ones, in the current
+     * data set. Lines are in the collector's format.
+     *
+     * @param array<int,array<string,mixed>> $lines Decoded lines.
+     * @return array{pageviews:int,events:int,bots:int,skipped:int}
+     */
+    public static function ingest(array $lines) {
+        foreach (array('ua', 'channels', 'dict') as $part) {
+            require_once SEOPROSTATS_DIR . "includes/stats/class-seoprostats-$part.php";
+        }
+        self::$tz        = wp_timezone();
+        self::$own_hosts = array();
+        foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
+            self::$own_hosts[self::bare_host((string) $host)] = true;
+        }
+        $done = array('pageviews' => 0, 'events' => 0, 'bots' => 0, 'skipped' => 0);
+        foreach (array_chunk($lines, self::BATCH) as $batch) {
+            foreach (self::process($batch) as $key => $count) {
+                $done[$key] += $count;
+            }
+        }
+        return $done;
+    }
+
+    /**
      * Stored progress.
      *
      * @return array<string,mixed>
