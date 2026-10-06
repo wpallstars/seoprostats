@@ -62,10 +62,11 @@ final class SEOProStats_Rollup {
     /** Seconds after a day ends before it is summarised: engagement of its last pages arrives late. */
     const GRACE = 3600;
 
-    /** Default retention in months (0 keeps forever): visits with their pageviews; events. */
+    /** Default retention in months (0 keeps forever): visits with their pageviews; events; clicks and form submits. */
     const RETENTION = array(
         'visits' => 75,
         'events' => 120,
+        'clicks' => 3,
     );
 
     /**
@@ -287,7 +288,7 @@ final class SEOProStats_Rollup {
      * Cut-off time per kind of data: site-local midnight, the retention
      * back from today, but never after the last summarised day.
      *
-     * @return array<string,int> visits and events (absent: kept forever) => Unix time.
+     * @return array<string,int> visits, events and clicks (absent: kept forever) => Unix time.
      */
     private static function prune_jobs() {
         $state = self::state();
@@ -323,21 +324,27 @@ final class SEOProStats_Rollup {
             $out[] = array(SEOProStats_Schema::table('props'), 'ts', $jobs['events'], SEOProStats_Schema::OWNER_EVENT);
             $out[] = array(SEOProStats_Schema::table('events'), 'ts', $jobs['events'], 0);
         }
+        // Clicks go with their visits at the latest.
+        $clicks = max(isset($jobs['clicks']) ? $jobs['clicks'] : 0, isset($jobs['visits']) ? $jobs['visits'] : 0);
+        if ($clicks) {
+            $out[] = array(SEOProStats_Schema::table('clicks'), 'ts', $clicks, 0);
+        }
         return $out;
     }
 
     /**
      * Retention in months per kind of data.
      *
-     * @return array{visits:int,events:int}
+     * @return array{visits:int,events:int,clicks:int}
      */
     public static function retention() {
         /**
          * Filters how many months visits (with their pageviews and
-         * properties) and events are kept; 0 keeps them forever. Daily
+         * properties), events, and clicks and form submits are kept; 0
+         * keeps them forever. Clicks never outlast their visits. Daily
          * summaries are always kept.
          *
-         * @param array{visits:int,events:int} $months Months by kind, from Settings → Data.
+         * @param array{visits:int,events:int,clicks:int} $months Months by kind, from Settings → Data.
          */
         $months = apply_filters('seoprostats_retention', SEOProStats_Statistics::retention());
         $out    = self::RETENTION;

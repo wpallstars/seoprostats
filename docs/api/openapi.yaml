@@ -448,6 +448,66 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /clicks:
+    get:
+      operationId: getClicks
+      summary: Clicks and form submits (autocapture), with totals.
+      description: |
+        Totals of the period, and rows of one `kind`: clicked elements (by
+        selector and label, with their dead clicks), dead clicks only, link
+        destinations, file links, or forms sent (by name, selector and
+        destination). Sorted by count. `page` keeps clicks on that page;
+        filters select the visits, and a page filter also keeps clicks on
+        that page. Clicks are kept 3 months by default (Settings → Data),
+        so older ranges are empty. Never carries what anyone typed.
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [elements, dead, links, downloads, forms]
+            default: elements
+        - name: page
+          in: query
+          description: A path; `*` is any text.
+          schema:
+            type: string
+            examples: [/pricing/]
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Totals and rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClicksAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
   /demo:
     get:
       operationId: getDemo
@@ -1155,6 +1215,104 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/PropertyRow'
+
+    ClickTotals:
+      type: object
+      required: [clicks, dead, dead_rate, links, outbound, affiliate, downloads, forms, visits]
+      properties:
+        clicks:
+          type: integer
+          description: Clicks (form submits are counted apart).
+        dead:
+          type: integer
+          description: Clicks the page did not react to within a second.
+        dead_rate:
+          type: number
+          description: dead ÷ clicks.
+        links:
+          type: integer
+          description: Clicks with a destination (links, here or elsewhere).
+        outbound:
+          type: integer
+        affiliate:
+          type: integer
+        downloads:
+          type: integer
+          description: Clicks on file links.
+        forms:
+          type: integer
+          description: Forms sent.
+        visits:
+          type: integer
+          description: Visits with a click or form submit.
+
+    ClickRow:
+      type: object
+      required: [selector, label, target, count, visits, share, dead, dead_rate, outbound, affiliate, download, fields]
+      properties:
+        selector:
+          type: string
+          description: tag#id.class of the element or form.
+          examples: [a.wp-block-button__link]
+        label:
+          type: string
+          description: Its text, or a form's name; emails and long numbers masked; '' when hidden with data-sps-mask.
+        target:
+          type: string
+          description: Destination; a path here, origin and path elsewhere, or mailto:/tel: without the address.
+        count:
+          type: integer
+        visits:
+          type: integer
+        share:
+          type: number
+          description: count ÷ all clicks (forms ÷ all forms sent).
+        dead:
+          type: integer
+        dead_rate:
+          type: number
+        outbound:
+          type: boolean
+        affiliate:
+          type: boolean
+        download:
+          type: boolean
+        fields:
+          type: integer
+          description: A form's fields (never their values); 0 for clicks.
+
+    ClicksAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, kind, page, totals, rows]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            kind:
+              type: string
+              enum: [elements, dead, links, downloads, forms]
+            page:
+              type: string
+            totals:
+              $ref: '#/components/schemas/ClickTotals'
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/ClickRow'
+            compare:
+              type: object
+              required: [range, totals, change]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                totals:
+                  $ref: '#/components/schemas/ClickTotals'
+                change:
+                  type: object
+                  description: (now − then) ÷ then per total; null when then is 0.
+                  additionalProperties:
+                    type: [number, 'null']
 
     DemoStatus:
       type: object

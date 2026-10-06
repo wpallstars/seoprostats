@@ -1,7 +1,7 @@
 <?php
 /**
  * The REST API (namespace seoprostats/v1): the reports stats, timeseries,
- * breakdown, realtime, markers, goals, funnels and properties, each on
+ * breakdown, realtime, markers, goals, funnels, properties and clicks, each on
  * live data or the demo data (data=demo); goals and funnels also add,
  * change and delete their definitions (administrators); demo (make, carry
  * on, remove) and view (the data set a person sees). Contract:
@@ -76,6 +76,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-demo.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-goals.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-conversions.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-clicks.php';
     }
 
     /**
@@ -191,6 +192,24 @@ final class SEOProStats_API {
                 ),
                 'event'  => array(
                     'description' => __('Only properties sent with this event (without it: events and pages).', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/clicks', $read + array(
+            'callback' => array(__CLASS__, 'clicks'),
+            'args'     => $base + array(
+                'kind'   => array(
+                    'description' => __('Rows: clicked elements, dead clicks only, link destinations, file links or forms sent.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Clicks::KINDS,
+                    'default'     => 'elements',
+                ),
+                'page'   => array(
+                    'description' => __('Only clicks on this page (a path such as /pricing/; * for any text).', 'seoprostats'),
                     'type'        => 'string',
                     'default'     => '',
                 ),
@@ -401,6 +420,20 @@ final class SEOProStats_API {
         $event = (string) $request->get_param('event');
         return self::report($request, static function ($req) use ($key, $event) {
             return SEOProStats_Conversions::properties($req, $key, $event);
+        });
+    }
+
+    /**
+     * GET /clicks: clicked elements, dead clicks, links, files or forms.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function clicks($request) {
+        $kind = (string) $request->get_param('kind');
+        $page = (string) $request->get_param('page');
+        return self::report($request, static function ($req) use ($kind, $page) {
+            return SEOProStats_Clicks::report($req, $kind, $page);
         });
     }
 

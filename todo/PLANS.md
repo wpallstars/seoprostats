@@ -56,8 +56,11 @@ long-term record.
       in order within one visit), custom properties; per data set, with
       demo examples; REST, WP-CLI and dashboard sections with editors
       (PR #21). Properties read `props` by period (schema v3 keys).
-- [ ] Click and form autocapture; Clicks view; dead clicks; affiliate
-      paths.
+- [x] Click and form autocapture (never field values; masked labels,
+      `data-sps-mask`); dead clicks; outbound, affiliate (paths and
+      `rel="sponsored"`, with an Affiliate link event) and file flags;
+      `clicks` table (schema v4) kept 3 months; REST, WP-CLI, demo data
+      and a Clicks section (issue #22).
 - [ ] Enhanced: 404s, site search, author and categories, logged-in,
       WooCommerce and Easy Digital Downloads purchases (once per order).
 - [ ] Journeys (visitor per day timeline), Flow (Sankey), segments.

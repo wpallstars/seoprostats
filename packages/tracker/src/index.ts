@@ -1,9 +1,13 @@
 /**
  * @seoprostats/tracker: the browser script. Sends pageviews (with SPA
- * navigation), engagement (visible time, deepest scroll) and events
- * (seoprostats('Name', {props, revenue}), data-sps-event, outbound links,
- * file downloads) to the collector, batched, as text/plain so there is no
- * CORS preflight. Design: docs/architecture.md → Collection → Tracker.
+ * navigation), engagement (visible time, deepest scroll), events
+ * (seoprostats('Name', {props, revenue}), data-sps-event, outbound,
+ * affiliate and file links) and, with autocapture, clicks (dead when the
+ * page does not react within a second) and form submits to the collector,
+ * batched, as text/plain so there is no CORS preflight. Clicks in form
+ * fields and what is typed or picked in a form are never sent; labels
+ * mask emails and long numbers, and data-sps-mask hides them.
+ * Design: docs/architecture.md → Collection → Tracker.
  *
  * It stores nothing in the browser: no cookies, localStorage or
  * sessionStorage. A random ID for each page load, kept in memory, joins a
@@ -30,6 +34,10 @@ interface Config {
 	dnt?: boolean;
 	/** Paths not tracked; * matches any characters. */
 	x?: string[];
+	/** Autocapture: clicks on things that can be clicked, and form submits. */
+	c?: boolean;
+	/** The site's affiliate link paths; * matches any characters. */
+	a?: string[];
 }
 
 type Scalar = string | number | boolean;
@@ -49,7 +57,7 @@ export interface Api {
 }
 
 /** One hit, in the collector's format (SEOProStats_Processor lists the fields). */
-type Hit = { t: 'pv' | 'eng' | 'e'; p: string } & Record<string, unknown>;
+type Hit = { t: 'pv' | 'eng' | 'e' | 'c' | 'f'; p: string } & Record<string, unknown>;
 
 declare global {
 	interface Window {
@@ -70,11 +78,27 @@ const PAGE_QUERY = ['ref', 'source', 'p', 'page_id', 'cat', 'tag', 'post_type', 
 const CLICK_IDS = ['gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'li_fat_id', 'yclid', '_ga', '_gl', 'mc_cid', 'mc_eid', '_hsenc', '_hsmi', 'igshid'];
 
 /** Links to files of these kinds count as downloads. */
-const DOWNLOAD = /\.(?:pdf|zipx?|rar|7z|gz|tgz|bz2|xz|tar|dmg|pkg|exe|msi|apk|iso|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|txt|epub|mp3|m4a|wav|ogg|flac|mp4|m4v|mov|avi|wmv|webm|mkv)$/i;
+const FILE_TYPES = /\.(?:pdf|zipx?|rar|7z|gz|tgz|bz2|xz|tar|dmg|pkg|exe|msi|apk|iso|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|txt|epub|mp3|m4a|wav|ogg|flac|mp4|m4v|mov|avi|wmv|webm|mkv)$/i;
 
 /** Most hits, and bytes, per request (the collector takes 50 and 16 KB). */
 const BATCH_HITS = 25;
 const BATCH_BYTES = 15000;
+
+/** Click flags (SEOProStats_Clicks): no reaction, another site, affiliate link, file. */
+const DEAD = 1;
+const OUTBOUND = 2;
+const AFFILIATE = 4;
+const DOWNLOAD = 8;
+
+/** Things made to be clicked. */
+const CLICKABLE =
+	'a[href],button,summary,[role=button],[role=link],[role=tab],[role=menuitem],[onclick],input[type=button],input[type=submit],input[type=reset],input[type=image]';
+
+/** Form fields: clicks in them are never sent (what someone picks is a field value). */
+const FIELDS = 'input,select,textarea,label,option,[contenteditable],[role=checkbox],[role=radio],[role=switch],[role=option]';
+
+/** Milliseconds a click waits for the page to react before it counts as dead. */
+const DEAD_MS = 1000;
 
 const win = window;
 const doc = document;
@@ -100,9 +124,11 @@ const pageProps = attr('data-props');
 const queued = (win.seoprostats && win.seoprostats.q) || [];
 const allowed = PAGE_QUERY.concat((cfg.q || []).map((key) => String(key).toLowerCase()));
 const own = (cfg.h || []).map((host) => String(host).toLowerCase()).concat(loc.hostname.toLowerCase());
-const skipPaths = (cfg.x || []).map(
-	(glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$'),
-);
+/** Paths matching any of a list of globs (* matches any characters). */
+const globs = (list?: string[]): RegExp[] =>
+	(list || []).map((glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$'));
+const skipPaths = globs(cfg.x);
+const affiliatePaths = globs(cfg.a);
 
 const off =
 	!cfg.u ||
@@ -124,6 +150,11 @@ let sentScroll = -1;
 let queue: Hit[] = [];
 let timer: ReturnType<typeof setTimeout> | undefined;
 let scrollPending = false;
+/** Reactions seen (DOM change, scroll, focus, navigation): a click with none is dead. */
+let reactions = 0;
+/** Clicks waiting to see whether the page reacts. */
+let waiting: { hit: Hit; seen: number; at: number }[] = [];
+let observer: MutationObserver | undefined;
 
 /** A random 16-hex-digit ID for a page load. */
 function newId(): string {
@@ -256,6 +287,7 @@ function startPage(referrer: string, props?: unknown): void {
 
 /** SPA navigation: a new pageview when the path or a kept parameter changed. */
 function navigated(): void {
+	reacted();
 	if (pagePath() === pageKey) {
 		return;
 	}
@@ -298,7 +330,101 @@ function event(name: unknown, options?: EventOptions): void {
 	push(hit);
 }
 
-/** Clicks: data-sps-event elements, outbound links and file downloads. */
+/** An address as clicks send it: a path on this site, origin and path elsewhere, the scheme alone for mailto: and tel:. */
+function target(href: string): { to: string; flags: number } {
+	let url: URL;
+	try {
+		url = new URL(href, loc.href);
+	} catch {
+		return { to: '', flags: 0 };
+	}
+	if (/^(?:mailto|tel|sms):$/.test(url.protocol)) {
+		return { to: url.protocol, flags: 0 };
+	}
+	if (!/^https?:$/.test(url.protocol)) {
+		return { to: '', flags: 0 };
+	}
+	const away = own.indexOf(url.hostname.toLowerCase()) < 0;
+	return {
+		to: away ? url.origin + url.pathname : url.pathname,
+		flags: (away ? OUTBOUND : affiliatePaths.some((path) => path.test(url.pathname)) ? AFFILIATE : 0) | (FILE_TYPES.test(url.pathname) ? DOWNLOAD : 0),
+	};
+}
+
+/** The thing someone meant to click: made to be clicked, an image, or shown with a pointer. Never a form field. */
+function clickable(el: Element): Element | null {
+	const field = el.closest(FIELDS);
+	if (field && !field.matches(CLICKABLE)) {
+		return null;
+	}
+	const made = el.closest(CLICKABLE);
+	if (made) {
+		return made;
+	}
+	for (let i = 0, at: Element | null = el; at && at !== doc.body && i < 5; i++, at = at.parentElement) {
+		if (at.tagName === 'IMG' || getComputedStyle(at).cursor === 'pointer') {
+			return at;
+		}
+	}
+	return null;
+}
+
+/** tag#id.class, leaving out generated names (with three digits in a row). */
+function selector(el: Element): string {
+	const name = (part: string): boolean => /^[A-Za-z_-][\w-]{0,39}$/.test(part) && !/\d{3}/.test(part);
+	const id = el.getAttribute('id') || '';
+	const classes = (el.getAttribute('class') || '').split(/\s+/).filter(name).slice(0, 3);
+	return (el.tagName.toLowerCase() + (name(id) ? '#' + id : '') + (classes.length ? '.' + classes.join('.') : '')).slice(0, 120);
+}
+
+/** Visible text (or the name given) of up to 60 characters, emails and long numbers masked; '' under data-sps-mask. */
+function text(el: Element, name?: string): string {
+	if (el.closest('[data-sps-mask]')) {
+		return '';
+	}
+	const image = el.querySelector('img[alt]');
+	const label =
+		name !== undefined
+			? name
+			: el.getAttribute('aria-label') ||
+				(el instanceof HTMLInputElement ? el.value : (el as HTMLElement).innerText) ||
+				el.getAttribute('alt') ||
+				el.getAttribute('title') ||
+				(image && image.getAttribute('alt')) ||
+				'';
+	return String(label)
+		.replace(/\s+/g, ' ')
+		.replace(/[^\s@]+@[^\s@]+/g, '…@…')
+		.replace(/\+?\d(?:[\s().-]?\d){5,}/g, '#')
+		.trim()
+		.slice(0, 60);
+}
+
+/** Something happened on the page: clicks waiting now are not dead. */
+function reacted(): void {
+	reactions++;
+}
+
+/** Send the clicks waiting; dead when the page has not reacted since (all when the page is left). */
+function settle(leaving: boolean): void {
+	const now = Date.now();
+	waiting = waiting.filter((item) => {
+		if (!leaving && item.at > now) {
+			return true;
+		}
+		if (!leaving && item.seen === reactions) {
+			item.hit.f = (item.hit.f as number) | DEAD;
+		}
+		push(item.hit);
+		return false;
+	});
+	if (!waiting.length && observer) {
+		observer.disconnect();
+		observer = undefined;
+	}
+}
+
+/** Clicks: data-sps-event elements, outbound, affiliate and file links, and (autocapture) what was clicked. */
 function clicked(e: MouseEvent): void {
 	if ((e.type === 'auxclick' && e.button !== 1) || !(e.target instanceof Element)) {
 		return;
@@ -317,27 +443,63 @@ function clicked(e: MouseEvent): void {
 		sent = true;
 	}
 	const link = e.target.closest('a[href]');
+	let to = { to: '', flags: 0 };
 	if (link instanceof HTMLAnchorElement) {
-		let url: URL | null = null;
-		try {
-			url = new URL(link.href, loc.href);
-		} catch {
-			url = null;
+		to = target(link.href);
+		if (/(?:^|\s)sponsored(?:\s|$)/i.test(link.rel) && !(to.flags & AFFILIATE)) {
+			to.flags |= AFFILIATE;
 		}
-		if (url && /^https?:$/.test(url.protocol)) {
-			if (own.indexOf(url.hostname.toLowerCase()) < 0) {
-				event('Outbound link', { props: { url: url.origin + url.pathname } });
-				sent = true;
-			} else if (link.hasAttribute('download') || DOWNLOAD.test(url.pathname)) {
-				event('File download', { props: { url: url.pathname } });
-				sent = true;
+		const url = { props: { url: to.to } };
+		if (to.flags & AFFILIATE) {
+			event('Affiliate link', url);
+		} else if (to.flags & OUTBOUND) {
+			event('Outbound link', url);
+		} else if (to.flags & DOWNLOAD || (to.to[0] === '/' && link.hasAttribute('download'))) {
+			to.flags |= DOWNLOAD;
+			event('File download', url);
+		}
+		sent = sent || to.flags > 0;
+	}
+
+	const el = cfg.c ? clickable(e.target) : null;
+	if (el && pageId) {
+		const hit: Hit = { t: 'c', p: pageId, s: selector(el), l: text(el), h: to.to, f: to.flags };
+		// A link that leaves the page reacts by itself; anything else may do nothing.
+		const leaves = link && to.to && !/^#|^javascript:/i.test(link.getAttribute('href') || '');
+		if (leaves || sent) {
+			push(hit);
+			sent = true;
+		} else {
+			waiting.push({ hit, seen: reactions, at: Date.now() + DEAD_MS });
+			if (!observer && typeof MutationObserver === 'function') {
+				observer = new MutationObserver(reacted);
+				observer.observe(doc.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
 			}
+			setTimeout(() => settle(false), DEAD_MS + 50);
 		}
 	}
 	if (sent) {
 		// The page may be about to unload.
 		flush();
 	}
+}
+
+/** Form submits (autocapture): the form's name, address and number of fields; never what is in them. */
+function submitted(e: Event): void {
+	const form = e.target;
+	if (!cfg.c || !pageId || !(form instanceof HTMLFormElement)) {
+		return;
+	}
+	let fields = 0;
+	for (const field of Array.from(form.elements)) {
+		if (field instanceof HTMLInputElement ? !/^(?:hidden|submit|button|reset|image)$/.test(field.type) : field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement) {
+			fields++;
+		}
+	}
+	// getAttribute: form.action and form.name can be fields of those names.
+	push({ t: 'f', p: pageId, s: selector(form), l: text(form, form.getAttribute('name') || form.getAttribute('id') || form.getAttribute('aria-label') || ''), h: target(form.getAttribute('action') || loc.href).to, n: fields });
+	reacted();
+	flush();
 }
 
 function begin(): void {
@@ -362,6 +524,7 @@ function begin(): void {
 		visibleMs = visibleTime();
 		visibleFrom = 0;
 		engagement();
+		settle(true);
 		flush();
 	};
 	doc.addEventListener('visibilitychange', () => {
@@ -390,6 +553,14 @@ function begin(): void {
 	);
 	doc.addEventListener('click', clicked, true);
 	doc.addEventListener('auxclick', clicked, true);
+	if (cfg.c) {
+		doc.addEventListener('submit', submitted, true);
+		// What counts as the page reacting to a click, besides changes to it.
+		doc.addEventListener('scroll', reacted, { capture: true, passive: true });
+		doc.addEventListener('focusin', reacted);
+		win.addEventListener('hashchange', reacted);
+		win.addEventListener('blur', reacted);
+	}
 }
 
 const api: Api = (name, options) => {

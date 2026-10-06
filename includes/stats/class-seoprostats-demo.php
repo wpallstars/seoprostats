@@ -7,7 +7,8 @@
  * go through the processor and the daily summaries, so demo reports use
  * the same code and queries as live ones. Traffic grows over the period,
  * with weekends, seasons, the odd spike, campaigns, paid visits, AI
- * answers, events with properties, and purchases with revenue. While it
+ * answers, events with properties, purchases with revenue, and (for the
+ * last three months, as kept by default) clicks and form submits. While it
  * is shown, demo data is topped up to the present, so today and realtime
  * have visits too. Design: docs/architecture.md → Demo data.
  *
@@ -51,6 +52,39 @@ final class SEOProStats_Demo {
 
     /** Visits a day at the end of the period, before weekends and seasons. */
     const PEAK = 230;
+
+    /** Days back from now whose visits have clicks: clicks are kept 3 months by default. */
+    const CLICK_DAYS = 92;
+
+    /**
+     * Clicks by page (path prefix; '' on every page): selector, label,
+     * target, flags (1 dead, 4 affiliate), chance per pageview.
+     */
+    const CLICKS = array(
+        ''           => array(
+            array('a.custom-logo-link', 'Home', '/', 0, 0.04),
+            array('a.wp-block-navigation-item__content', 'Pricing', '/pricing/', 0, 0.05),
+            array('a.wp-block-navigation-item__content', 'Docs', '/docs/', 0, 0.03),
+            array('button.wp-block-navigation__responsive-container-open', 'Open menu', '', 0, 0.04),
+        ),
+        '/blog/'     => array(
+            array('a.wp-block-button__link', 'Try it free', '/pricing/', 0, 0.05),
+            array('img.wp-image', 'Rankings before and after an update', '', 1, 0.03),
+            array('a', 'Our recommended host', '/go/hosting/', 4, 0.02),
+        ),
+        '/pricing/'  => array(
+            array('a.wp-block-button__link', 'Buy Pro', '/shop/pro-licence/', 0, 0.12),
+            array('span.plan-badge', 'Most popular', '', 1, 0.05),
+            array('summary', 'Can I cancel at any time?', '', 0, 0.06),
+        ),
+        '/features/' => array(
+            array('div.feature-card', 'Changes on the timeline', '', 1, 0.05),
+            array('a.wp-block-button__link', 'See pricing', '/pricing/', 0, 0.1),
+        ),
+        '/shop/'     => array(
+            array('button.single_add_to_cart_button', 'Add to cart', '', 0, 0.15),
+        ),
+    );
 
     /**
      * Where visits come from: weight, referrer, landing query ({c}: the
@@ -159,6 +193,7 @@ final class SEOProStats_Demo {
         array('name' => 'Newsletter signup', 'kind' => 'event', 'match' => 'Newsletter signup'),
         array('name' => 'Contact form sent', 'kind' => 'event', 'match' => 'Contact form'),
         array('name' => 'Download', 'kind' => 'event', 'match' => 'Download'),
+        array('name' => 'Affiliate click', 'kind' => 'event', 'match' => 'Affiliate link'),
         array('name' => 'Viewed pricing', 'kind' => 'page', 'match' => '/pricing/'),
         array('name' => 'Read the docs', 'kind' => 'page', 'match' => '/docs/*'),
     );
@@ -512,9 +547,10 @@ final class SEOProStats_Demo {
             }
         }
 
-        $lines = array();
-        $ts    = $started;
-        $id    = bin2hex(random_bytes(6));
+        $lines  = array();
+        $ts     = $started;
+        $id     = bin2hex(random_bytes(6));
+        $clicks = $started >= time() - self::CLICK_DAYS * DAY_IN_SECONDS;
         foreach ($paths as $seq => $path) {
             $pkey = bin2hex(random_bytes(8));
             $hit  = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
@@ -530,10 +566,16 @@ final class SEOProStats_Demo {
             $visible = $quick ? random_int(2, 10) : random_int(15, 170);
             $lines[] = self::line($ts + $visible, $who, array('t' => 'eng', 'p' => $pkey, 's' => $visible * 1000, 'sc' => $quick ? random_int(0, 30) : random_int(25, 100)));
 
-            foreach (self::events($path, $who) as $event) {
+            $events = self::events($path, $who);
+            if ($clicks) {
+                $events = array_merge($events, self::clicks($path, $events));
+            }
+            foreach ($events as $event) {
                 $event['p'] = $pkey;
-                $event['u'] = $path;
-                $lines[]    = self::line($ts + (int) ($visible / 2), $who, $event);
+                if ($event['t'] === 'e') {
+                    $event['u'] = $path;
+                }
+                $lines[] = self::line($ts + (int) ($visible / 2), $who, $event);
             }
             $ts += $visible + random_int(2, 20);
         }
@@ -598,6 +640,45 @@ final class SEOProStats_Demo {
             $plan     = self::PLANS[self::pick_index(self::PLANS)];
             $currency = $who['cc'] === 'GB' ? 'GBP' : (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true) ? 'EUR' : 'USD');
             $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
+        }
+        return $out;
+    }
+
+    /**
+     * Clicks and form submits on a page, as autocapture sends them: the
+     * links and forms behind its events, and clicks on the page's
+     * elements (some dead, some on affiliate links, with their event).
+     *
+     * @param string                         $path   Page.
+     * @param array<int,array<string,mixed>> $events The page's events, from events().
+     * @return array<int,array<string,mixed>> Click, form and event hits without page id.
+     */
+    private static function clicks($path, array $events) {
+        $out = array();
+        foreach ($events as $event) {
+            if ($event['n'] === 'Outbound link') {
+                $out[] = array('t' => 'c', 's' => 'a', 'l' => $event['d']['url'] === 'https://wordpress.org/plugins/' ? 'WordPress plugins' : 'Developer resources', 'h' => rtrim($event['d']['url'], '/') . '/', 'f' => 2);
+            } elseif ($event['n'] === 'Download') {
+                $out[] = array('t' => 'c', 's' => 'a.wp-block-file__button', 'l' => 'Download', 'h' => '/wp-content/uploads/' . $event['d']['file'], 'f' => 8);
+            } elseif ($event['n'] === 'Newsletter signup') {
+                $out[] = array('t' => 'f', 's' => 'form.newsletter-form', 'l' => 'newsletter', 'h' => '/', 'n' => 1);
+            } elseif ($event['n'] === 'Contact form') {
+                $out[] = array('t' => 'f', 's' => 'form.wpcf7-form', 'l' => 'contact', 'h' => '/contact/', 'n' => 4);
+            }
+        }
+        foreach (self::CLICKS as $prefix => $items) {
+            if ($prefix !== '' && strpos($path, $prefix) !== 0) {
+                continue;
+            }
+            foreach ($items as $item) {
+                if (!self::chance($item[4])) {
+                    continue;
+                }
+                $out[] = array('t' => 'c', 's' => $item[0], 'l' => $item[1], 'h' => $item[2], 'f' => $item[3]);
+                if ($item[3] & 4) {
+                    $out[] = array('t' => 'e', 'n' => 'Affiliate link', 'd' => array('url' => $item[2]));
+                }
+            }
         }
         return $out;
     }

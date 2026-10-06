@@ -13,17 +13,19 @@ import { locale } from '../boot';
 interface Props {
 	/** The metric, for whether up is good; without it, up is good (conversions). */
 	metric?: MetricKey;
+	/** Whether up or down is good, for numbers that are not metrics (dead clicks: down). */
+	better?: 'up' | 'down';
 	change: number | null | undefined;
 	/** Formatted value of the comparison period, for the tooltip. */
 	previous?: string;
 }
 
-export function Change({ metric, change, previous }: Props) {
+export function Change({ metric, better, change, previous }: Props) {
 	const text = formatChange(change, locale);
 	let tone = 'is-flat';
 	if (typeof change === 'number' && Math.abs(change) >= 0.005) {
 		const up = change > 0;
-		tone = up === ((metric ? METRICS[metric].better : 'up') === 'up') ? 'is-good' : 'is-bad';
+		tone = up === ((better ?? (metric ? METRICS[metric].better : 'up')) === 'up') ? 'is-good' : 'is-bad';
 	}
 	const arrow = typeof change === 'number' && change !== 0 ? (change > 0 ? '↑' : '↓') : '';
 	return (

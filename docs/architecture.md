@@ -72,7 +72,7 @@ with the source change; CI rebuilds and fails when they differ.
 
 ### Tracker
 
-One script, about 3 KB compressed, printed inline in the footer of front-end
+One script, under 4 KB compressed, printed inline in the footer of front-end
 pages (no extra request, nothing for blockers to match by file name), or
 served as a file when a page cache or CSP needs it. Speed measurements load
 a second small script only on sampled page loads.
@@ -84,10 +84,23 @@ batched and as `text/plain` so no CORS preflight:
 |---|---|---|
 | `pv` pageview | load, SPA navigation (`pushState`, `replaceState`, `popstate`; hash routes when enabled) | path and allowed query parameters, referrer, UTM tags, screen width, time zone, language, page properties (`data-props`) |
 | `eng` engagement | page hidden or left | visible seconds, deepest scroll %, for the pageview it follows |
-| `e` event | `seoprostats('Name', {props, revenue})`, outbound links, file downloads, `data-sps-event` attributes | name, up to 30 properties (300 characters each, scalars only), revenue as `{amount, currency}` |
-| `c` click / `f` form | every click and form submit (autocapture) | `tag#id.class` selector, visible label (60 characters), link origin and path, dead click flag, form name and field count. Never field values. |
+| `e` event | `seoprostats('Name', {props, revenue})`, outbound links, affiliate links, file downloads, `data-sps-event` attributes | name, up to 30 properties (300 characters each, scalars only), revenue as `{amount, currency}` |
+| `c` click / `f` form | clicks on things made to be clicked (links, buttons, `role=button`…), images and elements shown with a pointer; form submits (autocapture, Settings → Tracking) | `tag#id.class` selector (names with three digits in a row left out), visible label (60 characters), destination (a path here, origin and path elsewhere, `mailto:`/`tel:` without the address), flags (dead, outbound, affiliate, file); a form's name, destination and field count. Never field values. |
 | `v` vitals | sampled page loads, on leave | LCP, INP, CLS, FCP, TTFB and the element or script behind each |
 | `x` error | uncaught errors and rejections | type, message, top 20 stack frames without query strings; at most 10 per page |
+
+Autocapture never sends what someone types or picks: clicks inside form
+fields (inputs, selects, labels, options, editable text, checkbox and
+radio roles) are not sent at all, a form submit carries only how many
+fields it has, labels have email addresses and long numbers masked (again
+on the server), and an element under `data-sps-mask` sends no label. A
+click is **dead** when the page shows no reaction within a second: no
+change to the page (a `MutationObserver` while clicks wait), navigation,
+hash change, scroll or focus change. Links that leave the page are never
+dead. **Affiliate links** are links to the site's own forwarding paths
+(Settings → Tracking, default `/go/*` and `/recommends/*`) or with
+`rel="sponsored"`; they send an `Affiliate link` event (with the
+destination as `url`) instead of `Outbound link`, so a goal can count them.
 
 The tracker stores nothing in the browser (no cookies, `localStorage` or
 `sessionStorage`, which privacy law treats like cookies). It keeps a random
@@ -238,7 +251,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
 | `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (reports by period, and retention) |
-| `clicks` | click or form submit | `id`, `session_id`, `ts`, `seq`, `path_id`, `kind`, `selector_id`, `label_id`, `target_id`, `flags` (dead, outbound, affiliate, download) |
+| `clicks` | click or form submit (schema v4) | `id`, `session_id`, `ts`, `seq`, `path_id` (the page load's: clicks join it by its ID and never start or extend a visit), `kind` (1 click, 2 form), `selector_id`, `label_id`, `target_id`, `flags` (1 dead, 2 outbound, 4 affiliate, 8 file), `fields` (a form's) |
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
@@ -265,6 +278,7 @@ seq)` for journeys and funnels, `(path_id, ts)` for page reports and
 `(name_id, ts)` for events, `(started)` and `(day, visitor)` on sessions,
 `(dim, val, day)` on `daily`. `props` has `(owner, ts)` for listing keys
 and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
+`clicks` has `ts` and `(path_id, ts)` for one page's clicks (schema v4);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -273,8 +287,9 @@ listed in `SEOProStats_Schema::OLD_KEYS` and dropped on upgrade.
 
 ### Retention
 
-SEO Pro Stats → Settings → Data sets the months for visits and events
-(switched off: kept forever); each new kind of data adds its own there.
+SEO Pro Stats → Settings → Data sets the months for visits, events, and
+clicks and form submits (switched off: kept forever); each new kind of
+data adds its own there. Clicks never outlast their visits.
 The `seoprostats_retention` filter applies on top (0 keeps forever).
 Once a day, after the daily
 summaries are up to date, cron deletes old rows in batches of 5,000 with a
@@ -285,7 +300,7 @@ not summarised. `wp seoprostats prune --dry-run` counts them.
 |---|---|---|
 | Visits, pageviews and journeys | 75 months | Quarter-by-quarter comparisons with filters over six years |
 | Events, goals and revenue | 120 months | Low volume, high value |
-| Clicks and forms | 3 months | High volume; the summaries keep the totals |
+| Clicks and forms | 3 months | High volume; most useful while a page is new or changing |
 | Speed measurements | 3 months | Daily percentiles kept |
 | Errors | 3 months | Groups kept 13 months |
 | Crawler requests | 3 months | Daily totals per crawler kept |
@@ -313,8 +328,9 @@ ones, and making demo data tests them. By default it covers 400 days
 (at most 800): traffic grows over the period, is quieter at weekends,
 moves a little with the seasons, has the odd spike (a post shared on a
 forum, a newsletter), and has a monthly newsletter campaign, paid search
-and social, AI answers, events with properties, and purchases with revenue
-in three currencies. Making it is done in slices of up to ten seconds per
+and social, AI answers, events with properties, purchases with revenue
+in three currencies, and for its last three months clicks (some dead, some
+on affiliate links) and form submits. Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
 making the same visits. While someone looks at it, demo data is topped
@@ -389,6 +405,16 @@ same ranges, filters, comparison and cache:
   ts, value_id)` (forced, so only the period is read), with the revenue of
   the events that carried each value.
 
+Clicks (`SEOProStats_Clicks`) read `clicks` by `ts` (or `(path_id, ts)`
+for one page), joined to their visits, with the same ranges, filters,
+comparison and cache: totals (clicks, dead clicks, link, outbound,
+affiliate and file clicks, forms sent, visits with any) and rows of one
+kind: clicked elements (by selector and label, with their dead clicks),
+dead clicks only, link destinations, file links, or forms (by name,
+selector and destination, with their field count). A page filter also
+narrows the clicks to that page. They reach back as far as clicks are
+kept (3 months by default).
+
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
 months, last year, all time, custom; comparison with the previous period
@@ -406,13 +432,14 @@ in the future meets the same length of the other period.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `goals`, `funnels`, `properties`, `demo`, `view`; planned: `pages`,
-  `page`, `flow`, `journeys`, `clicks`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
+  `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`; planned: `pages`,
+  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
   `backlinks`, `changes`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
-  `delete` too), `properties [<key>]`, `pages`, `search`, `changes`,
+  `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
+  `pages`, `search`, `changes`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`); reports and definitions take
   `--data=demo`.
@@ -456,7 +483,7 @@ Properties) · Pages (All, New, Not found, Site search, page detail) ·
 Search (Rankings, Opportunities, Backlinks) · Health (Speed, Errors,
 Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
 
-Built so far: Overview, Goals, Funnels and Properties, as WordPress tabs
+Built so far: Overview, Goals, Funnels, Properties and Clicks, as WordPress tabs
 at the top of the screen and as submenu items (links to the hash, marked
 current by the app). The period, comparison, Live/Demo switch and filters
 are shared by every section. Choosing a breakdown row, goal or funnel step

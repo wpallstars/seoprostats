@@ -27,8 +27,9 @@ final class SEOProStats_Schema {
      * v1: dict, sessions, pageviews, events, props, daily.
      * v2: daily.scroll (sum of the deepest scroll % of a page's views).
      * v3: props keys owner_ts and key_ts replace ts and key_value.
+     * v4: clicks (clicks and form submits).
      */
-    const VERSION = 3;
+    const VERSION = 4;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -48,6 +49,13 @@ final class SEOProStats_Schema {
     const DICT_REGION   = 9;
     const DICT_CITY     = 10;
     const DICT_LANGUAGE = 11;
+    const DICT_SELECTOR = 12;
+    const DICT_LABEL    = 13;
+    const DICT_TARGET   = 14;
+
+    /** Kinds of rows in the clicks table. */
+    const CLICK = 1;
+    const FORM  = 2;
 
     /** Owners of rows in the props table. */
     const OWNER_PAGEVIEW = 1;
@@ -68,7 +76,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks');
     }
 
     /**
@@ -325,6 +333,27 @@ final class SEOProStats_Schema {
   scroll bigint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (day,dim,val),
   KEY dim_val_day (dim,val,day)
+) $charset;",
+
+            // One row per click or form submit (autocapture), on its page
+            // load: session_id, seq and path_id are the pageview's, so
+            // clicks never start or extend a visit. flags: 1 dead, 2
+            // outbound, 4 affiliate, 8 download. fields: a form's fields.
+            'clicks' => "CREATE TABLE {$t['clicks']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  session_id bigint unsigned NOT NULL,
+  ts int unsigned NOT NULL,
+  seq smallint unsigned NOT NULL,
+  path_id int unsigned NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  selector_id int unsigned NOT NULL DEFAULT 0,
+  label_id int unsigned NOT NULL DEFAULT 0,
+  target_id int unsigned NOT NULL DEFAULT 0,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  fields tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY path_ts (path_id,ts),
+  KEY ts (ts)
 ) $charset;",
         );
     }

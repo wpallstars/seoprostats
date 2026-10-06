@@ -106,15 +106,17 @@ final class SEOProStats_Tracker {
      * - q:   query parameters kept in page addresses, besides UTM tags
      * - dnt: skip browsers that send Do Not Track or Global Privacy Control
      * - x:   paths not tracked (* matches any characters)
+     * - c:   autocapture clicks and form submits
+     * - a:   affiliate link paths (* matches any characters)
      *
-     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[]}
+     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[],c:bool,a:string[]}
      */
     public static function config() {
         /**
          * Filters the tracker's config, after the settings (Tracking and
          * Privacy) have set it.
          *
-         * @param array<string,mixed> $config u, h, q, dnt and x (see above).
+         * @param array<string,mixed> $config u, h, q, dnt, x, c and a (see above).
          */
         $config = apply_filters('seoprostats_tracker_config', array(
             'u'   => SEOProStats_Collection::endpoint(),
@@ -122,6 +124,8 @@ final class SEOProStats_Tracker {
             'q'   => SEOProStats_Statistics::params(),
             'dnt' => SEOProStats_Statistics::respect_signals(),
             'x'   => SEOProStats_Statistics::excluded_paths(),
+            'c'   => SEOProStats_Statistics::autocapture(),
+            'a'   => SEOProStats_Statistics::affiliate_paths(),
         ));
         $config = is_array($config) ? $config : array();
         $list   = static function ($key) use ($config) {
@@ -141,6 +145,8 @@ final class SEOProStats_Tracker {
             'q'   => array_map('strtolower', $list('q')),
             'dnt' => !empty($config['dnt']),
             'x'   => $list('x'),
+            'c'   => !empty($config['c']),
+            'a'   => $list('a'),
         );
     }
 

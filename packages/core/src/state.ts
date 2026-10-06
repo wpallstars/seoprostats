@@ -11,7 +11,7 @@ import { parseFilter, serializeFilter, type Filter } from './filters';
 import { COMPARE_KEYS, RANGE_KEYS, type CompareKey, type MetricKey, type RangeKey } from './types';
 import { CHART_METRICS } from './metrics';
 
-export const VIEWS = ['overview', 'goals', 'funnels', 'properties'] as const;
+export const VIEWS = ['overview', 'goals', 'funnels', 'properties', 'clicks'] as const;
 export type View = (typeof VIEWS)[number];
 
 export interface ViewState {

@@ -15,6 +15,12 @@
  *        w screen width, tz time zone, l language, d properties
  *   eng: p page-load id, s visible milliseconds so far, sc deepest scroll %
  *   e:   p page-load id, n name, u path, d properties, rv {a amount, c currency}
+ *   c:   p page-load id, s selector (tag#id.class), l label, h link target,
+ *        f flags (1 dead, 2 outbound, 4 affiliate, 8 download)
+ *   f:   p page-load id, s selector, l form name, h form target, n fields
+ *
+ * Clicks and form submits join their page load's visit (looked up by its
+ * id once the batch's pageviews are written) and never start or extend one.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -54,11 +60,11 @@ final class SEOProStats_Processor {
     /**
      * Process buffered hits for up to BUDGET seconds.
      *
-     * @return array{lines:int,pageviews:int,events:int,bots:int,skipped:int} This run's totals.
+     * @return array{lines:int,pageviews:int,events:int,clicks:int,bots:int,skipped:int} This run's totals.
      */
     public static function run() {
         $start  = microtime(true);
-        $totals = array('lines' => 0, 'pageviews' => 0, 'events' => 0, 'bots' => 0, 'skipped' => 0);
+        $totals = array('lines' => 0, 'pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
         if (!SEOProStats_Schema::is_current()) {
             return $totals;
         }
@@ -113,7 +119,7 @@ final class SEOProStats_Processor {
      * data set. Lines are in the collector's format.
      *
      * @param array<int,array<string,mixed>> $lines Decoded lines.
-     * @return array{pageviews:int,events:int,bots:int,skipped:int}
+     * @return array{pageviews:int,events:int,clicks:int,bots:int,skipped:int}
      */
     public static function ingest(array $lines) {
         foreach (array('ua', 'channels', 'dict') as $part) {
@@ -124,7 +130,7 @@ final class SEOProStats_Processor {
         foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
             self::$own_hosts[self::bare_host((string) $host)] = true;
         }
-        $done = array('pageviews' => 0, 'events' => 0, 'bots' => 0, 'skipped' => 0);
+        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
         foreach (array_chunk($lines, self::BATCH) as $batch) {
             foreach (self::process($batch) as $key => $count) {
                 $done[$key] += $count;
@@ -222,14 +228,15 @@ final class SEOProStats_Processor {
      * One batch.
      *
      * @param array<int,array<string,mixed>> $lines Decoded buffer lines.
-     * @return array{pageviews:int,events:int,bots:int,skipped:int}
+     * @return array{pageviews:int,events:int,clicks:int,bots:int,skipped:int}
      */
     private static function process(array $lines) {
-        $done = array('pageviews' => 0, 'events' => 0, 'bots' => 0, 'skipped' => 0);
+        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
 
         // 1. Flatten to hits with their line's context; bots out.
-        $hits = array();
-        $eng  = array();
+        $hits   = array();
+        $eng    = array();
+        $clicks = array();
         foreach ($lines as $line) {
             $ua = SEOProStats_UA::parse(isset($line['ua']) ? (string) $line['ua'] : '');
             if ($ua['bot']) {
@@ -253,8 +260,16 @@ final class SEOProStats_Processor {
                     }
                     continue;
                 }
+                if ($type === 'c' || $type === 'f') {
+                    if ($pkey !== '') {
+                        $clicks[] = self::click($hit, $type, $pkey, (int) $line['ts']);
+                    } else {
+                        $done['skipped']++;
+                    }
+                    continue;
+                }
                 if (($type !== 'pv' || $pkey === '') && ($type !== 'e' || !isset($hit['n']) || !is_string($hit['n']) || trim($hit['n']) === '')) {
-                    $done['skipped']++; // Clicks, vitals and errors come in later versions.
+                    $done['skipped']++; // Vitals and errors come in later versions.
                     continue;
                 }
                 $hits[] = array('ts' => (int) $line['ts'], 'visitor' => $visitor, 'line' => $line, 'ua' => $ua, 'hit' => $hit, 'type' => $type, 'pkey' => $pkey);
@@ -286,6 +301,11 @@ final class SEOProStats_Processor {
                 }
             }
         }
+        foreach ($clicks as $c) {
+            $texts[SEOProStats_Schema::DICT_SELECTOR][] = $c['selector'];
+            $texts[SEOProStats_Schema::DICT_LABEL][]    = $c['label'];
+            $texts[SEOProStats_Schema::DICT_TARGET][]   = $c['target'];
+        }
         $ids = array();
         foreach ($texts as $kind => $values) {
             $ids[$kind] = SEOProStats_Dict::ids($kind, $values);
@@ -296,6 +316,9 @@ final class SEOProStats_Processor {
         $counts      = self::write_facts($visits, $session_ids, $ids);
         $done['pageviews'] += $counts[0];
         $done['events']    += $counts[1];
+        $written            = self::write_clicks($clicks, $ids);
+        $done['clicks']    += $written;
+        $done['skipped']   += count($clicks) - $written;
 
         // 5. Engagement onto its pageviews.
         $touched = array_values($session_ids);
@@ -670,6 +693,97 @@ final class SEOProStats_Processor {
         $holders = implode(', ', array_fill(0, count($eng), 'UNHEX(%s)'));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
         return array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT DISTINCT session_id FROM %i WHERE pkey IN ($holders)", array_merge(array($table), array_map('strval', array_keys($eng))))));
+    }
+
+    /**
+     * A click or form submit (before ids), checked again here: the tracker
+     * can be bypassed, and nothing a visitor typed may be stored.
+     *
+     * @param array<string,mixed> $hit  Hit.
+     * @param string              $type c or f.
+     * @param string              $pkey Page-load id.
+     * @param int                 $ts   Time.
+     * @return array<string,mixed>
+     */
+    private static function click(array $hit, $type, $pkey, $ts) {
+        $text = static function ($key) use ($hit) {
+            return isset($hit[$key]) && is_string($hit[$key]) ? $hit[$key] : '';
+        };
+        // tag#id.class: letters, digits, _ and - between # and dots.
+        $selector = substr((string) preg_replace('/[^\w#.-]/', '', $text('s')), 0, 120);
+        $label    = trim((string) preg_replace('/\s+/u', ' ', $text('l')));
+        $label    = (string) preg_replace(array('/[^\s@]+@[^\s@]+/u', '/\+?\d(?:[\s().-]?\d){5,}/'), array('…@…', '#'), $label);
+        $label    = function_exists('mb_substr') ? mb_substr($label, 0, 60, 'UTF-8') : substr($label, 0, 60);
+        $target   = $text('h');
+        if (!preg_match('/^(?:mailto|tel|sms):$/', $target)) {
+            // A path here or an address elsewhere, without its query or fragment.
+            $target = preg_match('~^(?:https?://[^/?#\s]+)?/~i', $target) ? (string) strtok($target, '?#') : '';
+            $target = substr($target, 0, 300);
+        }
+        return array(
+            'pkey'     => $pkey,
+            'ts'       => $ts,
+            'kind'     => $type === 'f' ? SEOProStats_Schema::FORM : SEOProStats_Schema::CLICK,
+            'selector' => $selector,
+            'label'    => $label,
+            'target'   => $target,
+            'flags'    => $type === 'f' ? 0 : self::int_in($hit, 'f', 0, 15),
+            'fields'   => $type === 'f' ? self::int_in($hit, 'n', 0, 255) : 0,
+        );
+    }
+
+    /**
+     * Insert clicks and form submits onto their page loads' visits; those
+     * whose page load is not stored are dropped.
+     *
+     * @param array<int,array<string,mixed>> $clicks From click().
+     * @param array<int,array<string,int>>   $ids    Dictionary ids by kind.
+     * @return int Rows inserted.
+     */
+    private static function write_clicks(array $clicks, array $ids) {
+        global $wpdb;
+        if (!$clicks) {
+            return 0;
+        }
+        $pages = array();
+        foreach (array_chunk(array_values(array_unique(array_column($clicks, 'pkey'))), SEOProStats_Dict::CHUNK) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(pkey)) AS k, session_id, seq, path_id FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', $chunk))));
+            foreach ((array) $found as $row) {
+                $pages[$row->k] = array((int) $row->session_id, (int) $row->seq, (int) $row->path_id);
+            }
+        }
+
+        $rows = array();
+        foreach ($clicks as $c) {
+            if (isset($pages[$c['pkey']])) {
+                list($session_id, $seq, $path_id) = $pages[$c['pkey']];
+                $rows[] = array(
+                    $session_id,
+                    $c['ts'],
+                    $seq,
+                    $path_id,
+                    $c['kind'],
+                    self::id($ids, SEOProStats_Schema::DICT_SELECTOR, $c['selector']),
+                    self::id($ids, SEOProStats_Schema::DICT_LABEL, $c['label']),
+                    self::id($ids, SEOProStats_Schema::DICT_TARGET, $c['target']),
+                    $c['flags'],
+                    $c['fields'],
+                );
+            }
+        }
+        $inserted = 0;
+        foreach (array_chunk($rows, self::BATCH) as $chunk) {
+            $args = array(SEOProStats_Schema::table('clicks'));
+            foreach ($chunk as $row) {
+                array_push($args, ...$row);
+            }
+            $groups = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
+            $inserted += (int) $wpdb->query($wpdb->prepare("INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields) VALUES $groups", $args));
+        }
+        return $inserted;
     }
 
     /**

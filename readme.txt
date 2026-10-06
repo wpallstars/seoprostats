@@ -45,6 +45,10 @@ SEO Pro Stats in the admin menu, under Dashboard, and a widget on the Dashboard.
 
 Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events that count as conversions; each shows the visits that reached it, the conversion rate and revenue, per currency. Funnels show where visits leave a series of steps, and Properties what was sent with events, such as a plan.
 
+= Does it record what people click? =
+
+Yes, unless you switch it off under Settings → Tracking. Clicks shows what people click on the site or one page, clicks that did nothing (dead clicks), links followed, including affiliate links, files and the forms sent. It never records what anyone types or chooses in a form, hides email addresses and long numbers, and leaves out the text of anything marked with data-sps-mask. Clicks are kept 3 months.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.
