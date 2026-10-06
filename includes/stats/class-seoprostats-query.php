@@ -629,13 +629,14 @@ final class SEOProStats_Query {
 
     /**
      * Visit metrics for a range and compiled filters. With a page filter,
-     * pageviews counts only views of the matching pages.
+     * pageviews counts only views of the matching pages. Also used by
+     * SEOProStats_Conversions for conversion rates.
      *
      * @param array<string,mixed> $range    From range().
      * @param array<string,mixed> $compiled From compile().
      * @return array<string,int|float>
      */
-    private static function totals(array $range, array $compiled) {
+    public static function totals(array $range, array $compiled) {
         global $wpdb;
         $part = self::summary_part($range, $compiled);
         $row  = array();
@@ -881,7 +882,7 @@ final class SEOProStats_Query {
      * @param array<string,mixed> $range From range().
      * @return array{0:int,1:int}
      */
-    private static function fact_window(array $range) {
+    public static function fact_window(array $range) {
         return array((int) $range['from'], (int) $range['to'] + DAY_IN_SECONDS);
     }
 
@@ -994,7 +995,7 @@ final class SEOProStats_Query {
      * @param array{dimension:string,op:string,values:string[]} $filter Filter.
      * @return int[]
      */
-    private static function dict_ids($kind, array $filter) {
+    public static function dict_ids($kind, array $filter) {
         $ids = in_array('', $filter['values'], true) ? array(0) : array();
         if (in_array($filter['op'], array('is', 'is_not'), true)) {
             return array_merge($ids, SEOProStats_Dict::find($kind, $filter['values']));
@@ -1051,7 +1052,7 @@ final class SEOProStats_Query {
      * @param array<int,mixed> $ids IDs.
      * @return array<int,string>
      */
-    private static function texts(array $ids) {
+    public static function texts(array $ids) {
         return SEOProStats_Dict::values(array_map('intval', $ids));
     }
 
@@ -1137,11 +1138,11 @@ final class SEOProStats_Query {
      * data version), so entries never pile up.
      *
      * @param string              $name Report.
-     * @param array<string,mixed> $req  From request().
+     * @param array<string,mixed> $req  From request(), and anything else the answer depends on.
      * @param callable            $work Makes the answer.
      * @return array<string,mixed>
      */
-    private static function cached($name, array $req, callable $work) {
+    public static function cached($name, array $req, callable $work) {
         $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string() . SEOProStats_Schema::set());
         $state   = get_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array());
         $version = is_array($state) && isset($state['last']) ? (int) $state['last'] : 0;

@@ -153,6 +153,36 @@ final class SEOProStats_Demo {
         array(1, 'Agency', array('USD' => 199, 'GBP' => 159, 'EUR' => 179)),
     );
 
+    /** Example goals of the demo data (SEOProStats_Goals), from its pages and events. */
+    const GOALS = array(
+        array('name' => 'Purchase', 'kind' => 'event', 'match' => 'Purchase'),
+        array('name' => 'Newsletter signup', 'kind' => 'event', 'match' => 'Newsletter signup'),
+        array('name' => 'Contact form sent', 'kind' => 'event', 'match' => 'Contact form'),
+        array('name' => 'Download', 'kind' => 'event', 'match' => 'Download'),
+        array('name' => 'Viewed pricing', 'kind' => 'page', 'match' => '/pricing/'),
+        array('name' => 'Read the docs', 'kind' => 'page', 'match' => '/docs/*'),
+    );
+
+    /** Example funnels of the demo data. */
+    const FUNNELS = array(
+        array(
+            'name'  => 'Checkout',
+            'steps' => array(
+                array('name' => 'Pricing', 'kind' => 'page', 'match' => '/pricing/'),
+                array('name' => 'Cart', 'kind' => 'page', 'match' => '/cart/'),
+                array('name' => 'Checkout', 'kind' => 'page', 'match' => '/checkout/'),
+                array('name' => 'Purchase', 'kind' => 'event', 'match' => 'Purchase'),
+            ),
+        ),
+        array(
+            'name'  => 'Blog to newsletter',
+            'steps' => array(
+                array('name' => 'Blog post', 'kind' => 'page', 'match' => '/blog/*/'),
+                array('name' => 'Newsletter signup', 'kind' => 'event', 'match' => 'Newsletter signup'),
+            ),
+        ),
+    );
+
     /** @var array<int,array<string,mixed>> Recent visitors of this run, to come back the same day. */
     private static $recent = array();
 
@@ -237,6 +267,7 @@ final class SEOProStats_Demo {
         if (!$ok) {
             return false;
         }
+        self::examples();
         $from = (new DateTimeImmutable('today', wp_timezone()))->modify("-$days days")->getTimestamp();
         update_option(self::OPTION, array(
             'status' => 'making',
@@ -278,6 +309,16 @@ final class SEOProStats_Demo {
      * is at it.
      */
     public static function refresh() {
+        // Demo data made before goals existed gets the examples once.
+        if (self::ready()) {
+            require_once __DIR__ . '/class-seoprostats-goals.php';
+            $none = self::run(static function () {
+                return get_option(SEOProStats_Schema::option(SEOProStats_Goals::GOALS_OPTION)) === false;
+            });
+            if ($none) {
+                self::examples();
+            }
+        }
         $state = self::state();
         if (!self::ready() || (isset($state['upto']) && (int) $state['upto'] > time() - self::FRESH) || !self::lock()) {
             return;
@@ -296,13 +337,25 @@ final class SEOProStats_Demo {
      * Remove the demo tables and their progress; nothing of live data.
      */
     public static function remove() {
+        require_once __DIR__ . '/class-seoprostats-goals.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
+            SEOProStats_Goals::forget();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
         delete_option(self::OPTION);
         delete_option(self::LOCK_OPTION);
+    }
+
+    /**
+     * Give the demo data its example goals and funnels, replacing any.
+     */
+    public static function examples() {
+        require_once __DIR__ . '/class-seoprostats-goals.php';
+        self::run(static function () {
+            SEOProStats_Goals::replace(self::GOALS, self::FUNNELS);
+        });
     }
 
     /**
