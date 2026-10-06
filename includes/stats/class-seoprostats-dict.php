@@ -90,8 +90,9 @@ final class SEOProStats_Dict {
                 $rows[] = '(%d, UNHEX(%s), %s)';
                 array_push($args, $kind, (string) $hash, $value);
             }
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table; $rows holds only fixed placeholder groups.
-            $wpdb->query($wpdb->prepare('INSERT IGNORE INTO %i (kind, hash, value) VALUES ' . implode(', ', $rows), array_merge(array($table), $args)));
+            $values = implode(', ', $rows);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $values holds only fixed placeholder groups.
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (kind, hash, value) VALUES $values", array_merge(array($table), $args)));
 
             $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its unique key; $holders holds only fixed placeholders, one per value.

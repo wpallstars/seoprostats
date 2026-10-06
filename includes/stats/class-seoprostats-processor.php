@@ -471,8 +471,9 @@ final class SEOProStats_Processor {
                 );
             }
             // Continued visits keep their first-hit details; only the end moves.
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table; $rows holds only fixed placeholder groups.
-            $wpdb->query($wpdb->prepare('INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen) VALUES ' . implode(', ', $rows) . ' ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended))', $args));
+            $values = implode(', ', $rows);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $values holds only fixed placeholder groups.
+            $wpdb->query($wpdb->prepare("INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen) VALUES $values ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended))", $args));
 
             $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
@@ -521,8 +522,9 @@ final class SEOProStats_Processor {
                 array_push($args, $h['pkey'], $h['session_id'], $h['ts'], $h['seq'], $h['path_id']);
             }
             // A page-load id seen before (a resumed batch) is skipped.
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table; $rows holds only fixed placeholder groups.
-            $pageviews += (int) $wpdb->query($wpdb->prepare('INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id) VALUES ' . implode(', ', $rows), $args));
+            $values = implode(', ', $rows);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $values holds only fixed placeholder groups.
+            $pageviews += (int) $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id) VALUES $values", $args));
 
             $with_props = array_filter($chunk, static function ($h) {
                 return (bool) $h['props'];
@@ -574,8 +576,9 @@ final class SEOProStats_Processor {
             foreach ($chunk as $row) {
                 array_push($args, ...$row);
             }
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; fixed placeholder groups, one per row.
-            $wpdb->query($wpdb->prepare('INSERT IGNORE INTO %i (owner, owner_id, key_id, value_id, ts) VALUES ' . implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d, %d)')), $args));
+            $values = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d, %d)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $values holds only fixed placeholder groups, one per row.
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (owner, owner_id, key_id, value_id, ts) VALUES $values", $args));
         }
         return array($pageviews, $events);
     }
