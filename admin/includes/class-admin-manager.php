@@ -2,10 +2,14 @@
 /**
  * SEO Pro Stats admin screen.
  *
- * Owns the Settings → SEO Pro Stats page: tab registry, page chrome and the
- * single admin script/stylesheet. Tab content is delegated to the manager
- * classes. Settings tabs and header links come from SEOProStats_Setup; add
- * other tabs with the `seoprostats_admin_tabs` filter.
+ * Owns the settings screen: tab registry, page chrome and the single admin
+ * script/stylesheet. Tab content is delegated to the manager classes.
+ * Settings tabs and header links come from SEOProStats_Setup; add other tabs
+ * with the `seoprostats_admin_tabs` filter.
+ *
+ * The screen is Settings → SEO Pro Stats, or Settings in the plugin's own
+ * top-level menu when SEOProStats_Setup::MENU_PARENT names that menu. Build
+ * its links with page_url() or tab_url(), which follow where it is.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -24,20 +28,69 @@ class SEOProStats_Admin_Manager {
     /** Menu/page slug. */
     const PAGE = 'seoprostats';
 
-    /** Hook suffix returned by add_options_page(). */
+    /**
+     * Hook suffix of the screen under Settings. In the plugin's own menu it
+     * differs; hook() gives the one in use.
+     */
     const HOOK = 'settings_page_' . self::PAGE;
 
     /** Admin stylesheet and script, relative to the plugin folder. */
     const CSS_FILE = 'admin/css/seoprostats-admin.css';
     const JS_FILE  = 'admin/js/seoprostats-admin.js';
 
+    /** Hook suffix WordPress gave the screen when it was registered. */
+    private static $hook = '';
+
     /**
      * Register hooks (once).
      */
     public static function init() {
-        add_action('admin_menu', array(__CLASS__, 'register_admin_menu'));
+        // After the plugin's own top-level menu (priority 10), so Settings
+        // is the last item in it.
+        add_action('admin_menu', array(__CLASS__, 'register_admin_menu'), 20);
+        add_action('admin_page_access_denied', array(__CLASS__, 'redirect_old_address'));
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue_assets'));
         add_filter('plugin_action_links_' . plugin_basename(SEOPROSTATS_FILE), array(__CLASS__, 'plugin_action_links'));
+    }
+
+    /**
+     * Menu the screen is in: the plugin's own top-level menu
+     * (SEOProStats_Setup::MENU_PARENT), or Settings.
+     *
+     * @return string Menu slug.
+     */
+    public static function parent() {
+        $constant = 'SEOProStats_Setup::MENU_PARENT';
+        $parent   = defined($constant) ? (string) constant($constant) : '';
+        return '' === $parent ? 'options-general.php' : $parent;
+    }
+
+    /**
+     * Admin file the screen's address uses.
+     *
+     * @return string
+     */
+    private static function screen_file() {
+        return 'options-general.php' === self::parent() ? 'options-general.php' : 'admin.php';
+    }
+
+    /**
+     * Address of the screen.
+     *
+     * @param array $args Extra query args.
+     * @return string
+     */
+    public static function page_url(array $args = array()) {
+        return add_query_arg(array_merge(array('page' => self::PAGE), $args), admin_url(self::screen_file()));
+    }
+
+    /**
+     * Hook suffix of the screen, once registered.
+     *
+     * @return string
+     */
+    public static function hook() {
+        return '' !== self::$hook ? self::$hook : self::HOOK;
     }
 
     /** Slug of the search results screen (not shown in the navigation). */
@@ -148,7 +201,7 @@ class SEOProStats_Admin_Manager {
      * @return string
      */
     public static function tab_url($tab, array $args = array()) {
-        return add_query_arg(array_merge(array('page' => self::PAGE, 'tab' => $tab), $args), admin_url('options-general.php'));
+        return self::page_url(array_merge(array('tab' => $tab), $args));
     }
 
     /**
@@ -158,21 +211,55 @@ class SEOProStats_Admin_Manager {
      * @return array
      */
     public static function plugin_action_links($links) {
-        array_unshift($links, sprintf('<a href="%s">%s</a>', esc_url(add_query_arg('page', self::PAGE, admin_url('options-general.php'))), esc_html__('Settings', 'seoprostats')));
+        array_unshift($links, sprintf('<a href="%s">%s</a>', esc_url(self::page_url()), esc_html__('Settings', 'seoprostats')));
         return $links;
     }
 
     /**
-     * Register Settings → SEO Pro Stats.
+     * Register Settings → SEO Pro Stats, or Settings in the plugin's own
+     * menu.
      */
     public static function register_admin_menu() {
-        add_options_page(
-            __('SEO Pro Stats', 'seoprostats'),
-            __('SEO Pro Stats', 'seoprostats'),
-            'manage_options',
-            self::PAGE,
-            array(__CLASS__, 'render_settings_page')
-        );
+        $parent = self::parent();
+        if ('options-general.php' === $parent) {
+            $hook = add_options_page(
+                __('SEO Pro Stats', 'seoprostats'),
+                __('SEO Pro Stats', 'seoprostats'),
+                'manage_options',
+                self::PAGE,
+                array(__CLASS__, 'render_settings_page')
+            );
+        } else {
+            $hook = add_submenu_page(
+                $parent,
+                /* translators: %s: the plugin's name. */
+                sprintf(__('%s settings', 'seoprostats'), __('SEO Pro Stats', 'seoprostats')),
+                __('Settings', 'seoprostats'),
+                'manage_options',
+                self::PAGE,
+                array(__CLASS__, 'render_settings_page')
+            );
+        }
+        self::$hook = is_string($hook) ? $hook : '';
+    }
+
+    /**
+     * An address from before the screen moved into the plugin's own menu
+     * (options-general.php?page=…) opens it where it is now. WordPress
+     * would refuse it; this runs just before it does.
+     */
+    public static function redirect_old_address() {
+        global $pagenow;
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only redirect to the same screen.
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+        if ('options-general.php' !== $pagenow || self::PAGE !== $page || 'admin.php' !== self::screen_file()) {
+            return;
+        }
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only redirect to the same screen.
+        $args = array_map('sanitize_text_field', wp_unslash($_GET));
+        unset($args['page']);
+        wp_safe_redirect(self::page_url(array_map('rawurlencode', $args)));
+        exit;
     }
 
     /**
@@ -181,7 +268,7 @@ class SEOProStats_Admin_Manager {
      * @param string $hook Current admin page hook.
      */
     public static function enqueue_assets($hook) {
-        if (self::HOOK !== $hook) {
+        if (self::hook() !== $hook) {
             return;
         }
 
@@ -283,7 +370,7 @@ class SEOProStats_Admin_Manager {
                     <h1 class="spst-header__title"><?php esc_html_e('SEO Pro Stats', 'seoprostats'); ?></h1>
                     <span class="spst-badge"><?php echo esc_html('v' . SEOPROSTATS_VERSION); ?></span>
                 </div>
-                <form class="spst-search" role="search" method="get" action="<?php echo esc_url(admin_url('options-general.php')); ?>">
+                <form class="spst-search" role="search" method="get" action="<?php echo esc_url(admin_url(self::screen_file())); ?>">
                     <input type="hidden" name="page" value="<?php echo esc_attr(self::PAGE); ?>" />
                     <input type="hidden" name="tab" value="<?php echo esc_attr(self::SEARCH); ?>" />
                     <label class="screen-reader-text" for="spst-search-input"><?php esc_html_e('Search features', 'seoprostats'); ?></label>

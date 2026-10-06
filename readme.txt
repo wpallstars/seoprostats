@@ -15,7 +15,7 @@ Privacy-friendly site statistics in WordPress: visits, pages, sources and goals,
 
 SEO Pro Stats is what wpallstars plugins are made from. It has no features of its own: it holds the parts every plugin needs, so a new plugin starts with them working.
 
-* **A settings screen** (Settings → SEO Pro Stats) that features fill by declaring their settings, saved instantly, searchable, in tabs. With no features yet it shows one empty tab.
+* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs. With no features yet it shows one empty tab.
 * **A Read Me tab** that shows the plugin's README.md, banner included.
 * **Features as classes**, off by default, with settings, hooks, one-off imports from the plugins they replace and clean uninstall.
 * **Release and check scripts**: lint, smoke test, release build, preflight and Plugin Check.
@@ -33,7 +33,7 @@ Made from WP Plugin Starter (https://github.com/wpallstars/wp-plugin-starter-tem
 == Installation ==
 
 1. Upload the `seoprostats` folder to `/wp-content/plugins/`, or install the zip from Plugins → Add New → Upload Plugin.
-2. Activate it, then open SEO Pro Stats in the admin menu, under Dashboard. Settings are at Settings → SEO Pro Stats.
+2. Activate it, then open SEO Pro Stats in the admin menu, under Dashboard. Its last item is Settings.
 
 == Frequently Asked Questions ==
 
@@ -55,7 +55,7 @@ GitHub releases are the stable beta channel: each version comes out there first.
 
 == Screenshots ==
 
-1. The settings screen (Settings → SEO Pro Stats) on the General tab, empty until features add settings.
+1. The settings screen (SEO Pro Stats → Settings) on the General tab, empty until features add settings.
 2. The Read Me tab, showing the plugin's README.md inside WordPress.
 
 == Changelog ==

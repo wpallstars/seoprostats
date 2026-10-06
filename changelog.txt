@@ -6,6 +6,7 @@ Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 * New: statistics collection without cookies: a collector that runs without loading WordPress (or the REST route on the WordPress.org build), daily-salted visitor hashes, and a processor that turns hits into visits, pageviews, events and properties every minute.
 * New: reports for scripts and AI agents: the REST API (stats, timeseries, breakdown, realtime, markers) and wp seoprostats commands, with ranges, comparisons and filters.
 * New: the SEO Pro Stats menu (under Dashboard) and its Overview: headline metrics with a chart against the previous period, Sources, Pages, Locations and Devices, filters by clicking any row, live visitors, and a view kept in the address so it can be bookmarked. Follows the admin colour scheme; every chart has a table for screen readers.
+* Changed: the settings screen is SEO Pro Stats → Settings, the last item in the plugin's own menu, and no longer also under WordPress's Settings menu. Old links to it still work.
 * New: a Dashboard widget with today so far against yesterday at the same time and the last 7 days' visitors.
 
 = 0.1.0 =
