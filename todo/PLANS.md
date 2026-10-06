@@ -34,7 +34,10 @@ long-term record.
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
 - [ ] Tracker (above).
-- [ ] Nightly summaries into `daily`; retention.
+- [ ] Nightly summaries into `daily`; retention. Long ranges (year,
+      12mo, all time) read `daily`: from the fact tables they read every
+      visit in the range, which for all time is the whole `sessions`
+      table (58 ms over 42,000 visits on the preview).
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
 
