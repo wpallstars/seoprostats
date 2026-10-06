@@ -26,15 +26,18 @@ site. A phase may start once the phases it depends on are merged.
 Order from here: something to see first, then real data, then the
 long-term record.
 
-- [ ] Report engine: ranges, comparison, filters, breakdowns, cache.
-- [ ] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
-      `markers`), OpenAPI file, WP-CLI (`stats`, `breakdown`, `process`,
-      `doctor`).
+- [x] Report engine: ranges, comparison, filters, breakdowns, cache.
+- [x] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
+      `markers`), OpenAPI file, WP-CLI (`stats`, `timeseries`,
+      `breakdown`, `realtime`, `process`, `doctor`).
 - [ ] Top-level menu at position 3 with the plugin icon; Overview:
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
 - [ ] Tracker (above).
-- [ ] Nightly summaries into `daily`; retention.
+- [ ] Nightly summaries into `daily`; retention. Long ranges (year,
+      12mo, all time) read `daily`: from the fact tables they read every
+      visit in the range, which for all time is the whole `sessions`
+      table (58 ms over 42,000 visits on the preview).
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
 
