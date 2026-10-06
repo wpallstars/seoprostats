@@ -20,3 +20,11 @@ parameters:
 			identifier: function.impossibleType
 			message: '#array_key_exists\(\) with mixed and array\{\}#'
 			path: includes/class-seoprostats-settings.php
+		# The WP-CLI commands: the starter's dev dependencies have no WP-CLI
+		# stubs, so PHPStan does not know WP_CLI and its format_items().
+		# The commands run in the smoke test and on the preview site.
+		-
+			identifiers:
+				- class.notFound
+				- function.notFound
+			path: includes/stats/class-seoprostats-cli.php

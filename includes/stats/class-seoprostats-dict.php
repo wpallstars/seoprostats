@@ -113,6 +113,49 @@ final class SEOProStats_Dict {
     }
 
     /**
+     * IDs of texts of one kind that are already stored (for filters; adds
+     * nothing). Uses the unique (kind, hash) key.
+     *
+     * @param int      $kind   SEOProStats_Schema::DICT_* constant.
+     * @param string[] $values Texts.
+     * @return int[]
+     */
+    public static function find($kind, array $values) {
+        global $wpdb;
+        $hashes = array();
+        foreach ($values as $value) {
+            $value = self::clean($value);
+            if ($value !== '') {
+                $hashes[self::hash($value)] = true;
+            }
+        }
+        $out = array();
+        foreach (array_chunk(array_map('strval', array_keys($hashes)), self::CHUNK) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its unique key; $holders holds only fixed placeholders, one per value.
+            $found = $wpdb->get_col($wpdb->prepare("SELECT id FROM %i WHERE kind = %d AND hash IN ($holders)", array_merge(array(SEOProStats_Schema::table('dict'), (int) $kind), $chunk)));
+            $out   = array_merge($out, array_map('intval', (array) $found));
+        }
+        return $out;
+    }
+
+    /**
+     * IDs of stored texts of one kind that match a LIKE pattern (for
+     * "contains" and "matches" filters). At most $limit.
+     *
+     * @param int    $kind    SEOProStats_Schema::DICT_* constant.
+     * @param string $pattern LIKE pattern, already escaped with esc_like().
+     * @param int    $limit   Most IDs returned.
+     * @return int[]
+     */
+    public static function like($kind, $pattern, $limit = 5000) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; the kind prefix of the unique key narrows the scan.
+        $found = $wpdb->get_col($wpdb->prepare('SELECT id FROM %i WHERE kind = %d AND value LIKE %s LIMIT %d', SEOProStats_Schema::table('dict'), (int) $kind, $pattern, (int) $limit));
+        return array_map('intval', (array) $found);
+    }
+
+    /**
      * Texts for IDs (for reports).
      *
      * @param int[] $ids IDs.

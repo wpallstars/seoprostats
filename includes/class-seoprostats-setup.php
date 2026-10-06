@@ -78,6 +78,7 @@ final class SEOProStats_Setup {
     public static function load() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-schema.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-collection.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-api.php';
     }
 
     /**
@@ -89,6 +90,13 @@ final class SEOProStats_Setup {
             SEOProStats_Schema::maybe_upgrade();
         });
         SEOProStats_Collection::init();
+        SEOProStats_API::init();
+
+        if (defined('WP_CLI') && WP_CLI) {
+            SEOProStats_API::load();
+            // Registers `wp seoprostats`.
+            require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-cli.php';
+        }
     }
 
     /**
