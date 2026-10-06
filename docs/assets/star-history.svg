@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="520" viewBox="0 0 1000 520" role="img" aria-labelledby="title desc">
+  <title id="title">wpallstars/seoprostats star history</title>
+  <desc id="desc">No stargazer history is currently available.</desc>
+  <style>
+    .background { fill: #ffffff; } .title { fill: #1f2328; } .muted { fill: #59636e; }
+    @media (prefers-color-scheme: dark) { .background { fill: #0d1117; } .title { fill: #f0f6fc; } .muted { fill: #8b949e; } }
+  </style>
+  <rect class="background" width="1000" height="520" rx="12"/>
+  <text class="title" x="500" y="230" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="26" font-weight="600">wpallstars/seoprostats</text>
+  <text class="muted" x="500" y="272" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="16">No star history available</text>
+</svg>

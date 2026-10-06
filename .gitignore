@@ -71,3 +71,17 @@ wp-content/uploads/
 
 # Release builds (scripts/build-release.sh)
 /dist/
+
+# aidevops runtime artifacts
+.agents/tmp/
+.agents/memory/
+.agents/commands
+.windsurf/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+.aidevops.json

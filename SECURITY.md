@@ -13,7 +13,7 @@ security problem.
 Report it privately on GitHub: open the repository's **Security** tab and
 choose **Report a vulnerability**. Include:
 
-- the WP Plugin Starter version, and whether it came from GitHub or
+- the SEO Pro Stats version, and whether it came from GitHub or
   WordPress.org;
 - the WordPress and PHP versions;
 - the feature involved and the settings needed;
@@ -31,7 +31,7 @@ emails are welcome.
 In scope: the code in this repository, as installed from a GitHub release
 or WordPress.org.
 
-Out of scope: other plugins, themes and services that WP Plugin Starter
+Out of scope: other plugins, themes and services that SEO Pro Stats
 recommends, links to or works with (report those to their makers), and
 problems that need an administrator account, since administrators can
 already run code on their site.

@@ -1,6 +1,6 @@
 <?php
 /**
- * WP Plugin Starter Read Me tab.
+ * SEO Pro Stats Read Me tab.
  *
  * Renders README.md with a small, escaping Markdown subset
  * (headings with GitHub-style IDs, lists, tables, bold, italic, inline code,
@@ -11,7 +11,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  * @since 0.2.0
  */
 
@@ -19,15 +19,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class WPStarter_Readme_Manager {
+class SEOProStats_Readme_Manager {
 
     /**
      * Render the tab.
      */
     public static function display_tab_content() {
-        $readme = wpstarter_get_readme_content();
+        $readme = seoprostats_get_readme_content();
         ?>
-        <article class="wps-card wps-readme">
+        <article class="spst-card spst-readme">
             <?php echo self::parse_markdown($readme['content']); // phpcs:ignore WordPress.Security.EscapeOutput -- built from escaped text. ?>
         </article>
         <?php
@@ -41,7 +41,7 @@ class WPStarter_Readme_Manager {
      * @return string HTML.
      */
     public static function parse_markdown($markdown) {
-        $markdown = str_replace('{WPSTARTER_VERSION}', WPSTARTER_VERSION, $markdown);
+        $markdown = str_replace('{SEOPROSTATS_VERSION}', SEOPROSTATS_VERSION, $markdown);
         $markdown = str_replace(array("\r\n", "\r"), "\n", $markdown);
         // GitHub-only parts: the badges block (remote images), github-only
         // blocks (such as screenshots, which do not ship) and HTML comments.
@@ -142,7 +142,7 @@ class WPStarter_Readme_Manager {
         }
         $html = '';
         if (!$state['table']) {
-            $html           = self::close_blocks($state) . '<div class="wps-readme-table"><table><thead>';
+            $html           = self::close_blocks($state) . '<div class="spst-readme-table"><table><thead>';
             $state['table'] = 'head';
         }
         $tag   = 'head' === $state['table'] ? 'th' : 'td';
@@ -208,7 +208,7 @@ class WPStarter_Readme_Manager {
         if (!preg_match('#^[a-z0-9_-]+(?:/[a-z0-9_-]+)*\.(?:svg|png|jpe?g|gif|webp)$#i', $path)) {
             return '';
         }
-        $file = WPSTARTER_DIR . $path;
+        $file = SEOPROSTATS_DIR . $path;
         if (!is_file($file)) {
             return '';
         }
@@ -229,10 +229,10 @@ class WPStarter_Readme_Manager {
 
         // The file's time in the address, so browsers fetch a changed image
         // (such as a new banner after an update) instead of a cached one.
-        $url = add_query_arg('ver', (string) filemtime($file), WPSTARTER_URL . $path);
+        $url = add_query_arg('ver', (string) filemtime($file), SEOPROSTATS_URL . $path);
 
         return sprintf(
-            '<p class="wps-readme-image"><img src="%1$s" alt="%2$s"%3$s decoding="async" /></p>',
+            '<p class="spst-readme-image"><img src="%1$s" alt="%2$s"%3$s decoding="async" /></p>',
             esc_url($url),
             esc_attr($alt),
             $dims

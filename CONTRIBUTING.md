@@ -1,4 +1,4 @@
-# Contributing to WP Plugin Starter
+# Contributing to SEO Pro Stats
 
 Thank you for helping. Bug reports, fixes and ideas are all welcome.
 Everyone taking part follows the `CODE_OF_CONDUCT.md`.
@@ -33,6 +33,6 @@ so a reviewer knows what changed, why, and how you tested it.
 
 ## Licence
 
-WP Plugin Starter is GPL-3.0-or-later, with the additional terms in
+SEO Pro Stats is GPL-3.0-or-later, with the additional terms in
 `ATTRIBUTION.txt` (GPL-3.0 section 7(b)). By contributing, you agree your work
 is released under the same licence and terms.

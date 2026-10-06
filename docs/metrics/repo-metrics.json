@@ -1,94 +1,94 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-10-04T03:35:55Z",
+  "generated_at": "2026-10-06T04:25:48Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
   },
   "repo": {
-    "name": "wp-plugin-starter-template-for-ai-coding",
-    "slug": "wpallstars/wp-plugin-starter-template-for-ai-coding"
+    "name": "seoprostats",
+    "slug": "wpallstars/seoprostats"
   },
   "summary": {
-    "source_files": 47,
-    "code": 7056,
-    "comments": 1761,
-    "blanks": 921,
+    "source_files": 64,
+    "code": 9948,
+    "comments": 2834,
+    "blanks": 1336,
     "languages": 9,
-    "dependencies": 12
+    "dependencies": 14
   },
   "languages": [
     {
-      "name": "PHP",
-      "files": 16,
-      "code": 2477,
-      "comments": 1324,
-      "blanks": 319,
-      "percentage": 35.1,
-      "color": "#4F5D95"
-    },
-    {
       "name": "Shell",
-      "files": 10,
-      "code": 2085,
-      "comments": 334,
-      "blanks": 228,
-      "percentage": 29.55,
+      "files": 11,
+      "code": 3106,
+      "comments": 584,
+      "blanks": 301,
+      "percentage": 31.22,
       "color": "#89e051"
     },
     {
+      "name": "PHP",
+      "files": 17,
+      "code": 2972,
+      "comments": 2041,
+      "blanks": 380,
+      "percentage": 29.88,
+      "color": "#4F5D95"
+    },
+    {
       "name": "Markdown",
-      "files": 9,
-      "code": 749,
+      "files": 15,
+      "code": 1701,
       "comments": 0,
-      "blanks": 175,
-      "percentage": 10.62,
+      "blanks": 400,
+      "percentage": 17.1,
       "color": "#083fa1"
     },
     {
       "name": "CSS",
       "files": 1,
-      "code": 677,
-      "comments": 31,
-      "blanks": 140,
-      "percentage": 9.59,
+      "code": 697,
+      "comments": 36,
+      "blanks": 147,
+      "percentage": 7.01,
       "color": "#563d7c"
     },
     {
       "name": "SVG",
-      "files": 2,
-      "code": 539,
-      "comments": 18,
-      "blanks": 6,
-      "percentage": 7.64,
+      "files": 4,
+      "code": 641,
+      "comments": 26,
+      "blanks": 10,
+      "percentage": 6.44,
       "color": "#6e7781"
+    },
+    {
+      "name": "YAML",
+      "files": 13,
+      "code": 531,
+      "comments": 101,
+      "blanks": 66,
+      "percentage": 5.34,
+      "color": "#cb171e"
     },
     {
       "name": "JavaScript",
       "files": 1,
-      "code": 254,
-      "comments": 38,
+      "code": 257,
+      "comments": 43,
       "blanks": 30,
-      "percentage": 3.6,
+      "percentage": 2.58,
       "color": "#f1e05a"
     },
     {
-      "name": "YAML",
-      "files": 5,
-      "code": 219,
-      "comments": 13,
-      "blanks": 21,
-      "percentage": 3.1,
-      "color": "#cb171e"
-    },
-    {
       "name": "JSON",
-      "files": 2,
-      "code": 48,
+      "files": 1,
+      "code": 35,
       "comments": 0,
       "blanks": 0,
-      "percentage": 0.68,
+      "percentage": 0.35,
       "color": "#292929"
     },
     {
@@ -97,14 +97,16 @@
       "code": 8,
       "comments": 3,
       "blanks": 2,
-      "percentage": 0.11,
+      "percentage": 0.08,
       "color": "#9c4221"
     }
   ],
   "dependencies": {
-    "direct": 6,
-    "locked": 12,
-    "total": 12,
+    "direct": 7,
+    "runtime": 0,
+    "dev": 7,
+    "locked": 14,
+    "total": 14,
     "ecosystems": [
       "composer"
     ],
@@ -112,9 +114,21 @@
       {
         "path": "composer.json",
         "ecosystem": "composer",
-        "direct": 6,
-        "locked": 12,
+        "direct": 7,
+        "runtime": 0,
+        "dev": 7,
+        "locked": 14,
         "dependencies": [
+          "automattic/vipwpcs",
+          "dealerdirect/phpcodesniffer-composer-installer",
+          "phpcompatibility/phpcompatibility-wp",
+          "phpstan/extension-installer",
+          "phpstan/phpstan",
+          "szepeviktor/phpstan-wordpress",
+          "wp-coding-standards/wpcs"
+        ],
+        "dev_dependencies": [
+          "automattic/vipwpcs",
           "dealerdirect/phpcodesniffer-composer-installer",
           "phpcompatibility/phpcompatibility-wp",
           "phpstan/extension-installer",

@@ -1,6 +1,6 @@
 <?php
 /**
- * What makes this plugin WP Plugin Starter: its features, settings tabs,
+ * What makes this plugin SEO Pro Stats: its features, settings tabs,
  * links, settings history and the helpers only it needs.
  *
  * The other files in includes/ and admin/ that the starter plugin also has
@@ -17,7 +17,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  * @since 1.0.0
  */
 
@@ -25,12 +25,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class WPStarter_Setup {
+final class SEOProStats_Setup {
 
     /**
      * Built-in features, in the order their cards appear within each tab.
      * Each lives in includes/features/class-{lowercase-hyphenated-name}.php,
-     * for example WPStarter_Example in class-wpstarter-example.php.
+     * for example SEOProStats_Example in class-seoprostats-example.php.
      */
     const FEATURES = array();
 
@@ -41,7 +41,7 @@ final class WPStarter_Setup {
     const OPTIONAL_FEATURES = array();
 
     /**
-     * Settings version. WPStarter_Settings::maybe_migrate() runs
+     * Settings version. SEOProStats_Settings::maybe_migrate() runs
      * migrate() below and every feature's migrate() once per version.
      * After a release, bump it for a new or changed import and add a line.
      *
@@ -66,8 +66,8 @@ final class WPStarter_Setup {
      */
     public static function header_links() {
         return array(
-            'source'  => 'https://github.com/wpallstars/wp-plugin-starter-template-for-ai-coding',
-            'support' => 'https://github.com/wpallstars/wp-plugin-starter-template-for-ai-coding/issues',
+            'source'  => 'https://github.com/wpallstars/seoprostats',
+            'support' => 'https://github.com/wpallstars/seoprostats/issues',
             'donate'  => 'https://buymeacoffee.com/marcusquinn',
         );
     }
@@ -107,16 +107,16 @@ final class WPStarter_Setup {
     public static function settings_tabs() {
         return array(
             'general' => array(
-                'label'       => __('General', 'wp-plugin-starter-template'),
-                'description' => __('WP Plugin Starter\'s settings appear here as features are added.', 'wp-plugin-starter-template'),
+                'label'       => __('General', 'seoprostats'),
+                'description' => __('SEO Pro Stats\'s settings appear here as features are added.', 'seoprostats'),
             ),
         );
     }
 
     /**
      * Admin requests: load and start the plugin's own admin parts (other
-     * tabs with the wpstarter_admin_tabs filter, scripts with the
-     * wpstarter_admin_enqueue action).
+     * tabs with the seoprostats_admin_tabs filter, scripts with the
+     * seoprostats_admin_enqueue action).
      */
     public static function admin() {
     }

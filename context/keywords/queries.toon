@@ -1,0 +1,2 @@
+schema: aidevops.keywords/v1
+queries[0|]{id|question|cluster_id|target_id|locale|market|engines|journey_state|query_form|grounding_likelihood|business_value|priority|target_url|status|mention_rate|citation_rate|last_checked|evidence|updated}:

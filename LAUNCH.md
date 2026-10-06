@@ -1,4 +1,4 @@
-# WP Plugin Starter — launch state
+# SEO Pro Stats — launch state
 
 The starter is released on GitHub only. It is not meant for WordPress.org:
 it has no features, and plugins made from it are submitted under their own

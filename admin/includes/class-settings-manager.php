@@ -1,16 +1,16 @@
 <?php
 /**
- * WP Plugin Starter settings tabs.
+ * SEO Pro Stats settings tabs.
  *
- * Renders setting cards from WPStarter_Settings::schema(). Each top-level
+ * Renders setting cards from SEOProStats_Settings::schema(). Each top-level
  * setting is a card with a switch; child settings appear in an expandable
- * panel. Controls save instantly via AJAX (see admin/js/wpstarter-admin.js).
+ * panel. Controls save instantly via AJAX (see admin/js/seoprostats-admin.js).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
- * @package WPStarter
+ * @package SEOProStats
  * @since 0.2.0
  */
 
@@ -18,7 +18,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-class WPStarter_Settings_Manager {
+class SEOProStats_Settings_Manager {
 
     /** Control renderer for each child field type (render_field()); any other type is text. */
     private const CONTROLS = array(
@@ -51,43 +51,43 @@ class WPStarter_Settings_Manager {
      * and changed here.
      *
      * @param string $query Search text.
-     * @param array  $tabs  Registered tabs (see WPStarter_Admin_Manager::get_tabs()).
+     * @param array  $tabs  Registered tabs (see SEOProStats_Admin_Manager::get_tabs()).
      */
     public static function render_search($query, array $tabs) {
         $groups = array();
-        foreach (WPStarter_Settings::search($query) as $key => $field) {
+        foreach (SEOProStats_Settings::search($query) as $key => $field) {
             if (isset($tabs[$field['tab']])) {
                 $groups[$field['tab']][$key] = $field;
             }
         }
         $count = array_sum(array_map('count', $groups));
         ?>
-        <div class="wps-section">
-            <div class="wps-section__intro">
-                <h2 class="wps-section__title">
+        <div class="spst-section">
+            <div class="spst-section__intro">
+                <h2 class="spst-section__title">
                     <?php
                     /* translators: %s: search text */
-                    echo esc_html(sprintf(__('Results for “%s”', 'wp-plugin-starter-template'), $query));
+                    echo esc_html(sprintf(__('Results for “%s”', 'seoprostats'), $query));
                     ?>
                 </h2>
-                <p class="wps-section__desc" role="status">
+                <p class="spst-section__desc" role="status">
                     <?php
                     // role="status" rather than <output>: screen readers announce <output> changes unevenly.
                     echo esc_html($count
                         /* translators: %d: number of matching features */
-                        ? sprintf(_n('%d feature found.', '%d features found.', $count, 'wp-plugin-starter-template'), $count)
-                        : __('No features match. Try another word.', 'wp-plugin-starter-template'));
+                        ? sprintf(_n('%d feature found.', '%d features found.', $count, 'seoprostats'), $count)
+                        : __('No features match. Try another word.', 'seoprostats'));
                     ?>
                 </p>
                 <?php if ($count) : ?>
-                    <p class="wps-section__hint"><?php esc_html_e('Changes are saved automatically.', 'wp-plugin-starter-template'); ?></p>
+                    <p class="spst-section__hint"><?php esc_html_e('Changes are saved automatically.', 'seoprostats'); ?></p>
                 <?php endif; ?>
             </div>
             <?php foreach ($groups as $tab => $fields) : ?>
-                <h3 class="wps-search__group">
-                    <a href="<?php echo esc_url(WPStarter_Admin_Manager::tab_url($tab)); ?>"><?php echo esc_html($tabs[$tab]['label']); ?></a>
+                <h3 class="spst-search__group">
+                    <a href="<?php echo esc_url(SEOProStats_Admin_Manager::tab_url($tab)); ?>"><?php echo esc_html($tabs[$tab]['label']); ?></a>
                 </h3>
-                <div class="wps-cards">
+                <div class="spst-cards">
                     <?php
                     self::$query = (string) $query;
                     foreach ($fields as $key => $field) {
@@ -109,20 +109,20 @@ class WPStarter_Settings_Manager {
      * @param string $description Section intro.
      */
     public static function render_tab($tab, $title, $description) {
-        $fields = WPStarter_Settings::fields_for_tab($tab);
+        $fields = SEOProStats_Settings::fields_for_tab($tab);
         ?>
-        <div class="wps-section">
-            <div class="wps-section__intro">
-                <h2 class="wps-section__title"><?php echo esc_html($title); ?></h2>
+        <div class="spst-section">
+            <div class="spst-section__intro">
+                <h2 class="spst-section__title"><?php echo esc_html($title); ?></h2>
                 <?php if ($description) : ?>
-                    <p class="wps-section__desc"><?php echo esc_html($description); ?></p>
+                    <p class="spst-section__desc"><?php echo esc_html($description); ?></p>
                 <?php endif; ?>
                 <?php if ($fields) : ?>
-                    <p class="wps-section__hint"><?php esc_html_e('Changes are saved automatically.', 'wp-plugin-starter-template'); ?></p>
+                    <p class="spst-section__hint"><?php esc_html_e('Changes are saved automatically.', 'seoprostats'); ?></p>
                 <?php endif; ?>
             </div>
             <?php if ($fields) : ?>
-                <div class="wps-cards">
+                <div class="spst-cards">
                     <?php
                     foreach ($fields as $key => $field) {
                         self::render_card($key, $field);
@@ -130,8 +130,8 @@ class WPStarter_Settings_Manager {
                     ?>
                 </div>
             <?php else : ?>
-                <div class="wps-card wps-empty">
-                    <p><?php esc_html_e('No settings yet.', 'wp-plugin-starter-template'); ?></p>
+                <div class="spst-card spst-empty">
+                    <p><?php esc_html_e('No settings yet.', 'seoprostats'); ?></p>
                 </div>
             <?php endif; ?>
             <?php
@@ -141,7 +141,7 @@ class WPStarter_Settings_Manager {
              *
              * @param string $tab Tab slug.
              */
-            do_action('wpstarter_settings_tab_after', $tab);
+            do_action('seoprostats_settings_tab_after', $tab);
             ?>
         </div>
         <?php
@@ -155,64 +155,64 @@ class WPStarter_Settings_Manager {
      */
     public static function render_card($key, array $field) {
         $children = self::visible_children($key);
-        // A feature may render its whole panel itself (wpstarter_setting_panel).
+        // A feature may render its whole panel itself (seoprostats_setting_panel).
         $has_panel = $children || !empty($field['panel']);
-        $id        = 'wps-' . $key;
+        $id        = 'spst-' . $key;
         $panel_id  = $id . '-panel';
         $is_bool   = 'bool' === $field['type'];
-        $value     = WPStarter_Settings::get($key);
+        $value     = SEOProStats_Settings::get($key);
         ?>
         <section class="<?php echo esc_attr(self::card_classes($is_bool && $value, $has_panel)); ?>" data-setting-card="<?php echo esc_attr($key); ?>">
             <?php // Clicking the header (outside the switch) opens the options; only the switch changes the value. ?>
-            <div class="wps-setting__header"<?php echo $has_panel ? ' data-wps-panel-toggle' : ''; ?>>
+            <div class="spst-setting__header"<?php echo $has_panel ? ' data-spst-panel-toggle' : ''; ?>>
                 <?php if ($is_bool) : ?>
-                    <span class="wps-switch">
+                    <span class="spst-switch">
                         <input type="checkbox"
                                role="switch"
-                               class="wps-switch__input"
+                               class="spst-switch__input"
                                id="<?php echo esc_attr($id); ?>"
-                               data-wps-setting="<?php echo esc_attr($key); ?>"
+                               data-spst-setting="<?php echo esc_attr($key); ?>"
                                aria-labelledby="<?php echo esc_attr($id); ?>-title"
                                aria-describedby="<?php echo esc_attr($id); ?>-desc"
                                <?php checked((bool) $value); ?> />
-                        <span class="wps-switch__track" aria-hidden="true"></span>
+                        <span class="spst-switch__track" aria-hidden="true"></span>
                     </span>
                 <?php endif; ?>
 
-                <div class="wps-setting__text">
-                    <div class="wps-setting__title-row">
-                        <span class="wps-setting__title" id="<?php echo esc_attr($id); ?>-title"><?php echo esc_html($field['label']); ?></span>
-                        <span class="wps-status" data-wps-status="<?php echo esc_attr($key); ?>" aria-hidden="true"></span>
+                <div class="spst-setting__text">
+                    <div class="spst-setting__title-row">
+                        <span class="spst-setting__title" id="<?php echo esc_attr($id); ?>-title"><?php echo esc_html($field['label']); ?></span>
+                        <span class="spst-status" data-spst-status="<?php echo esc_attr($key); ?>" aria-hidden="true"></span>
                     </div>
                     <?php if (!empty($field['description'])) : ?>
-                        <p class="wps-setting__desc" id="<?php echo esc_attr($id); ?>-desc"><?php echo esc_html($field['description']); ?></p>
+                        <p class="spst-setting__desc" id="<?php echo esc_attr($id); ?>-desc"><?php echo esc_html($field['description']); ?></p>
                     <?php endif; ?>
                     <?php self::render_replaces($field); ?>
                 </div>
 
                 <?php if ($has_panel) : ?>
                     <button type="button"
-                            class="wps-setting__expand button-link"
+                            class="spst-setting__expand button-link"
                             aria-expanded="false"
                             aria-controls="<?php echo esc_attr($panel_id); ?>">
-                        <span class="wps-setting__expand-label"><?php esc_html_e('Options', 'wp-plugin-starter-template'); ?></span>
+                        <span class="spst-setting__expand-label"><?php esc_html_e('Options', 'seoprostats'); ?></span>
                         <span class="dashicons dashicons-arrow-down-alt2" aria-hidden="true"></span>
-                        <span class="screen-reader-text"><?php echo esc_html(sprintf(/* translators: %s: setting name */ __('for %s', 'wp-plugin-starter-template'), $field['label'])); ?></span>
+                        <span class="screen-reader-text"><?php echo esc_html(sprintf(/* translators: %s: setting name */ __('for %s', 'seoprostats'), $field['label'])); ?></span>
                     </button>
                 <?php endif; ?>
             </div>
 
             <?php if ($has_panel) : ?>
-                <div class="wps-setting__panel" id="<?php echo esc_attr($panel_id); ?>" hidden>
+                <div class="spst-setting__panel" id="<?php echo esc_attr($panel_id); ?>" hidden>
                     <?php
                     /**
                      * Fires at the top of a setting's options panel, for status
-                     * such as progress (wrap output in .wps-panel-note).
+                     * such as progress (wrap output in .spst-panel-note).
                      *
                      * @param string $key   Setting key.
                      * @param array  $field Schema entry.
                      */
-                    do_action('wpstarter_setting_panel', $key, $field);
+                    do_action('seoprostats_setting_panel', $key, $field);
                     self::render_children($key, $children);
                     ?>
                 </div>
@@ -240,9 +240,9 @@ class WPStarter_Settings_Manager {
             return;
         }
         ?>
-        <details class="wps-troubleshooting"<?php echo self::troubleshooting_open($key, $troubleshooting) ? ' open' : ''; ?>>
-            <summary class="wps-troubleshooting__summary"><?php esc_html_e('Troubleshooting', 'wp-plugin-starter-template'); ?></summary>
-            <p class="wps-troubleshooting__intro"><?php esc_html_e('Leave these as they are unless something is missing or broken.', 'wp-plugin-starter-template'); ?></p>
+        <details class="spst-troubleshooting"<?php echo self::troubleshooting_open($key, $troubleshooting) ? ' open' : ''; ?>>
+            <summary class="spst-troubleshooting__summary"><?php esc_html_e('Troubleshooting', 'seoprostats'); ?></summary>
+            <p class="spst-troubleshooting__intro"><?php esc_html_e('Leave these as they are unless something is missing or broken.', 'seoprostats'); ?></p>
             <?php
             foreach ($troubleshooting as $child_key => $child) {
                 self::render_field($child_key, $child);
@@ -278,7 +278,7 @@ class WPStarter_Settings_Manager {
          * @param bool   $open Whether it starts open (false).
          * @param string $key  Parent setting key.
          */
-        return (bool) apply_filters('wpstarter_troubleshooting_open', false, $key);
+        return (bool) apply_filters('seoprostats_troubleshooting_open', false, $key);
     }
 
     /**
@@ -290,7 +290,7 @@ class WPStarter_Settings_Manager {
      * @return bool
      */
     private static function troubleshooting_shows($key, array $field) {
-        if (!self::is_default(WPStarter_Settings::get($key), isset($field['default']) ? $field['default'] : null)) {
+        if (!self::is_default(SEOProStats_Settings::get($key), isset($field['default']) ? $field['default'] : null)) {
             return true;
         }
         if ('' === self::$query) {
@@ -330,7 +330,7 @@ class WPStarter_Settings_Manager {
      * @return array<string,array>
      */
     private static function visible_children($key) {
-        return array_filter(WPStarter_Settings::children_of($key), function ($child) {
+        return array_filter(SEOProStats_Settings::children_of($key), function ($child) {
             return empty($child['hidden']);
         });
     }
@@ -343,12 +343,12 @@ class WPStarter_Settings_Manager {
      * @return string
      */
     private static function card_classes($is_on, $has_panel) {
-        return 'wps-card wps-setting' . ($is_on ? ' is-on' : '') . ($has_panel ? ' has-panel' : '');
+        return 'spst-card spst-setting' . ($is_on ? ' is-on' : '') . ($has_panel ? ' has-panel' : '');
     }
 
     /**
      * Note which plugins a setting replaces. While one is active the setting
-     * waits (WPStarter_Feature::replaced_active()); say so, with a
+     * waits (SEOProStats_Feature::replaced_active()); say so, with a
      * deactivate link where the user can deactivate it here.
      *
      * @param array $field Schema entry.
@@ -358,7 +358,7 @@ class WPStarter_Settings_Manager {
             return;
         }
 
-        $active = WPStarter_Feature::active_plugins();
+        $active = SEOProStats_Feature::active_plugins();
         $site   = self::active_plugins_by_slug();
         $items  = array();
         $links  = array();
@@ -371,22 +371,22 @@ class WPStarter_Settings_Manager {
             $busy[] = (string) $name;
             if (isset($site[$slug]) && current_user_can('deactivate_plugin', $site[$slug])) {
                 // Comes back to this tab, where the setting then takes over.
-                $url     = WPStarter_Replaced_Plugins::deactivate_url($site[$slug]);
+                $url     = SEOProStats_Replaced_Plugins::deactivate_url($site[$slug]);
                 /* translators: %s: plugin name */
-                $links[] = sprintf('<a href="%1$s">%2$s</a>', esc_url($url), esc_html(sprintf(__('Deactivate %s', 'wp-plugin-starter-template'), $name)));
+                $links[] = sprintf('<a href="%1$s">%2$s</a>', esc_url($url), esc_html(sprintf(__('Deactivate %s', 'seoprostats'), $name)));
             }
         }
 
         printf(
-            '<p class="wps-replaces">%1$s %2$s</p>',
-            esc_html__('Replaces:', 'wp-plugin-starter-template'),
+            '<p class="spst-replaces">%1$s %2$s</p>',
+            esc_html__('Replaces:', 'seoprostats'),
             implode(', ', $items) // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above.
         );
         if ($busy) {
             printf(
-                '<p class="wps-replaces wps-replaces__active">%1$s %2$s</p>',
+                '<p class="spst-replaces spst-replaces__active">%1$s %2$s</p>',
                 /* translators: %s: plugin names */
-                esc_html(sprintf(__('%s is still active, so it does this job and this setting waits until it is deactivated.', 'wp-plugin-starter-template'), implode(', ', $busy))),
+                esc_html(sprintf(__('%s is still active, so it does this job and this setting waits until it is deactivated.', 'seoprostats'), implode(', ', $busy))),
                 implode(' · ', $links) // phpcs:ignore WordPress.Security.EscapeOutput -- escaped above.
             );
         }
@@ -401,7 +401,7 @@ class WPStarter_Settings_Manager {
         static $active = null;
         if (null === $active) {
             $active = array();
-            foreach (WPStarter_Feature::stored_active_plugins() as $file) {
+            foreach (SEOProStats_Feature::stored_active_plugins() as $file) {
                 $slug = dirname((string) $file);
                 if ('.' !== $slug) {
                     $active[$slug] = (string) $file;
@@ -418,32 +418,32 @@ class WPStarter_Settings_Manager {
      * @param array  $field Schema entry.
      */
     public static function render_field($key, array $field) {
-        $value   = WPStarter_Settings::get($key);
-        $id      = 'wps-' . $key;
+        $value   = SEOProStats_Settings::get($key);
+        $id      = 'spst-' . $key;
         $desc_id = $id . '-desc';
-        $attrs   = sprintf('id="%1$s" data-wps-setting="%2$s" aria-describedby="%3$s"', esc_attr($id), esc_attr($key), esc_attr($desc_id));
+        $attrs   = sprintf('id="%1$s" data-spst-setting="%2$s" aria-describedby="%3$s"', esc_attr($id), esc_attr($key), esc_attr($desc_id));
         $is_multi = 'multi' === $field['type'];
         ?>
-        <div class="wps-field">
+        <div class="spst-field">
             <?php if ($is_multi) : ?>
-                <span class="wps-field__label" id="<?php echo esc_attr($id); ?>-label"><?php echo esc_html($field['label']); ?></span>
+                <span class="spst-field__label" id="<?php echo esc_attr($id); ?>-label"><?php echo esc_html($field['label']); ?></span>
             <?php else : ?>
-                <label class="wps-field__label" for="<?php echo esc_attr($id); ?>"><?php echo esc_html($field['label']); ?></label>
+                <label class="spst-field__label" for="<?php echo esc_attr($id); ?>"><?php echo esc_html($field['label']); ?></label>
             <?php endif; ?>
-            <div class="wps-field__control">
+            <div class="spst-field__control">
                 <?php
                 $method = isset(self::CONTROLS[$field['type']]) ? self::CONTROLS[$field['type']] : 'render_text';
                 self::$method($key, $field, $value, $attrs);
                 ?>
-                <span class="wps-status" data-wps-status="<?php echo esc_attr($key); ?>" aria-hidden="true"></span>
+                <span class="spst-status" data-spst-status="<?php echo esc_attr($key); ?>" aria-hidden="true"></span>
                 <?php if (!empty($field['description']) || !empty($field['tokens'])) : ?>
                     <p class="description" id="<?php echo esc_attr($desc_id); ?>">
                         <?php echo esc_html(isset($field['description']) ? $field['description'] : ''); ?>
                         <?php if (!empty($field['tokens'])) : ?>
-                            <span class="wps-tokens">
-                                <?php esc_html_e('Tokens:', 'wp-plugin-starter-template'); ?>
+                            <span class="spst-tokens">
+                                <?php esc_html_e('Tokens:', 'seoprostats'); ?>
                                 <?php foreach ($field['tokens'] as $token) : ?>
-                                    <button type="button" class="wps-token" data-token="<?php echo esc_attr($token); ?>" data-target="<?php echo esc_attr($id); ?>" title="<?php esc_attr_e('Insert token', 'wp-plugin-starter-template'); ?>"><code><?php echo esc_html($token); ?></code></button>
+                                    <button type="button" class="spst-token" data-token="<?php echo esc_attr($token); ?>" data-target="<?php echo esc_attr($id); ?>" title="<?php esc_attr_e('Insert token', 'seoprostats'); ?>"><code><?php echo esc_html($token); ?></code></button>
                                 <?php endforeach; ?>
                             </span>
                         <?php endif; ?>
@@ -470,11 +470,11 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_select($key, array $field, $value, $attrs) {
         printf('<select %s>', $attrs); // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in render_field().
-        $choices = WPStarter_Settings::options_for($field);
+        $choices = SEOProStats_Settings::options_for($field);
         if (!empty($field['open']) && '' !== (string) $value && !array_key_exists((string) $value, $choices)) {
             // A saved choice whose plugin is not loaded here stays shown.
             $choices[(string) $value] = (string) $value;
@@ -497,15 +497,15 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_multi($key, array $field, $value, $attrs) {
-        $id      = 'wps-' . $key;
+        $id      = 'spst-' . $key;
         $chosen  = array_map('strval', (array) $value);
-        $choices = WPStarter_Settings::options_for($field);
+        $choices = SEOProStats_Settings::options_for($field);
         // With some plugins skipped on this request, a saved
         // choice may belong to one of them; keep it too.
-        if (!empty($field['open']) || WPStarter_Feature::plugins_skipped()) {
+        if (!empty($field['open']) || SEOProStats_Feature::plugins_skipped()) {
             // Saved items that are not registered right now stay visible so they can be unticked.
             foreach (array_diff($chosen, array_map('strval', array_keys($choices))) as $missing) {
                 $choices[$missing] = $missing;
@@ -515,22 +515,22 @@ class WPStarter_Settings_Manager {
         if ($long) {
             // Long lists (such as every active plugin) scroll, with quick choices.
             printf(
-                '<span class="wps-checkboxes__all"><button type="button" class="button-link" data-wps-check-all="%1$s">%2$s</button> · <button type="button" class="button-link" data-wps-check-none="%1$s">%3$s</button></span>',
+                '<span class="spst-checkboxes__all"><button type="button" class="button-link" data-spst-check-all="%1$s">%2$s</button> · <button type="button" class="button-link" data-spst-check-none="%1$s">%3$s</button></span>',
                 esc_attr($id),
-                esc_html__('Select all', 'wp-plugin-starter-template'),
-                esc_html__('Clear', 'wp-plugin-starter-template')
+                esc_html__('Select all', 'seoprostats'),
+                esc_html__('Clear', 'seoprostats')
             );
         }
-        // The group carries data-wps-setting; the JS saves every checked value.
+        // The group carries data-spst-setting; the JS saves every checked value.
         printf(
-            '<fieldset class="wps-checkboxes%3$s" data-wps-multi %1$s aria-labelledby="%2$s">',
+            '<fieldset class="spst-checkboxes%3$s" data-spst-multi %1$s aria-labelledby="%2$s">',
             $attrs, // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in render_field().
             esc_attr($id . '-label'),
             $long ? ' is-long' : ''
         );
         foreach ($choices as $option_value => $option_label) {
             printf(
-                '<label class="wps-checkbox"><input type="checkbox" value="%1$s"%2$s /> %3$s</label>',
+                '<label class="spst-checkbox"><input type="checkbox" value="%1$s"%2$s /> %3$s</label>',
                 esc_attr((string) $option_value),
                 checked(in_array((string) $option_value, $chosen, true), true, false),
                 esc_html($option_label)
@@ -545,7 +545,7 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_url($key, array $field, $value, $attrs) {
         printf(
@@ -562,7 +562,7 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_times($key, array $field, $value, $attrs) {
         printf(
@@ -579,7 +579,7 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_int($key, array $field, $value, $attrs) {
         printf(
@@ -590,7 +590,7 @@ class WPStarter_Settings_Manager {
             esc_attr(isset($field['max']) ? (string) $field['max'] : '')
         );
         if (!empty($field['unit'])) {
-            echo ' <span class="wps-field__unit">' . esc_html($field['unit']) . '</span>';
+            echo ' <span class="spst-field__unit">' . esc_html($field['unit']) . '</span>';
         }
     }
 
@@ -600,7 +600,7 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_textarea($key, array $field, $value, $attrs) {
         printf(
@@ -613,39 +613,39 @@ class WPStarter_Settings_Manager {
     }
 
     /**
-     * Render a media control. The hidden input carries data-wps-setting; the
+     * Render a media control. The hidden input carries data-spst-setting; the
      * JS sets it from the media dialog and saves it.
      *
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_media($key, array $field, $value, $attrs) {
-        $id       = 'wps-' . $key;
+        $id       = 'spst-' . $key;
         $image_id = (int) $value;
         $preview  = $image_id ? wp_get_attachment_image_url($image_id, 'thumbnail') : '';
-        echo '<div class="wps-media" data-wps-media>';
+        echo '<div class="spst-media" data-spst-media>';
         printf(
-            '<input type="hidden" data-wps-setting="%1$s" value="%2$s" />',
+            '<input type="hidden" data-spst-setting="%1$s" value="%2$s" />',
             esc_attr($key),
             esc_attr((string) $image_id)
         );
         if ($preview) {
-            printf('<img class="wps-media__preview" src="%s" alt="" />', esc_url($preview));
+            printf('<img class="spst-media__preview" src="%s" alt="" />', esc_url($preview));
         } else {
-            echo '<img class="wps-media__preview" alt="" hidden />';
+            echo '<img class="spst-media__preview" alt="" hidden />';
         }
         printf(
-            '<button type="button" class="button wps-media__choose" id="%1$s" aria-describedby="%2$s">%3$s</button>',
+            '<button type="button" class="button spst-media__choose" id="%1$s" aria-describedby="%2$s">%3$s</button>',
             esc_attr($id),
             esc_attr($id . '-desc'),
-            esc_html__('Choose picture', 'wp-plugin-starter-template')
+            esc_html__('Choose picture', 'seoprostats')
         );
         printf(
-            '<button type="button" class="button-link wps-media__remove"%1$s>%2$s</button>',
+            '<button type="button" class="button-link spst-media__remove"%1$s>%2$s</button>',
             $image_id ? '' : ' hidden',
-            esc_html__('Remove', 'wp-plugin-starter-template')
+            esc_html__('Remove', 'seoprostats')
         );
         echo '</div>';
     }
@@ -657,11 +657,11 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_bool($key, array $field, $value, $attrs) {
         printf(
-            '<span class="wps-switch"><input type="checkbox" role="switch" class="wps-switch__input" %1$s %2$s /><span class="wps-switch__track" aria-hidden="true"></span></span>',
+            '<span class="spst-switch"><input type="checkbox" role="switch" class="spst-switch__input" %1$s %2$s /><span class="spst-switch__track" aria-hidden="true"></span></span>',
             $attrs, // phpcs:ignore WordPress.Security.EscapeOutput -- escaped in render_field().
             checked((bool) $value, true, false)
         );
@@ -673,7 +673,7 @@ class WPStarter_Settings_Manager {
      * @param string $key   Setting key.
      * @param array  $field Schema entry.
      * @param mixed  $value Current value.
-     * @param string $attrs Escaped id, data-wps-setting and aria-describedby.
+     * @param string $attrs Escaped id, data-spst-setting and aria-describedby.
      */
     private static function render_text($key, array $field, $value, $attrs) {
         printf(

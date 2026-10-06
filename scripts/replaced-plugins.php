@@ -1,6 +1,6 @@
 <?php
 /**
- * Count the plugins WP Plugin Starter replaces and keep README.md's count right.
+ * Count the plugins SEO Pro Stats replaces and keep README.md's count right.
  *
  * Reads every 'replaces' entry in includes/ (the same lists the Plugins screen
  * uses), without loading WordPress: array literals, class constants
@@ -9,12 +9,12 @@
  *
  * Usage: php scripts/replaced-plugins.php [--check | --write] [DIR]
  *   (none)    List the replaced plugins (slug and name) and the count.
- *   --check   Exit 1 when README.md's "WP Plugin Starter replaces **N plugins**"
+ *   --check   Exit 1 when README.md's "SEO Pro Stats replaces **N plugins**"
  *             line has another count. Offline; scripts/preflight-release.sh
  *             runs it on the release build.
  *   --write   Rewrite that line with the count and download sizes: each
  *             plugin's zip from WordPress.org (or its GitHub release, see
- *             GITHUB_SOURCES) against WP Plugin Starter's GitHub release zip,
+ *             GITHUB_SOURCES) against SEO Pro Stats's GitHub release zip,
  *             built from HEAD with scripts/build-release.sh. Needs network.
  *   DIR       Plugin folder to read (default: this checkout).
  *
@@ -28,7 +28,7 @@
 // Replaced plugins that are not on WordPress.org but have GitHub releases.
 const GITHUB_SOURCES = array('git-updater' => 'afragen/git-updater');
 // The name is quoted for the pattern: a renamed plugin's may hold ( . + etc.
-define('README_LINE', '/^' . preg_quote('WP Plugin Starter', '/') . ' replaces \*\*(\d+) plugins\*\*.*$/m');
+define('README_LINE', '/^' . preg_quote('SEO Pro Stats', '/') . ' replaces \*\*(\d+) plugins\*\*.*$/m');
 
 /**
  * Stop with a message.
@@ -276,7 +276,7 @@ final class Replaces_Reader {
  * @return string|int|null
  */
 function fetch($url, $head = false) {
-    $args = array('-sSL', '-m', '30', '-A', 'wpstarter-replaced-plugins');
+    $args = array('-sSL', '-m', '30', '-A', 'seoprostats-replaced-plugins');
     if ($head) {
         $args = array_merge($args, array('-o', '/dev/null', '-w', '%{http_code} %{size_download}'));
     }
@@ -394,7 +394,7 @@ if ('' === $mode) {
 
 if ('--check' === $mode) {
     if (!preg_match(README_LINE, $readme, $m)) {
-        fwrite(STDERR, "README.md has no \"WP Plugin Starter replaces **N plugins**\" line\n");
+        fwrite(STDERR, "README.md has no \"SEO Pro Stats replaces **N plugins**\" line\n");
         exit(1);
     }
     if ((int) $m[1] !== $count) {
@@ -420,7 +420,7 @@ foreach ($reader->plugins as $slug => $name) {
     printf("%-42s %10s\n", $slug, size_label($bytes));
 }
 
-$out = sys_get_temp_dir() . '/wpstarter-replaced-' . getmypid();
+$out = sys_get_temp_dir() . '/seoprostats-replaced-' . getmypid();
 exec('cd ' . escapeshellarg($dir) . ' && scripts/build-release.sh --ref HEAD --out ' . escapeshellarg($out) . ' --quiet', $zips, $status);
 if (0 !== $status || empty($zips[0]) || !is_file($zips[0])) {
     fail('scripts/build-release.sh failed');
@@ -430,18 +430,18 @@ array_map('unlink', glob($out . '/*.zip'));
 @rmdir($out);
 
 $line = sprintf(
-    'WP Plugin Starter replaces **%d plugins**, some of them in part, with free and Pro editions counted separately. The %d that can be downloaded come to %s zipped; WP Plugin Starter is %s.',
+    'SEO Pro Stats replaces **%d plugins**, some of them in part, with free and Pro editions counted separately. The %d that can be downloaded come to %s zipped; SEO Pro Stats is %s.',
     $count,
     $sized,
     size_label($total),
     size_label($ours)
 );
-printf("%d plugins; %d downloadable, %s; WP Plugin Starter %s\n", $count, $sized, size_label($total), size_label($ours));
+printf("%d plugins; %d downloadable, %s; SEO Pro Stats %s\n", $count, $sized, size_label($total), size_label($ours));
 if ($no_size) {
     echo 'Not downloadable (Pro or closed): ' . implode(', ', $no_size) . "\n";
 }
 if (!preg_match(README_LINE, $readme)) {
-    fail('README.md has no "WP Plugin Starter replaces **N plugins**" line to update; add one above the Features table');
+    fail('README.md has no "SEO Pro Stats replaces **N plugins**" line to update; add one above the Features table');
 }
 file_put_contents($readme_file, preg_replace(README_LINE, str_replace(array('\\', '$'), array('\\\\', '\\$'), $line), $readme, 1));
 echo "Updated README.md\n";

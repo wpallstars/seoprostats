@@ -6,17 +6,17 @@
 # plugin_identity [REF] (default HEAD). It sets:
 #
 #   PLUGIN_MAIN_FILE  the PHP file at the top of the repository with a
-#                     "Plugin Name:" header, for example wp-plugin-starter-template.php
+#                     "Plugin Name:" header, for example seoprostats.php
 #   PLUGIN_SLUG       its name without .php: the plugin folder and text domain
-#   PLUGIN_NAME       the Plugin Name header, for example WP Plugin Starter
+#   PLUGIN_NAME       the Plugin Name header, for example SEO Pro Stats
 #   PLUGIN_PACKAGE    the @package tag, which is also the class prefix
-#                     (WPStarter: WPStarter_Settings, WPStarter::features())
+#                     (SEOProStats: SEOProStats_Settings, SEOProStats::features())
 #   PLUGIN_CONST      the constant prefix, from define('<PREFIX>_VERSION', ...)
-#                     (WPSTARTER)
+#                     (SEOPROSTATS)
 #   PLUGIN_PREFIX     the option, hook and transient prefix: PLUGIN_CONST in
-#                     lower case (wpstarter)
+#                     lower case (seoprostats)
 #   PLUGIN_CSS        the CSS class and data attribute prefix, from the admin
-#                     screen's "wrap <css>-wrap" class (wps: .wps-card)
+#                     screen's "wrap <css>-wrap" class (wps: .spst-card)
 #   PLUGIN_REPO       the GitHub Plugin URI header, owner/repo (may be empty)
 #
 # Files come from the Git ref, never the working tree, like the release build.
@@ -188,7 +188,7 @@ plugin_map() {
 }
 
 # Value of the environment variable <PLUGIN_CONST>_<NAME>, or the default.
-# For example plugin_env PREVIEW_SITE reads WPSTARTER_PREVIEW_SITE.
+# For example plugin_env PREVIEW_SITE reads SEOPROSTATS_PREVIEW_SITE.
 plugin_env() {
 	local name="${PLUGIN_CONST}_$1"
 	local default="${2:-}"

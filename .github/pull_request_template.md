@@ -8,7 +8,7 @@
 
 - [ ] `scripts/lint.sh` passes.
 - [ ] Tested the changed feature on a WordPress site, with no new messages
-      mentioning `wpstarter` in `debug.log`.
+      mentioning `seoprostats` in `debug.log`.
 - [ ] WordPress 6.2 with PHP 7.4, if this uses a core function. <!-- or n/a -->
 - [ ] Kadence light and dark mode, if this changes front-end styles. <!-- or n/a -->
 

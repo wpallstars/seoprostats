@@ -5,9 +5,9 @@
 # Change a core file in the starter first, then sync each plugin.
 
 # Bootstrap, feature registry, base feature and settings store.
-includes/class-wpstarter.php
-includes/class-wpstarter-feature.php
-includes/class-wpstarter-settings.php
+includes/class-seoprostats.php
+includes/class-seoprostats-feature.php
+includes/class-seoprostats-settings.php
 
 # Shared GitHub updater: only the newest copy on a site runs.
 includes/github-updater/
@@ -19,8 +19,8 @@ admin/includes/class-admin-manager.php
 admin/includes/class-settings-manager.php
 admin/includes/class-readme-manager.php
 admin/includes/class-replaced-plugins.php
-admin/css/wpstarter-admin.css
-admin/js/wpstarter-admin.js
+admin/css/seoprostats-admin.css
+admin/js/seoprostats-admin.js
 
 # Build, check, release and preview scripts.
 scripts/build-banner.sh

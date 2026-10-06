@@ -1,0 +1,2 @@
+schema: aidevops.keywords/v1
+clusters[0|]{id|name|parent_id|pillar_target_id|target_url|page_type|taxonomy|anchors|terms|authors|schema_types|hashtags|updated}:

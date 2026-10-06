@@ -1,4 +1,4 @@
-# WP Plugin Starter — agent guide
+# SEO Pro Stats — agent guide
 
 The wpallstars starter plugin: what every wpallstars plugin is made from.
 It has no features of its own, only the parts every plugin needs.
@@ -9,13 +9,13 @@ performance, Updates from GitHub, releases, front-end styling and dark mode, and
 repository holds the master copy of it and of every core file
 (`scripts/core-files.txt`). This file holds only what is the starter's own.
 
-| Placeholder in `STANDARDS.md` | WP Plugin Starter |
+| Placeholder in `STANDARDS.md` | SEO Pro Stats |
 |---|---|
-| `{slug}` | `wp-plugin-starter-template` (main file `wp-plugin-starter-template.php`) |
-| `{prefix}` | `wpstarter` |
-| `{Prefix}` | `WPStarter` |
-| `{PREFIX}` | `WPSTARTER` |
-| `{Name}` | WP Plugin Starter |
+| `{slug}` | `seoprostats` (main file `seoprostats.php`) |
+| `{prefix}` | `seoprostats` |
+| `{Prefix}` | `SEOProStats` |
+| `{PREFIX}` | `SEOPROSTATS` |
+| `{Name}` | SEO Pro Stats |
 | `{css}` | `wps` |
 
 User docs: `README.md` (developers, and the Read Me tab) and `readme.txt`.
@@ -31,7 +31,7 @@ in `docs/` (`STANDARDS.md` → Agent docs); the starter has none yet.
   then run `scripts/sync-core.sh` in each plugin (`--check` lists what
   differs). Keep core files free of any one plugin's names, examples and
   paths: this repository is public.
-- `includes/class-wpstarter-setup.php` stays empty of features, so the
+- `includes/class-seoprostats-setup.php` stays empty of features, so the
   settings screen shows the empty General tab and the Read Me tab. Test a
   core change in a plugin that uses it, then here.
 - `scripts/rename-plugin.sh` must keep working on a fresh copy: after a
@@ -54,3 +54,7 @@ in `docs/` (`STANDARDS.md` → Agent docs); the starter has none yet.
 Install the GitHub build on a local test site with
 `scripts/preview-site.sh` (see `DEVELOPMENT.md`), or install the GitHub
 zip from `scripts/build-release.sh` on any test site.
+
+## Search targets
+
+Search keywords, AI-answer questions and search entities live in `context/keywords.md` and `context/keywords/` (standard: `~/.aidevops/agents/seo/keywords-standard.md`). Read them, or run `aidevops keywords brief`, before naming, copy, metadata, schema, media, social or PR work. If the files are missing in a clone, run `aidevops keywords sync`.
