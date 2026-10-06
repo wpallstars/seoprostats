@@ -24,14 +24,22 @@ interface Props {
 	tabs: Tab[];
 	state: ViewState;
 	update: (patch: Partial<ViewState>) => void;
+	/** Span the grid's full width. */
+	wide?: boolean;
 }
 
 const PAGE_DIMENSIONS: Dimension[] = ['page', 'entry', 'exit'];
 
+/** What a row counts: pageviews for top pages, events for events, otherwise visits. */
+function countOf(dimension: Dimension): 'pageviews' | 'events' | 'visits' {
+	return dimension === 'page' ? 'pageviews' : dimension === 'event' ? 'events' : 'visits';
+}
+
 function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewState; update: Props['update'] }) {
 	const query = useBreakdown(state, dimension);
-	const byPageviews = dimension === 'page';
-	const metric = byPageviews ? 'pageviews' : 'visits';
+	const metric = countOf(dimension);
+	const byPageviews = metric === 'pageviews';
+	const isEvent = metric === 'events';
 
 	if (query.isError) {
 		return (
@@ -53,9 +61,16 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 		);
 	}
 	if (!answer.rows.length) {
-		return <p className="spst-empty">{__('Nothing in this period.', 'seoprostats')}</p>;
+		return (
+			<p className="spst-empty">
+				{isEvent
+					? __('No events in this period. Outbound links, file downloads and your own events show here.', 'seoprostats')
+					: __('Nothing in this period.', 'seoprostats')}
+			</p>
+		);
 	}
-	const top = Math.max(...answer.rows.map((r) => (byPageviews ? r.pageviews ?? 0 : r.visits)), 1);
+	const countRow = (r: (typeof answer.rows)[number]) => (metric === 'visits' ? r.visits : r[metric] ?? 0);
+	const top = Math.max(...answer.rows.map(countRow), 1);
 	const isPath = PAGE_DIMENSIONS.includes(dimension);
 
 	return (
@@ -66,9 +81,10 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 			</div>
 			<ol className={`spst-rows${query.isFetching ? ' is-refreshing' : ''}`}>
 				{answer.rows.map((row) => {
-					const count = byPageviews ? row.pageviews ?? 0 : row.visits;
+					const count = countRow(row);
 					const label = valueLabel(dimension, row.value, row.label);
-					const share = byPageviews ? '' : formatPercent(row.share, locale);
+					// Events: the share of visits with the event (its conversion rate).
+					const share = byPageviews ? '' : formatPercent(isEvent ? row.conversion_rate ?? row.share : row.share, locale);
 					return (
 						<li key={row.value} className="spst-row">
 							<button
@@ -82,7 +98,12 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 								<span className="spst-row__value">
 									{formatNumber(count, locale)}
 									<span className="screen-reader-text"> {metricLabel(metric)}</span>
-									{share && <span className="spst-row__share">{share}</span>}
+									{share && (
+										<span className="spst-row__share" title={isEvent ? __('Visits with this event, of all visits', 'seoprostats') : undefined}>
+											{share}
+											{isEvent && <span className="screen-reader-text"> {__('of visits', 'seoprostats')}</span>}
+										</span>
+									)}
 								</span>
 							</button>
 						</li>
@@ -93,7 +114,7 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 	);
 }
 
-export function BreakdownCard({ title, tabs, state, update }: Props) {
+export function BreakdownCard({ title, tabs, state, update, wide = false }: Props) {
 	const [active, setActive] = useState<Dimension>(tabs[0]?.dimension ?? 'channel');
 	const id = `spst-card-${tabs[0]?.dimension ?? 'x'}`;
 
@@ -115,7 +136,7 @@ export function BreakdownCard({ title, tabs, state, update }: Props) {
 	};
 
 	return (
-		<Card className="spst-card" size="small">
+		<Card className={`spst-card${wide ? ' is-wide' : ''}`} size="small">
 			<CardHeader className="spst-card__header">
 				<h2 className="spst-card__title" id={id}>
 					{title}

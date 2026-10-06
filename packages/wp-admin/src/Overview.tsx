@@ -1,6 +1,6 @@
 /**
  * Overview: headline metrics, the chart, and where visits came from, what
- * they viewed, where and on what.
+ * they viewed, where and on what, and what they did (events).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -115,6 +115,13 @@ export function Overview() {
 						{ dimension: 'browser', title: __('Browsers', 'seoprostats') },
 						{ dimension: 'os', title: __('Systems', 'seoprostats') },
 					]}
+				/>
+				<BreakdownCard
+					title={__('Events', 'seoprostats')}
+					state={state}
+					update={update}
+					wide
+					tabs={[{ dimension: 'event', title: __('Events', 'seoprostats') }]}
 				/>
 			</div>
 		</div>

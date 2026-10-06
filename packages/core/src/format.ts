@@ -32,8 +32,15 @@ export function formatDecimal(value: number, locale: string): string {
 	return nf(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(value);
 }
 
-/** A fraction as a percentage: 0.452 → 45.2%. */
+/**
+ * A fraction as a percentage: 0.452 → 45%, 0.034 → 3.4%. Above zero but
+ * under 0.05% (which would round to 0%) reads <0.1%, so a share that exists
+ * never shows as none.
+ */
 export function formatPercent(fraction: number, locale: string): string {
+	if (fraction > 0 && fraction < 0.0005) {
+		return `<${nf(locale, { style: 'percent', maximumFractionDigits: 1 }).format(0.001)}`;
+	}
 	return nf(locale, { style: 'percent', maximumFractionDigits: fraction < 0.1 && fraction > 0 ? 1 : 0 }).format(fraction);
 }
 

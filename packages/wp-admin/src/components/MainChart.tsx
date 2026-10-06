@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { createTimeseries, type ChartSeries, type TimeseriesChart, type TimeseriesConfig } from '@seoprostats/charts';
 import { formatMetric, METRICS, type MetricKey, type TimeseriesAnswer } from '@seoprostats/core';
 import { locale } from '../boot';
@@ -27,10 +27,39 @@ function themeColor(el: HTMLElement | null): string {
 	return value || '#2271b1';
 }
 
+/**
+ * Index of the point still being counted: the one whose period holds the
+ * answer's time (today, this hour, this month). Times carry the site's
+ * offset, so they compare as instants. Undefined when the range is over.
+ */
+export function partialIndex(series: TimeseriesAnswer): number | undefined {
+	const now = Date.parse(series.generated ?? '') || Date.now();
+	const points = series.points;
+	for (let i = points.length - 1; i >= 0; i--) {
+		const start = Date.parse(points[i]?.t ?? '');
+		const end = Date.parse(i + 1 < points.length ? points[i + 1]?.t ?? '' : series.range.to);
+		if (start <= now && now < end) {
+			return i;
+		}
+		if (start <= now) {
+			return undefined;
+		}
+	}
+	return undefined;
+}
+
+/** A point's long label, marked "so far" while it is still being counted. */
+function pointLabel(t: string, grain: TimeseriesAnswer['grain'], partial: boolean): string {
+	const label = longLabel(t, grain);
+	/* translators: %s: a day, hour or month still in progress, e.g. "Tue 6 Oct 2026". */
+	return partial ? sprintf(__('%s (so far)', 'seoprostats'), label) : label;
+}
+
 export function MainChart({ series, metric, height = 260 }: Props) {
 	const holder = useRef<HTMLDivElement>(null);
 	const chart = useRef<TimeseriesChart | null>(null);
 	const spec = METRICS[metric];
+	const partial = useMemo(() => partialIndex(series), [series]);
 
 	const config = useMemo((): Omit<TimeseriesConfig, 'axisColor' | 'gridColor'> => {
 		const grain = series.grain;
@@ -41,7 +70,8 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 				values: series.points.map((p) => p[metric]),
 				color: '',
 				fill: true,
-				pointLabels: series.points.map((p) => longLabel(p.t, grain)),
+				pointLabels: series.points.map((p, i) => pointLabel(p.t, grain, i === partial)),
+				partialFrom: partial,
 			},
 		];
 		if (series.compare) {
@@ -60,7 +90,7 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 			height,
 			formatValue: (v: number) => formatMetric(v, spec.format, locale),
 		};
-	}, [series, metric, height, spec.format]);
+	}, [series, metric, height, spec.format, partial]);
 
 	useEffect(() => {
 		const el = holder.current;
@@ -118,7 +148,7 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 						const before = compare?.points[i];
 						return (
 							<tr key={p.t}>
-								<th scope="row">{longLabel(p.t, series.grain)}</th>
+								<th scope="row">{pointLabel(p.t, series.grain, i === partial)}</th>
 								<td>{formatMetric(p[metric], spec.format, locale)}</td>
 								{compare && <td>{before ? formatMetric(before[metric], spec.format, locale) : '—'}</td>}
 							</tr>
