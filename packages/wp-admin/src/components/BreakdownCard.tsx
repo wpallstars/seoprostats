@@ -1,6 +1,6 @@
 /**
  * A card of top values for a few related dimensions (tabs). Choosing a row
- * filters the whole view by it.
+ * filters the whole view by it; choosing it again takes the filter out.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -9,7 +9,7 @@
 import { useState, type KeyboardEvent } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { addFilter, formatNumber, formatPercent, type Dimension, type ViewState } from '@seoprostats/core';
+import { formatNumber, formatPercent, hasFilterValue, toggleFilterValue, type Dimension, type ViewState } from '@seoprostats/core';
 import { errorMessage, useBreakdown } from '../api';
 import { locale } from '../boot';
 import { dimensionLabel, metricLabel, valueLabel } from '../labels';
@@ -85,13 +85,20 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 					const label = valueLabel(dimension, row.value, row.label);
 					// Events: the share of visits with the event (its conversion rate).
 					const share = byPageviews ? '' : formatPercent(isEvent ? row.conversion_rate ?? row.share : row.share, locale);
+					// A second click on a row that is already a filter takes it out.
+					const active = hasFilterValue(state.filters, dimension, row.value);
 					return (
 						<li key={row.value} className="spst-row">
 							<button
 								type="button"
-								className="spst-row__button"
-								title={sprintf(/* translators: %s: a value such as a country or page. */ __('Show only visits with %s', 'seoprostats'), label)}
-								onClick={() => update({ filters: addFilter(state.filters, { dimension, op: 'is', values: [row.value] }) })}
+								className={`spst-row__button${active ? ' is-active' : ''}`}
+								aria-pressed={active}
+								title={
+									active
+										? sprintf(/* translators: %s: a value such as a country or page. */ __('Remove the filter for %s', 'seoprostats'), label)
+										: sprintf(/* translators: %s: a value such as a country or page. */ __('Show only visits with %s', 'seoprostats'), label)
+								}
+								onClick={() => update({ filters: toggleFilterValue(state.filters, dimension, row.value) })}
 							>
 								<span className="spst-row__bar" style={{ width: `${(count / top) * 100}%` }} aria-hidden="true" />
 								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>{label}</span>

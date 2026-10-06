@@ -289,6 +289,12 @@
 	margin: 16px 0 0;
 }
 
+/* The demo notices sit under the toolbar (which has its own space above
+   them) and need space below, before the filters and panels. */
+.spst-demo-notice.components-notice {
+	margin: 0 0 16px;
+}
+
 /* Breakdown cards */
 .spst-grid {
 	display: grid;
@@ -411,6 +417,15 @@
 
 .spst-row__button:hover .spst-row__label {
 	text-decoration: underline;
+}
+
+/* A row that is already a filter: a click takes it out. */
+.spst-row__button.is-active {
+	box-shadow: inset 3px 0 0 var(--spst-accent);
+}
+
+.spst-row__button.is-active .spst-row__label {
+	font-weight: 600;
 }
 
 .spst-row__button:focus-visible {
