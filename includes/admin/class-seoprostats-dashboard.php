@@ -41,6 +41,23 @@ final class SEOProStats_Dashboard {
         add_action('admin_menu', array(__CLASS__, 'register_menu'));
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue'));
         add_action('wp_dashboard_setup', array(__CLASS__, 'register_widget'));
+        add_filter('seoprostack_admin_menu_catalog', array(__CLASS__, 'menu_catalog'));
+    }
+
+    /**
+     * Keep the menu at the top, under Dashboard, when SEO Pro Stack
+     * organises the admin menu into sections; otherwise it would go under
+     * Administrators. A place already given in its catalog wins, and
+     * people can still move it with SEO Pro Stack's "Move menu entries".
+     *
+     * @param mixed $catalog SEO Pro Stack's admin menu catalog.
+     * @return mixed
+     */
+    public static function menu_catalog($catalog) {
+        if (is_array($catalog) && !isset($catalog['menus'][self::SLUG])) {
+            $catalog['menus'][self::SLUG] = 'top';
+        }
+        return $catalog;
     }
 
     /**

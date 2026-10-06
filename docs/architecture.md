@@ -307,7 +307,10 @@ usually sit) opens one admin page,
 sections. The last one is **Settings**, the starter's settings screen
 (`admin.php?page=seoprostats`), there and not under WordPress's Settings
 because `SEOProStats_Setup::MENU_PARENT` names this menu; the old
-`options-general.php?page=seoprostats` address redirects. A Dashboard widget
+`options-general.php?page=seoprostats` address redirects. When SEO Pro
+Stack organises the admin menu into sections, the
+`seoprostack_admin_menu_catalog` filter keeps this menu at the top with
+the Dashboard, unless its catalog already places it. A Dashboard widget
 (the `widget` entry, a smaller bundle) shows today so far against
 yesterday at the same time and the last 7 days' visitors, with a link to
 the Overview.
