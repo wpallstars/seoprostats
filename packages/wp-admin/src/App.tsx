@@ -21,6 +21,7 @@ import { Overview } from './Overview';
 import { Goals } from './Goals';
 import { Funnels } from './Funnels';
 import { Properties } from './Properties';
+import { Clicks } from './Clicks';
 
 export interface ViewProps {
 	state: ViewState;
@@ -33,11 +34,12 @@ function viewLabel(view: View): string {
 		goals: __('Goals', 'seoprostats'),
 		funnels: __('Funnels', 'seoprostats'),
 		properties: __('Properties', 'seoprostats'),
+		clicks: __('Clicks', 'seoprostats'),
 	};
 	return labels[view];
 }
 
-const NAV: View[] = ['overview', 'goals', 'funnels', 'properties'];
+const NAV: View[] = ['overview', 'goals', 'funnels', 'properties', 'clicks'];
 
 /** Mark the admin submenu item of the section shown (they differ only by hash). */
 function useMenuCurrent(view: View): void {
@@ -93,6 +95,8 @@ export function App() {
 		section = <Funnels {...props} />;
 	} else if (state.view === 'properties') {
 		section = <Properties {...props} />;
+	} else if (state.view === 'clicks') {
+		section = <Clicks {...props} />;
 	}
 
 	return (

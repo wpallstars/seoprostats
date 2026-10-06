@@ -81,6 +81,22 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'description' => __('Domains that show this same site, one per line. Their pages are counted, and links to them are not outbound. With and without www. are both included.', 'seoprostats'),
                 'placeholder' => 'example.org',
             ),
+            'tracking_clicks'         => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'parent'      => self::KEY,
+                'label'       => __('Count clicks and form submits', 'seoprostats'),
+                'description' => __('What people click (links, buttons, images), clicks that do nothing, and forms sent. Never what is typed or chosen in a form; emails and long numbers in labels are hidden. Add data-sps-mask to an element to leave out its text.', 'seoprostats'),
+            ),
+            'tracking_affiliate'      => array(
+                'type'        => 'lines',
+                'default'     => "/go/*\n/recommends/*",
+                'parent'      => self::KEY,
+                'rows'        => 3,
+                'label'       => __('Affiliate link paths', 'seoprostats'),
+                'description' => __('Paths of this site that forward to affiliate offers, one per line; * matches any characters. Links to them, and links marked rel="sponsored", send an Affiliate link event, which a goal can count.', 'seoprostats'),
+                'placeholder' => '/go/*',
+            ),
             'tracking_file'           => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -144,7 +160,7 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'default'     => true,
                 'tab'         => 'data',
                 'label'       => __('Delete old visits', 'seoprostats'),
-                'description' => __('Keep the database small: once a day, visits and events older than the months below are deleted. Daily totals are kept, so charts and totals still reach back; filters and visit details reach back as far as visits are kept. Off: nothing is deleted.', 'seoprostats'),
+                'description' => __('Keep the database small: once a day, visits, events and clicks older than the months below are deleted. Daily totals are kept, so charts and totals still reach back; filters and visit details reach back as far as visits are kept. Off: nothing is deleted.', 'seoprostats'),
             ),
             'retention_visits'        => array(
                 'type'        => 'int',
@@ -165,6 +181,16 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'parent'      => 'retention',
                 'label'       => __('Events and revenue', 'seoprostats'),
                 'description' => __('Fewer rows and more value, so kept longer: 120 months is ten years.', 'seoprostats'),
+            ),
+            'retention_clicks'        => array(
+                'type'        => 'int',
+                'default'     => 3,
+                'min'         => 1,
+                'max'         => 120,
+                'unit'        => __('months', 'seoprostats'),
+                'parent'      => 'retention',
+                'label'       => __('Clicks and form submits', 'seoprostats'),
+                'description' => __('Many rows, most useful while a page is new or changing. Never kept longer than their visits.', 'seoprostats'),
             ),
             'viewers'                 => array(
                 'type'        => 'bool',
@@ -364,18 +390,44 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
     }
 
     /**
-     * Months visits and events are kept; 0 keeps them forever.
+     * Months visits, events and clicks are kept; 0 keeps them forever.
      *
-     * @return array{visits:int,events:int}
+     * @return array{visits:int,events:int,clicks:int}
      */
     public static function retention() {
         if (!SEOProStats_Settings::get('retention')) {
-            return array('visits' => 0, 'events' => 0);
+            return array('visits' => 0, 'events' => 0, 'clicks' => 0);
         }
         return array(
             'visits' => max(1, (int) SEOProStats_Settings::get('retention_visits')),
             'events' => max(1, (int) SEOProStats_Settings::get('retention_events')),
+            'clicks' => max(1, (int) SEOProStats_Settings::get('retention_clicks')),
         );
+    }
+
+    /**
+     * Whether clicks and form submits are captured.
+     *
+     * @return bool
+     */
+    public static function autocapture() {
+        return (bool) SEOProStats_Settings::get('tracking_clicks');
+    }
+
+    /**
+     * The site's affiliate link paths, each starting with / or *.
+     *
+     * @return string[]
+     */
+    public static function affiliate_paths() {
+        $out = array();
+        foreach (self::lines('tracking_affiliate') as $line) {
+            $line = (string) preg_replace('/\s+/', '', $line);
+            if ($line !== '') {
+                $out[] = $line[0] === '/' || $line[0] === '*' ? $line : '/' . $line;
+            }
+        }
+        return array_values(array_unique($out));
     }
 
     /**

@@ -242,6 +242,57 @@ export interface PropertiesAnswer extends Answer {
 	rows: PropertyRow[];
 }
 
+/** Rows of the clicks report. */
+export const CLICK_KINDS = ['elements', 'dead', 'links', 'downloads', 'forms'] as const;
+export type ClickKind = (typeof CLICK_KINDS)[number];
+
+export interface ClickTotals {
+	/** Clicks (form submits are counted apart). */
+	clicks: number;
+	/** Clicks the page did not react to within a second. */
+	dead: number;
+	/** dead ÷ clicks. */
+	dead_rate: number;
+	/** Clicks on links and buttons with a destination (here or elsewhere). */
+	links: number;
+	outbound: number;
+	affiliate: number;
+	downloads: number;
+	/** Forms sent. */
+	forms: number;
+	/** Visits with a click or form submit. */
+	visits: number;
+}
+
+export interface ClickRow {
+	/** tag#id.class of the element or form. */
+	selector: string;
+	/** Its text (a form's name); '' when hidden or empty. */
+	label: string;
+	/** Link or form destination: a path here, origin and path elsewhere, mailto: or tel:. */
+	target: string;
+	count: number;
+	visits: number;
+	/** count ÷ all clicks (forms: all forms sent). */
+	share: number;
+	dead: number;
+	dead_rate: number;
+	outbound: boolean;
+	affiliate: boolean;
+	download: boolean;
+	/** A form's fields (never their values). */
+	fields: number;
+}
+
+export interface ClicksAnswer extends Answer {
+	range: Range;
+	kind: ClickKind;
+	page: string;
+	totals: ClickTotals;
+	rows: ClickRow[];
+	compare?: { range: Range; totals: ClickTotals; change: Record<keyof ClickTotals, number | null> };
+}
+
 export interface ApiError {
 	code: string;
 	message: string;

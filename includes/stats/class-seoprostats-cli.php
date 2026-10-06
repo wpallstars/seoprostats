@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, process, rollup, prune, doctor, demo and
+ * goals, funnels, properties, clicks, process, rollup, prune, doctor, demo and
  * purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
@@ -558,6 +558,121 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Clicks and form submits (autocapture): totals, then clicked
+     * elements, dead clicks, link destinations, file links or forms sent.
+     *
+     * ## OPTIONS
+     *
+     * [<kind>]
+     * : elements, dead, links, downloads or forms.
+     * ---
+     * default: elements
+     * options:
+     *   - elements
+     *   - dead
+     *   - links
+     *   - downloads
+     *   - forms
+     * ---
+     *
+     * [--page=<path>]
+     * : Only clicks on this page (* for any text).
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 7d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : none, prev or year (the totals).
+     * ---
+     * default: none
+     * ---
+     *
+     * [--filter=<filters>]
+     * : As for stats.
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 10
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats clicks --range=30d
+     *     wp seoprostats clicks dead --page=/pricing/
+     *     wp seoprostats clicks links --range=30d --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function clicks($args, $assoc) {
+        $kind   = isset($args[0]) ? (string) $args[0] : 'elements';
+        $page   = isset($assoc['page']) ? (string) $assoc['page'] : '';
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page) {
+            return SEOProStats_Clicks::report($req, $kind, $page);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        $totals = $answer['totals'];
+        /* translators: 1: clicks, 2: dead clicks, 3: percentage, 4: outbound, 5: affiliate, 6: file links, 7: form submits, 8: visits */
+        WP_CLI::log(sprintf(__('%1$d clicks, %2$d dead (%3$s); %4$d outbound, %5$d affiliate, %6$d file links; %7$d forms sent; in %8$d visits.', 'seoprostats'), $totals['clicks'], $totals['dead'], sprintf('%.1f%%', $totals['dead_rate'] * 100), $totals['outbound'], $totals['affiliate'], $totals['downloads'], $totals['forms'], $totals['visits']));
+        if (isset($answer['compare'])) {
+            $change = $answer['compare']['change']['clicks'];
+            /* translators: 1: clicks in the other period, 2: change */
+            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s).', 'seoprostats'), $answer['compare']['totals']['clicks'], $change === null ? '–' : sprintf('%+.1f%%', $change * 100)));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No clicks of this kind in this range.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $row['flags'] = implode(' ', array_keys(array_filter(array(
+                'outbound'  => $row['outbound'],
+                'affiliate' => $row['affiliate'],
+                'download'  => $row['download'],
+            ))));
+            $rows[] = $row;
+        }
+        $fields = array(
+            'elements'  => array('selector', 'label', 'count', 'visits', 'share', 'dead', 'dead_rate'),
+            'dead'      => array('selector', 'label', 'target', 'count', 'visits'),
+            'links'     => array('target', 'label', 'flags', 'count', 'visits', 'share'),
+            'downloads' => array('target', 'label', 'count', 'visits', 'share'),
+            'forms'     => array('label', 'selector', 'target', 'fields', 'count', 'visits'),
+        );
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields[$answer['kind']]);
+    }
+
+    /**
      * Run a definition action (list, add, update, delete) for goals or
      * funnels on the --data set; exits on an error.
      *
@@ -692,11 +807,12 @@ final class SEOProStats_CLI {
         $start  = microtime(true);
         $totals = SEOProStats_Processor::run();
         WP_CLI::success(sprintf(
-            /* translators: 1: lines, 2: pageviews, 3: events, 4: bot hits, 5: skipped lines, 6: milliseconds */
-            __('%1$d lines: %2$d pageviews, %3$d events, %4$d bot hits dropped, %5$d skipped, in %6$d ms.', 'seoprostats'),
+            /* translators: 1: lines, 2: pageviews, 3: events, 4: clicks and form submits, 5: bot hits, 6: skipped hits, 7: milliseconds */
+            __('%1$d lines: %2$d pageviews, %3$d events, %4$d clicks, %5$d bot hits dropped, %6$d skipped, in %7$d ms.', 'seoprostats'),
             $totals['lines'],
             $totals['pageviews'],
             $totals['events'],
+            $totals['clicks'],
             $totals['bots'],
             $totals['skipped'],
             (int) round((microtime(true) - $start) * 1000)

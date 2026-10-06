@@ -12,6 +12,8 @@ import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
 	apiArgs,
 	type BreakdownAnswer,
+	type ClickKind,
+	type ClicksAnswer,
 	type Dimension,
 	type Funnel,
 	type FunnelsAnswer,
@@ -138,6 +140,18 @@ export function useProperties(scope: Omit<Scope, 'compare'>, key: string, event:
 	return useQuery({
 		queryKey: ['properties', args],
 		queryFn: () => get<PropertiesAnswer>('properties', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Clicks and form submits: totals and rows of one kind; optionally on one page. */
+export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 50) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), kind, limit, ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['clicks', args],
+		queryFn: () => get<ClicksAnswer>('clicks', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});
