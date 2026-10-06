@@ -84,15 +84,13 @@ final class SEOProStats_Dict {
         }
 
         foreach (array_chunk($need, self::CHUNK, true) as $chunk) {
-            $rows = array();
             $args = array();
             foreach ($chunk as $hash => $value) {
-                $rows[] = '(%d, UNHEX(%s), %s)';
                 array_push($args, $kind, (string) $hash, $value);
             }
-            $values = implode(', ', $rows);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $values holds only fixed placeholder groups.
-            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (kind, hash, value) VALUES $values", array_merge(array($table), $args)));
+            $groups = implode(', ', array_fill(0, count($chunk), '(%d, UNHEX(%s), %s)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (kind, hash, value) VALUES $groups", array_merge(array($table), $args)));
 
             $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its unique key; $holders holds only fixed placeholders, one per value.
