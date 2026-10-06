@@ -6,7 +6,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useState } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { addFilter, formatNumber, formatPercent, type Dimension, type ViewState } from '@seoprostats/core';
@@ -81,6 +81,7 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>{label}</span>
 								<span className="spst-row__value">
 									{formatNumber(count, locale)}
+									<span className="screen-reader-text"> {metricLabel(metric)}</span>
 									{share && <span className="spst-row__share">{share}</span>}
 								</span>
 							</button>
@@ -95,6 +96,24 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 export function BreakdownCard({ title, tabs, state, update }: Props) {
 	const [active, setActive] = useState<Dimension>(tabs[0]?.dimension ?? 'channel');
 	const id = `spst-card-${tabs[0]?.dimension ?? 'x'}`;
+
+	// Tabs pattern: one tab stop; arrows, Home and End move and select.
+	const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+		const index = tabs.findIndex((tab) => tab.dimension === active);
+		const last = tabs.length - 1;
+		const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: last }[event.key];
+		if (next === undefined) {
+			return;
+		}
+		event.preventDefault();
+		const target = tabs[next > last ? 0 : next < 0 ? last : next];
+		if (!target) {
+			return;
+		}
+		setActive(target.dimension);
+		document.getElementById(`${id}-${target.dimension}`)?.focus();
+	};
+
 	return (
 		<Card className="spst-card" size="small">
 			<CardHeader className="spst-card__header">
@@ -111,8 +130,10 @@ export function BreakdownCard({ title, tabs, state, update }: Props) {
 								id={`${id}-${tab.dimension}`}
 								aria-selected={active === tab.dimension}
 								aria-controls={`${id}-panel`}
+								tabIndex={active === tab.dimension ? 0 : -1}
 								className={`spst-tab${active === tab.dimension ? ' is-active' : ''}`}
 								onClick={() => setActive(tab.dimension)}
+								onKeyDown={onTabKey}
 							>
 								{tab.title}
 							</button>
