@@ -62,11 +62,18 @@ export function DemoNotice() {
 		restart.current = false;
 		makeDemo(again)
 			.then((next) => {
-				busy.current = false;
-				store(next);
-				if (next.status === 'ready') {
-					refreshReports();
-				}
+				// No headway (another tab or request is making it): wait a little.
+				const stalled = next.status === 'making' && next.progress <= status.progress;
+				window.setTimeout(
+					() => {
+						busy.current = false;
+						store(next);
+						if (next.status === 'ready') {
+							refreshReports();
+						}
+					},
+					stalled ? 2000 : 0
+				);
 			})
 			.catch((e: unknown) => {
 				busy.current = false;

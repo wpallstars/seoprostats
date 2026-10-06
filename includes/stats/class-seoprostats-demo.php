@@ -340,8 +340,10 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
         }
         $more = $upto < $now;
+        // The summaries' own budget is longer: end it with this one.
+        $rollup_start = $start - max(0, SEOProStats_Rollup::BUDGET - $budget);
         while (!$more && SEOProStats_Rollup::due() !== null) {
-            if (!SEOProStats_Feature::more_time($start, $budget) || !SEOProStats_Rollup::catch_up(microtime(true))) {
+            if (!SEOProStats_Feature::more_time($start, $budget) || !SEOProStats_Rollup::catch_up($rollup_start)) {
                 $more = true;
             }
         }

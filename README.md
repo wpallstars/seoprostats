@@ -170,6 +170,7 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 - Filters are `dimension:operator:value`: operators `is`, `is_not`, `contains` and `matches` (`*` is any text); a comma means any of, and separate filters must all match. For example `channel:is:organic_search,ai` or `page:matches:/blog/*`.
 - Reading needs the `view_seoprostats` capability, which people who can manage options have, and the roles allowed under Settings → Data; change the capabilities it needs with the `seoprostats_view_caps` filter. Scripts and agents sign in with an Application Password (Users → Profile).
 - WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now), `wp seoprostats rollup` (summarise finished days now, or rebuild days with `--from` and `--to`), `wp seoprostats prune` (delete data past its retention now; `--dry-run` counts it), `wp seoprostats purge-caches` (purge the known page caches now) and `wp seoprostats doctor` (checks tables, collector, salts, cron, waiting hits, daily summaries and the last page cache purge). Add `--format=json` for the full answer.
+- Demo data: made-up visits, in tables of their own, for training, screenshots and testing. Switch on **Demo data** on the Overview (administrators make it there), or run `wp seoprostats demo make` (`status`, `remove`); reports read it with `data=demo` (`--data=demo` in WP-CLI). Live statistics are never changed by it.
 - Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 75 months and events 120 months, then deleted; the summaries are kept. Change the months under Settings → Data, or with the `seoprostats_retention` filter (`visits`, `events`; 0 keeps forever).
 
 ```sh
@@ -178,7 +179,7 @@ curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1
 
 ## Uninstall
 
-Deleting the plugin removes its settings, its cached data, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
+Deleting the plugin removes its settings, its statistics and demo data, its cached data, each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
 
@@ -192,6 +193,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 - New: known page caches are purged after an update and after a tracker setting changes, so cached pages print the current tracker; `wp seoprostats purge-caches`.
 - New: an Events card on the Overview; the chart dots the day, hour or month still being counted; shares too small to round show as <0.1% rather than 0%.
 - New: the Dashboard widget starts at the top of the right-most column for your screen width, until you arrange the Dashboard yourself; with SEO Pro Stack's tidy Dashboard, at the top of its visitors and SEO column.
+- New: demo data: a **Demo data** switch on the Overview shows a little over a year of made-up visits, kept in tables of their own, apart from your live statistics; the Dashboard widget follows it. `wp seoprostats demo`, and `data=demo` on the reports.
 
 ### 0.1.0
 

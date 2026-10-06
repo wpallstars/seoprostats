@@ -66,6 +66,9 @@ final class SEOProStats_CLI {
      * : live, or demo for the demo data (wp seoprostats demo make).
      * ---
      * default: live
+     * options:
+     *   - live
+     *   - demo
      * ---
      *
      * [--format=<format>]
@@ -135,6 +138,9 @@ final class SEOProStats_CLI {
      * : live or demo.
      * ---
      * default: live
+     * options:
+     *   - live
+     *   - demo
      * ---
      *
      * [--format=<format>]
@@ -198,6 +204,9 @@ final class SEOProStats_CLI {
      * : live or demo.
      * ---
      * default: live
+     * options:
+     *   - live
+     *   - demo
      * ---
      *
      * [--format=<format>]
@@ -246,6 +255,9 @@ final class SEOProStats_CLI {
      * : live or demo.
      * ---
      * default: live
+     * options:
+     *   - live
+     *   - demo
      * ---
      *
      * [--format=<format>]
@@ -589,9 +601,15 @@ final class SEOProStats_CLI {
             if (!SEOProStats_Demo::start(isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Demo::DAYS)) {
                 WP_CLI::error(__('The demo tables could not be made.', 'seoprostats'));
             }
+            $last = -1.0;
             do {
                 $status = SEOProStats_Demo::step(60);
-                WP_CLI::log(sprintf('%d%%', (int) round($status['progress'] * 100)));
+                if ($status['progress'] > $last) {
+                    WP_CLI::log(sprintf('%d%%', (int) round($status['progress'] * 100)));
+                    $last = $status['progress'];
+                } else {
+                    sleep(2); // Another request is making it.
+                }
             } while ($status['status'] === 'making');
             $totals = SEOProStats_Demo::run(static function () {
                 return SEOProStats_Query::stats((array) SEOProStats_Query::request(array('range' => 'all')));
