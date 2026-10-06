@@ -43,10 +43,11 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
 - **Portable underneath.** The API contract (`docs/api/openapi.yaml`) and
   `packages/core`, `packages/tracker` and `packages/charts` stay free of
   WordPress and React so later apps reuse them.
-- **This repository is public.** Never name private repositories, their
-  issues, private sites, local paths, or other analytics products used as
-  research in it (commits, docs, comments or examples). Describe features
-  in our own words.
+- **Write as if public.** The repository is private until its public
+  launch (`LAUNCH.md`), and its whole history is published then. Never name
+  private repositories, their issues, private sites, local paths, or other
+  analytics products used as research in it (commits, docs, comments or
+  examples). Describe features in our own words.
 - Keep the credits in `README.md` and `readme.txt`: **Built with AI** to
   aidevops (<https://aidevops.sh>) and the "Made from" line crediting the
   starter (`STANDARDS.md` → Structure).
