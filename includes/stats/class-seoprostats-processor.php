@@ -391,8 +391,9 @@ final class SEOProStats_Processor {
      * @return array<string,mixed>
      */
     private static function fact(array $h, $seq) {
-        $hit   = $h['hit'];
-        $url   = self::split_url(isset($hit['u']) ? (string) $hit['u'] : '');
+        $hit = $h['hit'];
+        // An event without a path takes its pageview's (write_facts()).
+        $url   = isset($hit['u']) && is_string($hit['u']) && $hit['u'] !== '' ? self::split_url($hit['u']) : array('path' => '');
         $props = array();
         if (isset($hit['d']) && is_array($hit['d'])) {
             foreach (array_slice($hit['d'], 0, 30, true) as $key => $value) {
@@ -545,8 +546,31 @@ final class SEOProStats_Processor {
             }
         }
 
+        // Events without a path: their pageview's, from this batch or stored.
+        $page_of = array();
+        $missing = array();
+        foreach ($pv as $h) {
+            $page_of[$h['pkey']] = $h['path_id'];
+        }
+        foreach ($ev as $h) {
+            if ($h['path_id'] === 0 && $h['pkey'] !== '' && !isset($page_of[$h['pkey']])) {
+                $missing[$h['pkey']] = true;
+            }
+        }
+        if ($missing) {
+            $holders = implode(', ', array_fill(0, count($missing), 'UNHEX(%s)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT path_id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', array_keys($missing)))));
+            foreach ((array) $found as $row) {
+                $page_of[$row->k] = (int) $row->path_id;
+            }
+        }
+
         $events = 0;
         foreach ($ev as $h) {
+            if ($h['path_id'] === 0 && isset($page_of[$h['pkey']])) {
+                $h['path_id'] = $page_of[$h['pkey']];
+            }
             // One at a time: each event's id is needed for its properties,
             // and events are far fewer than pageviews.
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table.
