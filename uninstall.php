@@ -16,14 +16,17 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 }
 
 require_once __DIR__ . '/includes/stats/class-seoprostats-schema.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-collection.php';
 
 /**
- * Delete the plugin's tables, options and transients for the current site.
+ * Delete the plugin's tables, collector folder, cron job, options and
+ * transients for the current site.
  */
 function seoprostats_uninstall_site() {
     global $wpdb;
 
     SEOProStats_Schema::drop();
+    SEOProStats_Collection::remove();
     delete_option('seoprostats_options');
     delete_option('seoprostats_options_lock');
     delete_option('seoprostats_db_version');

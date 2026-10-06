@@ -89,8 +89,11 @@ batched and as `text/plain` so no CORS preflight:
 | `v` vitals | sampled page loads, on leave | LCP, INP, CLS, FCP, TTFB and the element or script behind each |
 | `x` error | uncaught errors and rejections | type, message, top 20 stack frames without query strings; at most 10 per page |
 
-Session: a random ID in `sessionStorage`, renewed after 30 minutes without
-activity, with a pageview counter, so pages and events keep their order.
+The tracker stores nothing in the browser (no cookies, `localStorage` or
+`sessionStorage`, which privacy law treats like cookies). It keeps a random
+ID for each page load in memory and sends it with the pageview, its
+engagement and its events, so they can be joined. Visits are made on the
+server (Processing → Sessions).
 
 The tracker skips: logged-in users who can edit posts (by default), feeds,
 previews, the customizer, localhost, Do Not Track and Global Privacy
@@ -120,14 +123,22 @@ the visitor hash, the user agent, the IP address cut to /24 (IPv4) or /48
 (IPv6) for the location lookup, and the country header a CDN sends
 (Cloudflare and others). It answers 204 before any slow work.
 
-The daily salt is random, made by cron for each site-local day, and kept
-in the config file for today and yesterday only; older salts are deleted,
-so old hashes cannot be recomputed. Without a salt for today, the newest
-one is used until cron runs. Without any salt the collector stores nothing.
+The daily salt is random, made by an hourly cron job for each site-local
+day, and kept for today and tomorrow only (tomorrow's is made early, so
+midnight needs no cron run); older salts are deleted, so old hashes cannot
+be made again. Without a salt for today, the newest one is used until cron
+runs. Without any salt the collector stores nothing.
 
-Files live in `wp-content/uploads/seoprostats/` (index.php, deny rules,
-and random file names, because nginx ignores `.htaccess`). Buffer files
-start with `<?php exit; ?>` so a direct request shows nothing.
+Files live in `wp-content/seoprostats/site-{blog id}/`: `config.php`
+(returns an array: salts, time zone, allowed hosts, excluded addresses, the
+IP header to trust) and the buffer files. Not in `uploads/`, where security
+scanners flag PHP files. Every file is PHP that exits before any output (the
+buffer starts with `<?php exit; ?>`), so a direct request shows nothing
+even on nginx, which ignores the `.htaccess` deny rules; an `index.php`
+stops listings. The fast path finds the folder from its own location
+(`wp-content/plugins/seoprostats/collect.php`); where that does not hold
+(a moved or symlinked plugin folder), the loopback test fails and the
+tracker uses the REST route.
 
 ### Server-side capture
 
@@ -153,8 +164,11 @@ to a fresh file, and processes it in batches within a time budget:
 4. Location: CDN country header, else the optional location database
    (DB-IP Lite, monthly download, opt-in), else the browser time zone's
    country. The IP prefix is discarded after the lookup.
-5. Sessions: rows are grouped per session in memory, then written with one
-   `INSERT … ON DUPLICATE KEY UPDATE` per session.
+5. Sessions: a hit joins the visitor's latest visit if that visit's last
+   hit was under 30 minutes earlier, else starts a new one. The visitor
+   hash changes at site-local midnight, so a visit across midnight counts
+   as two. Hits are grouped per visit in memory, then written with one
+   `INSERT … ON DUPLICATE KEY UPDATE` per visit.
 6. Facts: pageviews, events, clicks, vitals and errors in bulk inserts.
    Engagement updates the pageview it belongs to.
 
@@ -177,7 +191,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 |---|---|---|
 | `dict` | distinct text of a kind | `id`, `kind`, `hash` BINARY(8) (unique with kind), `value` |
 | `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `lang_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `source`, `import_id` (revenue is per event, in its currency) |
-| `pageviews` | page load | `id`, `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
+| `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
 | `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (for retention) |
 | `clicks` | click or form submit | `id`, `session_id`, `ts`, `seq`, `path_id`, `kind`, `selector_id`, `label_id`, `target_id`, `flags` (dead, outbound, affiliate, download) |

@@ -186,6 +186,7 @@ final class SEOProStats_Schema {
             // One row per page load or SPA navigation.
             'pageviews' => "CREATE TABLE {$t['pageviews']} (
   id bigint unsigned NOT NULL AUTO_INCREMENT,
+  pkey binary(8) NOT NULL,
   session_id bigint unsigned NOT NULL,
   ts int unsigned NOT NULL,
   seq smallint unsigned NOT NULL,
@@ -194,6 +195,7 @@ final class SEOProStats_Schema {
   scroll tinyint unsigned NOT NULL DEFAULT 0,
   flags tinyint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
+  UNIQUE KEY pkey (pkey),
   UNIQUE KEY session_seq (session_id,seq),
   KEY path_ts (path_id,ts),
   KEY ts (ts)

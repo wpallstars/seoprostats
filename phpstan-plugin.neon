@@ -3,6 +3,8 @@
 # Add the plugin's own folders under paths (for example blocks) and each
 # ignore with the identifier, the file and the reason.
 parameters:
+	paths:
+		- collect.php
 	ignoreErrors:
 		# SEO Pro Stats has no settings features, tabs to rename or admin
 		# parts yet: those lists in SEOProStats_Setup are empty and admin()

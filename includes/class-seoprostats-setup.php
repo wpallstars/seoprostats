@@ -77,6 +77,7 @@ final class SEOProStats_Setup {
      */
     public static function load() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-schema.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-collection.php';
     }
 
     /**
@@ -87,6 +88,7 @@ final class SEOProStats_Setup {
         add_action('admin_init', static function () {
             SEOProStats_Schema::maybe_upgrade();
         });
+        SEOProStats_Collection::init();
     }
 
     /**
