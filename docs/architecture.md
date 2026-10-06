@@ -100,6 +100,14 @@ previews, the customizer, localhost, Do Not Track and Global Privacy
 Control when the owner asks, excluded paths, and visible automation
 (`navigator.webdriver`, headless user agents).
 
+`SEOProStats_Tracker` prints it (a one-line stub in the head queues
+`seoprostats()` calls made earlier) with its config as JSON in the script
+element's `data-cfg` attribute: collector address, the site's hosts, kept
+query parameters, the DNT/GPC switch and excluded paths. Printing costs no
+query: the endpoint choice is an autoloaded option
+(`seoprostats_endpoint`) written by the loopback test. Do Not Track and GPC
+are checked in the browser, so a page cache can keep one copy of the page.
+
 ### Collector
 
 `SEOProStats_Collector` is plain PHP with no WordPress calls, so it runs in

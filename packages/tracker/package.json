@@ -1,0 +1,11 @@
+{
+  "name": "@seoprostats/tracker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The browser script for every SEO Pro Stats site: pageviews, SPA navigation, engagement and events, with no cookies or browser storage. No dependencies.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": true
+}

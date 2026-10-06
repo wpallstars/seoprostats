@@ -13,13 +13,16 @@ site. A phase may start once the phases it depends on are merged.
 
 ## Phase 1: collect, store, show (depends on 0)
 
-- [ ] npm workspaces: `packages/core`, `packages/tracker`,
-      `packages/charts`, `packages/wp-admin`; build into `assets/build/`.
-      Done except `packages/tracker`, which comes with the tracker.
+- [x] npm workspaces: `packages/core`, `packages/tracker`,
+      `packages/charts`, `packages/wp-admin`; build into `assets/build/`
+      (wp-scripts for the app, esbuild for the tracker).
 - [x] Schema and migrations (`includes/stats/class-seoprostats-schema.php`),
       dictionary, uninstall.
-- [ ] Tracker: pageviews, SPA, engagement, events API, outbound and
-      downloads, sessions; inline print; exclusions.
+- [x] Tracker: pageviews, SPA, engagement, events API, outbound and
+      downloads, sessions; inline print; exclusions (editors, feeds,
+      previews, customizer, automation; paths and DNT/GPC by filter until
+      the settings below). Hash routes wait for a processor change: it
+      drops the fragment from paths.
 - [x] Collector (fast path and REST), salts, buffer files, loopback test.
 - [x] Processor: user agents, channels, location (CDN header, time zone),
       sessions, pageviews, events, properties, engagement; minute cron.
@@ -34,13 +37,17 @@ long-term record.
 - [x] Top-level menu at position 3 with the plugin icon; Overview:
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
-- [ ] Tracker (above).
+- [x] Tracker (above).
 - [ ] Nightly summaries into `daily`; retention. Long ranges (year,
       12mo, all time) read `daily`: from the fact tables they read every
       visit in the range, which for all time is the whole `sessions`
       table (58 ms over 42,000 visits on the preview).
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
+- [ ] Purge known page caches (WP-Optimize, LiteSpeed, WP Rocket, W3 Total
+      Cache…) when the plugin version or tracker settings change: cached
+      pages keep the inline tracker they were cached with (seen on the
+      preview, PR #10).
 
 ## Phase 2: behaviour and conversions (depends on 1)
 
