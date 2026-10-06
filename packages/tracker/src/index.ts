@@ -356,20 +356,22 @@ function begin(): void {
 	}
 	win.addEventListener('popstate', navigated);
 
-	doc.addEventListener('visibilitychange', () => {
-		if (doc.visibilityState === 'visible') {
-			visibleFrom = Date.now();
-			return;
-		}
+	// Hidden or left: stop the clock first, so pagehide and visibilitychange
+	// (both fire on leaving, in either order) send one engagement, not two.
+	const away = (): void => {
 		visibleMs = visibleTime();
 		visibleFrom = 0;
 		engagement();
 		flush();
+	};
+	doc.addEventListener('visibilitychange', () => {
+		if (doc.visibilityState === 'visible') {
+			visibleFrom = Date.now();
+		} else {
+			away();
+		}
 	});
-	win.addEventListener('pagehide', () => {
-		engagement();
-		flush();
-	});
+	win.addEventListener('pagehide', away);
 	// Back or forward from the browser's page cache: a new pageview.
 	win.addEventListener('pageshow', (e) => {
 		if (e.persisted) {
