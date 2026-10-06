@@ -23,7 +23,9 @@ site. A phase may start once the phases it depends on are merged.
 - [x] Processor: user agents, channels, location (CDN header, time zone),
       sessions, pageviews, events, properties, engagement; minute cron.
       Bot hits are counted and dropped until the `bots` table (Phase 5).
-- [ ] Nightly summaries into `daily`; retention.
+Order from here: something to see first, then real data, then the
+long-term record.
+
 - [ ] Report engine: ranges, comparison, filters, breakdowns, cache.
 - [ ] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
       `markers`), OpenAPI file, WP-CLI (`stats`, `breakdown`, `process`,
@@ -31,6 +33,8 @@ site. A phase may start once the phases it depends on are merged.
 - [ ] Top-level menu at position 3 with the plugin icon; Overview:
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
+- [ ] Tracker (above).
+- [ ] Nightly summaries into `daily`; retention.
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
 
@@ -77,6 +81,23 @@ site. A phase may start once the phases it depends on are merged.
       undo by import id.
 - [ ] Abilities for MCP clients; aidevops SEO loop recipes in `docs/`.
 - [ ] Optional location database (DB-IP Lite) with our own reader.
+
+## Phase 7: move from other statistics plugins (depends on 6's import)
+
+Bring a site's history across when it switches, on top of the Phase 6
+import (import id, undo, daily aggregates where only totals exist).
+
+- [ ] Jetpack Stats (from WordPress.com, by the site's Jetpack
+      connection): daily views and visitors, top pages, referrers,
+      search terms, countries.
+- [ ] Plugins that keep their data in the site's own database (WP
+      Statistics, Koko Analytics, Independent Analytics, Slimstat,
+      Statify, Matomo for WordPress and other popular ones): read their
+      tables directly, for each its version's table layout, checked
+      against a real install first.
+- [ ] Detection: offer the import when one of these is active or has
+      left its tables; dry run with counts and date range before writing;
+      imported days never overlap days we recorded ourselves.
 
 ## Later
 
