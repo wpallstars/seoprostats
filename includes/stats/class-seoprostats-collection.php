@@ -30,6 +30,12 @@ final class SEOProStats_Collection {
     /** Hourly cron hook: salts, config and the loopback test. */
     const CRON_HOOK = 'seoprostats_hourly';
 
+    /** Cron hook, every minute: the processor (one file check when idle). */
+    const PROCESS_HOOK = 'seoprostats_process';
+
+    /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
+    const PROCESS_OPTION = 'seoprostats_processor';
+
     /** REST namespace. */
     const REST_NAMESPACE = 'seoprostats/v1';
 
@@ -38,6 +44,8 @@ final class SEOProStats_Collection {
      */
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'refresh'));
+        add_action(self::PROCESS_HOOK, array(__CLASS__, 'process'));
+        add_filter('cron_schedules', array(__CLASS__, 'cron_schedules')); // phpcs:ignore WordPress.WP.CronInterval -- one minute on purpose: hits wait in the buffer until it runs, and an idle run is one file check.
         add_action('rest_api_init', array(__CLASS__, 'register_route'));
         add_action('admin_init', array(__CLASS__, 'schedule'));
         add_action('update_option_timezone_string', array(__CLASS__, 'refresh'));
@@ -54,6 +62,31 @@ final class SEOProStats_Collection {
             wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', self::CRON_HOOK);
             self::refresh();
         }
+        if (!wp_next_scheduled(self::PROCESS_HOOK)) {
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'seoprostats_minute', self::PROCESS_HOOK);
+        }
+    }
+
+    /**
+     * The one-minute cron schedule.
+     *
+     * @param array<string,array<string,mixed>> $schedules Schedules.
+     * @return array<string,array<string,mixed>>
+     */
+    public static function cron_schedules($schedules) {
+        $schedules['seoprostats_minute'] = array(
+            'interval' => MINUTE_IN_SECONDS,
+            'display'  => __('Every minute (SEO Pro Stats)', 'seoprostats'),
+        );
+        return $schedules;
+    }
+
+    /**
+     * Cron: process buffered hits. The processor loads only here.
+     */
+    public static function process() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
+        SEOProStats_Processor::run();
     }
 
     /**
@@ -296,8 +329,10 @@ final class SEOProStats_Collection {
             self::remove_dir($parent);
         }
         wp_clear_scheduled_hook(self::CRON_HOOK);
+        wp_clear_scheduled_hook(self::PROCESS_HOOK);
         delete_option(self::SALTS_OPTION);
         delete_option(self::STATE_OPTION);
+        delete_option(self::PROCESS_OPTION);
     }
 
     /**

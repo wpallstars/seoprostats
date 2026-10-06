@@ -6,7 +6,7 @@ site. A phase may start once the phases it depends on are merged.
 
 ## Phase 0: groundwork
 
-- [ ] Starter: JavaScript build support for every plugin (sources and
+- [x] Starter: JavaScript build support for every plugin (sources and
       `package*.json` left out of zips, built files committed), then sync
       core files here.
 - [x] `docs/architecture.md` and this plan.
@@ -15,11 +15,11 @@ site. A phase may start once the phases it depends on are merged.
 
 - [ ] npm workspaces: `packages/core`, `packages/tracker`,
       `packages/charts`, `packages/wp-admin`; build into `assets/build/`.
-- [ ] Schema and migrations (`includes/stats/class-seoprostats-schema.php`),
+- [x] Schema and migrations (`includes/stats/class-seoprostats-schema.php`),
       dictionary, uninstall.
 - [ ] Tracker: pageviews, SPA, engagement, events API, outbound and
       downloads, sessions; inline print; exclusions.
-- [ ] Collector (fast path and REST), salts, buffer files, loopback test.
+- [x] Collector (fast path and REST), salts, buffer files, loopback test.
 - [ ] Processor: user agents, channels, location (CDN header, time zone),
       sessions, facts; cron; nightly summaries; retention.
 - [ ] Report engine: ranges, comparison, filters, breakdowns, cache.

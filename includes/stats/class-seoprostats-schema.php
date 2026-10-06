@@ -74,10 +74,20 @@ final class SEOProStats_Schema {
      * @return bool Whether the tables are at VERSION.
      */
     public static function maybe_upgrade() {
-        if ((int) get_option(self::OPTION, 0) >= self::VERSION) {
+        if (self::is_current()) {
             return true;
         }
         return self::install();
+    }
+
+    /**
+     * Whether the tables are at VERSION (no query: the option is autoloaded).
+     * Cron and the API check this, as only admin requests upgrade.
+     *
+     * @return bool
+     */
+    public static function is_current() {
+        return (int) get_option(self::OPTION, 0) >= self::VERSION;
     }
 
     /**
