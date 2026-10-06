@@ -17,14 +17,16 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 
 require_once __DIR__ . '/includes/stats/class-seoprostats-schema.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-collection.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-demo.php';
 
 /**
- * Delete the plugin's tables, collector folder, cron job, options and
- * transients for the current site.
+ * Delete the plugin's tables (live and demo), collector folder, cron job,
+ * options and transients for the current site.
  */
 function seoprostats_uninstall_site() {
     global $wpdb;
 
+    SEOProStats_Demo::remove();
     SEOProStats_Schema::drop();
     SEOProStats_Collection::remove();
     delete_option('seoprostats_options');
@@ -52,6 +54,9 @@ if (is_multisite()) {
 
 // Hidden "SEO Pro Stats can do the job of these plugins" lines.
 delete_metadata('user', 0, 'seoprostats_replaced_plugins_hidden', '', true);
+
+// Who chose to see the demo data.
+delete_metadata('user', 0, 'seoprostats_data', '', true);
 
 // Latest GitHub releases (the shared GitHub updater). Only a cache: another
 // plugin's copy asks again.

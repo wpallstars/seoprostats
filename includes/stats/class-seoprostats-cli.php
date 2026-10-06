@@ -1,8 +1,9 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * process, rollup, prune and doctor. Reports come from the same engine as the REST API,
- * so the numbers match (docs/architecture.md → Interfaces).
+ * process, rollup, prune, doctor, demo and purge-caches. Reports come from
+ * the same engine as the REST API, so the numbers match, on live data or
+ * with --data=demo the demo data (docs/architecture.md → Interfaces).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -61,6 +62,15 @@ final class SEOProStats_CLI {
      * [--filter=<filters>]
      * : dimension:operator:value, several separated by ";" (comma means any of), or a JSON list.
      *
+     * [--data=<data>]
+     * : live, or demo for the demo data (wp seoprostats demo make).
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
      * [--format=<format>]
      * : table, json, csv or yaml.
      * ---
@@ -77,7 +87,9 @@ final class SEOProStats_CLI {
      */
     public function stats($args, $assoc) {
         $req    = $this->request($assoc);
-        $answer = SEOProStats_Query::stats($req);
+        $answer = $this->on_data($assoc, static function () use ($req) {
+            return SEOProStats_Query::stats($req);
+        });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
@@ -122,6 +134,15 @@ final class SEOProStats_CLI {
      * [--filter=<filters>]
      * : As for stats.
      *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
      * [--format=<format>]
      * : table, json, csv or yaml.
      * ---
@@ -132,7 +153,10 @@ final class SEOProStats_CLI {
      * @param array<string,string> $assoc Options.
      */
     public function timeseries($args, $assoc) {
-        $answer = SEOProStats_Query::timeseries($this->request($assoc));
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req) {
+            return SEOProStats_Query::timeseries($req);
+        });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
@@ -176,6 +200,15 @@ final class SEOProStats_CLI {
      * default: 0
      * ---
      *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
      * [--format=<format>]
      * : table, json, csv or yaml.
      * ---
@@ -192,7 +225,10 @@ final class SEOProStats_CLI {
      */
     public function breakdown($args, $assoc) {
         $assoc['dimension'] = $args[0];
-        $answer             = SEOProStats_Query::breakdown($this->request($assoc));
+        $req                = $this->request($assoc);
+        $answer             = $this->on_data($assoc, static function () use ($req) {
+            return SEOProStats_Query::breakdown($req);
+        });
         if (is_wp_error($answer)) {
             WP_CLI::error($answer->get_error_message());
             return;
@@ -215,6 +251,15 @@ final class SEOProStats_CLI {
      *
      * ## OPTIONS
      *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
      * [--format=<format>]
      * : table or json.
      * ---
@@ -225,7 +270,7 @@ final class SEOProStats_CLI {
      * @param array<string,string> $assoc Options.
      */
     public function realtime($args, $assoc) {
-        $answer = SEOProStats_Query::realtime();
+        $answer = $this->on_data($assoc, array('SEOProStats_Query', 'realtime'));
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
@@ -509,6 +554,94 @@ final class SEOProStats_CLI {
             return;
         }
         WP_CLI::success(__('No known page cache is active.', 'seoprostats'));
+    }
+
+    /**
+     * Make, show or remove the demo data: made-up visits in tables of
+     * their own, for training, screenshots and testing. Live data is
+     * never touched. Reports show it with --data=demo, and the screens
+     * with the Demo data switch.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : make (remove any demo data, then make it again), status or remove.
+     * ---
+     * options:
+     *   - make
+     *   - status
+     *   - remove
+     * ---
+     *
+     * [--days=<days>]
+     * : Days of visits back from today, for make.
+     * ---
+     * default: 400
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats demo make
+     *     wp seoprostats demo make --days=90
+     *     wp seoprostats stats --data=demo --range=30d --compare=prev
+     *     wp seoprostats demo remove
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function demo($args, $assoc) {
+        $action = isset($args[0]) ? (string) $args[0] : 'status';
+        if ($action === 'remove') {
+            SEOProStats_Demo::remove();
+            WP_CLI::success(__('Demo data removed. Live data is unchanged.', 'seoprostats'));
+            return;
+        }
+        if ($action === 'make') {
+            $start = microtime(true);
+            if (!SEOProStats_Demo::start(isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Demo::DAYS)) {
+                WP_CLI::error(__('The demo tables could not be made.', 'seoprostats'));
+            }
+            $last = -1.0;
+            do {
+                $status = SEOProStats_Demo::step(60);
+                if ($status['progress'] > $last) {
+                    WP_CLI::log(sprintf('%d%%', (int) round($status['progress'] * 100)));
+                    $last = $status['progress'];
+                } else {
+                    sleep(2); // Another request is making it.
+                }
+            } while ($status['status'] === 'making');
+            $totals = SEOProStats_Demo::run(static function () {
+                return SEOProStats_Query::stats((array) SEOProStats_Query::request(array('range' => 'all')));
+            });
+            WP_CLI::success(sprintf(
+                /* translators: 1: days, 2: visits, 3: pageviews, 4: events, 5: seconds */
+                __('Demo data made: %1$d days, %2$d visits, %3$d pageviews, %4$d events, in %5$d s.', 'seoprostats'),
+                $status['days'],
+                $totals['metrics']['visits'],
+                $totals['metrics']['pageviews'],
+                $totals['metrics']['events'],
+                (int) round(microtime(true) - $start)
+            ));
+            return;
+        }
+        $status = SEOProStats_Demo::status();
+        WP_CLI\Utils\format_items('table', array($status), array_keys($status));
+    }
+
+    /**
+     * Run a report on the data set of the --data option; exits on an error.
+     *
+     * @param array<string,string> $assoc Options.
+     * @param callable             $work  Makes the answer.
+     * @return mixed
+     */
+    private function on_data(array $assoc, callable $work) {
+        $answer = SEOProStats_API::on_data(isset($assoc['data']) ? (string) $assoc['data'] : 'live', $work);
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        return $answer;
     }
 
     /**

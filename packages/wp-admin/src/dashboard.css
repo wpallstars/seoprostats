@@ -12,7 +12,8 @@
 	color: var(--spst-text);
 }
 
-/* Toolbar: period and comparison on the left, live count on the right. */
+/* Toolbar: period and comparison on the left; live count and the
+   Live/Demo switch on the right. */
 .spst-toolbar {
 	display: flex;
 	flex-wrap: wrap;
@@ -20,6 +21,26 @@
 	justify-content: space-between;
 	gap: 12px;
 	margin: 12px 0 16px;
+}
+
+.spst-toolbar__end {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 16px;
+	/* On the right, also when it is alone (no demo data yet). */
+	margin-inline-start: auto;
+}
+
+.spst-demo-switch .components-toggle-control__label,
+.spst-demo-switch label {
+	white-space: nowrap;
+}
+
+/* Older WordPress adds a bottom margin to the toggle. */
+.spst-demo-switch.components-base-control,
+.spst-demo-switch .components-base-control__field {
+	margin-bottom: 0;
 }
 
 .spst-controls {

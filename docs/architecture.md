@@ -283,6 +283,39 @@ not summarised. `wp seoprostats prune --dry-run` counts them.
 | Daily summaries, Search Console totals, changes | forever | Small; the long-term record |
 | Page snapshots | last 10 per page | Enough for before and after |
 
+### Demo data
+
+Demo data is made-up visits for training, screenshots and testing, in
+tables of their own with the same layout: `{$wpdb->prefix}seoprostats_demo_*`.
+`SEOProStats_Schema::use_set('demo')` points every table name, and the
+options that belong to a data set (table version, processing and summary
+progress: `SEOProStats_Schema::option()`, with `_demo` after the live
+name), at them for the rest of the request; report caches and the
+dictionary's request cache are kept per data set. Live and demo data never
+meet, and cron, retention and visitor requests only ever use live data.
+
+`SEOProStats_Demo` makes the visits as the collector would write them
+(lines of hits, with real user agents, referrers, campaign tags, click
+IDs, countries and languages) and hands them to the processor
+(`SEOProStats_Processor::ingest()`); the daily summaries follow. So demo
+reports go through the same processing, summaries and queries as live
+ones, and making demo data tests them. By default it covers 400 days
+(at most 800): traffic grows over the period, is quieter at weekends,
+moves a little with the seasons, has the odd spike (a post shared on a
+forum, a newsletter), and has a monthly newsletter campaign, paid search
+and social, AI answers, events with properties, and purchases with revenue
+in three currencies. Making it is done in slices of up to ten seconds per
+request (`POST /demo`, which the screen repeats) or in one go
+(`wp seoprostats demo make`); an option lock keeps two requests from
+making the same visits. While someone looks at it, demo data is topped
+up to the present at most every five minutes, so today and realtime have
+visits. Removing it (`DELETE /demo`, `wp seoprostats demo remove`, and
+uninstall) drops its tables and options.
+
+Each person chooses what they see with the **Demo data** switch on the
+Overview (user meta `seoprostats_data`, `POST /view`); the Dashboard
+widget follows the same choice and says when it shows demo data.
+
 ## Reports
 
 ### Metric definitions
@@ -321,7 +354,7 @@ filter, and headline metrics and time series with one `is` filter of one
 visit value (a source, a country…); other filters, and hours, read the
 fact tables, so they reach back only as far as retention keeps visits.
 "All time" starts at the first day in `daily` or `sessions`. Answers are cached for five minutes (object cache, else
-transients) by a hash of the request, checked against the data version
+transients) by a hash of the request and data set, checked against the data version
 (the processor's last run), with one entry per request so they never pile
 up. Realtime is never cached.
 
@@ -337,14 +370,17 @@ in the future meets the same length of the other period.
   `docs/api/openapi.yaml`. Read routes need the `view_seoprostats`
   capability (administrators, and the roles Settings → Data allows); write routes
   need `manage_options`. Agents authenticate with Application Passwords.
-  Routes: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
+  Report routes take `data=live|demo` (Storage → Demo data); `demo`
+  makes and removes the demo data and `view` saves each person's choice.
+  Routes: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`, `demo`, `view`,
   `pages`, `page`, `flow`, `journeys`, `clicks`, `goals`, `funnels`,
   `properties`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
   `backlinks`, `changes`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `pages`, `search`, `changes`, `annotate`,
-  `import`, `export`, `process`, `rollup`, `prune`, `doctor`.
+  `import`, `export`, `process`, `rollup`, `prune`, `doctor`, `demo`
+  (`make`, `status`, `remove`); reports take `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter.

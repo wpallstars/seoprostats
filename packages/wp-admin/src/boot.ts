@@ -5,6 +5,18 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+export type DataSet = 'live' | 'demo';
+
+/** GET /demo (SEOProStats_Demo::status()). */
+export interface DemoStatus {
+	status: 'none' | 'making' | 'ready';
+	days: number;
+	/** 0 to 1 while making. */
+	progress: number;
+	from: string | null;
+	made: string | null;
+}
+
 export interface Boot {
 	/** The user's language, e.g. en_GB. */
 	locale: string;
@@ -15,6 +27,9 @@ export interface Boot {
 	canManage: boolean;
 	/** Dashboard only: no saved arrangement includes the widget, so it goes to its default place. */
 	placeWidget: boolean;
+	/** The data set this person chose to see. */
+	data: DataSet;
+	demo: DemoStatus;
 }
 
 declare global {
@@ -32,6 +47,8 @@ export const boot: Boot = {
 	settingsUrl: raw.settingsUrl ?? '',
 	canManage: raw.canManage ?? false,
 	placeWidget: raw.placeWidget ?? false,
+	data: raw.data === 'demo' ? 'demo' : 'live',
+	demo: raw.demo ?? { status: 'none', days: 0, progress: 0, from: null, made: null },
 };
 
 /** BCP 47 form for Intl (en_GB → en-GB); falls back to the browser's. */

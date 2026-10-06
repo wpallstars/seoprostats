@@ -20,6 +20,10 @@ info:
 
     Answers are cached for up to five minutes; `generated` says when an
     answer was worked out and `cached` whether it came from the cache.
+
+    Every report reads live statistics, or with `data=demo` the demo data:
+    made-up visits in tables of their own, for training, screenshots and
+    testing (`/demo` makes and removes it). The two are never mixed.
   license:
     name: GPL-3.0-or-later
     identifier: GPL-3.0-or-later
@@ -40,6 +44,7 @@ paths:
         - $ref: '#/components/parameters/to'
         - $ref: '#/components/parameters/compare'
         - $ref: '#/components/parameters/filters'
+        - $ref: '#/components/parameters/data'
       responses:
         '200':
           description: Metrics.
@@ -53,6 +58,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /timeseries:
     get:
@@ -71,6 +78,7 @@ paths:
             type: string
             enum: [auto, hour, day, month]
             default: auto
+        - $ref: '#/components/parameters/data'
       responses:
         '200':
           description: Points; with a comparison, the earlier period's points in the same order.
@@ -84,6 +92,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /breakdown:
     get:
@@ -118,6 +128,7 @@ paths:
             type: integer
             minimum: 0
             default: 0
+        - $ref: '#/components/parameters/data'
       responses:
         '200':
           description: Rows.
@@ -131,12 +142,16 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /realtime:
     get:
       operationId: getRealtime
       summary: Visitors active in the last 30 minutes. Never cached.
       description: Hits wait up to a minute in the collector's buffer before they count.
+      parameters:
+        - $ref: '#/components/parameters/data'
       responses:
         '200':
           description: Now.
@@ -148,6 +163,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /markers:
     get:
@@ -158,6 +175,7 @@ paths:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/data'
       responses:
         '200':
           description: Markers.
@@ -167,6 +185,103 @@ paths:
                 $ref: '#/components/schemas/MarkersAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /demo:
+    get:
+      operationId: getDemo
+      summary: Whether the demo data is made, and which data set the signed-in person sees.
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoStatus'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: makeDemo
+      summary: Make the demo data, or carry on making it.
+      description: |
+        Needs manage_options. Starts when there is no demo data (or with
+        `restart`), then each call does up to ten seconds of work: call
+        again until `status` is `ready`. Live statistics are not touched.
+        While it is shown, demo data is topped up to the present, so today
+        and realtime have visits.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days:
+                  type: integer
+                  minimum: 1
+                  maximum: 800
+                  default: 400
+                  description: Days of visits back from today.
+                restart:
+                  type: boolean
+                  default: false
+                  description: Remove the demo data and make it again.
+      responses:
+        '200':
+          description: Status after this slice of work.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoStatus'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      operationId: removeDemo
+      summary: Remove the demo data (its tables). Needs manage_options; live statistics are not touched.
+      responses:
+        '200':
+          description: Status (none).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DemoStatus'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /view:
+    post:
+      operationId: setView
+      summary: Save the data set the signed-in person sees on the screens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data]
+              properties:
+                data:
+                  type: string
+                  enum: [live, demo]
+      responses:
+        '200':
+          description: Saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: string
+                    enum: [live, demo]
         '401':
           $ref: '#/components/responses/Forbidden'
         '403':
@@ -250,8 +365,22 @@ components:
             items:
               type: string
             examples: [['page:matches:/blog/*', 'country:is_not:US']]
+    data:
+      name: data
+      in: query
+      description: live (the site's statistics) or demo (the demo data, once made).
+      schema:
+        type: string
+        enum: [live, demo]
+        default: live
 
   responses:
+    NoDemo:
+      description: data=demo, and there is no demo data yet (POST /demo makes it).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     BadRequest:
       description: A parameter cannot be read; the message says how to write it.
       content:
@@ -505,6 +634,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Marker'
+
+    DemoStatus:
+      type: object
+      required: [status, days, progress, from, made, viewing]
+      properties:
+        status:
+          type: string
+          enum: [none, making, ready]
+        days:
+          type: integer
+          description: Days of visits asked for.
+        progress:
+          type: number
+          description: 0 to 1.
+        from:
+          type: [string, 'null']
+          format: date-time
+          description: Start of the first demo day.
+        made:
+          type: [string, 'null']
+          format: date-time
+          description: When it was ready.
+        viewing:
+          type: string
+          enum: [live, demo]
+          description: The data set the signed-in person chose to see.
 
     Error:
       type: object

@@ -1,7 +1,9 @@
 <?php
 /**
  * The read REST API (namespace seoprostats/v1): stats, timeseries,
- * breakdown, realtime and markers. Contract: docs/api/openapi.yaml.
+ * breakdown, realtime and markers, each on live data or the demo data
+ * (data=demo); demo (make, carry on, remove) and view (the data set a
+ * person sees). Contract: docs/api/openapi.yaml.
  *
  * Reading needs the view_seoprostats capability: administrators (anyone
  * with manage_options) and the roles Settings → Data allows. Agents use
@@ -69,6 +71,26 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-dict.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-demo.php';
+    }
+
+    /**
+     * Run a report on the data set asked for: live, or demo when it is
+     * made (topped up to now first).
+     *
+     * @param string   $data live or demo.
+     * @param callable $work Makes the answer.
+     * @return mixed|WP_Error The answer.
+     */
+    public static function on_data($data, callable $work) {
+        if ($data !== 'demo') {
+            return $work();
+        }
+        if (!SEOProStats_Demo::ready()) {
+            return new WP_Error('seoprostats_no_demo', __('There is no demo data yet. An administrator can make it: switch on Demo data in SEO Pro Stats, or run wp seoprostats demo make.', 'seoprostats'), array('status' => 404));
+        }
+        SEOProStats_Demo::refresh();
+        return SEOProStats_Demo::run($work);
     }
 
     /**
@@ -115,11 +137,112 @@ final class SEOProStats_API {
         ));
         register_rest_route($ns, '/realtime', $read + array(
             'callback' => array(__CLASS__, 'realtime'),
+            'args'     => array('data' => $base['data']),
         ));
         register_rest_route($ns, '/markers', $read + array(
             'callback' => array(__CLASS__, 'markers'),
             'args'     => $base,
         ));
+
+        $manage = array(__CLASS__, 'can_manage');
+        register_rest_route($ns, '/demo', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'permission_callback' => array(__CLASS__, 'can_read'),
+                'callback'            => array(__CLASS__, 'demo_status'),
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'demo_make'),
+                'args'                => array(
+                    'days'    => array(
+                        'description' => __('Days of demo visits back from today.', 'seoprostats'),
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'maximum'     => SEOProStats_Demo::MAX_DAYS,
+                        'default'     => SEOProStats_Demo::DAYS,
+                    ),
+                    'restart' => array(
+                        'description' => __('Remove the demo data and make it again.', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::DELETABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'demo_remove'),
+            ),
+        ));
+        register_rest_route($ns, '/view', array(
+            'methods'             => WP_REST_Server::EDITABLE,
+            'permission_callback' => array(__CLASS__, 'can_read'),
+            'callback'            => array(__CLASS__, 'view'),
+            'args'                => array('data' => array('required' => true) + array_diff_key($base['data'], array('default' => true))),
+        ));
+    }
+
+    /**
+     * Whether the current user may make and remove demo data.
+     *
+     * @return bool
+     */
+    public static function can_manage() {
+        return current_user_can('manage_options');
+    }
+
+    /**
+     * GET /demo: whether demo data is made.
+     *
+     * @return WP_REST_Response
+     */
+    public static function demo_status() {
+        return rest_ensure_response(SEOProStats_Demo::status() + array('viewing' => SEOProStats_Demo::viewing()));
+    }
+
+    /**
+     * POST /demo: start making demo data, or carry on; one call does up to
+     * SEOProStats_Demo::BUDGET seconds of work. Call again until ready.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function demo_make($request) {
+        $status = SEOProStats_Demo::status();
+        if ($status['status'] === 'none' || $request->get_param('restart')) {
+            if (!SEOProStats_Demo::start((int) $request->get_param('days'))) {
+                return new WP_Error('seoprostats_demo_tables', __('The demo tables could not be made.', 'seoprostats'), array('status' => 500));
+            }
+        }
+        return rest_ensure_response(SEOProStats_Demo::step() + array('viewing' => SEOProStats_Demo::viewing()));
+    }
+
+    /**
+     * DELETE /demo: remove the demo tables. Live data is untouched.
+     *
+     * @return WP_REST_Response
+     */
+    public static function demo_remove() {
+        SEOProStats_Demo::remove();
+        return rest_ensure_response(SEOProStats_Demo::status() + array('viewing' => SEOProStats_Demo::viewing()));
+    }
+
+    /**
+     * POST /view: the data set the current user sees on the screens.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response
+     */
+    public static function view($request) {
+        $data = $request->get_param('data') === 'demo' ? 'demo' : 'live';
+        if ($data === 'demo') {
+            update_user_meta(get_current_user_id(), SEOProStats_Demo::USER_META, 'demo');
+        } else {
+            delete_user_meta(get_current_user_id(), SEOProStats_Demo::USER_META);
+        }
+        return rest_ensure_response(array('data' => $data));
     }
 
     /**
@@ -164,11 +287,16 @@ final class SEOProStats_API {
     /**
      * GET /realtime.
      *
-     * @return WP_REST_Response
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
      */
-    public static function realtime() {
+    public static function realtime($request) {
+        $answer = self::on_data((string) $request->get_param('data'), array('SEOProStats_Query', 'realtime'));
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
         self::short_floats();
-        return rest_ensure_response(SEOProStats_Query::realtime());
+        return rest_ensure_response($answer);
     }
 
     /**
@@ -201,13 +329,15 @@ final class SEOProStats_API {
         if (is_wp_error($req)) {
             return $req;
         }
-        if ($report === 'stats') {
-            $answer = SEOProStats_Query::stats($req);
-        } elseif ($report === 'timeseries') {
-            $answer = SEOProStats_Query::timeseries($req);
-        } else {
-            $answer = SEOProStats_Query::breakdown($req);
-        }
+        $answer = self::on_data((string) $request->get_param('data'), static function () use ($req, $report) {
+            if ($report === 'stats') {
+                return SEOProStats_Query::stats($req);
+            }
+            if ($report === 'timeseries') {
+                return SEOProStats_Query::timeseries($req);
+            }
+            return SEOProStats_Query::breakdown($req);
+        });
         if (is_wp_error($answer)) {
             return $answer;
         }
@@ -251,6 +381,12 @@ final class SEOProStats_API {
             // means "any of" inside one filter. The engine checks it.
             'filters' => array(
                 'description' => __('Filters: dimension:operator:value strings (comma means any of), or a JSON list of {dimension, op, values}.', 'seoprostats'),
+            ),
+            'data'    => array(
+                'description' => __('Live statistics, or the demo data (made-up visits for training, screenshots and testing).', 'seoprostats'),
+                'type'        => 'string',
+                'enum'        => SEOProStats_Schema::SETS,
+                'default'     => 'live',
             ),
         );
         if ($breakdown) {

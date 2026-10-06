@@ -13,6 +13,7 @@ import { errorMessage, useStats, useTimeseries } from './api';
 import { boot, locale } from './boot';
 import { Change } from './components/Change';
 import { Sparkline } from './components/Sparkline';
+import { setDataSet, useDataSet } from './data';
 import { metricLabel } from './labels';
 import { mount } from './mount';
 import { placeWidget } from './placeWidget';
@@ -20,7 +21,13 @@ import './widget.css';
 
 const TODAY_METRICS: MetricKey[] = ['visitors', 'pageviews', 'bounce_rate'];
 
+// Demo data chosen but not made (yet): the widget shows live statistics.
+if (boot.data === 'demo' && boot.demo.status !== 'ready') {
+	setDataSet('live');
+}
+
 function Widget() {
+	const data = useDataSet();
 	const today = useStats({ range: 'today', compare: 'prev', filters: [] });
 	const week = useTimeseries({ range: '7d', compare: 'none', filters: [] });
 
@@ -37,7 +44,10 @@ function Widget() {
 
 	return (
 		<div className="spst-widget">
-			<h3 className="spst-widget__heading">{__('Today so far', 'seoprostats')}</h3>
+			<h3 className="spst-widget__heading">
+				{__('Today so far', 'seoprostats')}
+				{data === 'demo' && <span className="spst-widget__demo">{__('Demo data', 'seoprostats')}</span>}
+			</h3>
 			<dl className="spst-widget__metrics">
 				{TODAY_METRICS.map((key) => (
 					<div key={key} className="spst-widget__metric">

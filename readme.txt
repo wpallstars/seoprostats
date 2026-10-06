@@ -41,6 +41,10 @@ Made from WP Plugin Starter (https://github.com/wpallstars/wp-plugin-starter-tem
 
 SEO Pro Stats in the admin menu, under Dashboard, and a widget on the Dashboard. They need visits: open the site logged out, or in a private window, and they show within a minute or two.
 
+= Can I see what it shows before my site has visits? =
+
+Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.
+
 = Where do I get help? =
 
 Ask aidevops (https://aidevops.sh): open the plugin's repository, or your site, with it and ask. To report a problem, use the Support link on the settings screen.

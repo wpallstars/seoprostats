@@ -1,0 +1,646 @@
+<?php
+/**
+ * Demo data: made-up visits in tables of their own (seoprostats_demo_*),
+ * for training, screenshots and testing. Never mixed with live data.
+ *
+ * Visits are made as the collector would write them (lines of hits) and
+ * go through the processor and the daily summaries, so demo reports use
+ * the same code and queries as live ones. Traffic grows over the period,
+ * with weekends, seasons, the odd spike, campaigns, paid visits, AI
+ * answers, events with properties, and purchases with revenue. While it
+ * is shown, demo data is topped up to the present, so today and realtime
+ * have visits too. Design: docs/architecture.md → Demo data.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ *
+ * @package SEOProStats
+ * @since 0.3.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class SEOProStats_Demo {
+
+    /** Progress (autoload off): status (making, ready), days, from, upto (made through), made. */
+    const OPTION = 'seoprostats_demo';
+
+    /** Lock against two requests making the same visits. */
+    const LOCK_OPTION = 'seoprostats_demo_lock';
+
+    /** Per-user choice of the data shown (user meta): live or demo. */
+    const USER_META = 'seoprostats_data';
+
+    /** Days made by default: over a year, for year-on-year and 12-month views. */
+    const DAYS = 400;
+
+    /** Most days. */
+    const MAX_DAYS = 800;
+
+    /** Seconds of work per request. */
+    const BUDGET = 10;
+
+    /** Top up when the newest visit made is older than this (seconds). */
+    const FRESH = 300;
+
+    /** Seconds a lock is honoured. */
+    const LOCK_TTL = 120;
+
+    /** Visits a day at the end of the period, before weekends and seasons. */
+    const PEAK = 230;
+
+    /**
+     * Where visits come from: weight, referrer, landing query ({c}: the
+     * month's campaign, {id}: a click ID), landing pages.
+     */
+    const SOURCES = array(
+        'direct'     => array(24, '', '', 'home'),
+        'google'     => array(30, 'https://www.google.com/', '', 'content'),
+        'bing'       => array(4, 'https://www.bing.com/', '', 'content'),
+        'duckduckgo' => array(2.5, 'https://duckduckgo.com/', '', 'content'),
+        'ecosia'     => array(0.5, 'https://www.ecosia.org/', '', 'content'),
+        'chatgpt'    => array(3, 'https://chatgpt.com/', '?utm_source=chatgpt.com', 'content'),
+        'perplexity' => array(1.2, 'https://www.perplexity.ai/', '', 'content'),
+        'claude'     => array(0.6, 'https://claude.ai/', '', 'content'),
+        'gemini'     => array(0.5, 'https://gemini.google.com/', '', 'content'),
+        'reddit'     => array(3, 'https://www.reddit.com/r/Wordpress/', '', 'content'),
+        'linkedin'   => array(2, 'https://www.linkedin.com/', '', 'home'),
+        'x'          => array(1.5, 'https://t.co/', '', 'content'),
+        'youtube'    => array(1, 'https://www.youtube.com/', '', 'product'),
+        'facebook'   => array(1.5, 'https://www.facebook.com/', '', 'home'),
+        'hn'         => array(0.6, 'https://news.ycombinator.com/', '', 'content'),
+        'newsletter' => array(3, '', '?utm_source=newsletter&utm_medium=email&utm_campaign={c}', 'campaign'),
+        'gmail'      => array(1, 'https://mail.google.com/', '', 'home'),
+        'google_ads' => array(3, 'https://www.google.com/', '?utm_source=google&utm_medium=cpc&utm_campaign=brand&gclid={id}', 'product'),
+        'meta_ads'   => array(1.2, 'https://m.facebook.com/', '?utm_source=facebook&utm_medium=paid_social&utm_campaign=autumn-sale&fbclid={id}', 'shop'),
+        'partner'    => array(2, 'https://example.org/best-wordpress-plugins/', '', 'product'),
+        'wordpress'  => array(1.5, 'https://wordpress.org/support/', '', 'docs'),
+        'github'     => array(1, 'https://github.com/', '', 'docs'),
+    );
+
+    /** Landing pages by kind: path => weight. */
+    const LANDINGS = array(
+        'home'     => array('/' => 10, '/about/' => 1),
+        'content'  => array('/blog/core-web-vitals-explained/' => 6, '/blog/how-to-read-search-rankings/' => 6, '/blog/privacy-friendly-analytics/' => 5, '/blog/speed-up-wordpress/' => 5, '/blog/what-changed-after-an-update/' => 3, '/docs/faq/' => 2, '/' => 3),
+        'product'  => array('/features/' => 5, '/pricing/' => 4, '/' => 3),
+        'campaign' => array('/blog/what-changed-after-an-update/' => 5, '/pricing/' => 3),
+        'shop'     => array('/shop/' => 3, '/shop/pro-licence/' => 4),
+        'docs'     => array('/docs/' => 4, '/docs/getting-started/' => 5, '/docs/faq/' => 3),
+    );
+
+    /** Pages visited next: path => weight. */
+    const PAGES = array(
+        '/'                                    => 18,
+        '/blog/'                               => 8,
+        '/blog/core-web-vitals-explained/'     => 6,
+        '/blog/how-to-read-search-rankings/'   => 6,
+        '/blog/privacy-friendly-analytics/'    => 5,
+        '/blog/speed-up-wordpress/'            => 5,
+        '/blog/what-changed-after-an-update/'  => 3,
+        '/features/'                           => 7,
+        '/pricing/'                            => 8,
+        '/docs/'                               => 5,
+        '/docs/getting-started/'               => 4,
+        '/docs/faq/'                           => 3,
+        '/about/'                              => 2,
+        '/contact/'                            => 3,
+        '/shop/'                               => 4,
+        '/shop/pro-licence/'                   => 4,
+    );
+
+    /** Browsers and devices: weight, user agent, screen width. */
+    const DEVICES = array(
+        array(30, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 1920),
+        array(9, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 1512),
+        array(7, 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15', 1440),
+        array(7, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0', 1920),
+        array(4, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:143.0) Gecko/20100101 Firefox/143.0', 1920),
+        array(2, 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0', 1920),
+        array(18, 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36', 412),
+        array(3, 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/28.0 Chrome/130.0.0.0 Mobile Safari/537.36', 384),
+        array(16, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1', 393),
+        array(2, 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0.7390.41 Mobile/15E148 Safari/604.1', 393),
+        array(3, 'Mozilla/5.0 (iPad; CPU OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Mobile/15E148 Safari/604.1', 820),
+    );
+
+    /** Where visitors are: weight, country, language, time zone. */
+    const PLACES = array(
+        array(30, 'US', 'en-US', 'America/New_York'),
+        array(8, 'US', 'en-US', 'America/Los_Angeles'),
+        array(18, 'GB', 'en-GB', 'Europe/London'),
+        array(8, 'DE', 'de-DE', 'Europe/Berlin'),
+        array(5, 'FR', 'fr-FR', 'Europe/Paris'),
+        array(3, 'NL', 'nl-NL', 'Europe/Amsterdam'),
+        array(3, 'ES', 'es-ES', 'Europe/Madrid'),
+        array(7, 'IN', 'en-IN', 'Asia/Kolkata'),
+        array(5, 'CA', 'en-CA', 'America/Toronto'),
+        array(4, 'AU', 'en-AU', 'Australia/Sydney'),
+        array(3, 'BR', 'pt-BR', 'America/Sao_Paulo'),
+        array(2, 'JP', 'ja-JP', 'Asia/Tokyo'),
+        array(2, '', '', ''),
+    );
+
+    /** Share of a day's visits by site-local hour. */
+    const HOURS = array(2, 1.5, 1, 1, 1, 1.5, 2.5, 4, 5.5, 6.5, 7, 7, 6.5, 6.5, 7, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 2.5);
+
+    /** Plans bought: weight, name, price by currency. */
+    const PLANS = array(
+        array(6, 'Personal', array('USD' => 49, 'GBP' => 39, 'EUR' => 45)),
+        array(3, 'Business', array('USD' => 99, 'GBP' => 79, 'EUR' => 89)),
+        array(1, 'Agency', array('USD' => 199, 'GBP' => 159, 'EUR' => 179)),
+    );
+
+    /** @var array<int,array<string,mixed>> Recent visitors of this run, to come back the same day. */
+    private static $recent = array();
+
+    /** @var string The site's host, for the lines. */
+    private static $host = '';
+
+    /**
+     * Run something on the demo tables, then go back to the data set before.
+     *
+     * @param callable $work Work.
+     * @return mixed What it returns.
+     */
+    public static function run(callable $work) {
+        $before = SEOProStats_Schema::use_set('demo');
+        try {
+            return $work();
+        } finally {
+            SEOProStats_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * Stored progress.
+     *
+     * @return array<string,mixed>
+     */
+    public static function state() {
+        $state = get_option(self::OPTION, array());
+        return is_array($state) ? $state : array();
+    }
+
+    /**
+     * Whether demo data is made and can be shown.
+     *
+     * @return bool
+     */
+    public static function ready() {
+        $state = self::state();
+        return isset($state['status']) && $state['status'] === 'ready';
+    }
+
+    /**
+     * Status for the API and the screen.
+     *
+     * @return array{status:string,days:int,progress:float,from:string|null,made:string|null}
+     */
+    public static function status() {
+        $state  = self::state();
+        $status = isset($state['status']) && in_array($state['status'], array('making', 'ready'), true) ? (string) $state['status'] : 'none';
+        $from   = isset($state['from']) ? (int) $state['from'] : 0;
+        $upto   = isset($state['upto']) ? (int) $state['upto'] : 0;
+        $end    = isset($state['end']) ? (int) $state['end'] : 0;
+        $progress = 0.0;
+        if ($status === 'ready') {
+            $progress = 1.0;
+        } elseif ($status === 'making' && $end > $from) {
+            // Making visits is most of the work; summaries the last bit.
+            $progress = round(min(0.99, 0.95 * ($upto - $from) / ($end - $from)), 3);
+        }
+        return array(
+            'status'   => $status,
+            'days'     => isset($state['days']) ? (int) $state['days'] : 0,
+            'progress' => $progress,
+            'from'     => $from ? gmdate('c', $from) : null,
+            'made'     => !empty($state['made']) ? gmdate('c', (int) $state['made']) : null,
+        );
+    }
+
+    /**
+     * Start again: remove any demo data, make empty demo tables, and set
+     * the period. step() then makes the visits.
+     *
+     * @param int $days Days back from today.
+     * @return bool Whether the tables were made.
+     */
+    public static function start($days = self::DAYS) {
+        $days = max(1, min(self::MAX_DAYS, (int) $days));
+        self::remove();
+        $ok = self::run(static function () {
+            return SEOProStats_Schema::install();
+        });
+        if (!$ok) {
+            return false;
+        }
+        $from = (new DateTimeImmutable('today', wp_timezone()))->modify("-$days days")->getTimestamp();
+        update_option(self::OPTION, array(
+            'status' => 'making',
+            'days'   => $days,
+            'from'   => $from,
+            'upto'   => $from,
+            'end'    => time(),
+            'made'   => 0,
+        ), false);
+        return true;
+    }
+
+    /**
+     * Make visits up to now within a time budget, then the daily
+     * summaries; ready when both are done. Safe to call again and again.
+     *
+     * @param int $budget Seconds.
+     * @return array<string,mixed> status().
+     */
+    public static function step($budget = self::BUDGET) {
+        $start = microtime(true);
+        $state = self::state();
+        if (!isset($state['status']) || !self::lock()) {
+            return self::status();
+        }
+        try {
+            self::run(static function () use ($start, $budget) {
+                self::catch_up($start, $budget);
+            });
+        } finally {
+            self::unlock();
+        }
+        return self::status();
+    }
+
+    /**
+     * While demo data is shown: make the visits since it was last topped
+     * up, so today and realtime have visits. Skipped when another request
+     * is at it.
+     */
+    public static function refresh() {
+        $state = self::state();
+        if (!self::ready() || (isset($state['upto']) && (int) $state['upto'] > time() - self::FRESH) || !self::lock()) {
+            return;
+        }
+        try {
+            self::run(static function () {
+                SEOProStats_Schema::maybe_upgrade();
+                self::catch_up(microtime(true), 5);
+            });
+        } finally {
+            self::unlock();
+        }
+    }
+
+    /**
+     * Remove the demo tables and their progress; nothing of live data.
+     */
+    public static function remove() {
+        self::run(static function () {
+            SEOProStats_Schema::drop();
+            delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
+            delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
+        });
+        delete_option(self::OPTION);
+        delete_option(self::LOCK_OPTION);
+    }
+
+    /**
+     * The data set a user looks at: demo only when chosen and made.
+     *
+     * @param int $user_id User.
+     * @return string live or demo.
+     */
+    public static function viewing($user_id = 0) {
+        $user_id = $user_id ? (int) $user_id : get_current_user_id();
+        return $user_id && get_user_meta($user_id, self::USER_META, true) === 'demo' ? 'demo' : 'live';
+    }
+
+    /**
+     * Make visits from where they were made up to now (in windows of up
+     * to a day), then summarise finished days, on the demo tables.
+     *
+     * @param float $start  microtime(true) when the work began.
+     * @param int   $budget Seconds.
+     */
+    private static function catch_up($start, $budget) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
+        self::$host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
+
+        $state = self::state();
+        $upto  = isset($state['upto']) ? (int) $state['upto'] : time();
+        $now   = time();
+        while ($upto < $now && SEOProStats_Feature::more_time($start, $budget)) {
+            $to = min($now, $upto + DAY_IN_SECONDS);
+            SEOProStats_Processor::ingest(self::lines($upto, $to));
+            $upto          = $to;
+            $state['upto'] = $upto;
+            update_option(self::OPTION, $state, false);
+        }
+        $more = $upto < $now;
+        // The summaries' own budget is longer: end it with this one.
+        $rollup_start = $start - max(0, SEOProStats_Rollup::BUDGET - $budget);
+        while (!$more && SEOProStats_Rollup::due() !== null) {
+            if (!SEOProStats_Feature::more_time($start, $budget) || !SEOProStats_Rollup::catch_up($rollup_start)) {
+                $more = true;
+            }
+        }
+        if (!$more && $state['status'] !== 'ready') {
+            $state['status'] = 'ready';
+            $state['made']   = time();
+            update_option(self::OPTION, $state, false);
+        }
+        // New data: cached answers for the demo data go.
+        update_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array('last' => time()), false);
+    }
+
+    /**
+     * The collector's lines for the visits that start in [from, to), in
+     * time order. Hits after now are left out.
+     *
+     * @param int $from Unix time.
+     * @param int $to   Unix time.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function lines($from, $to) {
+        $tz    = wp_timezone();
+        $now   = time();
+        $lines = array();
+        for ($hour = (int) (floor($from / HOUR_IN_SECONDS) * HOUR_IN_SECONDS); $hour < $to; $hour += HOUR_IN_SECONDS) {
+            $a    = max($from, $hour);
+            $b    = min($to, $hour + HOUR_IN_SECONDS);
+            $time = (new DateTimeImmutable('@' . $a))->setTimezone($tz);
+            $day  = self::day_shape($time, $now);
+            $rate = $day['visits'] * self::HOURS[(int) $time->format('G')] / array_sum(self::HOURS);
+            $want = $rate * ($b - $a) / HOUR_IN_SECONDS;
+            $n    = (int) floor($want) + (self::chance($want - floor($want)) ? 1 : 0);
+            for ($i = 0; $i < $n; $i++) {
+                $source = $day['spike'] !== '' && self::chance($day['share']) ? $day['spike'] : self::pick_key(self::SOURCES);
+                foreach (self::visit(random_int($a, max($a, $b - 1)), $source, $time) as $line) {
+                    if ($line['ts'] <= $now) {
+                        $lines[] = $line;
+                    }
+                }
+            }
+        }
+        usort($lines, static function ($x, $y) {
+            return $x['ts'] - $y['ts'];
+        });
+        return $lines;
+    }
+
+    /**
+     * How busy a day is: visits (growing over the period, quieter at
+     * weekends, a little seasonal), and on the odd day a spike from one
+     * source (a post that took off, a newsletter).
+     *
+     * @param DateTimeImmutable $time A time in the day (site-local).
+     * @param int               $now  Unix time now.
+     * @return array{visits:float,spike:string,share:float}
+     */
+    private static function day_shape(DateTimeImmutable $time, $now) {
+        static $days = array();
+        $date = $time->format('Y-m-d');
+        if (isset($days[$date])) {
+            return $days[$date];
+        }
+        $ago    = max(0, ($now - $time->getTimestamp()) / DAY_IN_SECONDS);
+        $visits = self::PEAK * exp(-$ago / 420);
+        $visits *= (int) $time->format('N') >= 6 ? 0.62 : 1.0;
+        $visits *= 1 + 0.08 * sin(2 * M_PI * ((int) $time->format('z') - 80) / 365);
+        $spike  = '';
+        $share  = 0.0;
+        $hash   = crc32('seoprostats-demo-' . $date);
+        if ($hash % 41 === 0) {
+            $spike   = 'hn';
+            $share   = 0.45;
+            $visits *= 1.8;
+        } elseif ($hash % 23 === 0) {
+            $spike   = 'newsletter';
+            $share   = 0.3;
+            $visits *= 1.4;
+        }
+        $days[$date] = array('visits' => $visits, 'spike' => $spike, 'share' => $share);
+        return $days[$date];
+    }
+
+    /**
+     * One visit's lines: a pageview line per page with its engagement,
+     * and events.
+     *
+     * @param int               $started Unix time of the first page.
+     * @param string            $source  Key of SOURCES.
+     * @param DateTimeImmutable $time    Site-local time in the visit's hour.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function visit($started, $source, DateTimeImmutable $time) {
+        list(, $referrer, $query, $landing) = self::SOURCES[$source];
+        $who = self::visitor($started);
+
+        $paths = array(self::pick_key(self::LANDINGS[$landing]));
+        $pages = self::chance(0.46) ? 1 : 2 + min(6, (int) floor(-log(max(1e-6, self::unit())) * 1.6));
+        while (count($paths) < $pages) {
+            $last = end($paths);
+            if (($last === '/pricing/' || $last === '/shop/pro-licence/') && self::chance(0.12)) {
+                $paths[] = '/cart/';
+                if (self::chance(0.7)) {
+                    $paths[] = '/checkout/';
+                    if (self::chance(0.6)) {
+                        $paths[] = '/checkout/order-received/';
+                    }
+                }
+                break;
+            }
+            $next = self::pick_key(self::PAGES);
+            if ($next !== $last) {
+                $paths[] = $next;
+            }
+        }
+
+        $lines = array();
+        $ts    = $started;
+        $id    = bin2hex(random_bytes(6));
+        foreach ($paths as $seq => $path) {
+            $pkey = bin2hex(random_bytes(8));
+            $hit  = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
+            if ($seq === 0) {
+                $hit['u'] .= strtr($query, array('{c}' => strtolower($time->format('F')) . '-update', '{id}' => $id));
+                $hit['r']  = $referrer;
+            } else {
+                $hit['r'] = home_url($paths[$seq - 1]);
+            }
+            $lines[] = self::line($ts, $who, $hit);
+
+            $quick   = count($paths) === 1 && self::chance(0.4);
+            $visible = $quick ? random_int(2, 10) : random_int(15, 170);
+            $lines[] = self::line($ts + $visible, $who, array('t' => 'eng', 'p' => $pkey, 's' => $visible * 1000, 'sc' => $quick ? random_int(0, 30) : random_int(25, 100)));
+
+            foreach (self::events($path, $who) as $event) {
+                $event['p'] = $pkey;
+                $event['u'] = $path;
+                $lines[]    = self::line($ts + (int) ($visible / 2), $who, $event);
+            }
+            $ts += $visible + random_int(2, 20);
+        }
+        $who['ended']    = $ts;
+        self::$recent[] = $who;
+        if (count(self::$recent) > 200) {
+            array_shift(self::$recent);
+        }
+        return $lines;
+    }
+
+    /**
+     * Who makes a visit: now and then someone back from earlier the same
+     * day, else someone new.
+     *
+     * @param int $started Unix time.
+     * @return array<string,mixed>
+     */
+    private static function visitor($started) {
+        if (self::$recent && self::chance(0.12)) {
+            $back = self::$recent[array_rand(self::$recent)];
+            // Over 30 minutes later the same day: a new visit by the same visitor.
+            if ($started - (int) $back['ended'] > 1900 && wp_date('Y-m-d', $started) === wp_date('Y-m-d', (int) $back['ended'])) {
+                return $back;
+            }
+        }
+        $device = self::DEVICES[self::pick_index(self::DEVICES)];
+        $place  = self::PLACES[self::pick_index(self::PLACES)];
+        return array(
+            'v'      => bin2hex(random_bytes(8)),
+            'ua'     => $device[1],
+            'screen' => $device[2],
+            'cc'     => $place[1],
+            'lang'   => $place[2],
+            'tz'     => $place[3],
+            'ended'  => $started,
+        );
+    }
+
+    /**
+     * Events on a page.
+     *
+     * @param string              $path Page.
+     * @param array<string,mixed> $who  From visitor().
+     * @return array<int,array<string,mixed>> Event hits without page id and path.
+     */
+    private static function events($path, array $who) {
+        $out = array();
+        if (strpos($path, '/blog/') === 0 && $path !== '/blog/' && self::chance(0.025)) {
+            $out[] = array('t' => 'e', 'n' => 'Newsletter signup', 'd' => array('form' => self::chance(0.6) ? 'inline' : 'footer'));
+        }
+        if (strpos($path, '/docs/') === 0 && self::chance(0.06)) {
+            $out[] = array('t' => 'e', 'n' => 'Download', 'd' => array('file' => self::chance(0.5) ? 'quick-start.pdf' : 'seo-checklist.pdf'));
+        }
+        if (self::chance(0.04)) {
+            $out[] = array('t' => 'e', 'n' => 'Outbound link', 'd' => array('url' => self::chance(0.6) ? 'https://wordpress.org/plugins/' : 'https://developer.wordpress.org/'));
+        }
+        if ($path === '/contact/' && self::chance(0.25)) {
+            $out[] = array('t' => 'e', 'n' => 'Contact form');
+        }
+        if ($path === '/checkout/order-received/') {
+            $plan     = self::PLANS[self::pick_index(self::PLANS)];
+            $currency = $who['cc'] === 'GB' ? 'GBP' : (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true) ? 'EUR' : 'USD');
+            $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
+        }
+        return $out;
+    }
+
+    /**
+     * A line as the collector writes it.
+     *
+     * @param int                 $ts  Unix time.
+     * @param array<string,mixed> $who From visitor().
+     * @param array<string,mixed> $hit Hit.
+     * @return array<string,mixed>
+     */
+    private static function line($ts, array $who, array $hit) {
+        return array(
+            'ts' => (int) $ts,
+            'v'  => $who['v'],
+            'ua' => $who['ua'],
+            'ip' => '',
+            'cc' => $who['cc'],
+            'h'  => self::$host,
+            'e'  => array($hit),
+        );
+    }
+
+    /**
+     * True with a probability.
+     *
+     * @param float $p 0 to 1.
+     * @return bool
+     */
+    private static function chance($p) {
+        return self::unit() < $p;
+    }
+
+    /**
+     * A random number from 0 up to 1.
+     *
+     * @return float
+     */
+    private static function unit() {
+        return random_int(0, 999999) / 1000000;
+    }
+
+    /**
+     * A key of a list of weights (key => weight, or key => [weight, …]).
+     *
+     * @param array<int|string,mixed> $items Items.
+     * @return string
+     */
+    private static function pick_key(array $items) {
+        $total = 0.0;
+        foreach ($items as $item) {
+            $total += is_array($item) ? $item[0] : $item;
+        }
+        $r = self::unit() * $total;
+        foreach ($items as $key => $item) {
+            $r -= is_array($item) ? $item[0] : $item;
+            if ($r <= 0) {
+                return (string) $key;
+            }
+        }
+        return (string) array_key_last($items);
+    }
+
+    /**
+     * An index of a list of [weight, …].
+     *
+     * @param array<int,array<int,mixed>> $items Items.
+     * @return int
+     */
+    private static function pick_index(array $items) {
+        return (int) self::pick_key($items);
+    }
+
+    /**
+     * Take the lock; false when another request holds it.
+     *
+     * @return bool
+     */
+    private static function lock() {
+        // add_option() inserts only when the option is missing: one winner.
+        if (add_option(self::LOCK_OPTION, time(), '', false)) {
+            return true;
+        }
+        $held = (int) get_option(self::LOCK_OPTION, 0);
+        if ($held < time() - self::LOCK_TTL) {
+            delete_option(self::LOCK_OPTION);
+            return add_option(self::LOCK_OPTION, time(), '', false);
+        }
+        return false;
+    }
+
+    /**
+     * Give the lock back.
+     */
+    private static function unlock() {
+        delete_option(self::LOCK_OPTION);
+    }
+}

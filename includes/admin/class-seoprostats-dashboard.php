@@ -242,6 +242,7 @@ final class SEOProStats_Dashboard {
      * @return array<string,mixed>
      */
     private static function boot($name) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-demo.php';
         return array(
             'locale'       => get_user_locale(),
             'timezone'     => wp_timezone_string(),
@@ -250,6 +251,9 @@ final class SEOProStats_Dashboard {
             'canManage'    => current_user_can('manage_options'),
             // Read after wp_dashboard_setup, so a layout plugin's order counts.
             'placeWidget'  => $name === 'widget' && !self::widget_arranged(),
+            // Live statistics, or the demo data this person switched to.
+            'data'         => SEOProStats_Demo::viewing(),
+            'demo'         => SEOProStats_Demo::status(),
         );
     }
 
