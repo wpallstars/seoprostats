@@ -176,15 +176,15 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | Table | One row per | Key columns |
 |---|---|---|
 | `dict` | distinct text of a kind | `id`, `kind`, `hash` BINARY(8) (unique with kind), `value` |
-| `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `revenue`, `bot_id`, `source`, `import_id` |
+| `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `lang_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `source`, `import_id` (revenue is per event, in its currency) |
 | `pageviews` | page load | `id`, `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
-| `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id` |
+| `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (for retention) |
 | `clicks` | click or form submit | `id`, `session_id`, `ts`, `seq`, `path_id`, `kind`, `selector_id`, `label_id`, `target_id`, `flags` (dead, outbound, affiliate, download) |
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
-| `daily` | day × dimension × value | `day`, `dim`, `val`, `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `revenue` |
+| `daily` | day × dimension × value | `day`, `dim`, `val`, `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events` (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | day × page / query / page and query / device and country | `clicks`, `impressions`, `pos_impr` (position × impressions, for weighted averages) |
 | `changes` | marker on the timeline | `id`, `ts`, `kind`, `path_id`, `object_type`, `object_id`, `old`, `new`, `meta` (JSON), `source`, `user_id` |

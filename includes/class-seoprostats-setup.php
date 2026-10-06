@@ -76,12 +76,17 @@ final class SEOProStats_Setup {
      * Load the plugin's own helpers, before the features.
      */
     public static function load() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-schema.php';
     }
 
     /**
      * Register the helpers' hooks, after the settings store's.
      */
     public static function init() {
+        // Tables are made and upgraded on admin requests, never on visitor pages.
+        add_action('admin_init', static function () {
+            SEOProStats_Schema::maybe_upgrade();
+        });
     }
 
     /**
