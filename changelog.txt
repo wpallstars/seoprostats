@@ -2,5 +2,9 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* New: statistics collection without cookies: a collector that runs without loading WordPress (or the REST route on the WordPress.org build), daily-salted visitor hashes, and a processor that turns hits into visits, pageviews, events and properties every minute.
+* New: reports for scripts and AI agents: the REST API (stats, timeseries, breakdown, realtime, markers) and wp seoprostats commands, with ranges, comparisons and filters.
+
 = 0.1.0 =
 * First version, made from WP Plugin Starter 1.0.24.

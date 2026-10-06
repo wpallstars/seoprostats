@@ -249,8 +249,8 @@ Data. Cron deletes old rows in batches of 5,000 with a time budget.
 | Views per visit | pageviews ÷ visits |
 | Bounce rate | visits with one pageview and no event ÷ visits |
 | Visit duration | average of each visit's visible time (time accrues only while the tab is visible) |
-| Time on page | median visible time of pageviews of the page |
-| Scroll depth | median deepest scroll % of pageviews of the page |
+| Time on page | median visible time of pageviews of the page (average until the daily summaries keep medians) |
+| Scroll depth | median deepest scroll % of pageviews of the page (average until then) |
 | Conversion rate | visits that reached the goal ÷ visits |
 | Revenue | sum of event revenue in the goal's currency; currencies are never added together |
 | Search position | impression-weighted: Σ(position × impressions) ÷ Σ impressions |
@@ -259,19 +259,26 @@ Data. Cron deletes old rows in batches of 5,000 with a time budget.
 
 `SEOProStats_Query` turns a request (range, comparison, grain, filters,
 dimension, metrics, limit) into SQL with `$wpdb->prepare()` and `%i`
-identifiers. Filters: `is`, `is not`, `contains`, `matches` (glob, `*`);
+identifiers. Filters: `is`, `is_not`, `contains`, `matches` (glob, `*`);
 comma means any of, separate filters mean all of. Visit-level filters
-(goal, click, source) select sessions; page filters select pageviews.
+(source, channel, country…) select sessions; page and event filters select
+the visits that have one, and a page filter also limits pageviews to that
+page. Dictionary filters look up ids first (`SEOProStats_Dict::find()`,
+`like()`), so the fact tables are only ever matched on integer ids.
 
-It reads `daily` when the range covers whole finished days and the request
-has no filter that summaries cannot answer; otherwise the fact tables
-(within their retention). Answers are cached for five minutes (object
-cache, else transients) by a hash of the request and the data version.
+Visits belong to a range by their start time. It will read `daily` when
+the range covers whole finished days and the request has no filter that
+summaries cannot answer; until the nightly summaries exist it reads the
+fact tables. Answers are cached for five minutes (object cache, else
+transients) by a hash of the request, checked against the data version
+(the processor's last run), with one entry per request so they never pile
+up. Realtime is never cached.
 
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
-months, last year, all time, custom; comparison with the previous period,
-the same period last year, or custom.
+months, last year, all time, custom; comparison with the previous period
+or the same period last year (custom comparison later). A range that ends
+in the future meets the same length of the other period.
 
 ### Interfaces
 

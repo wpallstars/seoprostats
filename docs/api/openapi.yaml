@@ -1,0 +1,521 @@
+openapi: 3.1.0
+info:
+  title: SEO Pro Stats API
+  version: 0.2.0
+  summary: Site statistics for people, dashboards and AI agents.
+  description: |
+    Read routes of SEO Pro Stats (namespace `seoprostats/v1`). WordPress
+    serves them under `/wp-json/seoprostats/v1`. A standalone app serves the
+    same routes and answers, so clients work with either.
+
+    Reading needs the `view_seoprostats` capability (people who can manage
+    options, by default). Agents and scripts authenticate with an
+    Application Password (HTTP Basic); the dashboard uses the logged-in
+    cookie and a `wp_rest` nonce.
+
+    Times are ISO 8601 in the site time zone; ranges are half-open
+    (`from` inclusive, `to` exclusive). Rates are fractions (0.5 = 50%);
+    durations are whole seconds. Metric definitions:
+    docs/architecture.md → Reports → Metric definitions.
+
+    Answers are cached for up to five minutes; `generated` says when an
+    answer was worked out and `cached` whether it came from the cache.
+  license:
+    name: GPL-3.0-or-later
+    identifier: GPL-3.0-or-later
+servers:
+  - url: /wp-json/seoprostats/v1
+security:
+  - applicationPassword: []
+  - cookieNonce: []
+
+paths:
+  /stats:
+    get:
+      operationId: getStats
+      summary: Headline metrics for a range, with an optional comparison.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+      responses:
+        '200':
+          description: Metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatsAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /timeseries:
+    get:
+      operationId: getTimeseries
+      summary: Metrics per hour, day or month, zero-filled up to now.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: grain
+          in: query
+          description: auto picks hours up to two days, days up to 120 days, else months. Hours are refused past 31 days (days instead).
+          schema:
+            type: string
+            enum: [auto, hour, day, month]
+            default: auto
+      responses:
+        '200':
+          description: Points; with a comparison, the earlier period's points in the same order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeseriesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /breakdown:
+    get:
+      operationId: getBreakdown
+      summary: Top values of a dimension with their metrics.
+      description: |
+        Visit dimensions answer visit metrics, sorted by visits. `page`
+        answers pageviews, average time on page and scroll per page, sorted
+        by pageviews. `event` answers events and conversion rate per event
+        name, sorted by events. `value` is what a filter on the dimension
+        takes; `label` is for display.
+      parameters:
+        - name: dimension
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/Dimension'
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BreakdownAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /realtime:
+    get:
+      operationId: getRealtime
+      summary: Visitors active in the last 30 minutes. Never cached.
+      description: Hits wait up to a minute in the collector's buffer before they count.
+      responses:
+        '200':
+          description: Now.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeAnswer'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /markers:
+    get:
+      operationId: getMarkers
+      summary: Changes to show on the timeline for a range.
+      description: Recording changes (posts, plugins, settings, search engine updates) comes in a later version; until then the list is empty.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200':
+          description: Markers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarkersAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    applicationPassword:
+      type: http
+      scheme: basic
+      description: WordPress username and an Application Password.
+    cookieNonce:
+      type: apiKey
+      in: header
+      name: X-WP-Nonce
+      description: The logged-in cookie with a wp_rest nonce (the dashboard).
+
+  parameters:
+    range:
+      name: range
+      in: query
+      description: |
+        Period in the site time zone. realtime: the last 30 minutes. 24h:
+        the last 24 whole hours and the current one. 7d, 30d, 90d: that many
+        days including today. week (from the site's first day of the week),
+        month, year: so far. 12mo: a year back from tomorrow. lastyear: the
+        previous calendar year. all: since the first visit. custom: from and
+        to.
+      schema:
+        type: string
+        enum: [realtime, today, yesterday, 24h, 7d, 30d, 90d, week, month, year, 12mo, lastyear, all, custom]
+        default: 7d
+    from:
+      name: from
+      in: query
+      description: First day of a custom range.
+      schema:
+        type: string
+        format: date
+    to:
+      name: to
+      in: query
+      description: Last day of a custom range (included).
+      schema:
+        type: string
+        format: date
+    compare:
+      name: compare
+      in: query
+      description: |
+        prev: the same number of days just before (24h and realtime: the
+        same length). year: the same dates a year before. A range that ends
+        in the future is compared with the same length of the other period,
+        so a partial day meets a partial day.
+      schema:
+        type: string
+        enum: [none, prev, year]
+        default: none
+    filters:
+      name: filters
+      in: query
+      description: |
+        Every filter must match (AND). Each is
+        `dimension:operator:value`, where a comma means any of (OR) and `\,`
+        is a comma in a value; `dimension:value` means `is`. Repeat the
+        parameter as `filters[]=` for several, or send a JSON list of
+        `{dimension, op, values}`. Operators: is, is_not, contains (anywhere,
+        case-insensitive per the database collation), matches (glob: `*` is
+        any text). An empty value is "none" (for source: direct). Channel
+        and device take their names (organic_search, mobile); country takes
+        ISO codes. Page and event filters select visits that viewed the
+        page or had the event; with a page filter, pageviews count only
+        that page's views.
+      style: form
+      explode: true
+      schema:
+        oneOf:
+          - type: string
+            examples: ['channel:is:organic_search,ai']
+          - type: array
+            items:
+              type: string
+            examples: [['page:matches:/blog/*', 'country:is_not:US']]
+
+  responses:
+    BadRequest:
+      description: A parameter cannot be read; the message says how to write it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Not logged in, or without view_seoprostats.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Dimension:
+      type: string
+      enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, entry, exit, page, event]
+      description: |
+        channel: direct, organic_search, paid_search, ai, organic_social,
+        paid_social, email, referral, paid_other. source: referring host.
+        device: desktop, mobile, tablet, unknown. entry, exit: first and
+        last page of a visit. page: any page viewed. event: event name.
+
+    Range:
+      type: object
+      required: [key, from, to, timezone]
+      properties:
+        key:
+          type: string
+          description: The range, or prev/year for a comparison range.
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+          examples: [Europe/London]
+
+    Metrics:
+      type: object
+      required: [visitors, visits, pageviews, views_per_visit, bounce_rate, visit_duration, events]
+      properties:
+        visitors:
+          type: integer
+          description: Distinct visitors per day, summed over the days (no identity crosses days).
+        visits:
+          type: integer
+        pageviews:
+          type: integer
+        views_per_visit:
+          type: number
+        bounce_rate:
+          type: number
+          description: Visits with one pageview and no event, as a fraction of visits.
+        visit_duration:
+          type: integer
+          description: Average visible time per visit, in seconds.
+        events:
+          type: integer
+
+    Change:
+      type: object
+      description: (now − then) ÷ then for each metric; null when then is 0.
+      additionalProperties:
+        type: [number, 'null']
+
+    Answer:
+      type: object
+      properties:
+        generated:
+          type: string
+          format: date-time
+        cached:
+          type: boolean
+
+    StatsAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, metrics]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            metrics:
+              $ref: '#/components/schemas/Metrics'
+            compare:
+              type: object
+              required: [range, metrics, change]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                metrics:
+                  $ref: '#/components/schemas/Metrics'
+                change:
+                  $ref: '#/components/schemas/Change'
+
+    Point:
+      allOf:
+        - type: object
+          required: [t]
+          properties:
+            t:
+              type: string
+              format: date-time
+              description: Start of the hour, day or month.
+        - $ref: '#/components/schemas/Metrics'
+
+    TimeseriesAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, grain, points]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            grain:
+              type: string
+              enum: [hour, day, month]
+            points:
+              type: array
+              items:
+                $ref: '#/components/schemas/Point'
+            compare:
+              type: object
+              required: [range, points]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                points:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Point'
+
+    BreakdownRow:
+      type: object
+      required: [value, label, visitors, visits, share]
+      properties:
+        value:
+          type: string
+          description: What a filter on this dimension takes ('' for none).
+        label:
+          type: string
+        visitors:
+          type: integer
+        visits:
+          type: integer
+        share:
+          type: number
+          description: This row's visits as a fraction of all visits in the range.
+        pageviews:
+          type: integer
+        views_per_visit:
+          type: number
+        bounce_rate:
+          type: number
+        visit_duration:
+          type: integer
+        events:
+          type: integer
+        time_on_page:
+          type: integer
+          description: page only. Average visible seconds per view.
+        scroll:
+          type: integer
+          description: page only. Average deepest scroll, percent.
+        conversion_rate:
+          type: number
+          description: event only. Visits with the event as a fraction of all visits.
+
+    BreakdownAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, dimension, total, rows]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            dimension:
+              $ref: '#/components/schemas/Dimension'
+            total:
+              $ref: '#/components/schemas/Metrics'
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/BreakdownRow'
+
+    Count:
+      type: object
+      required: [value, label, count]
+      properties:
+        value:
+          type: string
+        label:
+          type: string
+        count:
+          type: integer
+
+    RealtimeAnswer:
+      type: object
+      required: [visitors, pageviews, per_minute, pages, sources, processed, generated]
+      properties:
+        visitors:
+          type: integer
+          description: Distinct visitors with a hit in the last 30 minutes.
+        pageviews:
+          type: integer
+        per_minute:
+          type: array
+          description: Pageviews per minute, oldest first (30 values).
+          items:
+            type: integer
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/Count'
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Count'
+        processed:
+          type: [string, 'null']
+          format: date-time
+          description: When hits were last processed.
+        generated:
+          type: string
+          format: date-time
+
+    Marker:
+      type: object
+      required: [t, kind, label]
+      properties:
+        t:
+          type: string
+          format: date-time
+        kind:
+          type: string
+        label:
+          type: string
+        path:
+          type: string
+
+    MarkersAnswer:
+      type: object
+      required: [range, markers]
+      properties:
+        range:
+          $ref: '#/components/schemas/Range'
+        markers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Marker'
+
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            status:
+              type: integer

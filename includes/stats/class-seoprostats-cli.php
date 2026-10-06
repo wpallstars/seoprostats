@@ -28,6 +28,13 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_CLI {
 
     /**
+     * WP-CLI makes this only to run one of these commands.
+     */
+    public function __construct() {
+        SEOProStats_API::short_floats();
+    }
+
+    /**
      * Headline metrics: visitors, visits, pageviews, views per visit,
      * bounce rate, visit duration (seconds) and events.
      *

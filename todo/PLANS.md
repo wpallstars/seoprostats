@@ -26,10 +26,10 @@ site. A phase may start once the phases it depends on are merged.
 Order from here: something to see first, then real data, then the
 long-term record.
 
-- [ ] Report engine: ranges, comparison, filters, breakdowns, cache.
-- [ ] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
-      `markers`), OpenAPI file, WP-CLI (`stats`, `breakdown`, `process`,
-      `doctor`).
+- [x] Report engine: ranges, comparison, filters, breakdowns, cache.
+- [x] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
+      `markers`), OpenAPI file, WP-CLI (`stats`, `timeseries`,
+      `breakdown`, `realtime`, `process`, `doctor`).
 - [ ] Top-level menu at position 3 with the plugin icon; Overview:
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.

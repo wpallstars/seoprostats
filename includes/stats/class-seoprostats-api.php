@@ -62,6 +62,17 @@ final class SEOProStats_API {
     }
 
     /**
+     * Encode decimals in their shortest form (0.1667, not
+     * 0.16669999999999999) for this request's JSON, as PHP does by
+     * default; some servers set serialize_precision to 17.
+     */
+    public static function short_floats() {
+        if ((string) ini_get('serialize_precision') !== '-1') {
+            ini_set('serialize_precision', '-1'); // phpcs:ignore WordPress.PHP.IniSet.Risky -- only for our own report answers, which are encoded next.
+        }
+    }
+
+    /**
      * Register the read routes.
      */
     public static function register_routes() {
@@ -146,6 +157,7 @@ final class SEOProStats_API {
      * @return WP_REST_Response
      */
     public static function realtime() {
+        self::short_floats();
         $response = rest_ensure_response(SEOProStats_Query::realtime());
         $response->header('Cache-Control', 'no-store');
         return $response;
@@ -191,6 +203,7 @@ final class SEOProStats_API {
         if (is_wp_error($answer)) {
             return $answer;
         }
+        self::short_floats();
         $response = rest_ensure_response($answer);
         $response->header('Cache-Control', 'private, max-age=60');
         return $response;
