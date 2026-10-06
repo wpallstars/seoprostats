@@ -42,6 +42,9 @@ final class SEOProStats_Collection {
     /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
     const PROCESS_OPTION = 'seoprostats_processor';
 
+    /** Daily summaries' and retention's progress (SEOProStats_Rollup::STATE_OPTION). */
+    const ROLLUP_OPTION = 'seoprostats_rollup';
+
     /** REST namespace. */
     const REST_NAMESPACE = 'seoprostats/v1';
 
@@ -93,11 +96,15 @@ final class SEOProStats_Collection {
     }
 
     /**
-     * Cron: process buffered hits. The processor loads only here.
+     * Cron: process buffered hits, then summarise finished days and prune
+     * old rows when due (an option read or two when not). The processor and
+     * the summaries load only here and in WP-CLI.
      */
     public static function process() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
         SEOProStats_Processor::run();
+        SEOProStats_Rollup::run();
     }
 
     /**
@@ -376,6 +383,7 @@ final class SEOProStats_Collection {
         delete_option(self::STATE_OPTION);
         delete_option(self::ENDPOINT_OPTION);
         delete_option(self::PROCESS_OPTION);
+        delete_option(self::ROLLUP_OPTION);
     }
 
     /**

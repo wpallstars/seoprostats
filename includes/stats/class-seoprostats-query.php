@@ -8,9 +8,12 @@
  * filters: docs/architecture.md → Reports. Answers are cached for five
  * minutes by request and data version (the processor's last run).
  *
- * Until nightly summaries exist, answers come from the fact tables:
- * visits by their start time (index `started`), pageviews and events
- * through their visit (index `session_seq`).
+ * Whole days that are summarised (SEOProStats_Rollup) come from the daily
+ * table when the request has no filter, or one filter of one visit value
+ * (breakdowns: no filter); the rest of the range, such as today, and
+ * every other request, from the fact tables: visits by their start time
+ * (index `started`), pageviews and events through their visit (index
+ * `session_seq`). Both give the same numbers.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -473,20 +476,30 @@ final class SEOProStats_Query {
      * Turn filters into SQL conditions on the visits table (alias s),
      * looking up dictionary ids once.
      *
+     * The summary key is the daily table's [dim, val] that answers the same
+     * question: [0, 0] (the site) with no filter, the value's row for one
+     * "is" filter of one visit value, else null (the fact tables only).
+     *
      * @param array<int,array{dimension:string,op:string,values:string[]}> $filters Filters.
      * @param array<string,mixed>                                         $range   From range().
-     * @return array{where:string,args:array<int,mixed>,pages:int[]|null}
+     * @return array{where:string,args:array<int,mixed>,pages:int[]|null,summary:int[]|null}
      */
     public static function compile(array $filters, array $range) {
-        $where = array();
-        $args  = array();
-        $pages = null;
+        $where   = array();
+        $args    = array();
+        $pages   = null;
+        $summary = $filters ? null : array(0, 0);
 
         foreach ($filters as $filter) {
             list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
             $negate                      = $filter['op'] === 'is_not';
+            // One visit value: its daily row (-1: no value matches).
+            $single = count($filters) === 1 && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1;
 
             if ($kind === 'text') {
+                if ($single) {
+                    $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], SEOProStats_Rollup::country_value($filter['values'][0]));
+                }
                 $values = array_map('strtoupper', $filter['values']);
                 if (in_array($filter['op'], array('is', 'is_not'), true)) {
                     $holders = implode(', ', array_fill(0, count($values), '%s'));
@@ -503,6 +516,9 @@ final class SEOProStats_Query {
             }
 
             $ids = $kind === 'enum' ? self::codes($filter) : self::dict_ids($kind, $filter);
+            if ($single) {
+                $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], $ids ? (int) $ids[0] : -1);
+            }
             if (!$ids) {
                 // Nothing matches: "is" selects nothing, "is not" everything.
                 if (!$negate) {
@@ -530,10 +546,84 @@ final class SEOProStats_Query {
         $sql = $where ? ' AND ' . implode(' AND ', $where) : '';
         return array(
             // Placeholders only; values are in args.
-            'where' => $sql,
-            'args'  => $args,
-            'pages' => $pages,
+            'where'   => $sql,
+            'args'    => $args,
+            'pages'   => $pages,
+            'summary' => $summary,
         );
+    }
+
+    /**
+     * The part of a range the daily table answers: from its start (a
+     * site-local midnight) to the end of the last summarised day or the
+     * last whole day of the range, whichever is first. Null when none of
+     * it can (filters, a range that starts mid-day, nothing summarised).
+     * The fact tables answer from 'split' to the range's end.
+     *
+     * @param array<string,mixed> $range    From range().
+     * @param array<string,mixed> $compiled From compile().
+     * @return array{dim:int,val:int,from:string,to:string,split:int}|null Days from (inclusive) to (exclusive).
+     */
+    private static function summary_part(array $range, array $compiled) {
+        if ($compiled['summary'] === null) {
+            return null;
+        }
+        /** @var DateTimeImmutable $start */
+        $start   = $range['start'];
+        $through = SEOProStats_Rollup::through();
+        if ($through === '' || $start->format('H:i:s') !== '00:00:00') {
+            return null;
+        }
+        $tz    = wp_timezone();
+        $after = (new DateTimeImmutable($through, $tz))->modify('+1 day');
+        $end   = (new DateTimeImmutable('@' . (int) $range['to']))->setTimezone($tz)->setTime(0, 0);
+        $stop  = $end < $after ? $end : $after;
+        if ($stop->getTimestamp() <= $range['from']) {
+            return null;
+        }
+        return array(
+            'dim'   => (int) $compiled['summary'][0],
+            'val'   => (int) $compiled['summary'][1],
+            'from'  => $start->format('Y-m-d'),
+            'to'    => $stop->format('Y-m-d'),
+            'split' => $stop->getTimestamp(),
+        );
+    }
+
+    /**
+     * Summed daily rows of one dimension value over the summarised days,
+     * by an optional group (day or month).
+     *
+     * @param array<string,mixed> $part  From summary_part().
+     * @param string              $group '', 'day' or 'month'.
+     * @return array<string,array<string,mixed>> Group ('' for all) => sums.
+     */
+    private static function daily_sums(array $part, $group = '') {
+        global $wpdb;
+        $select = $group === 'month' ? 'LEFT(day, 7)' : ($group === 'day' ? 'day' : "''");
+        $by     = $group === '' ? '' : ' GROUP BY b';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `dim_val_day`; $select and $by are fixed SQL.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, SUM(visitors) AS visitors, SUM(visits) AS visits, SUM(pageviews) AS pageviews, SUM(bounces) AS bounces, SUM(engaged_ms) AS engaged_ms, SUM(events) AS events FROM %i WHERE dim = %d AND val = %d AND day >= %s AND day < %s$by", SEOProStats_Schema::table('daily'), $part['dim'], $part['val'], $part['from'], $part['to']), ARRAY_A);
+        $out  = array();
+        foreach ((array) $rows as $row) {
+            $out[(string) $row['b']] = $row;
+        }
+        return $out;
+    }
+
+    /**
+     * Two rows of summed metrics added together.
+     *
+     * @param array<string,mixed> $a Sums.
+     * @param array<string,mixed> $b Sums.
+     * @return array<string,int>
+     */
+    private static function add(array $a, array $b) {
+        $out = array();
+        foreach (array('visitors', 'visits', 'pageviews', 'bounces', 'engaged_ms', 'events') as $key) {
+            $out[$key] = (isset($a[$key]) ? (int) $a[$key] : 0) + (isset($b[$key]) ? (int) $b[$key] : 0);
+        }
+        return $out;
     }
 
     /**
@@ -546,11 +636,21 @@ final class SEOProStats_Query {
      */
     private static function totals(array $range, array $compiled) {
         global $wpdb;
-        $where = $compiled['where'];
-        $cols  = self::VISIT_METRICS;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
-        $row = $wpdb->get_row($wpdb->prepare("SELECT $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where", array_merge(array(SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args'])), ARRAY_A);
-        $metrics = self::metrics((array) $row);
+        $part = self::summary_part($range, $compiled);
+        $row  = array();
+        if ($part) {
+            $sums = self::daily_sums($part);
+            $row  = isset($sums['']) ? $sums[''] : array();
+        }
+        $from = $part ? $part['split'] : $range['from'];
+        if ($from < $range['to']) {
+            $where = $compiled['where'];
+            $cols  = self::VISIT_METRICS;
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
+            $facts = $wpdb->get_row($wpdb->prepare("SELECT $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where", array_merge(array(SEOProStats_Schema::table('sessions'), $from, $range['to']), $compiled['args'])), ARRAY_A);
+            $row   = $part ? self::add($row, (array) $facts) : (array) $facts;
+        }
+        $metrics = self::metrics($row);
         if ($compiled['pages'] !== null) {
             $metrics['pageviews']       = (int) self::page_counts($range, $compiled, '')[''];
             $metrics['views_per_visit'] = $metrics['visits'] ? round($metrics['pageviews'] / $metrics['visits'], 2) : 0;
@@ -610,14 +710,19 @@ final class SEOProStats_Query {
             $group      = 's.day';
             $group_args = array();
         }
-        $where = $compiled['where'];
-        $cols  = self::VISIT_METRICS;
-        $args  = array_merge($group_args, array(SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args']);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT $group AS b, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY b", $args), ARRAY_A);
-        $by   = array();
-        foreach ((array) $rows as $row) {
-            $by[(string) $row['b']] = $row;
+        $part = $grain === 'hour' ? null : self::summary_part($range, $compiled);
+        $by   = $part ? self::daily_sums($part, $grain) : array();
+        $from = $part ? $part['split'] : $range['from'];
+        if ($from < $range['to']) {
+            $where = $compiled['where'];
+            $cols  = self::VISIT_METRICS;
+            $args  = array_merge($group_args, array(SEOProStats_Schema::table('sessions'), $from, $range['to']), $compiled['args']);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT $group AS b, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY b", $args), ARRAY_A);
+            foreach ((array) $rows as $row) {
+                $key      = (string) $row['b'];
+                $by[$key] = isset($by[$key]) ? self::add($by[$key], $row) : $row;
+            }
         }
         $page_counts = $compiled['pages'] !== null ? self::page_counts($range, $compiled, $group, $group_args) : null;
 
@@ -663,8 +768,11 @@ final class SEOProStats_Query {
         $s     = SEOProStats_Schema::table('sessions');
         $where = $compiled['where'];
         $base  = array($range['from'], $range['to']);
+        $part  = $compiled['summary'] === array(0, 0) ? self::summary_part($range, $compiled) : null;
 
-        if ($level === 'session') {
+        if ($part) {
+            $rows = self::daily_rows($dimension, $range, $part, $limit, $offset);
+        } elseif ($level === 'session') {
             $cols = self::VISIT_METRICS;
             $args = array_merge(array($column, $s), $base, $compiled['args'], array($limit, $offset));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
@@ -707,6 +815,56 @@ final class SEOProStats_Query {
                 }
             }
             $out[] = array('value' => $value, 'label' => $label) + $item + array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
+        }
+        return $out;
+    }
+
+    /**
+     * Breakdown rows from the daily table over the summarised days and the
+     * fact tables over the rest of the range, added up per value in one
+     * query, so the order and paging are those of the whole range. Rows
+     * are shaped as rows() reads them from the fact tables.
+     *
+     * @param string              $dimension Dimension name.
+     * @param array<string,mixed> $range     From range().
+     * @param array<string,mixed> $part      From summary_part().
+     * @param int                 $limit     Rows.
+     * @param int                 $offset    Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function daily_rows($dimension, array $range, array $part, $limit, $offset) {
+        global $wpdb;
+        list($level, $column, $kind) = self::DIMENSIONS[$dimension];
+        $daily                       = array(SEOProStats_Schema::table('daily'), SEOProStats_Rollup::DIMS[$dimension], $part['from'], $part['to']);
+        $s                           = SEOProStats_Schema::table('sessions');
+        $facts                       = array($part['split'], $range['to']);
+        $window                      = array($part['split'], (int) $range['to'] + DAY_IN_SECONDS);
+        $page                        = array($limit, $offset);
+
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: daily by index `dim_val_day`, the rest of the range by `started` or `ts` and the primary key; $val and $cols are fixed SQL.
+        if ($level === 'session') {
+            list($val, $val_args) = SEOProStats_Rollup::value_sql($column, $kind);
+            $cols                 = self::VISIT_METRICS;
+            $rows                 = $wpdb->get_results($wpdb->prepare("SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.pageviews) AS pageviews, SUM(u.bounces) AS bounces, SUM(u.engaged_ms) AS engaged_ms, SUM(u.events) AS events FROM (SELECT val AS v, visitors, visits, pageviews, bounces, engaged_ms, events FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT $val AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d GROUP BY v) u GROUP BY u.v ORDER BY visits DESC, u.v LIMIT %d OFFSET %d", array_merge($daily, $val_args, array($s), $facts, $page)), ARRAY_A);
+        } elseif ($level === 'page') {
+            $rows = $wpdb->get_results($wpdb->prepare('SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.pageviews) AS pageviews, SUM(u.engaged_ms) AS engaged_ms, SUM(u.scroll) AS scroll FROM (SELECT val AS v, visitors, visits, pageviews, engaged_ms, scroll FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor), COUNT(DISTINCT p.session_id), COUNT(*), COALESCE(SUM(p.engaged_ms), 0), COALESCE(SUM(p.scroll), 0) FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d GROUP BY p.path_id) u GROUP BY u.v ORDER BY pageviews DESC, u.v LIMIT %d OFFSET %d', array_merge($daily, array($s, SEOProStats_Schema::table('pageviews')), $window, $facts, $page)), ARRAY_A);
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare('SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.events) AS events FROM (SELECT val AS v, visitors, visits, events FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor), COUNT(DISTINCT e.session_id), COUNT(*) FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d GROUP BY e.name_id) u GROUP BY u.v ORDER BY events DESC, u.v LIMIT %d OFFSET %d', array_merge($daily, array($s, SEOProStats_Schema::table('events')), $window, $facts, $page)), ARRAY_A);
+        }
+        // phpcs:enable
+
+        $out = array();
+        foreach ((array) $rows as $row) {
+            if ($kind === 'text') {
+                $row['v'] = SEOProStats_Rollup::country_code((int) $row['v']);
+            }
+            if ($level === 'page') {
+                // Averages per view, as rows() reads them.
+                $views               = (int) $row['pageviews'];
+                $row['time_on_page'] = $views ? (int) $row['engaged_ms'] / $views : 0;
+                $row['scroll']       = $views ? (int) $row['scroll'] / $views : 0;
+            }
+            $out[] = $row;
         }
         return $out;
     }
@@ -954,14 +1112,22 @@ final class SEOProStats_Query {
     }
 
     /**
-     * Start of the first visit stored, or 0.
+     * Start of the first day with visits, or 0: the first summarised day,
+     * as retention deletes old visits, else the first visit stored.
      *
      * @return int
      */
     private static function first_visit() {
         global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() on the primary key (day first) reads one entry.
+        $day = (string) $wpdb->get_var($wpdb->prepare('SELECT MIN(day) FROM %i', SEOProStats_Schema::table('daily')));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() on index `started` reads one entry.
-        return (int) $wpdb->get_var($wpdb->prepare('SELECT MIN(started) FROM %i', SEOProStats_Schema::table('sessions')));
+        $first = (int) $wpdb->get_var($wpdb->prepare('SELECT MIN(started) FROM %i', SEOProStats_Schema::table('sessions')));
+        if ($day !== '') {
+            $start = (new DateTimeImmutable($day, wp_timezone()))->getTimestamp();
+            $first = $first ? min($first, $start) : $start;
+        }
+        return $first;
     }
 
     /**

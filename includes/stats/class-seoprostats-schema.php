@@ -25,8 +25,9 @@ final class SEOProStats_Schema {
      * add a line.
      *
      * v1: dict, sessions, pageviews, events, props, daily.
+     * v2: daily.scroll (sum of the deepest scroll % of a page's views).
      */
-    const VERSION = 1;
+    const VERSION = 2;
 
     /** Option holding the version the tables were last made with. */
     const OPTION = 'seoprostats_schema_version';
@@ -239,7 +240,9 @@ final class SEOProStats_Schema {
   KEY ts (ts)
 ) $charset;",
 
-            // Finished days, per dimension and value (dim 0, val 0: the site).
+            // Finished days, per dimension and value (dim 0, val 0: the
+            // site; codes in SEOProStats_Rollup::DIMS). For pages,
+            // engaged_ms and scroll are sums over the page's views.
             'daily' => "CREATE TABLE {$t['daily']} (
   day date NOT NULL,
   dim tinyint unsigned NOT NULL,
@@ -250,6 +253,7 @@ final class SEOProStats_Schema {
   bounces int unsigned NOT NULL DEFAULT 0,
   engaged_ms bigint unsigned NOT NULL DEFAULT 0,
   events int unsigned NOT NULL DEFAULT 0,
+  scroll bigint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (day,dim,val),
   KEY dim_val_day (dim,val,day)
 ) $charset;",

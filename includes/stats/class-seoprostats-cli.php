@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * process and doctor. Reports come from the same engine as the REST API,
+ * process, rollup, prune and doctor. Reports come from the same engine as the REST API,
  * so the numbers match (docs/architecture.md → Interfaces).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -260,8 +260,134 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Summarise finished days into the daily summaries now, instead of
+     * waiting for the minute cron, or rebuild given days.
+     *
+     * A day is summarised an hour after it ends, once every hit received
+     * by then is processed. Reports read the summaries for whole days.
+     *
+     * ## OPTIONS
+     *
+     * [--from=<date>]
+     * : Rebuild days from this one (YYYY-MM-DD), with --to.
+     *
+     * [--to=<date>]
+     * : Last day to rebuild. Days must be over, and not past their retention.
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats rollup
+     *     wp seoprostats rollup --from=2026-10-01 --to=2026-10-05
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function rollup($args, $assoc) {
+        $this->need_tables();
+        $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
+        $to   = isset($assoc['to']) ? (string) $assoc['to'] : '';
+        if ($from !== '' || $to !== '') {
+            $tz    = wp_timezone();
+            $first = DateTimeImmutable::createFromFormat('!Y-m-d', $from, $tz);
+            $last  = DateTimeImmutable::createFromFormat('!Y-m-d', $to, $tz);
+            if (!$first || !$last || $first->format('Y-m-d') !== $from || $last->format('Y-m-d') !== $to || $first > $last) {
+                WP_CLI::error(__('Give --from and --to as dates (YYYY-MM-DD), from not after to.', 'seoprostats'));
+                return;
+            }
+            if ($last >= new DateTimeImmutable('today', $tz)) {
+                WP_CLI::error(__('Only days that are over can be summarised.', 'seoprostats'));
+                return;
+            }
+            $built = 0;
+            for ($day = $first; $day <= $last; $day = $day->modify('+1 day')) {
+                if (SEOProStats_Rollup::summarise($day)) {
+                    $built++;
+                } else {
+                    /* translators: %s: a date */
+                    WP_CLI::warning(sprintf(__('%s not rebuilt: its visits are past their retention, or a query failed.', 'seoprostats'), $day->format('Y-m-d')));
+                }
+            }
+            /* translators: %d: number of days */
+            WP_CLI::success(sprintf(_n('%d day rebuilt.', '%d days rebuilt.', $built, 'seoprostats'), $built));
+            return;
+        }
+
+        $days = 0;
+        do {
+            $done  = SEOProStats_Rollup::catch_up(microtime(true));
+            $days += $done;
+        } while ($done > 0);
+        $through = SEOProStats_Rollup::through();
+        WP_CLI::success(sprintf(
+            /* translators: 1: number of days, 2: a date or "none yet" */
+            _n('%1$d day summarised; summaries through %2$s.', '%1$d days summarised; summaries through %2$s.', $days, 'seoprostats'),
+            $days,
+            $through !== '' ? $through : __('none yet', 'seoprostats')
+        ));
+    }
+
+    /**
+     * Delete visits, pageviews and events past their retention now (13
+     * and 25 months by default; the seoprostats_retention filter). Daily
+     * summaries are kept, and nothing newer than the last summarised day
+     * goes.
+     *
+     * ## OPTIONS
+     *
+     * [--dry-run]
+     * : Count the rows that would be deleted, and delete nothing.
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats prune --dry-run
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function prune($args, $assoc) {
+        $this->need_tables();
+        $months = SEOProStats_Rollup::retention();
+        /* translators: 1: months visits are kept, 2: months events are kept (0: forever) */
+        WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months (0: forever).', 'seoprostats'), $months['visits'], $months['events']));
+        if (SEOProStats_Rollup::through() === '') {
+            WP_CLI::success(__('Nothing to delete: no day is summarised yet.', 'seoprostats'));
+            return;
+        }
+        if (!empty($assoc['dry-run'])) {
+            $items = array();
+            foreach (SEOProStats_Rollup::prune_counts() as $table => $rows) {
+                $items[] = array('table' => $table, 'rows' => $rows);
+            }
+            if ($items) {
+                WP_CLI\Utils\format_items('table', $items, array('table', 'rows'));
+            }
+            WP_CLI::success(__('Dry run: nothing deleted.', 'seoprostats'));
+            return;
+        }
+        $deleted = 0;
+        do {
+            $done     = SEOProStats_Rollup::prune(microtime(true));
+            $deleted += $done['deleted'];
+        } while (!$done['done']);
+        /* translators: %d: number of rows */
+        WP_CLI::success(sprintf(_n('%d row deleted.', '%d rows deleted.', $deleted, 'seoprostats'), $deleted));
+    }
+
+    /**
+     * Stop when the tables are older than the plugin (an admin page
+     * upgrades them).
+     */
+    private function need_tables() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
+        if (!SEOProStats_Schema::is_current()) {
+            WP_CLI::error(__('The tables need an upgrade: open any admin page, then try again.', 'seoprostats'));
+        }
+    }
+
+    /**
      * Check that statistics are collected and processed: tables, collector
-     * folder and config, salts, endpoint, cron and waiting hits.
+     * folder and config, salts, endpoint, cron, waiting hits and daily
+     * summaries.
      *
      * ## OPTIONS
      *
@@ -343,6 +469,12 @@ final class SEOProStats_CLI {
         $last      = is_array($processed) && isset($processed['last']) ? (int) $processed['last'] : 0;
         $stale     = $waiting > 0 && $last > 0 && $last < time() - 10 * MINUTE_IN_SECONDS;
         $add('processing', !$stale, sprintf('%s waiting; last run %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never'), 'warn');
+
+        // A day is summarised from 01:00 the next day; a day later is behind.
+        $through = SEOProStats_Rollup::through();
+        $behind  = $through !== '' ? $through < wp_date('Y-m-d', time() - 2 * DAY_IN_SECONDS) : SEOProStats_Rollup::due() !== null;
+        $state   = SEOProStats_Rollup::state();
+        $add('daily summaries', !$behind, sprintf('through %s; pruned %s', $through !== '' ? $through : 'none yet', isset($state['pruned']) ? (string) $state['pruned'] : 'never'), 'warn');
         return $out;
     }
 

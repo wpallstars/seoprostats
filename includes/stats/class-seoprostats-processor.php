@@ -93,6 +93,11 @@ final class SEOProStats_Processor {
                 wp_delete_file($file);
                 $state['file']   = '';
                 $state['offset'] = 0;
+                // With no other taken file left, every hit received before
+                // this one was taken is processed (SEOProStats_Rollup::clear()).
+                if (!glob(SEOProStats_Collection::dir() . '/processing-*.php') && preg_match('/^processing-(\d+)-/', basename($file), $m)) {
+                    $state['clear'] = max(isset($state['clear']) ? (int) $state['clear'] : 0, (int) $m[1]);
+                }
             } else {
                 $state['offset'] = $next;
             }
