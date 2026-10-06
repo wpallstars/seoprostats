@@ -50,6 +50,13 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
 - Keep the credits in `README.md` and `readme.txt`: **Built with AI** to
   aidevops (<https://aidevops.sh>) and the "Made from" line crediting the
   starter (`STANDARDS.md` → Structure).
+- **Checks run locally for now (owner's decision).** GitHub Actions do not
+  start on this repository while it is private ("recent account payments
+  have failed or your spending limit needs to be increased"); that failure
+  is billing, not code, so do not fix code or wait for it. Before merging,
+  run `composer install && scripts/lint.sh` and `scripts/smoke-test.sh`
+  (Docker) in the worktree and put the results in the PR. Remove this rule
+  when Actions run again.
 
 ## Test sites
 
