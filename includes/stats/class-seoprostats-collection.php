@@ -206,7 +206,9 @@ final class SEOProStats_Collection {
     public static function test_fast_endpoint() {
         $nonce    = wp_generate_password(32, false);
         $url      = add_query_arg(array('s' => get_current_blog_id(), 'ping' => $nonce), self::fast_url());
-        $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 0, 'sslverify' => false));
+        // sslverify off: a loopback to the site itself, often with a local
+        // or self-signed certificate; the HMAC proves the answer.
+        $response = wp_remote_get($url, array('timeout' => 3, 'redirection' => 2, 'sslverify' => false));
         $expected = hash_hmac('sha256', $nonce, self::ping_key());
         $works    = !is_wp_error($response)
             && wp_remote_retrieve_response_code($response) === 200
@@ -220,12 +222,15 @@ final class SEOProStats_Collection {
     }
 
     /**
-     * URL of collect.php (without the site parameter).
+     * URL of collect.php (without the site parameter), with the home URL's
+     * scheme: in cron and WP-CLI there is no HTTPS request to copy it from,
+     * and an http URL would be redirected.
      *
      * @return string
      */
     public static function fast_url() {
-        return plugins_url('collect.php', SEOPROSTATS_FILE);
+        $scheme = (string) wp_parse_url(home_url(), PHP_URL_SCHEME);
+        return set_url_scheme(plugins_url('collect.php', SEOPROSTATS_FILE), $scheme === 'https' ? 'https' : 'http');
     }
 
     /**
