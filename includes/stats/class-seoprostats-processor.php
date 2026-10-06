@@ -42,8 +42,8 @@ final class SEOProStats_Processor {
     /** A visit ends after this long without a hit. */
     const VISIT_GAP = 1800;
 
-    /** Query parameters that are campaign tags or ad click IDs: kept out of stored paths. */
-    const CLICK_IDS = array('gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'li_fat_id', 'yclid');
+    /** Click and tracking IDs: kept out of stored paths (SEOProStats_Channels::CLICK_IDS says which are ads). */
+    const CLICK_IDS = array('gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'li_fat_id', 'yclid', '_ga', '_gl', 'mc_cid', 'mc_eid', '_hsenc', '_hsmi', 'igshid');
 
     /** @var array<string,bool> Host (lower case, no www.) => true, for the site itself. */
     private static $own_hosts = array();
@@ -650,13 +650,13 @@ final class SEOProStats_Processor {
      * Path (with the remaining query) and the campaign tags of a URL.
      *
      * @param string $url Path and query, or a full URL.
-     * @return array{path:string,utm:array<string,string>,click:bool}
+     * @return array{path:string,utm:array<string,string>,click:string}
      */
     private static function split_url($url) {
         $path  = (string) wp_parse_url($url, PHP_URL_PATH);
         $query = (string) wp_parse_url($url, PHP_URL_QUERY);
         $utm   = array();
-        $click = false;
+        $click = '';
         $keep  = array();
         if ($query !== '') {
             parse_str($query, $params);
@@ -675,7 +675,9 @@ final class SEOProStats_Processor {
                         $utm['utm_source'] = strtolower(trim(substr($value, 0, 200)));
                     }
                 } elseif (in_array($key, self::CLICK_IDS, true)) {
-                    $click = true;
+                    if ($click === '' && isset(SEOProStats_Channels::CLICK_IDS[$key])) {
+                        $click = $key;
+                    }
                 } else {
                     $keep[$key] = $value;
                 }

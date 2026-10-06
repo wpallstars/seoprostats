@@ -99,19 +99,39 @@ final class SEOProStats_Channels {
     const MAIL = '~^(mail\.google\.com|outlook\.(live|office)\.com|mail\.yahoo\.com|mail\.proton\.me|mail\.aol\.com|webmail\.)~';
 
     /**
+     * Ad click IDs: query parameter => the channel it proves. fbclid is
+     * not here: Facebook adds it to every outbound link, paid or not.
+     */
+    const CLICK_IDS = array(
+        'gclid'     => self::PAID_SEARCH,
+        'gbraid'    => self::PAID_SEARCH,
+        'wbraid'    => self::PAID_SEARCH,
+        'msclkid'   => self::PAID_SEARCH,
+        'yclid'     => self::PAID_SEARCH,
+        'dclid'     => self::PAID_OTHER,
+        'ttclid'    => self::PAID_SOCIAL,
+        'twclid'    => self::PAID_SOCIAL,
+        'li_fat_id' => self::PAID_SOCIAL,
+    );
+
+    /**
      * The channel of a visit.
      *
      * @param string               $ref_host Referrer host without www. ('' for none or the site itself).
      * @param array<string,string> $utm      utm_source, utm_medium… (lower-case values).
-     * @param bool                 $click_id Whether the landing URL had an ad click ID (gclid, msclkid, fbclid…).
+     * @param string               $click_id Ad click ID parameter on the landing URL (gclid, msclkid…), or ''.
      * @return int One of the channel constants.
      */
-    public static function classify($ref_host, array $utm, $click_id = false) {
+    public static function classify($ref_host, array $utm, $click_id = '') {
         $medium = isset($utm['utm_medium']) ? $utm['utm_medium'] : '';
         $source = isset($utm['utm_source']) ? $utm['utm_source'] : '';
         $kind   = self::kind($ref_host !== '' ? $ref_host : $source);
 
-        if ($click_id || preg_match('~^(cpc|ppc|paid|paidsearch|paid[_-]?social|cpm|cpv|display|banner|retargeting)~', $medium)) {
+        // A medium the owner set wins; without one, an ad click ID decides.
+        if ($medium === '' && isset(self::CLICK_IDS[$click_id])) {
+            return self::CLICK_IDS[$click_id];
+        }
+        if (preg_match('~^(cpc|ppc|paid|paidsearch|paid[_-]?social|cpm|cpv|display|banner|retargeting)~', $medium)) {
             if ($kind === self::ORGANIC_SEARCH) {
                 return self::PAID_SEARCH;
             }
