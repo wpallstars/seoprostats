@@ -1,13 +1,16 @@
 # SEO Pro Stats — agent guide
 
-The wpallstars starter plugin: what every wpallstars plugin is made from.
-It has no features of its own, only the parts every plugin needs.
+Private, fast site statistics for WordPress that explain cause and effect:
+traffic, search rankings and conversions on one timeline with the changes
+that moved them, readable by people in wp-admin and by AI agents through
+the REST API, WP-CLI and abilities.
 
 **Read `STANDARDS.md` before any change.** It holds the rules every plugin
 made from the starter shares: structure and core files, code rules,
-performance, Updates from GitHub, releases, front-end styling and dark mode, and testing. This
-repository holds the master copy of it and of every core file
-(`scripts/core-files.txt`). This file holds only what is the starter's own.
+performance, Updates from GitHub, releases, front-end styling and dark mode,
+and testing. Core files (`scripts/core-files.txt`) change in the starter
+first, then `scripts/sync-core.sh` copies them here. This file holds only
+what is SEO Pro Stats's own.
 
 | Placeholder in `STANDARDS.md` | SEO Pro Stats |
 |---|---|
@@ -20,40 +23,41 @@ repository holds the master copy of it and of every core file
 
 User docs: `README.md` (developers, and the Read Me tab) and `readme.txt`.
 Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
-`LAUNCH.md`. Keep this file a short map: guidance for one kind of task goes
-in `docs/` (`STANDARDS.md` → Agent docs); the starter has none yet.
+`LAUNCH.md`. Plan: `todo/PLANS.md`.
 
-## What belongs here
+| Doc | Read before |
+|---|---|
+| `docs/architecture.md` | Any change to collection, storage, reports, the REST API, WP-CLI, abilities or the dashboard app. |
 
-- Only what every plugin needs. A part one plugin needs stays in that
-  plugin (its `{Prefix}_Setup`, a feature or its own files). When a lesson
-  from a plugin applies to all of them, change the core file here first,
-  then run `scripts/sync-core.sh` in each plugin (`--check` lists what
-  differs). Keep core files free of any one plugin's names, examples and
-  paths: this repository is public.
-- `includes/class-seoprostats-setup.php` stays empty of features, so the
-  settings screen shows the empty General tab and the Read Me tab. Test a
-  core change in a plugin that uses it, then here.
-- `scripts/rename-plugin.sh` must keep working on a fresh copy: after a
-  change to names in core files, try it on a throwaway clone (rename, lint,
-  smoke test).
-- The banner source is `.wordpress-org/banner.svg`: the wpallstars plugin
-  stack picture in red only, on wpallstars branding. The icon source,
-  `.wordpress-org/icon.svg`, is that picture alone. Rebuild both with
-  `scripts/build-banner.sh`.
-- This repository is public. Never name private repositories, their
-  issues, or local paths in it (commits, docs, comments or examples).
-- Every plugin made from the starter keeps its credits in `README.md` and
-  `readme.txt`: **Built with AI** to aidevops (<https://aidevops.sh>), which
-  is also where users take questions, and the "Made from" line crediting the
-  starter (`STANDARDS.md` → Structure). `scripts/rename-plugin.sh` writes
-  that line from split strings; keep them split.
+## Rules for any change
+
+- **Private by design.** No cookies, no stored IP addresses, no cross-day
+  visitor identity, no typed form values (`docs/architecture.md` →
+  Collection). Outside services are opt-in and only add facts.
+- **Visitor pages pay nothing.** No database query, option write or remote
+  request on a visitor page; the collector loads no WordPress. Every
+  report query uses an index; check with the smoke test.
+- **WordPress first in wp-admin.** WordPress's components, colours, admin
+  colour scheme and patterns. The top-level menu sits at position 3, where
+  site statistics usually are.
+- **Portable underneath.** The API contract (`docs/api/openapi.yaml`) and
+  `packages/core`, `packages/tracker` and `packages/charts` stay free of
+  WordPress and React so later apps reuse them.
+- **This repository is public.** Never name private repositories, their
+  issues, private sites, local paths, or other analytics products used as
+  research in it (commits, docs, comments or examples). Describe features
+  in our own words.
+- Keep the credits in `README.md` and `readme.txt`: **Built with AI** to
+  aidevops (<https://aidevops.sh>) and the "Made from" line crediting the
+  starter (`STANDARDS.md` → Structure).
 
 ## Test sites
 
 Install the GitHub build on a local test site with
 `scripts/preview-site.sh` (see `DEVELOPMENT.md`), or install the GitHub
-zip from `scripts/build-release.sh` on any test site.
+zip from `scripts/build-release.sh` on any test site. Statistics need
+traffic: open front-end pages logged out (or in a private window) to make
+hits.
 
 ## Search targets
 
