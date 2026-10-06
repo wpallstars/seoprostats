@@ -1,0 +1,2 @@
+schema: aidevops.keywords/v1
+targets[0|]{id|phrase|role|parent_id|cluster_id|surface|locale|market|classic_intent|journey_state|user_job|business_value|volume|kd|cpc|keyword_score|priority|trend_state|target_url|status|channels|evidence|ranking_url|last_position|best_position|trend|last_checked|updated}:

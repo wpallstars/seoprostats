@@ -12,7 +12,7 @@ body:
   - type: textarea
     id: idea
     attributes:
-      label: What WP Plugin Starter could do
+      label: What SEO Pro Stats could do
       description: What it would do on its own, without new settings where possible.
     validations:
       required: true

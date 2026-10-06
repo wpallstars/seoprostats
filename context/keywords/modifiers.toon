@@ -1,0 +1,2 @@
+schema: aidevops.keywords/v1
+modifiers[0|]{id|dimension|value|pattern|applies_to|demand|page_policy|status|updated}:

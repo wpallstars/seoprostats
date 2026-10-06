@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in WP Plugin Starter does not work as it should.
+description: Something in SEO Pro Stats does not work as it should.
 labels: ["bug"]
 body:
   - type: markdown
@@ -27,7 +27,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: WP Plugin Starter version
+      label: SEO Pro Stats version
       description: Shown on the Plugins screen.
     validations:
       required: true
@@ -53,7 +53,7 @@ body:
     id: log
     attributes:
       label: Messages in debug.log
-      description: Lines from wp-content/debug.log that mention wpstarter, if any. Remove anything private first.
+      description: Lines from wp-content/debug.log that mention seoprostats, if any. Remove anything private first.
       render: text
   - type: textarea
     id: more
