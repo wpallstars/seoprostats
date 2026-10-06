@@ -187,10 +187,15 @@ Text values (paths, referrers, campaign names, event names, selectors…)
 are stored once in a dictionary table and referenced by number, so fact
 rows stay small and indexes short.
 
-Nightly, the processor rolls each finished site-local day into the daily
-summaries (idempotent: a day can be rebuilt), runs retention, rotates the
-salt and runs the import jobs that are due. Heavy work uses
-`SEOProStats_Feature::more_time()` budgets.
+Nightly, the minute job rolls each finished site-local day into the daily
+summaries (`SEOProStats_Rollup`), then runs retention. A day is rolled an
+hour after it ends, once every hit received by then is processed (the
+processor records when the last file it finished was taken). Each day's
+rows are replaced in one transaction, so a day can be rebuilt (`wp
+seoprostats rollup --from --to`); the last rolled day is rolled again with
+the next, for engagement that arrived late. The first run rolls every day
+since the first visit. The hourly job rotates the salt; import jobs run
+when due. Heavy work uses `SEOProStats_Feature::more_time()` budgets.
 
 ## Storage
 
@@ -209,7 +214,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
-| `daily` | day × dimension × value | `day`, `dim`, `val`, `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events` (revenue summaries come with goals, per currency) |
+| `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | day × page / query / page and query / device and country | `clicks`, `impressions`, `pos_impr` (position × impressions, for weighted averages) |
 | `changes` | marker on the timeline | `id`, `ts`, `kind`, `path_id`, `object_type`, `object_id`, `old`, `new`, `meta` (JSON), `source`, `user_id` |
@@ -231,7 +236,11 @@ Performance).
 ### Retention
 
 Each kind of data has its own setting under SEO Pro Stats → Settings →
-Data. Cron deletes old rows in batches of 5,000 with a time budget.
+Data (until then, the `seoprostats_retention` filter sets visits and
+events in months; 0 keeps forever). Once a day, after the daily
+summaries are up to date, cron deletes old rows in batches of 5,000 with a
+time budget, from site-local midnight back, and never from a day that is
+not summarised. `wp seoprostats prune --dry-run` counts them.
 
 | Data | Default | Why |
 |---|---|---|
@@ -274,10 +283,15 @@ the visits that have one, and a page filter also limits pageviews to that
 page. Dictionary filters look up ids first (`SEOProStats_Dict::find()`,
 `like()`), so the fact tables are only ever matched on integer ids.
 
-Visits belong to a range by their start time. It will read `daily` when
-the range covers whole finished days and the request has no filter that
-summaries cannot answer; until the nightly summaries exist it reads the
-fact tables. Answers are cached for five minutes (object cache, else
+Visits belong to a range by their start time. A range that starts at
+midnight reads `daily` for its whole days up to the last rolled one, and
+the fact tables for the rest (today, or the part of a day a comparison
+cuts), added together; breakdowns add both per value in one query, so
+order and paging cover the whole range. `daily` answers requests with no
+filter, and headline metrics and time series with one `is` filter of one
+visit value (a source, a country…); other filters, and hours, read the
+fact tables, so they reach back only as far as retention keeps visits.
+"All time" starts at the first day in `daily` or `sessions`. Answers are cached for five minutes (object cache, else
 transients) by a hash of the request, checked against the data version
 (the processor's last run), with one entry per request so they never pile
 up. Realtime is never cached.

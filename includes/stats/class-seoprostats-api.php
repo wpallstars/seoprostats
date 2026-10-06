@@ -59,6 +59,7 @@ final class SEOProStats_API {
     public static function load() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-dict.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
     }
 
     /**

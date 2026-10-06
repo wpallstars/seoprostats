@@ -159,7 +159,8 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 - Routes: `stats` (headline metrics), `timeseries`, `breakdown` (top values of a dimension), `realtime` (the last 30 minutes) and `markers`. Parameters: `range` (`today`, `7d`, `30d`, `month`, `12mo`, `all`, `custom` with `from` and `to`, and more), `compare` (`prev` or `year`), `filters`, and for breakdowns `dimension`, `limit` and `offset`.
 - Filters are `dimension:operator:value`: operators `is`, `is_not`, `contains` and `matches` (`*` is any text); a comma means any of, and separate filters must all match. For example `channel:is:organic_search,ai` or `page:matches:/blog/*`.
 - Reading needs the `view_seoprostats` capability, which people who can manage options have; change it with the `seoprostats_view_caps` filter. Scripts and agents sign in with an Application Password (Users → Profile).
-- WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now) and `wp seoprostats doctor` (checks tables, collector, salts, cron and waiting hits). Add `--format=json` for the full answer.
+- WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now), `wp seoprostats rollup` (summarise finished days now, or rebuild days with `--from` and `--to`), `wp seoprostats prune` (delete data past its retention now; `--dry-run` counts it) and `wp seoprostats doctor` (checks tables, collector, salts, cron, waiting hits and daily summaries). Add `--format=json` for the full answer.
+- Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 13 months and events 25 months, then deleted; the summaries are kept. Change the months with the `seoprostats_retention` filter (`visits`, `events`; 0 keeps forever).
 
 ```sh
 curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
@@ -176,6 +177,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 - New: statistics collection without cookies: a collector that runs without loading WordPress (or the REST route on the WordPress.org build), daily-salted visitor hashes, and a processor that turns hits into visits, pageviews, events and properties every minute.
 - New: reports for scripts and AI agents: the REST API (`stats`, `timeseries`, `breakdown`, `realtime`, `markers`) and `wp seoprostats` commands, with ranges, comparisons and filters.
 - New: the tracker, printed inline on front-end pages with no cookies or browser storage: pageviews (single-page apps too), visible time and scroll depth, outbound links, file downloads, and your own events with `seoprostats()` or `data-sps-event`.
+- New: daily summaries, so long ranges stay fast, and retention: visits and pageviews are kept 13 months and events 25 months (`seoprostats_retention` filter); `wp seoprostats rollup` and `prune`.
 
 ### 0.1.0
 

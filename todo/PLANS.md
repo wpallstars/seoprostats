@@ -38,10 +38,11 @@ long-term record.
       headline metrics, chart with comparison, Sources, Pages, Locations,
       Devices cards, filters, realtime; Dashboard widget.
 - [x] Tracker (above).
-- [ ] Nightly summaries into `daily`; retention. Long ranges (year,
+- [x] Nightly summaries into `daily`; retention. Long ranges (year,
       12mo, all time) read `daily`: from the fact tables they read every
       visit in the range, which for all time is the whole `sessions`
-      table (58 ms over 42,000 visits on the preview).
+      table (58 ms over 42,000 visits on the preview). Retention months
+      come from a filter until the settings below.
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
 - [ ] Purge known page caches (WP-Optimize, LiteSpeed, WP Rocket, W3 Total
