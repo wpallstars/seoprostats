@@ -518,11 +518,10 @@ final class SEOProStats_Query {
                 continue;
             }
 
-            // Pages and events select the visits that have one; visits
-            // run at most a day past the range.
+            // Pages and events select the visits that have one.
             $table   = SEOProStats_Schema::table($level === 'page' ? 'pageviews' : 'events');
             $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . " (SELECT f.session_id FROM %i f WHERE f.%i IN ($holders) AND f.ts >= %d AND f.ts < %d)";
-            $args    = array_merge($args, array($table, $column), $ids, array($range['from'], $range['to'] + DAY_IN_SECONDS));
+            $args    = array_merge($args, array($table, $column), $ids, self::fact_window($range));
             if ($level === 'page' && !$negate) {
                 $pages = $pages === null ? $ids : array_values(array_intersect($pages, $ids));
             }
@@ -581,9 +580,9 @@ final class SEOProStats_Query {
         $by      = $group === '' ? '' : ' GROUP BY b';
         $holders = implode(', ', array_fill(0, count($pages), '%d'));
         $where   = $compiled['where'];
-        $args    = array_merge($group === '' ? array() : $group_args, array(SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('pageviews'), $range['from'], $range['to']), $compiled['args'], $pages);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by indexes `started` and `session_seq`; $select, $by, $where and $holders are fixed SQL and placeholders.
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, COUNT(*) AS n FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE s.started >= %d AND s.started < %d$where AND p.path_id IN ($holders)$by", $args));
+        $args    = array_merge($group === '' ? array() : $group_args, array(SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('pageviews')), self::fact_window($range), array($range['from'], $range['to']), $compiled['args'], $pages);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by indexes `path_ts` or `ts`, and the primary key; $select, $by, $where and $holders are fixed SQL and placeholders.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, COUNT(*) AS n FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$where AND p.path_id IN ($holders)$by", $args));
         $out  = array('' => 0);
         foreach ((array) $rows as $row) {
             $out[(string) $row->b] = (int) $row->n;
@@ -677,13 +676,13 @@ final class SEOProStats_Query {
                 $pages   = $compiled['pages'] ? $compiled['pages'] : array(0);
                 $holders = ' AND p.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
             }
-            $args = array_merge(array($s, SEOProStats_Schema::table('pageviews')), $base, $compiled['args'], $pages, array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by indexes `started` and `session_seq`; $where and $holders hold only placeholders.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE s.started >= %d AND s.started < %d$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+            $args = array_merge(array($s, SEOProStats_Schema::table('pageviews')), self::fact_window($range), $base, $compiled['args'], $pages, array($limit, $offset));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by index `ts` and the primary key; $where and $holders hold only placeholders.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         } else {
-            $args = array_merge(array($s, SEOProStats_Schema::table('events')), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by indexes `started` and `session_seq`; $where holds only placeholders from compile().
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+            $args = array_merge(array($s, SEOProStats_Schema::table('events')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         }
 
         $rows = (array) $rows;
@@ -710,6 +709,21 @@ final class SEOProStats_Query {
             $out[] = array('value' => $value, 'label' => $label) + $item + array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
         }
         return $out;
+    }
+
+    /**
+     * Times within which the pageviews and events of the range's visits
+     * fall: from the range's start (nothing happens before its visit
+     * starts) to a day past its end (a visit ends with its day: the visitor
+     * hash's salt changes at midnight, which starts a new visit). Bounding the
+     * fact table by its own `ts` lets MySQL read it through an index
+     * instead of scanning it.
+     *
+     * @param array<string,mixed> $range From range().
+     * @return array{0:int,1:int}
+     */
+    private static function fact_window(array $range) {
+        return array((int) $range['from'], (int) $range['to'] + DAY_IN_SECONDS);
     }
 
     /**
