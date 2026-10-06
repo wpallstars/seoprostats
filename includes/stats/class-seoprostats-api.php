@@ -68,7 +68,7 @@ final class SEOProStats_API {
      */
     public static function short_floats() {
         if ((string) ini_get('serialize_precision') !== '-1') {
-            ini_set('serialize_precision', '-1'); // phpcs:ignore WordPress.PHP.IniSet.Risky -- only for our own report answers, which are encoded next.
+            ini_set('serialize_precision', '-1'); // phpcs:ignore WordPress.PHP.IniSet.Risky, Squiz.PHP.DiscouragedFunctions -- only for our own report answers, which are encoded next.
         }
     }
 

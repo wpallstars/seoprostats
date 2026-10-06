@@ -548,7 +548,7 @@ final class SEOProStats_Query {
         global $wpdb;
         $where = $compiled['where'];
         $cols  = self::VISIT_METRICS;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
         $row = $wpdb->get_row($wpdb->prepare("SELECT $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where", array_merge(array(SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args'])), ARRAY_A);
         $metrics = self::metrics((array) $row);
         if ($compiled['pages'] !== null) {
@@ -581,7 +581,7 @@ final class SEOProStats_Query {
         $holders = implode(', ', array_fill(0, count($pages), '%d'));
         $where   = $compiled['where'];
         $args    = array_merge($group === '' ? array() : $group_args, array(SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('pageviews')), self::fact_window($range), array($range['from'], $range['to']), $compiled['args'], $pages);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by indexes `path_ts` or `ts`, and the primary key; $select, $by, $where and $holders are fixed SQL and placeholders.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by indexes `path_ts` or `ts`, and the primary key; $select, $by, $where and $holders are fixed SQL and placeholders.
         $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, COUNT(*) AS n FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$where AND p.path_id IN ($holders)$by", $args));
         $out  = array('' => 0);
         foreach ((array) $rows as $row) {
@@ -613,7 +613,7 @@ final class SEOProStats_Query {
         $where = $compiled['where'];
         $cols  = self::VISIT_METRICS;
         $args  = array_merge($group_args, array(SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args']);
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
         $rows = $wpdb->get_results($wpdb->prepare("SELECT $group AS b, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY b", $args), ARRAY_A);
         $by   = array();
         foreach ((array) $rows as $row) {
@@ -667,7 +667,7 @@ final class SEOProStats_Query {
         if ($level === 'session') {
             $cols = self::VISIT_METRICS;
             $args = array_merge(array($column, $s), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
             $rows = $wpdb->get_results($wpdb->prepare("SELECT s.%i AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY visits DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         } elseif ($level === 'page') {
             $holders = '';
@@ -677,11 +677,11 @@ final class SEOProStats_Query {
                 $holders = ' AND p.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
             }
             $args = array_merge(array($s, SEOProStats_Schema::table('pageviews')), self::fact_window($range), $base, $compiled['args'], $pages, array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by index `ts` and the primary key; $where and $holders hold only placeholders.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where and $holders hold only placeholders.
             $rows = $wpdb->get_results($wpdb->prepare("SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         } else {
             $args = array_merge(array($s, SEOProStats_Schema::table('events')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
             $rows = $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         }
 
