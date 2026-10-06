@@ -475,7 +475,40 @@ final class SEOProStats_CLI {
         $behind  = $through !== '' ? $through < wp_date('Y-m-d', time() - 2 * DAY_IN_SECONDS) : SEOProStats_Rollup::due() !== null;
         $state   = SEOProStats_Rollup::state();
         $add('daily summaries', !$behind, sprintf('through %s; pruned %s', $through !== '' ? $through : 'none yet', isset($state['pruned']) ? (string) $state['pruned'] : 'never'), 'warn');
+
+        if (class_exists('SEOProStats_Page_Cache')) {
+            $cache  = SEOProStats_Page_Cache::state();
+            $purged = isset($cache['purged']) ? (int) $cache['purged'] : 0;
+            $caches = isset($cache['caches']) && is_array($cache['caches']) && $cache['caches'] ? implode(', ', $cache['caches']) : 'none known active';
+            $detail = $purged ? sprintf('purged %s ago (%s): %s', human_time_diff($purged), isset($cache['why']) ? (string) $cache['why'] : '', $caches) : 'not purged yet (an admin page schedules it after an update)';
+            if (wp_next_scheduled(SEOProStats_Page_Cache::PURGE_HOOK)) {
+                $detail .= '; a purge for the new tracker is scheduled for the next WP-Cron run';
+            }
+            $add('page caches', true, $detail);
+        }
         return $out;
+    }
+
+    /**
+     * Purge the page caches SEO Pro Stats knows (WP-Optimize, LiteSpeed
+     * Cache, WP Rocket and others), so cached pages print the current
+     * tracker. Done by itself after an update and after a tracker setting
+     * changes.
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats purge-caches
+     *
+     * @subcommand purge-caches
+     */
+    public function purge_caches() {
+        $done = SEOProStats_Page_Cache::purge('manual');
+        if ($done) {
+            /* translators: %s: names of page cache plugins */
+            WP_CLI::success(sprintf(__('Purged: %s.', 'seoprostats'), implode(', ', $done)));
+            return;
+        }
+        WP_CLI::success(__('No known page cache is active.', 'seoprostats'));
     }
 
     /**

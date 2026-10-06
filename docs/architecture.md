@@ -107,8 +107,26 @@ The settings (SEO Pro Stats → Settings: Tracking, Privacy, Data) are one
 feature, `SEOProStats_Statistics`, in the autoloaded settings option, so
 reading them on a visitor page costs no query. The engine reads them
 through its helpers and its filters apply on top. Saving rewrites the
-collector config file; changes to the tracker reach cached pages when the
-page cache is purged.
+collector config file.
+
+Cached pages keep the inline tracker they were cached with, so
+`SEOProStats_Page_Cache` purges the page caches it knows (WP-Optimize,
+LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, SiteGround,
+WP Engine, Breeze, Cache Enabler, Hummingbird, Nginx Helper, WP Fastest
+Cache), each through its own public function or hook and only when
+active:
+
+- After the tracker build changes (its version, size and time): the
+  first admin request schedules a one-off WP-Cron event
+  (`seoprostats_page_cache_purge`) that purges. A cron request loads
+  every plugin, where an admin screen may not: plugins that load other
+  plugins only on the screens that need them can leave the cache plugin
+  out of the Dashboard.
+- After a setting that changes the printed tracker is saved (the save
+  runs through admin-ajax, which loads every plugin).
+
+Admin, WP-Cron and WP-CLI requests only; `wp seoprostats purge-caches`
+does it by hand.
 
 `SEOProStats_Tracker` prints it (a one-line stub in the head queues
 `seoprostats()` calls made earlier) with its config as JSON in the script
