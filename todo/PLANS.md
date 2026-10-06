@@ -44,6 +44,10 @@ long-term record.
       table (58 ms over 42,000 visits on the preview).
 - [ ] Settings: tracking, privacy (DNT/GPC, excluded IPs and paths, roles),
       data retention.
+- [ ] Purge known page caches (WP-Optimize, LiteSpeed, WP Rocket, W3 Total
+      Cache…) when the plugin version or tracker settings change: cached
+      pages keep the inline tracker they were cached with (seen on the
+      preview, PR #10).
 
 ## Phase 2: behaviour and conversions (depends on 1)
 
