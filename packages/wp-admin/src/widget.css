@@ -1,0 +1,71 @@
+/*
+ * The Dashboard widget.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+@import "./common.css";
+
+.spst-widget__heading {
+	margin: 0 0 8px;
+	color: var(--spst-muted);
+	font-size: 13px;
+	font-weight: 400;
+}
+
+.spst-widget__metrics {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+	margin: 0;
+}
+
+.spst-widget__metric dt {
+	color: var(--spst-muted);
+	font-size: 12px;
+}
+
+.spst-widget__metric dd {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 6px;
+	margin: 2px 0 0;
+}
+
+.spst-widget__value {
+	font-size: 20px;
+	font-weight: 600;
+	line-height: 1.3;
+}
+
+.spst-widget__note {
+	margin: 6px 0 0;
+	color: var(--spst-subtle);
+	font-size: 12px;
+}
+
+.spst-widget__week {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.spst-widget__week-label {
+	display: block;
+	color: var(--spst-muted);
+	font-size: 12px;
+}
+
+.spst-widget__week-value {
+	font-size: 16px;
+}
+
+.spst-widget__more {
+	margin: 12px 0 0;
+}

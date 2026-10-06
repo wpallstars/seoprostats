@@ -1,0 +1,128 @@
+/**
+ * A card of top values for a few related dimensions (tabs). Choosing a row
+ * filters the whole view by it.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+import { useState } from 'react';
+import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
+import { __, sprintf } from '@wordpress/i18n';
+import { addFilter, formatNumber, formatPercent, type Dimension, type ViewState } from '@seoprostats/core';
+import { errorMessage, useBreakdown } from '../api';
+import { locale } from '../boot';
+import { dimensionLabel, metricLabel, valueLabel } from '../labels';
+
+export interface Tab {
+	dimension: Dimension;
+	title: string;
+}
+
+interface Props {
+	title: string;
+	tabs: Tab[];
+	state: ViewState;
+	update: (patch: Partial<ViewState>) => void;
+}
+
+const PAGE_DIMENSIONS: Dimension[] = ['page', 'entry', 'exit'];
+
+function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewState; update: Props['update'] }) {
+	const query = useBreakdown(state, dimension);
+	const byPageviews = dimension === 'page';
+	const metric = byPageviews ? 'pageviews' : 'visits';
+
+	if (query.isError) {
+		return (
+			<Notice status="error" isDismissible={false}>
+				{errorMessage(query.error, __('The list could not be loaded.', 'seoprostats'))}
+			</Notice>
+		);
+	}
+	const answer = query.data;
+	if (!answer) {
+		return (
+			<ol className="spst-rows is-loading" aria-busy="true">
+				{[0, 1, 2, 3, 4].map((i) => (
+					<li key={i} className="spst-row">
+						<span className="spst-skeleton" />
+					</li>
+				))}
+			</ol>
+		);
+	}
+	if (!answer.rows.length) {
+		return <p className="spst-empty">{__('Nothing in this period.', 'seoprostats')}</p>;
+	}
+	const top = Math.max(...answer.rows.map((r) => (byPageviews ? r.pageviews ?? 0 : r.visits)), 1);
+	const isPath = PAGE_DIMENSIONS.includes(dimension);
+
+	return (
+		<>
+			<div className="spst-rows__head" aria-hidden="true">
+				<span>{dimensionLabel(dimension)}</span>
+				<span>{metricLabel(metric)}</span>
+			</div>
+			<ol className={`spst-rows${query.isFetching ? ' is-refreshing' : ''}`}>
+				{answer.rows.map((row) => {
+					const count = byPageviews ? row.pageviews ?? 0 : row.visits;
+					const label = valueLabel(dimension, row.value, row.label);
+					const share = byPageviews ? '' : formatPercent(row.share, locale);
+					return (
+						<li key={row.value} className="spst-row">
+							<button
+								type="button"
+								className="spst-row__button"
+								title={sprintf(/* translators: %s: a value such as a country or page. */ __('Show only visits with %s', 'seoprostats'), label)}
+								onClick={() => update({ filters: addFilter(state.filters, { dimension, op: 'is', values: [row.value] }) })}
+							>
+								<span className="spst-row__bar" style={{ width: `${(count / top) * 100}%` }} aria-hidden="true" />
+								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>{label}</span>
+								<span className="spst-row__value">
+									{formatNumber(count, locale)}
+									{share && <span className="spst-row__share">{share}</span>}
+								</span>
+							</button>
+						</li>
+					);
+				})}
+			</ol>
+		</>
+	);
+}
+
+export function BreakdownCard({ title, tabs, state, update }: Props) {
+	const [active, setActive] = useState<Dimension>(tabs[0]?.dimension ?? 'channel');
+	const id = `spst-card-${tabs[0]?.dimension ?? 'x'}`;
+	return (
+		<Card className="spst-card" size="small">
+			<CardHeader className="spst-card__header">
+				<h2 className="spst-card__title" id={id}>
+					{title}
+				</h2>
+				{tabs.length > 1 && (
+					<div className="spst-tabs" role="tablist" aria-labelledby={id}>
+						{tabs.map((tab) => (
+							<button
+								key={tab.dimension}
+								type="button"
+								role="tab"
+								id={`${id}-${tab.dimension}`}
+								aria-selected={active === tab.dimension}
+								aria-controls={`${id}-panel`}
+								className={`spst-tab${active === tab.dimension ? ' is-active' : ''}`}
+								onClick={() => setActive(tab.dimension)}
+							>
+								{tab.title}
+							</button>
+						))}
+					</div>
+				)}
+			</CardHeader>
+			<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${active}`}>
+				<Rows dimension={active} state={state} update={update} />
+			</CardBody>
+		</Card>
+	);
+}

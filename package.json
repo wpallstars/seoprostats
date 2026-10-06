@@ -1,0 +1,28 @@
+{
+  "name": "seoprostats",
+  "private": true,
+  "description": "Build sources for SEO Pro Stats (DEVELOPMENT.md → JavaScript builds). Nothing here ships; assets/build/ does.",
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "wp-scripts build --config webpack.config.js",
+    "start": "wp-scripts start --config webpack.config.js",
+    "check": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@wordpress/api-fetch": "^7.56.0",
+    "@wordpress/components": "^41.0.0",
+    "@wordpress/element": "^8.8.0",
+    "@wordpress/i18n": "^6.29.0",
+    "@wordpress/scripts": "^36.0.0",
+    "@wordpress/url": "^4.56.0",
+    "typescript": "~5.9.3"
+  }
+}

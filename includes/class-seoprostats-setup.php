@@ -134,5 +134,7 @@ final class SEOProStats_Setup {
      * seoprostats_admin_enqueue action).
      */
     public static function admin() {
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-dashboard.php';
+        SEOProStats_Dashboard::init();
     }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "@seoprostats/charts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Time-series chart (uPlot) and SVG sparklines for every SEO Pro Stats app. No framework.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "sideEffects": [
+    "*.css"
+  ],
+  "dependencies": {
+    "uplot": "^1.6.32"
+  }
+}

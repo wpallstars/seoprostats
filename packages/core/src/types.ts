@@ -1,0 +1,149 @@
+/**
+ * Answers of the SEO Pro Stats API, as docs/api/openapi.yaml describes
+ * them. Keep the two in step.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+export const RANGE_KEYS = [
+	'realtime',
+	'today',
+	'yesterday',
+	'24h',
+	'7d',
+	'30d',
+	'90d',
+	'week',
+	'month',
+	'year',
+	'12mo',
+	'lastyear',
+	'all',
+	'custom',
+] as const;
+export type RangeKey = (typeof RANGE_KEYS)[number];
+
+export const COMPARE_KEYS = ['none', 'prev', 'year'] as const;
+export type CompareKey = (typeof COMPARE_KEYS)[number];
+
+export const DIMENSIONS = [
+	'channel',
+	'source',
+	'utm_source',
+	'utm_medium',
+	'utm_campaign',
+	'utm_term',
+	'utm_content',
+	'country',
+	'device',
+	'browser',
+	'os',
+	'language',
+	'entry',
+	'exit',
+	'page',
+	'event',
+] as const;
+export type Dimension = (typeof DIMENSIONS)[number];
+
+export const OPERATORS = ['is', 'is_not', 'contains', 'matches'] as const;
+export type Operator = (typeof OPERATORS)[number];
+
+export type Grain = 'hour' | 'day' | 'month';
+
+export interface Range {
+	key: string;
+	from: string;
+	to: string;
+	timezone: string;
+}
+
+export interface Metrics {
+	visitors: number;
+	visits: number;
+	pageviews: number;
+	views_per_visit: number;
+	bounce_rate: number;
+	visit_duration: number;
+	events: number;
+}
+
+export type MetricKey = keyof Metrics;
+
+/** (now − then) ÷ then per metric; null when then is 0. */
+export type Change = Partial<Record<MetricKey, number | null>>;
+
+export interface Answer {
+	generated?: string;
+	cached?: boolean;
+}
+
+export interface StatsAnswer extends Answer {
+	range: Range;
+	metrics: Metrics;
+	compare?: { range: Range; metrics: Metrics; change: Change };
+}
+
+export interface Point extends Metrics {
+	t: string;
+}
+
+export interface TimeseriesAnswer extends Answer {
+	range: Range;
+	grain: Grain;
+	points: Point[];
+	compare?: { range: Range; points: Point[] };
+}
+
+export interface BreakdownRow extends Partial<Metrics> {
+	value: string;
+	label: string;
+	visitors: number;
+	visits: number;
+	share: number;
+	time_on_page?: number;
+	scroll?: number;
+	conversion_rate?: number;
+}
+
+export interface BreakdownAnswer extends Answer {
+	range: Range;
+	dimension: Dimension;
+	total: Metrics;
+	rows: BreakdownRow[];
+}
+
+export interface Count {
+	value: string;
+	label: string;
+	count: number;
+}
+
+export interface RealtimeAnswer {
+	visitors: number;
+	pageviews: number;
+	per_minute: number[];
+	pages: Count[];
+	sources: Count[];
+	processed: string | null;
+	generated: string;
+}
+
+export interface Marker {
+	t: string;
+	kind: string;
+	label: string;
+	path?: string;
+}
+
+export interface MarkersAnswer {
+	range: Range;
+	markers: Marker[];
+}
+
+export interface ApiError {
+	code: string;
+	message: string;
+	data?: { status?: number };
+}
