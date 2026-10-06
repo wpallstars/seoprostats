@@ -9,9 +9,9 @@
  * anything that only this plugin needs here, in features or in its own
  * files loaded from here.
  *
- * The starter has no features yet, so its settings screen shows the first
- * settings tab with "No settings yet" and the Read Me tab. Add a feature:
- * STANDARDS.md → Structure and README.md → Developers.
+ * The statistics' settings are one feature, SEOProStats_Statistics, on
+ * the Tracking, Privacy and Data tabs. Add a feature: STANDARDS.md →
+ * Structure and README.md → Developers.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -32,7 +32,9 @@ final class SEOProStats_Setup {
      * Each lives in includes/features/class-{lowercase-hyphenated-name}.php,
      * for example SEOProStats_Example in class-seoprostats-example.php.
      */
-    const FEATURES = array();
+    const FEATURES = array(
+        'SEOProStats_Statistics',
+    );
 
     /**
      * Features that some builds leave out, loaded only when their file is
@@ -53,7 +55,9 @@ final class SEOProStats_Setup {
      * Renamed tab slugs, old => new. Settings that still use an old slug
      * land on the new tab, and old admin links open the new tab.
      */
-    const RENAMED_TABS = array();
+    const RENAMED_TABS = array(
+        'general' => 'tracking',
+    );
 
     /**
      * Slug of the plugin's own top-level menu (add_menu_page()), when it
@@ -135,9 +139,17 @@ final class SEOProStats_Setup {
      */
     public static function settings_tabs() {
         return array(
-            'general' => array(
-                'label'       => __('General', 'seoprostats'),
-                'description' => __('SEO Pro Stats\'s settings appear here as features are added.', 'seoprostats'),
+            'tracking' => array(
+                'label'       => __('Tracking', 'seoprostats'),
+                'description' => __('What is collected, from which pages and domains.', 'seoprostats'),
+            ),
+            'privacy'  => array(
+                'label'       => __('Privacy', 'seoprostats'),
+                'description' => __('Who and what is left out. Visitors are never identified across days, and no cookies or IP addresses are stored.', 'seoprostats'),
+            ),
+            'data'     => array(
+                'label'       => __('Data', 'seoprostats'),
+                'description' => __('How long visits are kept, and who can see the statistics.', 'seoprostats'),
             ),
         );
     }

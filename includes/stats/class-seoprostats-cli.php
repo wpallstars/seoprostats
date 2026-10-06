@@ -328,7 +328,7 @@ final class SEOProStats_CLI {
 
     /**
      * Delete visits, pageviews and events past their retention now (13
-     * and 25 months by default; the seoprostats_retention filter). Daily
+     * and 25 months by default; SEO Pro Stats → Settings → Data). Daily
      * summaries are kept, and nothing newer than the last summarised day
      * goes.
      *
@@ -348,7 +348,7 @@ final class SEOProStats_CLI {
         $this->need_tables();
         $months = SEOProStats_Rollup::retention();
         /* translators: 1: months visits are kept, 2: months events are kept (0: forever) */
-        WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months (0: forever).', 'seoprostats'), $months['visits'], $months['events']));
+        WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months (0: forever; SEO Pro Stats → Settings → Data).', 'seoprostats'), $months['visits'], $months['events']));
         if (SEOProStats_Rollup::through() === '') {
             WP_CLI::success(__('Nothing to delete: no day is summarised yet.', 'seoprostats'));
             return;

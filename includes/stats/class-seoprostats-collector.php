@@ -47,6 +47,10 @@ final class SEOProStats_Collector {
      *             request, 403 wrong host, 413 too large, 503 cannot store.
      */
     public static function handle(array $config, $dir, $body, array $server, $now) {
+        // Collection is off; pages cached with the tracker still send.
+        if (!empty($config['off'])) {
+            return 204;
+        }
         if (strlen($body) > self::MAX_BODY) {
             return 413;
         }

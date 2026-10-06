@@ -95,10 +95,20 @@ ID for each page load in memory and sends it with the pageview, its
 engagement and its events, so they can be joined. Visits are made on the
 server (Processing → Sessions).
 
-The tracker skips: logged-in users who can edit posts (by default), feeds,
-previews, the customizer, localhost, Do Not Track and Global Privacy
-Control when the owner asks, excluded paths, and visible automation
-(`navigator.webdriver`, headless user agents).
+The tracker skips: logged-in users with a role that is not counted (by
+default every role that can edit posts), feeds, previews, the customizer,
+localhost, Do Not Track and Global Privacy Control when the owner asks,
+excluded paths, and visible automation (`navigator.webdriver`, headless
+user agents). With collection off, it is not printed, and the collector
+config's `off` flag makes the collector store nothing from pages cached
+with it.
+
+The settings (SEO Pro Stats → Settings: Tracking, Privacy, Data) are one
+feature, `SEOProStats_Statistics`, in the autoloaded settings option, so
+reading them on a visitor page costs no query. The engine reads them
+through its helpers and its filters apply on top. Saving rewrites the
+collector config file; changes to the tracker reach cached pages when the
+page cache is purged.
 
 `SEOProStats_Tracker` prints it (a one-line stub in the head queues
 `seoprostats()` calls made earlier) with its config as JSON in the script
@@ -235,9 +245,10 @@ Performance).
 
 ### Retention
 
-Each kind of data has its own setting under SEO Pro Stats → Settings →
-Data (until then, the `seoprostats_retention` filter sets visits and
-events in months; 0 keeps forever). Once a day, after the daily
+SEO Pro Stats → Settings → Data sets the months for visits and events
+(switched off: kept forever); each new kind of data adds its own there.
+The `seoprostats_retention` filter applies on top (0 keeps forever).
+Once a day, after the daily
 summaries are up to date, cron deletes old rows in batches of 5,000 with a
 time budget, from site-local midnight back, and never from a day that is
 not summarised. `wp seoprostats prune --dry-run` counts them.
@@ -306,7 +317,7 @@ in the future meets the same length of the other period.
 
 - **REST API**, namespace `seoprostats/v1`, documented in
   `docs/api/openapi.yaml`. Read routes need the `view_seoprostats`
-  capability (administrators, and roles the owner allows); write routes
+  capability (administrators, and the roles Settings → Data allows); write routes
   need `manage_options`. Agents authenticate with Application Passwords.
   Routes: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `pages`, `page`, `flow`, `journeys`, `clicks`, `goals`, `funnels`,

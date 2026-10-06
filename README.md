@@ -133,7 +133,15 @@ Read a setting with `SEOProStats_Settings::get( 'key' )`.
 
 ### Tracking
 
-Front-end pages get a small script (about 2.5 KB compressed), printed inline in the footer. It sets no cookies and stores nothing in the browser. It counts pageviews (including address changes in single-page apps), visible time and scroll depth, outbound links and file downloads. People logged in who can edit posts are not counted, and neither are feeds, previews or the customizer.
+Front-end pages get a small script (about 2.5 KB compressed), printed inline in the footer. It sets no cookies and stores nothing in the browser. It counts pageviews (including address changes in single-page apps), visible time and scroll depth, outbound links and file downloads. Feeds, previews and the customizer are not counted.
+
+SEO Pro Stats → Settings:
+
+- **Tracking:** collect statistics or not (off: no script is printed and new hits are not stored); the roles not counted when logged in (by default, every role that can edit posts); query parameters kept in page addresses; the site's other domains. Under Troubleshooting: load the script as a file (for a Content Security Policy without inline scripts), and the headers that hold the visitor's address and country behind a proxy or CDN.
+- **Privacy:** respect Do Not Track and Global Privacy Control; leave out IP addresses or ranges and pages (`*` matches any characters, for example `/checkout/*`).
+- **Data:** delete old visits (visits and pageviews after 13 months, events after 25 by default; the daily summaries are kept); let other roles see the statistics.
+
+The filters below apply after the settings.
 
 Send your own events from JavaScript, at any time on the page:
 
@@ -146,11 +154,10 @@ Or mark an element, with no script: `<button data-sps-event="Signup" data-sps-pr
 Filters:
 
 - `seoprostats_track`: whether the current page gets the tracker.
-- `seoprostats_tracker_skip_capability`: logged-in people with this capability are not counted (default `edit_posts`; `''` counts everyone).
 - `seoprostats_tracker_config`: `q` (query parameters kept in page addresses, besides UTM tags), `dnt` (true: skip browsers that send Do Not Track or Global Privacy Control), `x` (paths not counted; `*` matches any characters, for example `/checkout/*`), `h` (the site's own hosts: links elsewhere are outbound) and `u` (the collector address).
 - `seoprostats_page_props`: properties sent with the page's pageview, for example its author or category.
 - `seoprostats_tracker_inline`: false loads the tracker as a file (`assets/build/tracker.js`), for a Content Security Policy without inline scripts.
-- `seoprostats_collector_config`: other hosts the site answers on, IP addresses or ranges not counted (`exclude_ips`), and the headers that hold the visitor's address and country behind a proxy or CDN.
+- `seoprostats_collector_config`: whether hits are stored (`off`), other hosts the site answers on (`hosts`), IP addresses or ranges not counted (`exclude_ips`), and the headers that hold the visitor's address and country behind a proxy or CDN (`ip_header`, `country_header`: `$_SERVER` keys).
 
 ### Statistics for scripts and AI agents
 
@@ -158,9 +165,9 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 
 - Routes: `stats` (headline metrics), `timeseries`, `breakdown` (top values of a dimension), `realtime` (the last 30 minutes) and `markers`. Parameters: `range` (`today`, `7d`, `30d`, `month`, `12mo`, `all`, `custom` with `from` and `to`, and more), `compare` (`prev` or `year`), `filters`, and for breakdowns `dimension`, `limit` and `offset`.
 - Filters are `dimension:operator:value`: operators `is`, `is_not`, `contains` and `matches` (`*` is any text); a comma means any of, and separate filters must all match. For example `channel:is:organic_search,ai` or `page:matches:/blog/*`.
-- Reading needs the `view_seoprostats` capability, which people who can manage options have; change it with the `seoprostats_view_caps` filter. Scripts and agents sign in with an Application Password (Users → Profile).
+- Reading needs the `view_seoprostats` capability, which people who can manage options have, and the roles allowed under Settings → Data; change the capabilities it needs with the `seoprostats_view_caps` filter. Scripts and agents sign in with an Application Password (Users → Profile).
 - WP-CLI: `wp seoprostats stats --range=30d --compare=prev`, `wp seoprostats breakdown page --filter="channel:is:organic_search"`, `wp seoprostats timeseries`, `wp seoprostats realtime`, `wp seoprostats process` (process waiting hits now), `wp seoprostats rollup` (summarise finished days now, or rebuild days with `--from` and `--to`), `wp seoprostats prune` (delete data past its retention now; `--dry-run` counts it) and `wp seoprostats doctor` (checks tables, collector, salts, cron, waiting hits and daily summaries). Add `--format=json` for the full answer.
-- Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 13 months and events 25 months, then deleted; the summaries are kept. Change the months with the `seoprostats_retention` filter (`visits`, `events`; 0 keeps forever).
+- Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 13 months and events 25 months, then deleted; the summaries are kept. Change the months under Settings → Data, or with the `seoprostats_retention` filter (`visits`, `events`; 0 keeps forever).
 
 ```sh
 curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
@@ -178,6 +185,7 @@ Deleting the plugin removes its settings, its cached data, who hid lines of the 
 - New: reports for scripts and AI agents: the REST API (`stats`, `timeseries`, `breakdown`, `realtime`, `markers`) and `wp seoprostats` commands, with ranges, comparisons and filters.
 - New: the tracker, printed inline on front-end pages with no cookies or browser storage: pageviews (single-page apps too), visible time and scroll depth, outbound links, file downloads, and your own events with `seoprostats()` or `data-sps-event`.
 - New: daily summaries, so long ranges stay fast, and retention: visits and pageviews are kept 13 months and events 25 months (`seoprostats_retention` filter); `wp seoprostats rollup` and `prune`.
+- New: settings on the Tracking, Privacy and Data tabs: collection on or off, roles not counted, kept query parameters, other domains, proxy headers, Do Not Track and Global Privacy Control, excluded IP addresses and pages, retention months, and roles that may see the statistics. Removed the `seoprostats_tracker_skip_capability` filter: the roles setting replaces it.
 
 ### 0.1.0
 
