@@ -1,20 +1,25 @@
 # SEO Pro Stats — launch state
 
-The starter is released on GitHub only. It is not meant for WordPress.org:
-it has no features, and plugins made from it are submitted under their own
-names. `RELEASING.md` → WordPress.org applies to those plugins, each with its
-own `LAUNCH.md`.
+In development, version 0.1.0, with no release yet. The repository is
+private; making it public needs the owner's say.
 
-`scripts/preflight-release.sh` and `scripts/plugin-check.sh` still run on
-every release, so the core files stay ready for a plugin's submission.
+While it is private (`DEVELOPMENT.md` → While private):
 
-The repository is public. From `DEVELOPMENT.md` → At public launch, these
-are on: CodeQL (default setup: GitHub Actions and JavaScript), Dependabot
-security updates, secret scanning with push protection, private
-vulnerability reporting, OpenSSF Scorecard, and a `main` ruleset (pull
-requests with squash merges, the four CI checks required, no force pushes or
-deletion; repository admins may bypass, so the maintainer can merge their
-own pull requests). Releases are built, signed and published by the Release
-workflow. Still open: `SYNC_PAT` (`DEVELOPMENT.md` → Services setup, step
-3); until it is set, the repository metrics on protected `main` are not
-updated.
+- GitHub Actions do not start on this repository (account billing), so the
+  checks run locally before each merge (`AGENTS.md` → Rules for any
+  change). Qlty is out of minutes; Socket and CodeRabbit run.
+- No branch protection, rulesets, CodeQL, secret scanning or Scorecard:
+  they need a public repository or a paid GitHub plan.
+- Codacy, CodeFactor and SonarCloud are not connected; they are set up at
+  public launch.
+- Repository metrics (`docs/metrics/`) are not refreshed by Actions;
+  regenerate them locally when they matter. `SYNC_PAT` is needed only once
+  `main` is protected (`DEVELOPMENT.md` → Services setup, step 4).
+
+At public launch: scan the whole Git history first (`DEVELOPMENT.md` →
+Secrets in history), then run `DEVELOPMENT.md` → At public launch, and
+update this file with what is on.
+
+WordPress.org: planned (`readme.txt` → FAQ: versions reach WordPress.org 30
+days after GitHub). Not submitted; follow `RELEASING.md` → WordPress.org
+when the owner says, and record the submission here.
