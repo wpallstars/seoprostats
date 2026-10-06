@@ -18,6 +18,7 @@ if (!defined('WP_UNINSTALL_PLUGIN')) {
 require_once __DIR__ . '/includes/stats/class-seoprostats-schema.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-collection.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-demo.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-goals.php';
 
 /**
  * Delete the plugin's tables (live and demo), collector folder, cron job,
@@ -28,6 +29,7 @@ function seoprostats_uninstall_site() {
 
     SEOProStats_Demo::remove();
     SEOProStats_Schema::drop();
+    SEOProStats_Goals::forget();
     SEOProStats_Collection::remove();
     delete_option('seoprostats_options');
     delete_option('seoprostats_options_lock');

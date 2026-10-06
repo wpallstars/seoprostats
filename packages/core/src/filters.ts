@@ -90,3 +90,22 @@ export function addFilter(filters: Filter[], add: Filter): Filter[] {
 export function removeFilter(filters: Filter[], index: number): Filter[] {
 	return filters.filter((_, i) => i !== index);
 }
+
+/** Whether a filter of the same kind already holds the value. */
+export function hasFilterValue(filters: Filter[], dimension: Dimension, value: string, op: Operator = 'is'): boolean {
+	return filters.some((f) => f.dimension === dimension && f.op === op && f.values.includes(value));
+}
+
+/**
+ * Add the value as a filter, or take it out when it is already one: a
+ * second click on the same row undoes the first. A filter left with no
+ * values goes.
+ */
+export function toggleFilterValue(filters: Filter[], dimension: Dimension, value: string, op: Operator = 'is'): Filter[] {
+	if (!hasFilterValue(filters, dimension, value, op)) {
+		return addFilter(filters, { dimension, op, values: [value] });
+	}
+	return filters
+		.map((f) => (f.dimension === dimension && f.op === op ? { ...f, values: f.values.filter((v) => v !== value) } : f))
+		.filter((f) => f.values.length > 0);
+}

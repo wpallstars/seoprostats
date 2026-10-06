@@ -23,7 +23,10 @@ info:
 
     Every report reads live statistics, or with `data=demo` the demo data:
     made-up visits in tables of their own, for training, screenshots and
-    testing (`/demo` makes and removes it). The two are never mixed.
+    testing (`/demo` makes and removes it). The two are never mixed; goals
+    and funnels belong to a data set too (demo data comes with examples).
+
+    Changing goals and funnels needs the `manage_options` capability.
   license:
     name: GPL-3.0-or-later
     identifier: GPL-3.0-or-later
@@ -189,6 +192,261 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+
+  /goals:
+    get:
+      operationId: getGoals
+      summary: Every goal with its conversions, conversion rate and revenue.
+      description: |
+        A goal is a page viewed or an event sent. `visits` are the visits
+        that reached it (conversions); `conversion_rate` is visits ÷ all
+        visits in the range (with the filters); `completions` counts every
+        time it was reached. Revenue comes from the matching events, one
+        amount per currency (never added across currencies). Goals keep
+        the order they were added in.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Goals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalsAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+    post:
+      operationId: addGoal
+      summary: Add a goal (manage_options). Up to 50 per data set.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStep'
+      responses:
+        '200':
+          description: The goal as saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/BadDefinition'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /goals/{id}:
+    parameters:
+      - $ref: '#/components/parameters/id'
+      - $ref: '#/components/parameters/data'
+    put:
+      operationId: updateGoal
+      summary: Change a goal (manage_options). POST and PATCH work too.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalStep'
+      responses:
+        '200':
+          description: The goal as saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        '400':
+          $ref: '#/components/responses/BadDefinition'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteGoal
+      summary: Delete a goal (manage_options). Its statistics stay.
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /funnels:
+    get:
+      operationId: getFunnels
+      summary: Every funnel with the visits at each step and where they left.
+      description: |
+        A funnel's steps are reached in order within one visit; other
+        pages and events may come between them. A visit reaches step k
+        when it reached step k−1 and later had step k's page or event.
+        `entered` is the visits at step 1, `completed` those at the last
+        step. Funnels keep the order they were added in.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Funnels.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FunnelsAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+    post:
+      operationId: addFunnel
+      summary: Add a funnel (manage_options). Up to 20 per data set.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunnelInput'
+      responses:
+        '200':
+          description: The funnel as saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Funnel'
+        '400':
+          $ref: '#/components/responses/BadDefinition'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /funnels/{id}:
+    parameters:
+      - $ref: '#/components/parameters/id'
+      - $ref: '#/components/parameters/data'
+    put:
+      operationId: updateFunnel
+      summary: Change a funnel (manage_options). POST and PATCH work too.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FunnelInput'
+      responses:
+        '200':
+          description: The funnel as saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Funnel'
+        '400':
+          $ref: '#/components/responses/BadDefinition'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteFunnel
+      summary: Delete a funnel (manage_options). Its statistics stay.
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /properties:
+    get:
+      operationId: getProperties
+      summary: Property keys sent with events and pages, or one key's values.
+      description: |
+        Without `key`: the keys, with how often each was sent. With `key`:
+        that key's values, and the revenue of the events that carried each
+        value (per currency). Sorted by count. Pageview properties count
+        unless `event` limits the rows to one event's properties.
+      parameters:
+        - name: key
+          in: query
+          schema:
+            type: string
+            examples: [plan]
+        - name: event
+          in: query
+          schema:
+            type: string
+            examples: [Purchase]
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertiesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /demo:
     get:
@@ -373,8 +631,40 @@ components:
         type: string
         enum: [live, demo]
         default: live
+    id:
+      name: id
+      in: path
+      required: true
+      description: A goal's or funnel's id (lower-case letters and digits).
+      schema:
+        type: string
+        pattern: '^[a-z0-9]+$'
 
   responses:
+    BadDefinition:
+      description: A field is missing or too long, a funnel has too few or too many steps, or the data set already has the most goals or funnels it may.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: There is no such goal or funnel in this data set (or, with data=demo, no demo data).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Deleted:
+      description: Deleted.
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [deleted, id]
+            properties:
+              deleted:
+                type: boolean
+              id:
+                type: string
     NoDemo:
       description: data=demo, and there is no demo data yet (POST /demo makes it).
       content:
@@ -634,6 +924,237 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Marker'
+
+    GoalStep:
+      type: object
+      required: [kind, match]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          description: Shown in reports. A goal without one is named after its match.
+        kind:
+          type: string
+          enum: [page, event]
+          description: page — a page viewed; event — an event sent.
+        match:
+          type: string
+          maxLength: 300
+          description: The path (/pricing/) or event name (Purchase); `*` is any text (/blog/*).
+
+    Goal:
+      allOf:
+        - type: object
+          required: [id, name]
+          properties:
+            id:
+              type: string
+        - $ref: '#/components/schemas/GoalStep'
+
+    FunnelInput:
+      type: object
+      required: [name, steps]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        steps:
+          type: array
+          minItems: 2
+          maxItems: 12
+          description: In the order they are reached within one visit. Step names may be empty.
+          items:
+            $ref: '#/components/schemas/GoalStep'
+
+    Funnel:
+      allOf:
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+        - $ref: '#/components/schemas/FunnelInput'
+
+    Revenue:
+      type: object
+      required: [currency, amount, count]
+      description: Revenue in one currency; amounts in different currencies are never added.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code.
+          examples: [USD]
+        amount:
+          type: number
+          description: In the currency's main unit (dollars, not cents).
+        count:
+          type: integer
+          description: Events that carried revenue in this currency.
+
+    GoalRow:
+      allOf:
+        - $ref: '#/components/schemas/Goal'
+        - type: object
+          required: [visitors, visits, completions, conversion_rate, revenue]
+          properties:
+            visitors:
+              type: integer
+            visits:
+              type: integer
+              description: Visits that reached the goal (conversions).
+            completions:
+              type: integer
+              description: Times it was reached (pageviews or events).
+            conversion_rate:
+              type: number
+              description: visits ÷ all visits in the range.
+            revenue:
+              type: array
+              items:
+                $ref: '#/components/schemas/Revenue'
+            change:
+              $ref: '#/components/schemas/Change'
+
+    GoalsAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, visits, goals]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            visits:
+              type: integer
+              description: All visits in the range (with the filters).
+            goals:
+              type: array
+              items:
+                $ref: '#/components/schemas/GoalRow'
+            compare:
+              type: object
+              description: The comparison period's answer; each goal row then has `change` (visits, completions, conversion_rate).
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                visits:
+                  type: integer
+                goals:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/GoalRow'
+
+    FunnelStepRow:
+      allOf:
+        - $ref: '#/components/schemas/GoalStep'
+        - type: object
+          required: [visits, rate, step_rate, dropped]
+          properties:
+            visits:
+              type: integer
+              description: Visits that reached this step in order.
+            rate:
+              type: number
+              description: Of the visits that entered the funnel.
+            step_rate:
+              type: number
+              description: Of the visits at the step before.
+            dropped:
+              type: integer
+              description: Visits at the step before that did not reach this one.
+
+    FunnelRow:
+      type: object
+      required: [id, name, entered, completed, completion_rate, conversion_rate, steps]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        entered:
+          type: integer
+        completed:
+          type: integer
+        completion_rate:
+          type: number
+          description: completed ÷ entered.
+        conversion_rate:
+          type: number
+          description: completed ÷ all visits in the range.
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/FunnelStepRow'
+        change:
+          $ref: '#/components/schemas/Change'
+
+    FunnelsAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, visits, funnels]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            visits:
+              type: integer
+            funnels:
+              type: array
+              items:
+                $ref: '#/components/schemas/FunnelRow'
+            compare:
+              type: object
+              description: The comparison period's answer; each funnel row then has `change` (entered, completed, conversion_rate).
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                visits:
+                  type: integer
+                funnels:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/FunnelRow'
+
+    PropertyRow:
+      type: object
+      required: [value, label, count, visits, share, revenue]
+      properties:
+        value:
+          type: string
+          description: The key (without `key`) or the value.
+        label:
+          type: string
+        count:
+          type: integer
+          description: Times it was sent.
+        visits:
+          type: integer
+        share:
+          type: number
+          description: visits ÷ all visits in the range.
+        revenue:
+          type: array
+          description: With `key` only.
+          items:
+            $ref: '#/components/schemas/Revenue'
+
+    PropertiesAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, key, event, visits, rows]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            key:
+              type: string
+            event:
+              type: string
+            visits:
+              type: integer
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/PropertyRow'
 
     DemoStatus:
       type: object

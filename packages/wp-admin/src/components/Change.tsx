@@ -11,7 +11,8 @@ import { formatChange, METRICS, type MetricKey } from '@seoprostats/core';
 import { locale } from '../boot';
 
 interface Props {
-	metric: MetricKey;
+	/** The metric, for whether up is good; without it, up is good (conversions). */
+	metric?: MetricKey;
 	change: number | null | undefined;
 	/** Formatted value of the comparison period, for the tooltip. */
 	previous?: string;
@@ -22,7 +23,7 @@ export function Change({ metric, change, previous }: Props) {
 	let tone = 'is-flat';
 	if (typeof change === 'number' && Math.abs(change) >= 0.005) {
 		const up = change > 0;
-		tone = up === (METRICS[metric].better === 'up') ? 'is-good' : 'is-bad';
+		tone = up === ((metric ? METRICS[metric].better : 'up') === 'up') ? 'is-good' : 'is-bad';
 	}
 	const arrow = typeof change === 'number' && change !== 0 ? (change > 0 ? '↑' : '↓') : '';
 	return (

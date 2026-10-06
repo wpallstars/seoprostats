@@ -26,8 +26,12 @@ final class SEOProStats_Schema {
      *
      * v1: dict, sessions, pageviews, events, props, daily.
      * v2: daily.scroll (sum of the deepest scroll % of a page's views).
+     * v3: props keys owner_ts and key_ts replace ts and key_value.
      */
-    const VERSION = 2;
+    const VERSION = 3;
+
+    /** Keys a later version replaced: table => key names (dbDelta() only adds). */
+    const OLD_KEYS = array('props' => array('ts', 'key_value'));
 
     /** Option holding the version the tables were last made with. */
     const OPTION = 'seoprostats_schema_version';
@@ -153,10 +157,28 @@ final class SEOProStats_Schema {
                 return false;
             }
         }
+        self::drop_old_keys();
         // Live: autoloaded like the settings version, as maybe_upgrade()
         // reads it on every admin request. Demo: read only when shown.
         update_option(self::option(self::OPTION), self::VERSION, self::$set === 'live');
         return true;
+    }
+
+    /**
+     * Drop keys a later version replaced, where they are still there.
+     */
+    private static function drop_old_keys() {
+        global $wpdb;
+        foreach (self::OLD_KEYS as $name => $keys) {
+            $table = self::table($name);
+            foreach ($keys as $key) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- reading our own table's keys while upgrading; not cached on purpose.
+                if ($wpdb->get_var($wpdb->prepare('SHOW INDEX FROM %i WHERE Key_name = %s', $table, $key))) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- upgrading our own table.
+                    $wpdb->query($wpdb->prepare('ALTER TABLE %i DROP INDEX %i', $table, $key));
+                }
+            }
+        }
     }
 
     /**
@@ -273,7 +295,9 @@ final class SEOProStats_Schema {
   KEY ts (ts)
 ) $charset;",
 
-            // Properties of pageviews and events.
+            // Properties of pageviews and events. Reads are by period:
+            // owner_ts lists keys and prunes; key_ts lists a key's values.
+            // Both hold the primary key too, so neither reads the rows.
             'props' => "CREATE TABLE {$t['props']} (
   owner tinyint unsigned NOT NULL,
   owner_id bigint unsigned NOT NULL,
@@ -281,8 +305,8 @@ final class SEOProStats_Schema {
   value_id int unsigned NOT NULL,
   ts int unsigned NOT NULL,
   PRIMARY KEY  (owner,owner_id,key_id),
-  KEY key_value (key_id,value_id),
-  KEY ts (ts)
+  KEY owner_ts (owner,ts),
+  KEY key_ts (key_id,ts,value_id)
 ) $charset;",
 
             // Finished days, per dimension and value (dim 0, val 0: the

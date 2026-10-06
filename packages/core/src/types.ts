@@ -142,6 +142,106 @@ export interface MarkersAnswer {
 	markers: Marker[];
 }
 
+/** What a goal or funnel step matches: a page viewed or an event sent. */
+export type GoalKind = 'page' | 'event';
+
+/** A goal or funnel step: a path (`*` any text) or an event name. */
+export interface GoalStep {
+	name: string;
+	kind: GoalKind;
+	match: string;
+}
+
+export interface Goal extends GoalStep {
+	id: string;
+}
+
+export interface Funnel {
+	id: string;
+	name: string;
+	steps: GoalStep[];
+}
+
+/** Funnels have 2 to 12 steps. */
+export const FUNNEL_STEPS = { min: 2, max: 12 } as const;
+
+/** Revenue in one currency (never added across currencies). */
+export interface Revenue {
+	currency: string;
+	/** In the currency's main unit (dollars, not cents). */
+	amount: number;
+	/** Events that carried it. */
+	count: number;
+}
+
+export interface GoalRow extends Goal {
+	visitors: number;
+	/** Visits that reached the goal. */
+	visits: number;
+	/** Times it was reached (pageviews or events). */
+	completions: number;
+	/** visits ÷ all visits. */
+	conversion_rate: number;
+	revenue: Revenue[];
+	change?: { visits: number | null; completions: number | null; conversion_rate: number | null };
+}
+
+export interface GoalsAnswer extends Answer {
+	range: Range;
+	visits: number;
+	goals: GoalRow[];
+	compare?: { range: Range; visits: number; goals: GoalRow[] };
+}
+
+export interface FunnelStepRow extends GoalStep {
+	visits: number;
+	/** Of the visits that started the funnel. */
+	rate: number;
+	/** Of the visits at the step before. */
+	step_rate: number;
+	/** Visits at the step before that did not reach this one. */
+	dropped: number;
+}
+
+export interface FunnelRow {
+	id: string;
+	name: string;
+	entered: number;
+	completed: number;
+	/** completed ÷ entered. */
+	completion_rate: number;
+	/** completed ÷ all visits. */
+	conversion_rate: number;
+	steps: FunnelStepRow[];
+	change?: { entered: number | null; completed: number | null; conversion_rate: number | null };
+}
+
+export interface FunnelsAnswer extends Answer {
+	range: Range;
+	visits: number;
+	funnels: FunnelRow[];
+	compare?: { range: Range; visits: number; funnels: FunnelRow[] };
+}
+
+export interface PropertyRow {
+	value: string;
+	label: string;
+	/** Events and pageviews that carried it. */
+	count: number;
+	visits: number;
+	share: number;
+	revenue: Revenue[];
+}
+
+export interface PropertiesAnswer extends Answer {
+	range: Range;
+	/** The key whose values these are; '' when the rows are keys. */
+	key: string;
+	event: string;
+	visits: number;
+	rows: PropertyRow[];
+}
+
 export interface ApiError {
 	code: string;
 	message: string;

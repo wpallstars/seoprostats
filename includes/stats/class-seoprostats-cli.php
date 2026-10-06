@@ -1,7 +1,8 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * process, rollup, prune, doctor, demo and purge-caches. Reports come from
+ * goals, funnels, properties, process, rollup, prune, doctor, demo and
+ * purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
  *
@@ -244,6 +245,404 @@ final class SEOProStats_CLI {
         }
         $fields = array_values(array_diff(array_keys($answer['rows'][0]), array('value')));
         WP_CLI\Utils\format_items($this->format($assoc), $answer['rows'], $fields);
+    }
+
+    /**
+     * Goals: their conversions and revenue (report), or add, change, list
+     * and delete them (administrators' work; goals are per data set).
+     *
+     * A goal is a page viewed (a path; * for any text) or an event sent (a
+     * name). Conversion rate: visits that reached it ÷ visits. Revenue is
+     * per currency.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : report, list, add, update or delete.
+     * ---
+     * default: report
+     * options:
+     *   - report
+     *   - list
+     *   - add
+     *   - update
+     *   - delete
+     * ---
+     *
+     * [<id>]
+     * : Goal id, for update and delete.
+     *
+     * [--name=<name>]
+     * : Name, for add and update.
+     *
+     * [--kind=<kind>]
+     * : page or event, for add and update.
+     *
+     * [--match=<match>]
+     * : Page path (/pricing/, /blog/*) or event name (Purchase), for add and update.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 7d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : none, prev or year.
+     * ---
+     * default: none
+     * ---
+     *
+     * [--filter=<filters>]
+     * : As for stats.
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats goals --range=30d --compare=prev
+     *     wp seoprostats goals add --name="Purchase" --kind=event --match=Purchase
+     *     wp seoprostats goals add --name="Viewed pricing" --kind=page --match=/pricing/
+     *     wp seoprostats goals delete ab12cd34
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function goals($args, $assoc) {
+        $action = isset($args[0]) ? (string) $args[0] : 'report';
+        if ($action !== 'report') {
+            $this->define('goals', $action, isset($args[1]) ? (string) $args[1] : '', $assoc, static function ($id) use ($assoc) {
+                return SEOProStats_Goals::save_goal(array_intersect_key($assoc, array_flip(array('name', 'kind', 'match'))), $id);
+            });
+            return;
+        }
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req) {
+            return SEOProStats_Conversions::goals($req);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['goals']) {
+            WP_CLI::line(__('No goals yet. Add one: wp seoprostats goals add --name="Purchase" --kind=event --match=Purchase', 'seoprostats'));
+            return;
+        }
+        $items = array();
+        foreach ($answer['goals'] as $goal) {
+            $item = array(
+                'id'              => $goal['id'],
+                'name'            => $goal['name'],
+                'kind'            => $goal['kind'],
+                'match'           => $goal['match'],
+                'visitors'        => $goal['visitors'],
+                'visits'          => $goal['visits'],
+                'completions'     => $goal['completions'],
+                'conversion_rate' => $goal['conversion_rate'],
+                'revenue'         => self::money_text($goal['revenue']),
+            );
+            if (isset($goal['change'])) {
+                $item['change'] = $goal['change']['visits'] === null ? '' : sprintf('%+.1f%%', $goal['change']['visits'] * 100);
+            }
+            $items[] = $item;
+        }
+        /* translators: %d: visits */
+        WP_CLI::log(sprintf(__('%d visits in this range.', 'seoprostats'), $answer['visits']));
+        WP_CLI\Utils\format_items($this->format($assoc), $items, array_keys($items[0]));
+    }
+
+    /**
+     * Funnels: visits at each step, in order within one visit (report), or
+     * add, change, list and delete them.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : report, list, add, update or delete.
+     * ---
+     * default: report
+     * options:
+     *   - report
+     *   - list
+     *   - add
+     *   - update
+     *   - delete
+     * ---
+     *
+     * [<id>]
+     * : Funnel id, for update and delete.
+     *
+     * [--name=<name>]
+     * : Name, for add and update.
+     *
+     * [--steps=<steps>]
+     * : 2 to 12 steps as kind:match separated by ";" (page:/pricing/;page:/cart/;event:Purchase), or a JSON list of {name, kind, match}.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 7d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : none, prev or year.
+     * ---
+     * default: none
+     * ---
+     *
+     * [--filter=<filters>]
+     * : As for stats.
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats funnels --range=30d
+     *     wp seoprostats funnels add --name=Checkout --steps="page:/pricing/;page:/cart/;page:/checkout/;event:Purchase"
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function funnels($args, $assoc) {
+        $action = isset($args[0]) ? (string) $args[0] : 'report';
+        if ($action !== 'report') {
+            $this->define('funnels', $action, isset($args[1]) ? (string) $args[1] : '', $assoc, static function ($id) use ($assoc) {
+                $input = array_intersect_key($assoc, array('name' => true));
+                if (isset($assoc['steps'])) {
+                    $input['steps'] = self::steps((string) $assoc['steps']);
+                }
+                return SEOProStats_Goals::save_funnel($input, $id);
+            });
+            return;
+        }
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req) {
+            return SEOProStats_Conversions::funnels($req);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['funnels']) {
+            WP_CLI::line(__('No funnels yet. Add one: wp seoprostats funnels add --name=Checkout --steps="page:/pricing/;page:/cart/;event:Purchase"', 'seoprostats'));
+            return;
+        }
+        foreach ($answer['funnels'] as $funnel) {
+            WP_CLI::log('');
+            /* translators: 1: funnel name, 2: id, 3: completed visits, 4: visits that started it, 5: percentage */
+            WP_CLI::log(sprintf(__('%1$s (%2$s): %3$d of %4$d visits completed it (%5$s).', 'seoprostats'), $funnel['name'], $funnel['id'], $funnel['completed'], $funnel['entered'], sprintf('%.1f%%', $funnel['completion_rate'] * 100)));
+            WP_CLI\Utils\format_items($this->format($assoc), $funnel['steps'], array('name', 'kind', 'match', 'visits', 'rate', 'step_rate', 'dropped'));
+        }
+    }
+
+    /**
+     * Custom properties sent with events and pages: the keys, or the
+     * values of one key, with counts, visits and event revenue.
+     *
+     * ## OPTIONS
+     *
+     * [<key>]
+     * : Property whose values to list; without it, the keys are listed.
+     *
+     * [--event=<event>]
+     * : Only properties sent with this event.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 7d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--filter=<filters>]
+     * : As for stats.
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 10
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats properties --range=30d
+     *     wp seoprostats properties plan --event=Purchase --range=12mo
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function properties($args, $assoc) {
+        $key    = isset($args[0]) ? (string) $args[0] : '';
+        $event  = isset($assoc['event']) ? (string) $assoc['event'] : '';
+        $req    = $this->request($assoc);
+        $answer = $this->on_data($assoc, static function () use ($req, $key, $event) {
+            return SEOProStats_Conversions::properties($req, $key, $event);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No properties in this range.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $row['revenue'] = self::money_text($row['revenue']);
+            unset($row['value']);
+            $rows[] = $row;
+        }
+        $fields = $key === '' ? array('label', 'count', 'visits', 'share') : array('label', 'count', 'visits', 'share', 'revenue');
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields);
+    }
+
+    /**
+     * Run a definition action (list, add, update, delete) for goals or
+     * funnels on the --data set; exits on an error.
+     *
+     * @param string               $type   goals or funnels.
+     * @param string               $action list, add, update or delete.
+     * @param string               $id     Id, for update and delete.
+     * @param array<string,string> $assoc  Options.
+     * @param callable             $save   Takes the id ('' to add); saves.
+     */
+    private function define($type, $action, $id, array $assoc, callable $save) {
+        if (in_array($action, array('update', 'delete'), true) && $id === '') {
+            /* translators: %s: goals or funnels */
+            WP_CLI::error(sprintf(__('Give the id: wp seoprostats %s list shows them.', 'seoprostats'), $type));
+        }
+        $answer = $this->on_data($assoc, static function () use ($type, $action, $id, $save) {
+            if ($action === 'list') {
+                return $type === 'funnels' ? SEOProStats_Goals::funnels() : SEOProStats_Goals::goals();
+            }
+            if ($action === 'delete') {
+                return SEOProStats_Goals::delete($type, $id) ? true : new WP_Error('seoprostats_not_found', __('There is no such goal or funnel.', 'seoprostats'));
+            }
+            return $save($action === 'update' ? $id : '');
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($action === 'delete') {
+            WP_CLI::success(__('Deleted.', 'seoprostats'));
+            return;
+        }
+        if ($action === 'list') {
+            if ($this->format($assoc) === 'json') {
+                WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return;
+            }
+            $items = array();
+            foreach ((array) $answer as $item) {
+                if (isset($item['steps'])) {
+                    $item['steps'] = implode(' → ', array_map(static function ($step) {
+                        return $step['kind'] . ':' . $step['match'];
+                    }, $item['steps']));
+                }
+                $items[] = $item;
+            }
+            if (!$items) {
+                WP_CLI::line(__('None yet.', 'seoprostats'));
+                return;
+            }
+            WP_CLI\Utils\format_items($this->format($assoc), $items, array_keys($items[0]));
+            return;
+        }
+        WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        WP_CLI::success($action === 'add' ? __('Added.', 'seoprostats') : __('Updated.', 'seoprostats'));
+    }
+
+    /**
+     * Funnel steps from "kind:match;kind:match" or a JSON list.
+     *
+     * @param string $text Steps.
+     * @return array<int,array<string,string>>
+     */
+    private static function steps($text) {
+        $text = trim($text);
+        if ($text !== '' && $text[0] === '[') {
+            $json = json_decode($text, true);
+            return is_array($json) ? $json : array();
+        }
+        $steps = array();
+        foreach (array_filter(array_map('trim', explode(';', $text))) as $part) {
+            $pair    = explode(':', $part, 2);
+            $steps[] = array('kind' => $pair[0], 'match' => isset($pair[1]) ? $pair[1] : '');
+        }
+        return $steps;
+    }
+
+    /**
+     * Revenue per currency as text: "USD 1234.00; GBP 99.00".
+     *
+     * @param array<int,array{currency:string,amount:float}> $money Revenue.
+     * @return string
+     */
+    private static function money_text(array $money) {
+        return implode('; ', array_map(static function ($row) {
+            return sprintf('%s %.2f', $row['currency'], $row['amount']);
+        }, $money));
     }
 
     /**

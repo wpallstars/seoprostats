@@ -106,7 +106,7 @@ export function DemoNotice() {
 
 	if (error) {
 		return (
-			<Notice status="error" isDismissible={false} className="spst-notice" actions={[{ label: __('Try again', 'seoprostats'), onClick: () => setError(null), variant: 'secondary' }]}>
+			<Notice status="error" isDismissible={false} className="spst-notice spst-demo-notice" actions={[{ label: __('Try again', 'seoprostats'), onClick: () => setError(null), variant: 'secondary' }]}>
 				{error}
 			</Notice>
 		);
@@ -135,7 +135,7 @@ export function DemoNotice() {
 
 	if (status.status === 'making') {
 		return (
-			<Notice status="info" isDismissible={false} className="spst-notice">
+			<Notice status="info" isDismissible={false} className="spst-notice spst-demo-notice">
 				{boot.canManage
 					? sprintf(
 							/* translators: %d: percentage done */
@@ -151,7 +151,7 @@ export function DemoNotice() {
 		<Notice
 			status="info"
 			isDismissible={false}
-			className="spst-notice"
+			className="spst-notice spst-demo-notice"
 			actions={[
 				...(boot.canManage ? [{ label: __('Make demo data', 'seoprostats'), onClick: () => start(false), variant: 'primary' as const }] : []),
 				{ label: __('Show live data', 'seoprostats'), onClick: () => show('live'), variant: 'secondary' as const },

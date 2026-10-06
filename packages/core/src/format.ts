@@ -69,6 +69,17 @@ export function formatMetric(value: number, format: MetricFormat, locale: string
 	}
 }
 
+/** An amount in a currency (ISO 4217 code): $1,234.50, £99. Unknown codes: "XYZ 12.00". */
+export function formatMoney(amount: number, currency: string, locale: string): string {
+	try {
+		// Whole units from 1,000 up: the cents add nothing there.
+		const digits = Math.abs(amount) >= 1000 ? { minimumFractionDigits: 0, maximumFractionDigits: 0 } : {};
+		return nf(locale, { style: 'currency', currency, ...digits }).format(amount);
+	} catch {
+		return `${currency} ${amount.toFixed(2)}`;
+	}
+}
+
 /** A change as +12% or −3%; null (nothing to compare with) as an em dash. */
 export function formatChange(change: number | null | undefined, locale: string): string {
 	if (change === null || change === undefined || !Number.isFinite(change)) {

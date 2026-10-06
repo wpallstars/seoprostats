@@ -52,8 +52,10 @@ long-term record.
 
 ## Phase 2: behaviour and conversions (depends on 1)
 
-- [ ] Goals (page and event, revenue), funnels (2–12 steps, same visit),
-      custom properties.
+- [x] Goals (page and event, revenue per currency), funnels (2–12 steps,
+      in order within one visit), custom properties; per data set, with
+      demo examples; REST, WP-CLI and dashboard sections with editors
+      (PR #21). Properties read `props` by period (schema v3 keys).
 - [ ] Click and form autocapture; Clicks view; dead clicks; affiliate
       paths.
 - [ ] Enhanced: 404s, site search, author and categories, logged-in,

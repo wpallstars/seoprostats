@@ -13,6 +13,12 @@ import {
 	apiArgs,
 	type BreakdownAnswer,
 	type Dimension,
+	type Funnel,
+	type FunnelsAnswer,
+	type Goal,
+	type GoalStep,
+	type GoalsAnswer,
+	type PropertiesAnswer,
 	type RealtimeAnswer,
 	type StatsAnswer,
 	type TimeseriesAnswer,
@@ -101,6 +107,70 @@ export function useRealtime() {
 		staleTime: 0,
 		enabled,
 	});
+}
+
+export function useGoals(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['goals', args],
+		queryFn: () => get<GoalsAnswer>('goals', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+export function useFunnels(scope: Scope) {
+	const { data, enabled } = useReportData();
+	const args = withData(apiArgs(scope), data);
+	return useQuery({
+		queryKey: ['funnels', args],
+		queryFn: () => get<FunnelsAnswer>('funnels', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Property keys (key ''), or one key's values; optionally of one event only. */
+export function useProperties(scope: Omit<Scope, 'compare'>, key: string, event: string, limit = 50) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), limit, ...(key ? { key } : {}), ...(event ? { event } : {}) }, data);
+	return useQuery({
+		queryKey: ['properties', args],
+		queryFn: () => get<PropertiesAnswer>('properties', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Goals and funnels belong to the data set shown (demo data has its own). */
+function definitionPath(type: 'goals' | 'funnels', id?: string): string {
+	return id ? `${type}/${id}` : type;
+}
+
+/** After a change, reports that use definitions are asked again. */
+function refreshDefinitions(): void {
+	void queryClient.invalidateQueries({ queryKey: ['goals'] });
+	void queryClient.invalidateQueries({ queryKey: ['funnels'] });
+}
+
+/** Add a goal (no id) or change one. */
+export async function saveGoal(data: DataSet, goal: GoalStep, id?: string): Promise<Goal> {
+	const saved = await send<Goal>(definitionPath('goals', id), 'POST', { ...goal, data });
+	refreshDefinitions();
+	return saved;
+}
+
+/** Add a funnel (no id) or change one. */
+export async function saveFunnel(data: DataSet, funnel: Omit<Funnel, 'id'>, id?: string): Promise<Funnel> {
+	const saved = await send<Funnel>(definitionPath('funnels', id), 'POST', { ...funnel, data });
+	refreshDefinitions();
+	return saved;
+}
+
+export async function deleteDefinition(data: DataSet, type: 'goals' | 'funnels', id: string): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/${definitionPath(type, id)}`, { data }), method: 'DELETE' });
+	refreshDefinitions();
 }
 
 /** Whether demo data is made: from the page at first, then the API. */

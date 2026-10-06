@@ -1,9 +1,11 @@
 <?php
 /**
- * The read REST API (namespace seoprostats/v1): stats, timeseries,
- * breakdown, realtime and markers, each on live data or the demo data
- * (data=demo); demo (make, carry on, remove) and view (the data set a
- * person sees). Contract: docs/api/openapi.yaml.
+ * The REST API (namespace seoprostats/v1): the reports stats, timeseries,
+ * breakdown, realtime, markers, goals, funnels and properties, each on
+ * live data or the demo data (data=demo); goals and funnels also add,
+ * change and delete their definitions (administrators); demo (make, carry
+ * on, remove) and view (the data set a person sees). Contract:
+ * docs/api/openapi.yaml.
  *
  * Reading needs the view_seoprostats capability: administrators (anyone
  * with manage_options) and the roles Settings → Data allows. Agents use
@@ -72,6 +74,8 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-demo.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-goals.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-conversions.php';
     }
 
     /**
@@ -145,6 +149,55 @@ final class SEOProStats_API {
         ));
 
         $manage = array(__CLASS__, 'can_manage');
+        $data   = array('data' => $base['data']);
+
+        // Goals and funnels: the report, and (administrators) their definitions.
+        foreach (array('goals', 'funnels') as $type) {
+            $fields = $type === 'goals' ? self::goal_args() : self::funnel_args();
+            register_rest_route($ns, '/' . $type, array(
+                $read + array(
+                    'callback' => array(__CLASS__, $type),
+                    'args'     => $base,
+                ),
+                array(
+                    'methods'             => WP_REST_Server::CREATABLE,
+                    'permission_callback' => $manage,
+                    'callback'            => array(__CLASS__, 'save_' . $type),
+                    'args'                => $data + $fields,
+                ),
+            ));
+            register_rest_route($ns, '/' . $type . '/(?P<id>[a-z0-9]+)', array(
+                array(
+                    'methods'             => WP_REST_Server::EDITABLE,
+                    'permission_callback' => $manage,
+                    'callback'            => array(__CLASS__, 'save_' . $type),
+                    'args'                => $data + $fields,
+                ),
+                array(
+                    'methods'             => WP_REST_Server::DELETABLE,
+                    'permission_callback' => $manage,
+                    'callback'            => array(__CLASS__, 'delete_' . $type),
+                    'args'                => $data,
+                ),
+            ));
+        }
+        register_rest_route($ns, '/properties', $read + array(
+            'callback' => array(__CLASS__, 'properties'),
+            'args'     => $base + array(
+                'key'    => array(
+                    'description' => __('Property whose values to list; without it, the property keys are listed.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'event'  => array(
+                    'description' => __('Only properties sent with this event (without it: events and pages).', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
         register_rest_route($ns, '/demo', array(
             array(
                 'methods'             => WP_REST_Server::READABLE,
@@ -318,6 +371,114 @@ final class SEOProStats_API {
     }
 
     /**
+     * GET /goals: every goal's conversions and revenue.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function goals($request) {
+        return self::report($request, array('SEOProStats_Conversions', 'goals'));
+    }
+
+    /**
+     * GET /funnels: every funnel's visits per step.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function funnels($request) {
+        return self::report($request, array('SEOProStats_Conversions', 'funnels'));
+    }
+
+    /**
+     * GET /properties: property keys, or one key's values.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function properties($request) {
+        $key   = (string) $request->get_param('key');
+        $event = (string) $request->get_param('event');
+        return self::report($request, static function ($req) use ($key, $event) {
+            return SEOProStats_Conversions::properties($req, $key, $event);
+        });
+    }
+
+    /**
+     * POST /goals, PUT /goals/{id}: add or change a goal.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function save_goals($request) {
+        return self::define($request, static function () use ($request) {
+            return SEOProStats_Goals::save_goal((array) $request->get_params(), (string) $request->get_param('id'));
+        });
+    }
+
+    /**
+     * POST /funnels, PUT /funnels/{id}: add or change a funnel.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function save_funnels($request) {
+        return self::define($request, static function () use ($request) {
+            return SEOProStats_Goals::save_funnel((array) $request->get_params(), (string) $request->get_param('id'));
+        });
+    }
+
+    /**
+     * DELETE /goals/{id}.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function delete_goals($request) {
+        return self::remove_definition($request, 'goals');
+    }
+
+    /**
+     * DELETE /funnels/{id}.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function delete_funnels($request) {
+        return self::remove_definition($request, 'funnels');
+    }
+
+    /**
+     * Delete a goal or funnel on the data set asked for.
+     *
+     * @param WP_REST_Request $request Request.
+     * @param string          $type    goals or funnels.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function remove_definition($request, $type) {
+        $id = (string) $request->get_param('id');
+        return self::define($request, static function () use ($type, $id) {
+            if (!SEOProStats_Goals::delete($type, $id)) {
+                return new WP_Error('seoprostats_not_found', __('There is no such goal or funnel.', 'seoprostats'), array('status' => 404));
+            }
+            return array('deleted' => true, 'id' => $id);
+        });
+    }
+
+    /**
+     * Change definitions on the data set asked for (the demo data has its
+     * own goals and funnels).
+     *
+     * @param WP_REST_Request $request Request.
+     * @param callable        $work    Makes the change; returns the answer or an error.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function define($request, callable $work) {
+        $answer = self::on_data((string) $request->get_param('data'), $work);
+        return is_wp_error($answer) ? $answer : rest_ensure_response($answer);
+    }
+
+    /**
      * Run a report for a REST request.
      *
      * @param WP_REST_Request $request Request.
@@ -325,11 +486,7 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     private static function answer($request, $report) {
-        $req = SEOProStats_Query::request((array) $request->get_params());
-        if (is_wp_error($req)) {
-            return $req;
-        }
-        $answer = self::on_data((string) $request->get_param('data'), static function () use ($req, $report) {
+        return self::report($request, static function ($req) use ($report) {
             if ($report === 'stats') {
                 return SEOProStats_Query::stats($req);
             }
@@ -338,6 +495,23 @@ final class SEOProStats_API {
             }
             return SEOProStats_Query::breakdown($req);
         });
+    }
+
+    /**
+     * Run a report on the request's range, filters and data set.
+     *
+     * @param WP_REST_Request $request Request.
+     * @param callable        $work    Takes the checked request; makes the answer.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function report($request, callable $work) {
+        $req = SEOProStats_Query::request((array) $request->get_params());
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $answer = self::on_data((string) $request->get_param('data'), static function () use ($req, $work) {
+            return $work($req);
+        });
         if (is_wp_error($answer)) {
             return $answer;
         }
@@ -345,6 +519,54 @@ final class SEOProStats_API {
         // caches answers on the server instead.
         self::short_floats();
         return rest_ensure_response($answer);
+    }
+
+    /**
+     * Fields of a goal (also of each funnel step).
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    private static function goal_args() {
+        return array(
+            'name'  => array(
+                'description' => __('Name shown in reports.', 'seoprostats'),
+                'type'        => 'string',
+            ),
+            'kind'  => array(
+                'description' => __('What counts: a page viewed or an event sent.', 'seoprostats'),
+                'type'        => 'string',
+                'enum'        => SEOProStats_Goals::KINDS,
+            ),
+            'match' => array(
+                'description' => __('The page path (such as /pricing/; * for any text) or the event name (such as Purchase).', 'seoprostats'),
+                'type'        => 'string',
+            ),
+        );
+    }
+
+    /**
+     * Fields of a funnel.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    private static function funnel_args() {
+        $step = self::goal_args();
+        return array(
+            'name'  => $step['name'],
+            'steps' => array(
+                'description' => sprintf(
+                    /* translators: 1: fewest steps, 2: most steps */
+                    __('%1$d to %2$d steps, reached in this order within one visit; each a name, kind and match as for goals.', 'seoprostats'),
+                    SEOProStats_Goals::MIN_STEPS,
+                    SEOProStats_Goals::MAX_STEPS
+                ),
+                'type'        => 'array',
+                'items'       => array(
+                    'type'       => 'object',
+                    'properties' => $step,
+                ),
+            ),
+        );
     }
 
     /**

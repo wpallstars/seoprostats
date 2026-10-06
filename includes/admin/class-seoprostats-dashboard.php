@@ -114,8 +114,9 @@ final class SEOProStats_Dashboard {
     }
 
     /**
-     * Register the menu and its Overview item. Settings is added after
-     * these (SEOProStats_Admin_Manager, priority 20).
+     * Register the menu, its Overview item and links to the other sections
+     * of the same screen (the app marks the one shown). Settings is added
+     * after these (SEOProStats_Admin_Manager, priority 20).
      */
     public static function register_menu() {
         add_menu_page(
@@ -135,6 +136,15 @@ final class SEOProStats_Dashboard {
             self::SLUG,
             array(__CLASS__, 'render')
         );
+        $sections = array(
+            'goals'      => __('Goals', 'seoprostats'),
+            'funnels'    => __('Funnels', 'seoprostats'),
+            'properties' => __('Properties', 'seoprostats'),
+        );
+        foreach ($sections as $view => $title) {
+            // A slug that is an address, with no callback, is a plain link.
+            add_submenu_page(self::SLUG, $title, $title, SEOProStats_API::CAP, 'admin.php?page=' . self::SLUG . '#/' . $view);
+        }
     }
 
     /**
