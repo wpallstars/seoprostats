@@ -20,8 +20,10 @@ site. A phase may start once the phases it depends on are merged.
 - [ ] Tracker: pageviews, SPA, engagement, events API, outbound and
       downloads, sessions; inline print; exclusions.
 - [x] Collector (fast path and REST), salts, buffer files, loopback test.
-- [ ] Processor: user agents, channels, location (CDN header, time zone),
-      sessions, facts; cron; nightly summaries; retention.
+- [x] Processor: user agents, channels, location (CDN header, time zone),
+      sessions, pageviews, events, properties, engagement; minute cron.
+      Bot hits are counted and dropped until the `bots` table (Phase 5).
+- [ ] Nightly summaries into `daily`; retention.
 - [ ] Report engine: ranges, comparison, filters, breakdowns, cache.
 - [ ] REST API (`stats`, `timeseries`, `breakdown`, `realtime`,
       `markers`), OpenAPI file, WP-CLI (`stats`, `breakdown`, `process`,
