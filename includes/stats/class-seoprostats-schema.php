@@ -98,7 +98,9 @@ final class SEOProStats_Schema {
                 return false;
             }
         }
-        update_option(self::OPTION, self::VERSION, false);
+        // Autoloaded like the settings version: maybe_upgrade() reads it on
+        // every admin request, so it must not cost a query.
+        update_option(self::OPTION, self::VERSION);
         return true;
     }
 
