@@ -15,6 +15,7 @@ import { Change } from './components/Change';
 import { Sparkline } from './components/Sparkline';
 import { metricLabel } from './labels';
 import { mount } from './mount';
+import { placeWidget } from './placeWidget';
 import './widget.css';
 
 const TODAY_METRICS: MetricKey[] = ['visitors', 'pageviews', 'bounce_rate'];
@@ -75,4 +76,7 @@ function Widget() {
 	);
 }
 
+if (boot.placeWidget) {
+	placeWidget();
+}
 mount('spst-widget', <Widget />);

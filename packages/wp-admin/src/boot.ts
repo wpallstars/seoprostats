@@ -13,6 +13,8 @@ export interface Boot {
 	dashboardUrl: string;
 	settingsUrl: string;
 	canManage: boolean;
+	/** Dashboard only: no saved arrangement includes the widget, so it goes to its default place. */
+	placeWidget: boolean;
 }
 
 declare global {
@@ -29,6 +31,7 @@ export const boot: Boot = {
 	dashboardUrl: raw.dashboardUrl ?? '',
 	settingsUrl: raw.settingsUrl ?? '',
 	canManage: raw.canManage ?? false,
+	placeWidget: raw.placeWidget ?? false,
 };
 
 /** BCP 47 form for Intl (en_GB → en-GB); falls back to the browser's. */
