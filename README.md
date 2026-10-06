@@ -35,7 +35,7 @@ Version: 0.1.0
 <!-- github-only:start -->
 ## Screenshots
 
-**Settings → SEO Pro Stats**: the General tab, empty until features add settings, with search and the Source code, Support and Buy me a coffee links.
+**SEO Pro Stats → Settings**: the General tab, empty until features add settings, with search and the Source code, Support and Buy me a coffee links.
 
 ![The SEO Pro Stats settings screen on the General tab](.wordpress-org/screenshot-1.png)
 
@@ -50,7 +50,7 @@ Version: 0.1.0
 
 ## What you get
 
-- **A settings screen** (Settings → SEO Pro Stats) that features fill by declaring their settings: switches, numbers, text, lists, choices and Media Library pictures, saved instantly with no Save button, searchable, in tabs. With no features yet it shows one empty tab.
+- **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings: switches, numbers, text, lists, choices and Media Library pictures, saved instantly with no Save button, searchable, in tabs. With no features yet it shows one empty tab.
 - **A Read Me tab** that shows this file, banner included, so users read the same guide inside WordPress as on GitHub.
 - **Features as classes**: one file per feature, off by default, with settings, hooks, one-off imports from the plugins it replaces and clean uninstall.
 - **Replaced plugins**: a feature that does another plugin's job imports its settings once, waits while that plugin is active, and the Plugins screen suggests deactivating and deleting it.
@@ -73,7 +73,7 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 **SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick, and where visits came from, what they viewed, where and on what. Choose a period and comparison at the top; choose any row to show only those visits, and remove the filter from the bar above the chart. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days.
 
-Go to **Settings → SEO Pro Stats** (or **SEO Pro Stats → Settings**) for the settings. The screen has two groups of tabs:
+Go to **SEO Pro Stats → Settings** for the settings. The screen has two groups of tabs:
 
 - **Settings**: General, empty until features add settings. Changes save instantly; there is no Save button. **Search features** (next to the plugin name) finds settings on every tab.
 - **About**: this Read Me.

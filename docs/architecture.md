@@ -222,7 +222,7 @@ Performance).
 
 ### Retention
 
-Each kind of data has its own setting under Settings → SEO Pro Stats →
+Each kind of data has its own setting under SEO Pro Stats → Settings →
 Data. Cron deletes old rows in batches of 5,000 with a time budget.
 
 | Data | Default | Why |
@@ -304,9 +304,13 @@ A top-level **SEO Pro Stats** menu at position 3 (where site statistics
 usually sit) opens one admin page,
 `admin.php?page=seoprostats-dashboard#/overview`, holding the React app
 (`includes/admin/class-seoprostats-dashboard.php`). Submenus link to its
-sections. The settings screen stays at Settings → SEO Pro Stats
-(`options-general.php?page=seoprostats`, the starter's screen, hence the
-app's own slug) with a Settings submenu linking to it. A Dashboard widget
+sections. The last one is **Settings**, the starter's settings screen
+(`admin.php?page=seoprostats`), there and not under WordPress's Settings
+because `SEOProStats_Setup::MENU_PARENT` names this menu; the old
+`options-general.php?page=seoprostats` address redirects. When SEO Pro
+Stack organises the admin menu into sections, the
+`seoprostack_admin_menu_catalog` filter keeps this menu at the top with
+the Dashboard, unless its catalog already places it. A Dashboard widget
 (the `widget` entry, a smaller bundle) shows today so far against
 yesterday at the same time and the last 7 days' visitors, with a link to
 the Overview.

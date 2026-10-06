@@ -4,10 +4,9 @@
  *
  * A top-level menu at position 3, where site statistics usually sit, opens
  * one screen holding the dashboard app (packages/wp-admin, built into
- * assets/build/). Its own slug keeps it apart from Settings → SEO Pro Stats
- * (options-general.php?page=seoprostats), which the Settings submenu links
- * to. Views live in the URL hash (#/overview?range=30d), so each can be
- * bookmarked.
+ * assets/build/). The settings screen (page=seoprostats) is the menu's last
+ * item, Settings (SEOProStats_Setup::MENU_PARENT names this menu). Views
+ * live in the URL hash (#/overview?range=30d), so each can be bookmarked.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -24,7 +23,7 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Dashboard {
 
     /** Screen slug: admin.php?page=seoprostats-dashboard. */
-    const SLUG = 'seoprostats-dashboard';
+    const SLUG = SEOProStats_Setup::MENU_PARENT;
 
     /** Menu position: where site statistics usually sit, under Dashboard. */
     const POSITION = 3;
@@ -42,6 +41,23 @@ final class SEOProStats_Dashboard {
         add_action('admin_menu', array(__CLASS__, 'register_menu'));
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue'));
         add_action('wp_dashboard_setup', array(__CLASS__, 'register_widget'));
+        add_filter('seoprostack_admin_menu_catalog', array(__CLASS__, 'menu_catalog'));
+    }
+
+    /**
+     * Keep the menu at the top, under Dashboard, when SEO Pro Stack
+     * organises the admin menu into sections; otherwise it would go under
+     * Administrators. A place already given in its catalog wins, and
+     * people can still move it with SEO Pro Stack's "Move menu entries".
+     *
+     * @param mixed $catalog SEO Pro Stack's admin menu catalog.
+     * @return mixed
+     */
+    public static function menu_catalog($catalog) {
+        if (is_array($catalog) && !isset($catalog['menus'][self::SLUG])) {
+            $catalog['menus'][self::SLUG] = 'top';
+        }
+        return $catalog;
     }
 
     /**
@@ -55,7 +71,8 @@ final class SEOProStats_Dashboard {
     }
 
     /**
-     * Register the menu and its submenus.
+     * Register the menu and its Overview item. Settings is added after
+     * these (SEOProStats_Admin_Manager, priority 20).
      */
     public static function register_menu() {
         add_menu_page(
@@ -74,14 +91,6 @@ final class SEOProStats_Dashboard {
             SEOProStats_API::CAP,
             self::SLUG,
             array(__CLASS__, 'render')
-        );
-        // WordPress links a submenu whose slug is an admin file straight to it.
-        add_submenu_page(
-            self::SLUG,
-            __('Settings', 'seoprostats'),
-            __('Settings', 'seoprostats'),
-            'manage_options',
-            'options-general.php?page=' . SEOProStats_Admin_Manager::PAGE
         );
     }
 
@@ -189,7 +198,7 @@ final class SEOProStats_Dashboard {
             'locale'       => get_user_locale(),
             'timezone'     => wp_timezone_string(),
             'dashboardUrl' => self::url(),
-            'settingsUrl'  => admin_url('options-general.php?page=' . SEOProStats_Admin_Manager::PAGE),
+            'settingsUrl'  => SEOProStats_Admin_Manager::page_url(),
             'canManage'    => current_user_can('manage_options'),
         );
     }
