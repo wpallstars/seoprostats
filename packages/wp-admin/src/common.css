@@ -9,7 +9,7 @@
 .spst-app,
 .spst-widget {
 	--spst-accent: var(--wp-admin-theme-color, #2271b1);
-	--spst-accent-soft: rgba(34, 113, 177, 0.1);
+	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
 	--spst-text: #1d2327;
 	--spst-muted: #50575e;
 	--spst-subtle: #646970;

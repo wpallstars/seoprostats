@@ -112,7 +112,8 @@ const languageNames = (() => {
 /** A dimension value as people read it; the API's label when it has one. */
 export function valueLabel(dimension: Dimension, value: string, apiLabel?: string): string {
 	if (value === '') {
-		return dimension === 'source' ? __('Direct / none', 'seoprostats') : __('(none)', 'seoprostats');
+		// The API names empty values for each dimension (Direct, Unknown, (none)).
+		return apiLabel || (dimension === 'source' ? __('Direct', 'seoprostats') : __('(none)', 'seoprostats'));
 	}
 	if (dimension === 'country' && /^[A-Z]{2}$/.test(value)) {
 		return regionNames?.of(value) ?? value;
