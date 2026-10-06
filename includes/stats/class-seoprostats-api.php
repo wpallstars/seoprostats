@@ -154,7 +154,7 @@ final class SEOProStats_API {
     /**
      * GET /realtime.
      *
-     * @return WP_REST_Response|WP_Error
+     * @return WP_REST_Response
      */
     public static function realtime() {
         self::short_floats();
