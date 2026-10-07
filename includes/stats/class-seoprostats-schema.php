@@ -33,8 +33,9 @@ final class SEOProStats_Schema {
      * v6: changes (the change log: markers on the timeline).
      * v7: gsc_pages, gsc_queries, gsc_pairs, gsc_totals (search data from
      *     Search Console and later Bing), imports (each import run).
+     * v8: experiments (a change's hypothesis, measured before and after).
      */
-    const VERSION = 7;
+    const VERSION = 8;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -99,7 +100,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments');
     }
 
     /**
@@ -513,6 +514,37 @@ final class SEOProStats_Schema {
   meta text NOT NULL,
   PRIMARY KEY  (id),
   KEY source_status (source,status)
+) $charset;",
+
+            // Experiments (SEOProStats_Experiments): a hypothesis about a
+            // change, measured before and after against unchanged pages;
+            // kept for good (small). Codes in SEOProStats_Experiments.
+            // start: the change's time; days: each window's length;
+            // review: the after window's last day. path_id 0: several
+            // pages, in meta.pages. meta: JSON (pages, goal, note,
+            // hypothesis, and the measurement a decision was made on).
+            'experiments' => "CREATE TABLE {$t['experiments']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  created int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  name varchar(190) NOT NULL DEFAULT '',
+  start int unsigned NOT NULL,
+  days tinyint unsigned NOT NULL DEFAULT 28,
+  review date NOT NULL,
+  engine tinyint unsigned NOT NULL DEFAULT 1,
+  metric tinyint unsigned NOT NULL DEFAULT 1,
+  direction tinyint unsigned NOT NULL DEFAULT 1,
+  threshold smallint unsigned NOT NULL DEFAULT 10,
+  change_id bigint unsigned NOT NULL DEFAULT 0,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  result tinyint unsigned NOT NULL DEFAULT 0,
+  decided int unsigned NOT NULL DEFAULT 0,
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  KEY status_review (status,review),
+  KEY path_id (path_id),
+  KEY start (start)
 ) $charset;",
         );
     }

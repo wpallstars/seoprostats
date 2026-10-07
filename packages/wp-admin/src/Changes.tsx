@@ -22,6 +22,7 @@ import { PeriodLine } from './Overview';
 import { CHANGE_GROUPS, filteredPage, groupLabel } from './changelog';
 import { ChangesTable } from './components/ChangesTable';
 import { DefinitionModal } from './components/DefinitionModal';
+import { startFrom } from './Experiments';
 
 const PER_PAGE = 50;
 
@@ -199,7 +200,16 @@ export function Changes({ state, update }: ViewProps) {
 						</div>
 					)}
 					{rows.length > 0 && (
-						<ChangesTable rows={rows} refreshing={query.isFetching} onPage={showPage} onDelete={(change) => void remove(change)} />
+						<ChangesTable
+							rows={rows}
+							refreshing={query.isFetching}
+							onPage={showPage}
+							onDelete={(change) => void remove(change)}
+							onExperiment={(change) => {
+								startFrom(change);
+								update({ view: 'search', report: 'experiments', change: String(change.id), page: undefined });
+							}}
+						/>
 					)}
 					{answer && answer.total > PER_PAGE && (
 						<nav className="spst-changes__pager" aria-label={__('Pages of changes', 'seoprostats')}>

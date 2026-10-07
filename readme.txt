@@ -87,6 +87,10 @@ Yes. While you edit a post, a Search queries panel (in the block editor's sideba
 
 Which pages earn their search traffic. For each page: its search clicks, position and click-through rate, beside the visits from search that started on it, their bounce rate and time, and how many reached a goal you pick. A page that ranks but whose visitors leave needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Sort by clicks, visits or conversions. Scripts and AI agents read it through the REST API (content), wp seoprostats content, and on WordPress 6.9 and later the ability seoprostats/content.
 
+= Can it tell whether a change worked? =
+
+Search → Experiments checks it. Write down a change and what it should do, such as more clicks or a better position, from a row in Changes or with a start time and pages. It compares the same number of days before and after the change for those pages and for the pages that did not change, so a site-wide rise or a season does not count, and shows how far unchanged pages usually move, whether there was enough data, and the search engine updates and other changes in the same days. Once the data is in it suggests keep, revise, undo or inconclusive; you decide, and the figures are kept with the decision. A result is evidence about your site, not proof of cause. Scripts and AI agents use it through the REST API (experiments), wp seoprostats experiments, and on WordPress 6.9 and later the abilities seoprostats/experiments and seoprostats/experiment-record.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

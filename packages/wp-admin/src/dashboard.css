@@ -1017,6 +1017,42 @@ code.spst-meta {
 	color: var(--spst-bad);
 }
 
+/* Search → Experiments: one experiment's measurement and decision. */
+.spst-experiment__summary {
+	margin: 0 0 12px;
+	font-size: 14px;
+}
+
+.spst-experiment__facts,
+.spst-experiment__confounders {
+	margin: 12px 0 0;
+	list-style: none;
+}
+
+.spst-experiment__facts li,
+.spst-experiment__confounders li {
+	margin: 0 0 6px;
+}
+
+.spst-experiment__heading {
+	margin: 16px 0 0;
+	font-size: 13px;
+}
+
+.spst-experiment__decide {
+	display: grid;
+	gap: 12px;
+	max-width: 560px;
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid var(--spst-border, #dcdcde);
+}
+
+.spst-experiment__decide .spst-form__actions {
+	justify-content: flex-start;
+	padding-top: 0;
+}
+
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
 /* From WordPress's small breakpoint up; below it, its full-width sheet. */
 @media (min-width: 600px) {
