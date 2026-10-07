@@ -1035,9 +1035,10 @@ results); Locations; Devices (devices, browsers, systems, logged in);
 Events.
 
 Built so far: Overview, Search (Rankings, Opportunities, Content), Goals,
-Funnels, Properties, Clicks and Changes, as WordPress tabs
-at the top of the screen and as submenu items (links to the hash, marked
-current by the app). The period, comparison, Live/Demo switch and filters
+Funnels, Properties, Clicks and Changes, as the settings screen's tabs
+under the header (drawn by the server, `SEOProStats_Dashboard::render()`)
+and as submenu items: links to the hash, which the app marks current and
+whose tabs keep the period and filters. The period, comparison, Live/Demo switch and filters
 are shared by every section. Search has three tabs. Rankings shows clicks,
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,

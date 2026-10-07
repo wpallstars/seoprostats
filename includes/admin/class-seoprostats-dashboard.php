@@ -114,6 +114,23 @@ final class SEOProStats_Dashboard {
     }
 
     /**
+     * The screen's sections, in order: hash view => label. Overview first.
+     *
+     * @return array<string,string>
+     */
+    private static function sections() {
+        return array(
+            'overview'   => __('Overview', 'seoprostats'),
+            'search'     => __('Search', 'seoprostats'),
+            'goals'      => __('Goals', 'seoprostats'),
+            'funnels'    => __('Funnels', 'seoprostats'),
+            'properties' => __('Properties', 'seoprostats'),
+            'clicks'     => __('Clicks', 'seoprostats'),
+            'changes'    => __('Changes', 'seoprostats'),
+        );
+    }
+
+    /**
      * Register the menu, its Overview item and links to the other sections
      * of the same screen (the app marks the one shown). Settings is added
      * after these (SEOProStats_Admin_Manager, priority 20).
@@ -136,14 +153,8 @@ final class SEOProStats_Dashboard {
             self::SLUG,
             array(__CLASS__, 'render')
         );
-        $sections = array(
-            'search'     => __('Search', 'seoprostats'),
-            'goals'      => __('Goals', 'seoprostats'),
-            'funnels'    => __('Funnels', 'seoprostats'),
-            'properties' => __('Properties', 'seoprostats'),
-            'clicks'     => __('Clicks', 'seoprostats'),
-            'changes'    => __('Changes', 'seoprostats'),
-        );
+        $sections = self::sections();
+        unset($sections['overview']);
         foreach ($sections as $view => $title) {
             // A slug that is an address, with no callback, is a plain link.
             add_submenu_page(self::SLUG, $title, $title, SEOProStats_API::CAP, 'admin.php?page=' . self::SLUG . '#/' . $view);
@@ -165,13 +176,20 @@ final class SEOProStats_Dashboard {
 
     /**
      * The screen: the settings screen's header (name, version, feature
-     * search and links), then the app.
+     * search and links), the sections as the settings screen's tabs, then
+     * the app. The app marks the section shown and keeps the period and
+     * filters in the tabs' links (packages/wp-admin/src/App.tsx).
      */
     public static function render() {
         ?>
         <div class="wrap spst-wrap">
             <?php SEOProStats_Admin_Manager::render_header(); ?>
             <hr class="wp-header-end">
+            <nav class="spst-nav" id="spst-dashboard-nav" aria-label="<?php esc_attr_e('Sections', 'seoprostats'); ?>">
+                <?php foreach (self::sections() as $view => $label) : ?>
+                    <a class="spst-nav__tab" href="<?php echo esc_url('#/' . $view); ?>" data-spst-view="<?php echo esc_attr($view); ?>"><?php echo esc_html($label); ?></a>
+                <?php endforeach; ?>
+            </nav>
             <div id="spst-dashboard" class="spst-main">
                 <p class="spst-loading"><?php esc_html_e('Loading statistics…', 'seoprostats'); ?></p>
                 <noscript><p><?php esc_html_e('The statistics need JavaScript. They are also available through the REST API and WP-CLI (wp seoprostats stats).', 'seoprostats'); ?></p></noscript>
