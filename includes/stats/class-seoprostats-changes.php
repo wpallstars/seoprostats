@@ -1347,6 +1347,71 @@ final class SEOProStats_Changes {
     }
 
     /**
+     * Changes recorded on some pages between two times, newest first, at
+     * most $each per page (by key path_ts). Used where a page's figures
+     * moved, to set what changed on it beside them.
+     *
+     * @param int[] $path_ids Path ids.
+     * @param int   $from     Start (timestamp, included).
+     * @param int   $to       End (timestamp, left out).
+     * @param int   $each     Changes per page at most.
+     * @return array<int,array<int,array<string,mixed>>> Path id => changes.
+     */
+    public static function on_pages(array $path_ids, $from, $to, $each = 5) {
+        global $wpdb;
+        $path_ids = array_values(array_filter(array_unique(array_map('intval', $path_ids))));
+        if (!$path_ids || !SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        $in = implode(', ', array_fill(0, count($path_ids), '%d'));
+        // Our own table by key path_ts; $in holds only placeholders.
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, ts, kind, path_id, object_type, object_id, old, new, meta, source, user_id FROM %i FORCE INDEX (`path_ts`) WHERE path_id IN ($in) AND ts >= %d AND ts < %d ORDER BY ts DESC, id DESC LIMIT %d",
+            array_merge(array(SEOProStats_Schema::table('changes')), $path_ids, array((int) $from, (int) $to, count($path_ids) * max(1, (int) $each) * 4))
+        ), ARRAY_A);
+        // phpcs:enable
+        $paths = SEOProStats_Dict::values($path_ids);
+        $out   = array();
+        foreach (is_array($rows) ? $rows : array() as $row) {
+            $id = (int) $row['path_id'];
+            if (!isset($out[$id]) || count($out[$id]) < $each) {
+                $out[$id][] = self::shape($row, $paths);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Search engine updates rolling out at any time between two times
+     * (started in it, or before it and not ended by its start), oldest
+     * first.
+     *
+     * @param int $from Start (timestamp, included).
+     * @param int $to   End (timestamp, left out).
+     * @return array<int,array<string,mixed>>
+     */
+    public static function updates_between($from, $to) {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        $table = SEOProStats_Schema::table('changes');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by key kind_ts.
+        $rows = $wpdb->get_results($wpdb->prepare(
+            'SELECT id, ts, kind, path_id, object_type, object_id, old, new, meta, source, user_id FROM %i WHERE kind = %d AND ts >= %d AND ts < %d ORDER BY ts ASC, id ASC',
+            $table,
+            self::SEARCH_UPDATE,
+            (int) $from,
+            (int) $to
+        ), ARRAY_A);
+        $rows = array_merge(self::running($table, (int) $from), is_array($rows) ? $rows : array());
+        return array_map(static function ($row) {
+            return self::shape($row, array());
+        }, $rows);
+    }
+
+    /**
      * Search engine updates that started before a range and were still
      * rolling out when it began (or still are), oldest first.
      *

@@ -9,6 +9,8 @@
  * - seoprostats/annotate: add a note to the timeline (administrators).
  * - seoprostats/search: Search Console clicks, impressions, CTR and
  *   position, with top queries, pages, countries or devices (read).
+ * - seoprostats/opportunities: striking-distance and low-CTR queries,
+ *   and pages losing clicks with the likely cause (read).
  *
  * On older WordPress the hooks never run.
  *
@@ -235,6 +237,94 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/opportunities', array(
+            'label'               => __('Search opportunities', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console: striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description) or decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'kind'    => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Opportunities::KINDS,
+                        'default'     => 'striking',
+                        'description' => __('striking, ctr or decay.', 'seoprostats'),
+                    ),
+                    'range'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'      => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'compare' => array(
+                        'type'        => 'string',
+                        'enum'        => array('prev', 'year'),
+                        'default'     => 'prev',
+                        'description' => __('For decay: against the period before (prev) or the same period last year (year).', 'seoprostats'),
+                    ),
+                    'limit'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Query::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'kind'      => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => 'string'),
+                    'connected' => array('type' => 'boolean'),
+                    'rules'     => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'opportunities'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/opportunities.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function opportunities($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'compare' => 'prev', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $kind = isset($input['kind']) ? (string) $input['kind'] : 'striking';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
+            return SEOProStats_Opportunities::report((array) $req, $kind);
+        });
     }
 
     /**

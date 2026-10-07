@@ -607,8 +607,14 @@ days only): made-up queries for its pages (`SEARCH_QUERIES`), some on two
 pages, whose impressions follow the traffic and whose positions climb
 over the year, clicks that follow the position, and the site's totals by
 device and country, with more impressions than the listed queries, as
-Search Console leaves out rare ones. The same day always gets the same
-numbers; demo data made before search data gets them on its next top-up.
+Search Console leaves out rare ones. In the last weeks a few pages lose
+clicks in their own way (`SEARCH_EVENTS`: one ranks lower after a large
+edit, one is searched less, one is chosen less after its SEO title
+changed, with those changes in the change log), and a few queries have a
+low CTR for their position (`SEARCH_LOW_CTR`), so each Opportunities card
+lists something. The same day always gets the same numbers; demo data
+made before search data, or before a change to it (`SEARCH_VERSION`),
+gets them on its next top-up.
 Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
@@ -734,6 +740,37 @@ answer names them in `ignored`. The cache key adds the newest import and
 the last one finished or undone, so new days show at once. Pages rows
 and an exact page get the same addresses and editor links as Clicks.
 
+Opportunities (`SEOProStats_Opportunities`) read the same days, with the
+same cut, page filters, `ignored` and cache key, and say where search
+effort pays. The period is also cut to its newest 91 days (`MAX_DAYS`;
+the answer gives `days` and `cut`), so a year never reads every pair.
+Thresholds are constants scaled by the days read (`rules` in the answer).
+
+- **Expected CTR** is the site's own: clicks ÷ impressions of `gsc_pairs`
+  by rounded position (1–20) in the period, one query by the primary key;
+  positions with fewer than 500 impressions take a cautious default, and
+  the curve is made never to rise with position (`curve.source`: `site`,
+  `mixed` or `default`).
+- **Striking distance** (`striking`): pairs (page and query) at average
+  position 4–20 with enough impressions, grouped in one read of
+  `gsc_pairs` (the 2,000 with most impressions), ranked by potential
+  clicks = impressions × (expected CTR at position 3 − the pair's CTR).
+- **Low CTR** (`ctr`): pairs in the top 10 whose CTR is under 0.6 × the
+  expected CTR at their position; missed clicks = impressions × expected
+  CTR − clicks.
+- **Losing clicks** (`decay`): `gsc_pages` sums for the period and the
+  earlier one of the same length (previous, or a year earlier with
+  `compare=year`); pages that lost at least 20% of their clicks and a
+  minimum, most lost first. For the rows shown, `gsc_pairs` (by
+  `path_day`) gives the queries that lost most, and the cause: `gone` (no
+  impressions now), `position` (a place and a tenth lower or more), else
+  whichever fell more of impressions (`demand`) and CTR (`ctr`), with a
+  sentence (`why`). The change log by `path_ts` (`SEOProStats_Changes::
+  on_pages()`) adds what changed on each page in both periods, and
+  `updates_between()` (`kind_ts`) the search engine updates, so cause and
+  effect sit together. Changes and editor links are added after the
+  shared cache, as people's names and editor links depend on the viewer.
+
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
 months, last year, all time, custom; comparison with the previous period
@@ -751,18 +788,19 @@ in the future meets the same length of the other period.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`, `demo`,
+  `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
+  `opportunities`, `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
-  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `opportunities`,
+  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`,
   `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
   `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
-  [--page=<path>] [--query=<query>]`, `pages`,
+  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -772,7 +810,8 @@ in the future meets the same length of the other period.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter. So far
-  `seoprostats/markers`, `seoprostats/annotate` and `seoprostats/search`.
+  `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search` and
+  `seoprostats/opportunities`.
 
 ## Dashboard app
 
@@ -815,15 +854,19 @@ Content (authors, categories, post types); Site search (searches, no
 results); Locations; Devices (devices, browsers, systems, logged in);
 Events.
 
-Built so far: Overview, Search (Rankings), Goals, Funnels, Properties,
-Clicks and Changes, as WordPress tabs
+Built so far: Overview, Search (Rankings, Opportunities), Goals, Funnels,
+Properties, Clicks and Changes, as WordPress tabs
 at the top of the screen and as submenu items (links to the hash, marked
 current by the app). The period, comparison, Live/Demo switch and filters
-are shared by every section. Search shows clicks, impressions, CTR and
-average position as tiles that pick the chart's metric (the Overview's
-chart, with the markers lane), then queries, pages, countries and
-devices; choosing a page shows its queries and choosing a query its
-pages. Before Search Console is connected it links to Settings →
+are shared by every section. Search has two tabs. Rankings shows clicks,
+impressions, CTR and average position as tiles that pick the chart's
+metric (the Overview's chart, with the markers lane), then queries,
+pages, countries and devices; choosing a page shows its queries and
+choosing a query its pages. Opportunities has three cards (striking
+distance, low CTR, losing clicks), ten rows a page; choosing a row opens
+it in Rankings with its page and query. Losing clicks is always against
+an earlier period (the previous one unless the same period last year is
+chosen). Before Search Console is connected both link to Settings →
 Connections. Choosing a breakdown row, goal or funnel step
 filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
@@ -837,7 +880,7 @@ days, comparison, chart metric, filters); and the section's own choices:
 | Section | Address | Default (left out) |
 |---|---|---|
 | Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`: the card's open tab | each card's first tab |
-| Search | `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query` | queries, clicks, none |
+| Search | `report` (rankings, opportunities), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query` | rankings, queries, clicks, none |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
 

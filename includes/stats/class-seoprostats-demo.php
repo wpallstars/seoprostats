@@ -227,6 +227,34 @@ final class SEOProStats_Demo {
         'analytics plugin licence'         => array('/shop/pro-licence/', 25, 8.8, 1),
     );
 
+    /**
+     * What happened to some pages' searches lately (Search →
+     * Opportunities, losing clicks): path => [days back it starts, places
+     * lower, impressions ×, CTR ×], eased in over four days. One ranks
+     * lower after a large edit, one has fewer searches, one is chosen less
+     * after its SEO title changed (SEARCH_CHANGES).
+     */
+    const SEARCH_EVENTS = array(
+        '/blog/what-changed-after-an-update/' => array(24, 7.0, 1.0, 1.0),
+        '/docs/getting-started/'              => array(21, 0.0, 0.45, 1.0),
+        '/features/'                          => array(19, 0.0, 1.0, 0.45),
+    );
+
+    /** Queries with a weak title or description all along: query => CTR × (Opportunities, low CTR). */
+    const SEARCH_LOW_CTR = array(
+        'what are core web vitals'    => 0.3,
+        'how to read search rankings' => 0.35,
+    );
+
+    /** Search data made by this version of the demo; older demo search days are made again. */
+    const SEARCH_VERSION = 2;
+
+    /** Changes behind SEARCH_EVENTS, as CHANGES. */
+    const SEARCH_CHANGES = array(
+        array(25, 15, 5, '/blog/what-changed-after-an-update/', 'post', '2400', '1310', array('name' => 'What changed after an update', 'before' => 2400, 'after' => 1310, 'added' => 60, 'removed' => 1150)),
+        array(20, 10, 10, '/features/', 'page', 'Features | SEO Pro Stats', 'Everything SEO Pro Stats does', array('name' => 'Features', 'field' => '_yoast_wpseo_title')),
+    );
+
     /** Search Console countries (alpha-3) and devices of the demo's searches: weight. */
     const SEARCH_COUNTRIES = array('usa' => 36, 'gbr' => 17, 'ind' => 9, 'deu' => 8, 'can' => 6, 'aus' => 5, 'fra' => 5, 'nld' => 3, 'esp' => 3, 'bra' => 3, 'jpn' => 2, 'pol' => 2, 'ita' => 1);
     const SEARCH_DEVICES   = array(1 => 52, 2 => 44, 3 => 4);
@@ -434,8 +462,9 @@ final class SEOProStats_Demo {
             'from'    => $from,
             'upto'    => $from,
             'end'     => time(),
-            'made'    => 0,
-            'changes' => 1,
+            'made'     => 0,
+            'changes'  => 1,
+            'search_v' => self::SEARCH_VERSION,
         ), false);
         return true;
     }
@@ -480,10 +509,22 @@ final class SEOProStats_Demo {
             }
             // Demo data made before the change log gets its changes once.
             $state = self::state();
-            if (empty($state['changes'])) {
+            $wrote = empty($state['changes']);
+            if ($wrote) {
                 $state['changes'] = 1;
                 update_option(self::OPTION, $state, false);
                 self::changes(isset($state['from']) ? (int) $state['from'] : time());
+            }
+            // Demo search days of an older version are made again (from
+            // today, as the changes behind them), next time it catches up.
+            $state = self::state();
+            if ((isset($state['search_v']) ? (int) $state['search_v'] : 1) < self::SEARCH_VERSION) {
+                $state['search_v'] = self::SEARCH_VERSION;
+                $state['search']   = '';
+                update_option(self::OPTION, $state, false);
+                if (!$wrote) {
+                    self::changes(isset($state['from']) ? (int) $state['from'] : time(), true);
+                }
             }
         }
         $state = self::state();
@@ -530,15 +571,16 @@ final class SEOProStats_Demo {
      * demo tables. Once per demo data: start(), or refresh() for demo data
      * made before the change log.
      *
-     * @param int $from Start of the period.
+     * @param int  $from   Start of the period.
+     * @param bool $search Only SEARCH_CHANGES (demo data made before them).
      */
-    private static function changes($from) {
+    private static function changes($from, $search = false) {
         require_once __DIR__ . '/class-seoprostats-changes.php';
-        self::run(static function () use ($from) {
+        self::run(static function () use ($from, $search) {
             if (!SEOProStats_Schema::maybe_upgrade()) {
                 return;
             }
-            foreach (self::change_rows((int) $from, time()) as $row) {
+            foreach (self::change_rows((int) $from, time(), $search) as $row) {
                 SEOProStats_Changes::write($row);
             }
         });
@@ -549,11 +591,12 @@ final class SEOProStats_Demo {
      * every 16 days, a WordPress update every 63 days and a post edited
      * every 13 days.
      *
-     * @param int $from Start.
-     * @param int $to   End.
+     * @param int  $from   Start.
+     * @param int  $to     End.
+     * @param bool $search Only SEARCH_CHANGES.
      * @return array<int,array<string,mixed>> Rows for SEOProStats_Changes::write().
      */
-    private static function change_rows($from, $to) {
+    private static function change_rows($from, $to, $search = false) {
         $today = new DateTimeImmutable('today', wp_timezone());
         $rows  = array();
         $add   = static function ($days, $hour, $kind, $path, $type, $old, $new, array $meta) use (&$rows, $today, $from, $to) {
@@ -573,8 +616,11 @@ final class SEOProStats_Demo {
                 );
             }
         };
-        foreach (self::CHANGES as $change) {
+        foreach ($search ? self::SEARCH_CHANGES : array_merge(self::CHANGES, self::SEARCH_CHANGES) as $change) {
             $add($change[0], $change[1], $change[2], $change[3], $change[4], $change[5], $change[6], $change[7]);
+        }
+        if ($search) {
+            return $rows;
         }
         $span = (int) ceil(max(0, $to - $from) / DAY_IN_SECONDS);
         $n    = 0;
@@ -760,12 +806,16 @@ final class SEOProStats_Demo {
                 list($path, $share, $lower) = $page;
                 $path_id = isset($ids['paths'][SEOProStats_Dict::clean($path)]) ? (int) $ids['paths'][SEOProStats_Dict::clean($path)] : 0;
                 $noise   = self::noise($date . $query . $path);
-                $impr    = (int) round($info[1] * $share * $scale * (0.75 + 0.5 * $noise));
+                // A recent event on the page (SEARCH_EVENTS), eased in over four days.
+                $event   = isset(self::SEARCH_EVENTS[$path]) ? self::SEARCH_EVENTS[$path] : array(0, 0.0, 1.0, 1.0);
+                $ease    = max(0.0, min(1.0, ($event[0] - $ago) / 4));
+                $impr    = (int) round($info[1] * $share * $scale * (0.75 + 0.5 * $noise) * (1 + ($event[2] - 1) * $ease));
                 if (!$path_id || $impr < 1) {
                     continue;
                 }
-                $position = max(1.0, $info[2] + $lower + $info[3] * min(1.0, $ago / 365) + 1.6 * (self::noise($query . $date) - 0.5));
-                $ctr      = min(0.6, 0.32 / pow($position, 1.15)) * (0.85 + 0.3 * self::noise($date . $path . $query));
+                $position = max(1.0, $info[2] + $lower + $info[3] * min(1.0, $ago / 365) + 1.6 * (self::noise($query . $date) - 0.5) + $event[1] * $ease);
+                $weak     = $path === $info[0] && isset(self::SEARCH_LOW_CTR[$query]) ? self::SEARCH_LOW_CTR[$query] : 1.0;
+                $ctr      = min(0.6, 0.32 / pow($position, 1.15)) * (0.85 + 0.3 * self::noise($date . $path . $query)) * (1 + ($event[3] - 1) * $ease) * $weak;
                 $clicks   = (int) round($impr * $ctr);
                 $pos_impr = (int) round($position * $impr * 100);
                 $add('pairs', array($path_id, $query_id), $clicks, $impr, $pos_impr);
