@@ -104,21 +104,18 @@ is cached like the reports, keyed by the newest import):
   week begins after the change. The review day is the after window's last
   day; until search data reaches it (`through`), the answer is `running`
   with the days so far.
-- **The pages**: clicks, impressions, CTR and position from `gsc_pages`,
-  one read per window by the primary key's `(engine, day)` prefix, grouped
-  by page, which gives the experiment's pages and the comparison group
-  together; visits from search from `daily` (`SEARCH_LANDING`, the same
-  read as the Content report); conversions with
+- **The pages**: clicks, impressions, CTR and position from `gsc_pages` by
+  `path_day` (one read per window); visits from search from `daily`
+  (`SEARCH_LANDING`, by `dim_val_day`); conversions with
   `SEOProStats_Conversions::by_entry()` for the goal (its hits in the two
   windows only).
-- **Comparison group**: pages with data in both windows that are not in
-  the experiment and have no change of their own (any `changes` row on
-  their `path_id`, read by key `ts` with `SEOProStats_Changes::between()`,
-  or the pages of another experiment started then) from the before
-  window's start to the after window's end; the 200 with most impressions
-  (visits, for visits and conversions) before. Site-wide changes touch
-  every page, so they do not exclude a page; they are listed as
-  confounders.
+- **Comparison group**: pages with search data in both windows that are
+  not in the experiment and have no change of their own (any `changes` row
+  on their `path_id`, read by key `ts`) from the before window's start to
+  the after window's end; the 200 with most impressions before. Their
+  figures are summed the same way (two reads of `gsc_pages` by the primary
+  key's `(engine, day)` prefix). Site-wide changes touch every page, so
+  they do not exclude a page; they are listed as confounders.
 - **Effect**: for counts and CTR, the pages' ratio (after ÷ before) over
   the group's ratio, less 1; for position, the pages' change in places
   less the group's. Without a group (fewer than 5 pages) the effect is
@@ -156,7 +153,7 @@ the list and in the export.
   measurement), `POST /experiments/{id}` (decide, note, cancel),
   `DELETE /experiments/{id}`. Read: `view_seoprostats`; write:
   `manage_options`.
-- WP-CLI: `wp seoprostats experiments [list|add|show|decide|cancel|note|delete]`.
+- WP-CLI: `wp seoprostats experiments [list|add|show|decide|delete]`.
 - Abilities: `seoprostats/experiments` (read) and
   `seoprostats/experiment-record` (add and decide).
 - Dashboard: Search → **Experiments**: due ones first, then running, then

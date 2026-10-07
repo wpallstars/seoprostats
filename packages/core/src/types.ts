@@ -371,7 +371,7 @@ export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as cons
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content', 'experiments'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 /**
@@ -626,140 +626,6 @@ export interface ContentAnswer extends Answer, SearchEngineAnswer {
 	total: number;
 	more: boolean;
 	compare?: { range: Range; totals: ContentMetrics; change: ContentChange };
-}
-
-/** What an experiment should change. */
-export const EXPERIMENT_METRICS = ['clicks', 'impressions', 'ctr', 'position', 'visits', 'conversions'] as const;
-export type ExperimentMetric = (typeof EXPERIMENT_METRICS)[number];
-
-/** Days in each window, before and after: whole weeks. */
-export const EXPERIMENT_WINDOWS = [7, 14, 28, 56, 84] as const;
-
-/** A person's or agent's decision; the plugin suggests one too. */
-export const EXPERIMENT_RESULTS = ['keep', 'revise', 'undo', 'inconclusive'] as const;
-export type ExperimentResult = (typeof EXPERIMENT_RESULTS)[number];
-
-export type ExperimentStatus = 'running' | 'decided' | 'cancelled';
-
-/** Days, both included (site dates). */
-export interface DayWindow {
-	from: string;
-	to: string;
-}
-
-/** Some pages' figures in one window: search figures, or visits (and conversions of a goal). */
-export interface ExperimentFigures {
-	clicks?: number;
-	impressions?: number;
-	ctr?: number | null;
-	position?: number | null;
-	visits?: number;
-	conversions?: number;
-	rate?: number | null;
-}
-
-/** Why the plugin suggests its result. */
-export type ExperimentReason =
-	| 'no_group'
-	| 'search_update'
-	| 'too_little_data'
-	| 'no_measure'
-	| 'within_noise'
-	| 'at_threshold'
-	| 'under_threshold'
-	| 'opposite'
-	| 'no_change';
-
-export interface ExperimentRunning {
-	state: 'running';
-	through: string | null;
-	review: string;
-	days: number;
-	/** Days of data after the change so far. */
-	so_far: number;
-	windows: { before: DayWindow; after: DayWindow };
-}
-
-export interface ExperimentMeasured {
-	state: 'ready';
-	through: string;
-	review: string;
-	days: number;
-	windows: { before: DayWindow; after: DayWindow };
-	/** Days with search data in each window (search measures). */
-	coverage: { before: number; after: number; days: number } | null;
-	pages: { count: number; before: ExperimentFigures; after: ExperimentFigures };
-	group: { count: number; before: ExperimentFigures; after: ExperimentFigures; change: number | null };
-	/** Whether there were enough unchanged pages to compare with. */
-	compared: boolean;
-	value: { before: number | null; after: number | null };
-	/** Raw change: a ratio (0.12 is +12%), or places for position. */
-	change: number | null;
-	/** Against the group (raw without one). */
-	effect: number | null;
-	/** The effect in the expected direction: positive when it went the way expected. */
-	improvement: number | null;
-	unit: 'ratio' | 'places';
-	/** The group's usual spread (10th to 90th percentile of its pages' effects). */
-	noise: { low: number; high: number; pages: number } | null;
-	beyond_noise: boolean | null;
-	enough: { ok: boolean; unit: string; needed: number; before: number; after: number };
-	confounders: { updates: Marker[]; site: Marker[]; pages: Marker[]; total: number };
-	suggested: ExperimentResult;
-	reasons: ExperimentReason[];
-	/** One sentence saying what was found. */
-	summary: string;
-}
-
-export interface Experiment {
-	id: number;
-	name: string;
-	hypothesis: string;
-	note: string;
-	created: string;
-	user: string | null;
-	/** The change's time (ISO, site time zone). */
-	start: string;
-	days: number;
-	windows: { before: DayWindow; after: DayWindow };
-	/** The day the after window's data is complete. */
-	review: string;
-	engine: SearchEngine;
-	metric: ExperimentMetric;
-	direction: 'up' | 'down';
-	/** Percent, or places for position. */
-	threshold: number;
-	change_id: number | null;
-	pages: string[];
-	goal: { id: string; name: string | null } | null;
-	status: ExperimentStatus;
-	result: ExperimentResult | null;
-	decided: string | null;
-	/** Running, with data through the review day. */
-	due: boolean;
-	through: string | null;
-	/** While running, now; once decided, as it was at the decision; null when cancelled. */
-	measurement: ExperimentRunning | ExperimentMeasured | null;
-}
-
-export interface ExperimentsAnswer {
-	experiments: Experiment[];
-	total: number;
-}
-
-/** A new experiment: from a change (its time and page), or a start and pages. */
-export interface ExperimentInput {
-	name: string;
-	change?: number;
-	start?: string;
-	page?: string;
-	days: number;
-	engine: SearchEngine;
-	metric: ExperimentMetric;
-	direction: 'up' | 'down';
-	threshold?: number;
-	goal?: string;
-	hypothesis?: string;
 }
 
 export interface ApiError {

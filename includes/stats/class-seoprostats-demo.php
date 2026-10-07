@@ -239,24 +239,6 @@ final class SEOProStats_Demo {
         '/blog/what-changed-after-an-update/' => array(24, 7.0, 1.0, 1.0),
         '/docs/getting-started/'              => array(21, 0.0, 0.45, 1.0),
         '/features/'                          => array(19, 0.0, 1.0, 0.45),
-        '/pricing/'                           => array(23, 0.0, 1.0, 1.5),
-    );
-
-    /**
-     * Experiments of the demo data (SEOProStats_Experiments), each on a
-     * change of CHANGES or SEARCH_CHANGES (its page and kind): path, change
-     * kind, name, days per window, measure, direction, threshold, result
-     * decided ('' to leave it running), note. The pricing page's new meta
-     * description is chosen more (SEARCH_EVENTS), the features page's new
-     * SEO title less, the shortened post ranks lower, and the internal
-     * links change nothing clear.
-     */
-    const EXPERIMENTS = array(
-        array('/pricing/', 11, 'A meta description with the refund lifts CTR', 14, 'ctr', 'up', 10, 'keep', 'CTR rose well beyond the usual spread of unchanged pages.'),
-        array('/features/', 10, 'A shorter SEO title lifts CTR on Features', 14, 'ctr', 'up', 10, 'undo', 'Fewer searchers chose the page; the old title goes back.'),
-        array('/blog/what-changed-after-an-update/', 5, 'A tighter post ranks better', 14, 'position', 'up', 1, 'revise', 'It ranks lower without the removed sections; restore the ones searchers wanted.'),
-        array('/blog/core-web-vitals-explained/', 6, 'Internal links lift the Core Web Vitals post', 14, 'position', 'up', 1, 'inconclusive', 'No change beyond the usual spread.'),
-        array('/blog/how-to-read-search-rankings/', 4, 'A dated title lifts CTR on the rankings guide', 28, 'ctr', 'up', 10, '', ''),
     );
 
     /** Queries with a weak title or description all along: query => CTR × (Opportunities, low CTR). */
@@ -288,7 +270,7 @@ final class SEOProStats_Demo {
     );
 
     /** Search data made by this version of the demo; older demo search days are made again. */
-    const SEARCH_VERSION = 3;
+    const SEARCH_VERSION = 2;
 
     /** Changes behind SEARCH_EVENTS, as CHANGES. */
     const SEARCH_CHANGES = array(
@@ -558,15 +540,13 @@ final class SEOProStats_Demo {
             }
             // Demo search days of an older version are made again (from
             // today, as the changes behind them), next time it catches up.
-            $state   = self::state();
-            $version = isset($state['search_v']) ? (int) $state['search_v'] : 1;
-            if ($version < self::SEARCH_VERSION) {
+            $state = self::state();
+            if ((isset($state['search_v']) ? (int) $state['search_v'] : 1) < self::SEARCH_VERSION) {
                 $state['search_v'] = self::SEARCH_VERSION;
                 $state['search']   = '';
                 $state['bing']     = '';
                 update_option(self::OPTION, $state, false);
-                // SEARCH_CHANGES came with version 2.
-                if (!$wrote && $version < 2) {
+                if (!$wrote) {
                     self::changes(isset($state['from']) ? (int) $state['from'] : time(), true);
                 }
             }
@@ -766,54 +746,6 @@ final class SEOProStats_Demo {
         }
         // New data: cached answers for the demo data go.
         update_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array('last' => time()), false);
-        // With every search day made, the experiments can be measured and decided (once).
-        if (!$more && empty($state['experiments'])) {
-            $state['experiments'] = 1;
-            update_option(self::OPTION, $state, false);
-            self::experiments();
-        }
-    }
-
-    /**
-     * Record the demo's experiments (EXPERIMENTS) on its changes, and
-     * decide those with a result; on the demo tables, once, when the
-     * search days are made.
-     */
-    private static function experiments() {
-        require_once __DIR__ . '/class-seoprostats-changes.php';
-        require_once __DIR__ . '/class-seoprostats-experiments.php';
-        $state = self::state();
-        $from  = isset($state['from']) ? (int) $state['from'] : time() - self::DAYS * DAY_IN_SECONDS;
-        $found = array();
-        foreach (SEOProStats_Changes::between($from, time() + 1) as $change) {
-            $found[$change['path'] . "\t" . $change['kind'] . "\t" . $change['new']] = (int) $change['id'];
-        }
-        $rows = array_merge(self::CHANGES, self::SEARCH_CHANGES);
-        foreach (self::EXPERIMENTS as $experiment) {
-            list($path, $kind, $name, $days, $metric, $direction, $threshold, $result, $note) = $experiment;
-            $id = 0;
-            foreach ($rows as $row) {
-                $key = $path . "\t" . SEOProStats_Changes::KINDS[$kind][0] . "\t" . $row[6];
-                if ($row[3] === $path && (int) $row[2] === $kind && isset($found[$key])) {
-                    $id = $found[$key];
-                }
-            }
-            if (!$id) {
-                continue;
-            }
-            $added = SEOProStats_Experiments::add(array(
-                'name'      => $name,
-                'change'    => $id,
-                'days'      => $days,
-                'metric'    => $metric,
-                'direction' => $direction,
-                'threshold' => $threshold,
-            ));
-            // Decided only once its data is in; else it stays running.
-            if ($result !== '' && is_array($added) && is_array($added['measurement']) && $added['measurement']['state'] === 'ready') {
-                SEOProStats_Experiments::update((int) $added['id'], array('action' => 'decide', 'result' => $result, 'note' => $note));
-            }
-        }
     }
 
     /** Search data is final this many days after the day, as from Google. */

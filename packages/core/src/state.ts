@@ -89,14 +89,12 @@ export interface ViewState {
 	chart?: SearchMetricKey;
 	/** Search: only this search query (* for any text). */
 	query?: string;
-	/** Search → Experiments: start one on this change (its id), from Changes. */
-	change?: string;
 	/** Overview: each card's open tab. */
 	tabs?: Partial<Record<ViewCard, Dimension>>;
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'tab', 'chart', 'key', 'event', 'page', 'query'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -149,10 +147,6 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const sort = oneOf(CONTENT_SORTS, params.get('sort'), 'clicks');
 			set('sort', sort === 'clicks' ? undefined : sort);
 			set('goal', text(params.get('goal')));
-		}
-		if (report === 'experiments') {
-			const change = params.get('change') ?? '';
-			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
 		}
 		// Bing has no countries or devices.
 		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
