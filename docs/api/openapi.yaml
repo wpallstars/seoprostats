@@ -908,7 +908,7 @@ paths:
   /imports/{id}:
     delete:
       operationId: undoImport
-      summary: Undo an import: delete the rows it wrote.
+      summary: Undo an import, deleting the rows it wrote.
       description: |
         The job does not import those days again; `wp seoprostats
         search-console reimport --from=… --to=…` does. Undoing an import
@@ -1714,7 +1714,7 @@ components:
           description: Its text, or a form's name; emails and long numbers masked; '' when hidden with data-sps-mask.
         target:
           type: string
-          description: Destination; a path here, origin and path elsewhere, or mailto:/tel: without the address.
+          description: "Destination; a path here, origin and path elsewhere, or mailto:/tel: without the address."
         count:
           type: integer
         visits:
