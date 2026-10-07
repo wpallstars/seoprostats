@@ -166,7 +166,11 @@ install_shops() {
 		done
 		# Download without activation first: check the actual installed headers,
 		# not a guessed minimum. Do not turn arbitrary install failures into skips.
-		wp_cli plugin install "$shop" --version="$version" --ignore-requirements --quiet
+		if [[ "$version" == latest ]]; then
+			wp_cli plugin install "$shop" --ignore-requirements --quiet
+		else
+			wp_cli plugin install "$shop" --version="$version" --ignore-requirements --quiet
+		fi
 		metadata="$(wp_cli plugin get "$shop" --format=json)"
 		printf '%s %s\n' "$shop" "$(jq -r .version <<<"$metadata")"
 		# shellcheck disable=SC2016 # PHP variables, not shell expansion.
@@ -197,9 +201,9 @@ request() {
 
 visit() {
 	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
-		--data '{"e":[{"t":"p","p":"1111222233334444","u":"/?utm_source=shop-test&utm_medium=email&utm_campaign=purchases"}]}'
+		--data '{"h":"127.0.0.1","e":[{"t":"p","p":"1111222233334444","u":"/?utm_source=shop-test&utm_medium=email&utm_campaign=purchases"}]}'
 	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
-		--data '{"e":[{"t":"p","p":"5555666677778888","u":"/checkout/"}]}'
+		--data '{"h":"127.0.0.1","e":[{"t":"p","p":"5555666677778888","u":"/checkout/"}]}'
 	wp_cli seoprostats process
 	return 0
 }
