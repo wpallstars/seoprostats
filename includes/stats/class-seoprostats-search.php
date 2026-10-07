@@ -89,7 +89,8 @@ final class SEOProStats_Search {
             $ignored = array();
             $pages   = self::page_ids($req['filters'], $page, $ignored);
             $queries = $query === '' ? null : self::query_ids($query);
-            $now     = self::days($range, $bounds);
+            $weekly  = in_array($engine, self::WEEKLY, true);
+            $now     = self::days($range, $bounds, $weekly);
             $scope   = self::scope($code, $now, $pages, $queries);
             $grain   = self::grain($engine, $now, $scope);
             $anchor  = $grain === 'week' ? self::week_end($code, $bounds) : '';
@@ -117,7 +118,7 @@ final class SEOProStats_Search {
             );
             $other = $now ? SEOProStats_Query::compare_range($now, $req['compare']) : null;
             if ($other) {
-                $then_days = self::days($other, array('from' => '', 'to' => ''));
+                $then_days = self::days($other, array('from' => '', 'to' => ''), $weekly);
                 $then      = self::scope($code, $then_days, $pages, $queries);
                 $before    = self::totals($then);
                 $answer['rows']    = self::with_compare($then, $kind, $answer['rows']);
@@ -253,11 +254,18 @@ final class SEOProStats_Search {
      * the first), as a range SEOProStats_Query can compare: start and end
      * (the day after the last) in the site time zone.
      *
+     * An engine whose pages and queries come by week ($weekly) has its
+     * range cut at the start to whole weeks (a week or more): any run of
+     * seven days holds one week's figures, so a period and the one it is
+     * compared with hold as many weeks, and a period ending on the newest
+     * week (as it does at `through`) holds whole weeks.
+     *
      * @param array<string,mixed>      $range  From SEOProStats_Query::range() or compare_range().
      * @param array{from:string,to:string} $bounds From bounds(); '' for no cut.
+     * @param bool                     $weekly Cut to whole weeks.
      * @return array<string,mixed>|null Null when no day is left.
      */
-    public static function days(array $range, array $bounds) {
+    public static function days(array $range, array $bounds, $weekly = false) {
         $tz = wp_timezone();
         /** @var DateTimeImmutable $start */
         $start = $range['start'];
@@ -275,6 +283,11 @@ final class SEOProStats_Search {
         }
         $begin = new DateTimeImmutable($first, $tz);
         $end   = (new DateTimeImmutable($last, $tz))->modify('+1 day');
+        $count = (int) $begin->diff($end)->days;
+        if ($weekly && $count >= 7 && $count % 7) {
+            $begin = $end->modify('-' . ($count - $count % 7) . ' days');
+            $first = $begin->format('Y-m-d');
+        }
         return array(
             'key'   => (string) $range['key'],
             'start' => $begin,

@@ -111,7 +111,14 @@ long-term record.
       landings (refilled backwards) and the goal's own hits; REST
       `content`, WP-CLI, the `seoprostats/content` ability and demo data
       (GH#59).
-- [ ] Bing Webmaster Tools as a second search engine.
+- [x] Bing Webmaster Tools as a second search engine: API-key
+      connection, daily site totals and weekly pages, queries and page
+      queries (stored on each week's last day), an engine switch on
+      Rankings, Opportunities and Content with whole-week periods and
+      weekly points; REST `engine`, WP-CLI `bing` and `--engine`, the
+      abilities' `engine` and demo Bing data (GH#62).
+- [ ] SEO decision loop: audits, ranked plans and measured cause and
+      effect from the gathered data (GH#61).
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.
 

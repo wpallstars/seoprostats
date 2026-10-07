@@ -103,7 +103,8 @@ final class SEOProStats_Content {
         $range   = SEOProStats_Query::range($req);
         $ignored = array();
         $pages   = SEOProStats_Search::page_ids($req['filters'], '', $ignored);
-        $now     = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds) : null;
+        $weekly  = in_array($name, SEOProStats_Search::WEEKLY, true);
+        $now     = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds, $weekly) : null;
         $limit   = (int) $req['limit'];
         $offset  = (int) $req['offset'];
         $filled  = SEOProStats_Rollup::landings_from();
@@ -131,7 +132,7 @@ final class SEOProStats_Content {
         $list   = self::period($engine, $now, $pages, $goal);
         $oldest = $now['day_from'];
         $other  = SEOProStats_Query::compare_range($now, $req['compare']);
-        $then   = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => '')) : null;
+        $then   = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
         $before = $then ? self::period($engine, $then, $pages, $goal) : null;
         if ($then) {
             $oldest = min($oldest, $then['day_from']);

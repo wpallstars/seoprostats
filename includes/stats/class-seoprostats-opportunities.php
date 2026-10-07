@@ -116,7 +116,8 @@ final class SEOProStats_Opportunities {
         $ignored = array();
         $pages   = SEOProStats_Search::page_ids($req['filters'], '', $ignored);
         // Without search days there is nothing to read (and nothing to cut).
-        $full    = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds) : null;
+        $weekly  = in_array($name, SEOProStats_Search::WEEKLY, true);
+        $full    = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds, $weekly) : null;
         $now     = $full ? self::cut($full) : null;
         $days    = $now ? SEOProStats_Search::length($now) : 0;
         $limit   = (int) $req['limit'];
@@ -150,7 +151,7 @@ final class SEOProStats_Opportunities {
         if ($kind === 'decay') {
             // Always against an earlier period: the previous one unless a year ago is asked for.
             $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $req['compare'] === 'year' ? 'year' : 'prev');
-            $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => '')) : null;
+            $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
             if (!$then) {
                 return $answer;
             }

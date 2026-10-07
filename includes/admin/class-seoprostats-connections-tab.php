@@ -27,8 +27,9 @@ final class SEOProStats_Connections_Tab {
     const JS_FILE = 'admin/js/seoprostats-connections.js';
 
     /**
-     * Google's pages for the setup steps, as Google's own documentation
-     * links them (the Search Console API's page is its API library page).
+     * The pages for the setup steps, as Google's and Microsoft's own
+     * documentation links them (the Search Console API's page is its API
+     * library page; Bing's key is described on Microsoft Learn).
      */
     const LINKS = array(
         'project'   => 'https://console.cloud.google.com/projectcreate',
@@ -38,7 +39,7 @@ final class SEOProStats_Connections_Tab {
         'users'     => 'https://search.google.com/search-console/users',
         'user_help' => 'https://support.google.com/webmasters/answer/7687615',
         'bing'      => 'https://www.bing.com/webmasters/',
-        'bing_api'  => 'https://www.bing.com/webmasters/help/webmaster-api-5f3c5e1e',
+        'bing_api'  => 'https://learn.microsoft.com/en-us/bingwebmaster/getting-access',
     );
 
     /**

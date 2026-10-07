@@ -522,6 +522,7 @@ final class SEOProStats_Demo {
             if ((isset($state['search_v']) ? (int) $state['search_v'] : 1) < self::SEARCH_VERSION) {
                 $state['search_v'] = self::SEARCH_VERSION;
                 $state['search']   = '';
+                $state['bing']     = '';
                 update_option(self::OPTION, $state, false);
                 if (!$wrote) {
                     self::changes(isset($state['from']) ? (int) $state['from'] : time(), true);
