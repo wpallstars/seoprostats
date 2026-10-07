@@ -1398,11 +1398,13 @@ paths:
         read. `read` says how many published pages had their links read.
         Links to WordPress's folders, feeds and files are left out.
 
-        - `orphans`: published pages no other page links to (the front
-          page is left out), most search impressions first.
+        - `orphans`: published pages no other page links to, most search
+          impressions first.
         - `converting`: pages whose visits from search reached `goal`
           `rules.min_conversions` times or more with `rules.few_links` or
           fewer pages linking to them, most conversions first.
+
+        The front page is in neither list, as menus link to it.
         - `missing`: a page with `rules.min_impressions` or more
           impressions on a search does not link to the search's page with
           most clicks; one row per page and page it should link to, with

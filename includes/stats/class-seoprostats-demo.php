@@ -294,8 +294,8 @@ final class SEOProStats_Demo {
      * The demo pages' links to each other (SEOProStats_Links): path =>
      * [path => link text]. The texts are the pages' titles, so the queries
      * left out of PAGE_TEXT stay missing. Nothing links to the update post
-     * or the FAQ (orphans); the pricing and licence pages, which convert,
-     * have few links in; and pages that show for another page's search do
+     * or the FAQ (orphans); the pricing page, which converts, has few
+     * links in; and pages that show for another page's search do
      * not link to it: the features page to the front page, the rankings
      * guide to the update post and the front page to the privacy post.
      */

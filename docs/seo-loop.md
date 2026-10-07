@@ -371,10 +371,10 @@ Built (GH#78), schema v11:
   the update every page is read again (`state()['links']` holds when); the
   report says how many were (`read`), and the first read on live data
   reads a few pages at once.
-- Lists: `orphans` (no other page links in; the front page is left out,
-  as menus link to it), most impressions first; `converting` (visits from
-  search reached the goal 3 or more times, 2 or fewer pages link in), most
-  conversions first; `missing` (a page with at least max(10, days)
+- Lists: `orphans` (no other page links in), most impressions first;
+  `converting` (visits from search reached the goal 3 or more times, 2 or
+  fewer pages link in), most conversions first (the front page is in
+  neither, as menus link to it); `missing` (a page with at least max(10, days)
   impressions on a search does not link to the search's page with most
   clicks), one row per page pair with up to 5 searches, from the 2,000
   pairs with most impressions. Menus and widgets are not read, so a page
@@ -391,7 +391,7 @@ Built (GH#78), schema v11:
   **Internal links** under the findings, with a list switch that counts
   each list; Plan shows the items as "Internal links: <list>".
 - Demo data: `PAGE_LINKS` links the demo pages: the update post and the
-  FAQ are orphans, the pricing and licence pages convert with few links
+  FAQ are orphans, the pricing page converts (Purchase) with two links
   in, and the features page, the rankings guide and the front page miss a
   link to a page that gets their search's clicks.
 

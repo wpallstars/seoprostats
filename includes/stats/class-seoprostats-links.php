@@ -4,10 +4,10 @@
  * of the site's published pages to its own pages, and three lists from
  * them weighed by search and conversions:
  *
- * - orphans: published pages no other page's text links to (the front
- *   page is left out: menus link to it);
+ * - orphans: published pages no other page's text links to;
  * - converting: pages whose visits from search reach the goal
- *   (MIN_CONVERSIONS or more) with FEW or fewer pages linking to them;
+ *   (MIN_CONVERSIONS or more) with FEW or fewer pages linking to them
+ *   (the front page is in neither: menus link to it);
  * - missing: a page that shows for a search, but does not link to the
  *   page meant for it: the page with most clicks for that search.
  *
@@ -333,10 +333,14 @@ final class SEOProStats_Links {
         $orphans    = array();
         $converting = array();
         foreach ($facts as $path_id => $links_in) {
+            // Menus link to the front page, so neither list has it.
+            if ($path_id === $front) {
+                continue;
+            }
             $sum  = isset($sums[(string) $path_id]) ? $sums[(string) $path_id] : $zero;
             $page = isset($value['pages'][$path_id]) ? $value['pages'][$path_id] : array('visits' => 0, 'conversions' => 0);
             $item = array('path_id' => (int) $path_id, 'links_in' => (int) $links_in, 'sum' => $sum) + $page;
-            if ($links_in === 0 && $path_id !== $front) {
+            if ($links_in === 0) {
                 $orphans[] = $item;
             }
             if ($value['goal'] && $page['conversions'] >= self::MIN_CONVERSIONS) {
@@ -472,11 +476,11 @@ final class SEOProStats_Links {
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by their primary keys; $holders and $to_holders hold only placeholders.
         foreach (array_chunk($from, 500) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '%d'));
-            foreach ((array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i WHERE path_id IN ($holders) AND post_id > 0", array_merge(array($facts), $chunk))) as $id) {
+            foreach ((array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i FORCE INDEX (`PRIMARY`) WHERE path_id IN ($holders) AND post_id > 0", array_merge(array($facts), $chunk))) as $id) {
                 $read[(int) $id] = true;
             }
             $to_holders = implode(', ', array_fill(0, count($to), '%d'));
-            foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT from_path AS f, to_path AS t FROM %i WHERE from_path IN ($holders) AND to_path IN ($to_holders)", array_merge(array($links), $chunk, $to)), ARRAY_A) as $row) {
+            foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT from_path AS f, to_path AS t FROM %i FORCE INDEX (`PRIMARY`) WHERE from_path IN ($holders) AND to_path IN ($to_holders)", array_merge(array($links), $chunk, $to)), ARRAY_A) as $row) {
                 $linked[(int) $row['f'] . ':' . (int) $row['t']] = true;
             }
         }

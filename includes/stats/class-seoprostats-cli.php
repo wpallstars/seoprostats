@@ -1219,9 +1219,9 @@ final class SEOProStats_CLI {
      * Links are read from the text of published pages with the content
      * audit's facts (when a post is saved and by the daily cron; run
      * `wp seoprostats audit run` to read more now). Orphans: no other
-     * page's text links to them (the front page is left out). Converting:
-     * pages whose visits from search reach the goal 3 times or more with 2
-     * or fewer pages linking in. Missing: a page shows for a search but
+     * page's text links to them. Converting: pages whose visits from search
+     * reach the goal 3 times or more with 2 or fewer pages linking in. The
+     * front page is in neither list (menus link to it). Missing: a page shows for a search but
      * does not link to the page that gets most of its clicks.
      *
      * ## OPTIONS

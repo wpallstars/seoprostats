@@ -186,7 +186,7 @@ function Notes({ answer }: { answer: LinksAnswer }) {
 	notes.push(
 		sprintf(
 			/* translators: 1: number of pages, 2: number of conversions, 3: impressions. */
-			__('Only links in a page’s own text count, not menus or widgets; the front page is never an orphan. Few links in is %1$s or fewer pages; converting is %2$s or more conversions. A missing link needs %3$s or more impressions on the search.', 'seoprostats'),
+			__('Only links in a page’s own text count, not menus or widgets, so the front page is never listed. Few links in is %1$s or fewer pages; converting is %2$s or more conversions. A missing link needs %3$s or more impressions on the search.', 'seoprostats'),
 			number(r.few_links),
 			number(r.min_conversions),
 			number(r.min_impressions)
