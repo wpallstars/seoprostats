@@ -802,21 +802,24 @@ final class SEOProStats_Audit {
             case 'canonical':
                 return __('its canonical address is another page', 'seoprostats');
             case 'thin':
+                $n = isset($facts['words']) ? (int) $facts['words'] : 0;
                 /* translators: %s: number of words */
-                return sprintf(__('only %s words and no clicks', 'seoprostats'), $num('words'));
+                return sprintf(_n('only %s word and no clicks', 'only %s words and no clicks', $n, 'seoprostats'), $num('words'));
             case 'title_missing':
                 return __('no title', 'seoprostats');
             case 'title_duplicate':
+                $n = max(1, count((array) $row['same_title']));
                 /* translators: %s: number of pages */
-                return sprintf(__('the same title as %s other pages', 'seoprostats'), number_format_i18n(max(1, count((array) $row['same_title']))));
+                return sprintf(_n('the same title as %s other page', 'the same title as %s other pages', $n, 'seoprostats'), number_format_i18n($n));
             case 'title_long':
                 /* translators: %s: number of characters */
                 return sprintf(__('a %s-character title', 'seoprostats'), $num('title_length'));
             case 'description_missing':
                 return __('no description', 'seoprostats');
             case 'description_duplicate':
+                $n = max(1, count((array) $row['same_description']));
                 /* translators: %s: number of pages */
-                return sprintf(__('the same description as %s other pages', 'seoprostats'), number_format_i18n(max(1, count((array) $row['same_description']))));
+                return sprintf(_n('the same description as %s other page', 'the same description as %s other pages', $n, 'seoprostats'), number_format_i18n($n));
             case 'description_long':
                 /* translators: %s: number of characters */
                 return sprintf(__('a %s-character description', 'seoprostats'), $num('description_length'));
@@ -825,8 +828,9 @@ final class SEOProStats_Audit {
             case 'h1_several':
                 return __('several H1s', 'seoprostats');
             case 'images_alt':
+                $n = isset($facts['images_no_alt']) ? (int) $facts['images_no_alt'] : 0;
                 /* translators: %s: number of images */
-                return sprintf(__('%s images without alt text', 'seoprostats'), $num('images_no_alt'));
+                return sprintf(_n('%s image without alt text', '%s images without alt text', $n, 'seoprostats'), $num('images_no_alt'));
         }
         return (string) $finding;
     }

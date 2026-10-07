@@ -1086,13 +1086,14 @@ final class SEOProStats_CLI {
     }
 
     /**
-     * The content audit: published pages with findings from their
-     * WordPress content and SEO plugin fields (title or description
-     * missing, long or the same as another page's; no H1 or several;
-     * images without alt text; a thin page with impressions but no clicks;
-     * noindex or a canonical address elsewhere on a page with impressions),
-     * most search impressions first. Facts are read when a post is saved
-     * and by the daily cron, 200 posts a day; run reads the next posts now.
+     * The content audit: published pages with findings, by search impressions.
+     *
+     * Findings come from each page's WordPress content and SEO plugin
+     * fields: title or description missing, long or the same as another
+     * page's; no H1 or several; images without alt text; a thin page with
+     * impressions but no clicks; noindex or a canonical address elsewhere
+     * on a page with impressions. Facts are read when a post is saved and
+     * by the daily cron, 200 posts a day; run reads the next posts now.
      *
      * ## OPTIONS
      *
