@@ -67,7 +67,7 @@ function Report({ share }: { share: Opened }) {
         <div className="spst-toolbar"><Controls state={state} update={update} />{!share.hide_realtime && !share.locked_filters.length && state.view === 'overview' && <Realtime />}</div>
         {!!share.locked_filters.length && <p>{__('Locked filters:', 'seoprostats')} {share.locked_filters.map((f) => `${f.dimension} ${f.op} ${f.values.join(', ')}`).join('; ')}</p>}
         <FilterBar filters={state.filters} update={update} />
-        {state.view === 'goals' ? <Goals {...props} /> : state.view === 'clicks' ? <Clicks {...props} /> : <Overview {...props} />}
+        <div key={dark ? 'dark' : 'light'}>{state.view === 'goals' ? <Goals {...props} /> : state.view === 'clicks' ? <Clicks {...props} /> : <Overview {...props} />}</div>
         <footer className="spst-share-brand">{share.agency_logo_url && <img src={share.agency_logo_url} alt="" />}<p>{share.branding.byline} {share.branding.website ? <a href={share.branding.website} rel="noopener">{share.branding.agency}</a> : share.branding.agency}</p>{share.branding.credit && <p>{__('Statistics by SEO Pro Stats', 'seoprostats')}</p>}</footer>
     </div>;
 }

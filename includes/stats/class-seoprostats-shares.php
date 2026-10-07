@@ -393,7 +393,7 @@ final class SEOProStats_Shares {
         }
         $lock = $key . '_' . get_current_blog_id();
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- connection-owned lock serializes a transient counter.
-        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 0)', $lock)) !== 1) {
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 3)', $lock)) !== 1) {
             return false;
         }
         try {

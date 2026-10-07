@@ -43,6 +43,7 @@
 .spst-share .screen-reader-text { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 .spst-share .spst-changes-modal .spst-form__actions .is-secondary { display: none; }
 .spst-share .components-modal__frame { background: var(--spst-background, #fff); color: var(--spst-text); }
+.spst-share .components-select-control__input { background: var(--spst-background); color: var(--spst-text); }
 .spst-share-dark { background: #1d2327; }
 .spst-share footer { margin-top: 32px; border-top: 1px solid var(--spst-border); padding-top: 16px; }
 @media (max-width: 480px) { .spst-report { padding: 12px; } .spst-share .spst-controls .components-base-control { min-width: 0; } }
