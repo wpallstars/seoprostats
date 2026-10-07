@@ -248,6 +248,11 @@ final class SEOProStats_Purchases {
         if (!is_array($hit)) {
             return false;
         }
+        $currency = isset($hit['rv']['c']) && is_string($hit['rv']['c']) ? strtoupper(trim($hit['rv']['c'])) : '';
+        if (!preg_match('/^[A-Z]{3}$/', $currency) || !isset($hit['rv']['a']) || !is_numeric($hit['rv']['a']) || (float) $hit['rv']['a'] <= 0) {
+            return false;
+        }
+        $hit['rv']['c'] = $currency;
 
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-collector.php';
         $line = array(
@@ -296,6 +301,33 @@ final class SEOProStats_Purchases {
             && self::record($visit, $amount, $currency, $source, 0, self::REFUND);
     }
 
+    /**
+     * Serialize deduplication and buffer writes across shop callbacks.
+     * The named lock is connection-owned and automatically released on failure.
+     * No new options, files, credentials or visitor-page queries are added.
+     *
+     * @param string       $method Private callback.
+     * @param array<mixed> $args   Callback arguments.
+     * @return mixed Callback result, or false if the lock is unavailable.
+     */
+    private static function locked($method, array $args) {
+        global $wpdb;
+        $key = 'seoprostats-purchases-' . substr(hash('sha256', DB_NAME . '|' . $wpdb->prefix), 0, 32);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- connection-owned advisory lock, no table scan or persisted identity.
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 10)', $key)) !== 1) {
+            return false;
+        }
+        try {
+            // A competing request may have committed after this request cached state.
+            wp_cache_delete(self::STATE_OPTION, 'options');
+            wp_cache_delete('notoptions', 'options');
+            return self::$method(...$args);
+        } finally {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- release the lock on every exit, including an exception.
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $key));
+        }
+    }
+
     // ------------------------------------------------------------------
     // WooCommerce.
 
@@ -319,7 +351,15 @@ final class SEOProStats_Purchases {
      * @param int $order_id Order ID.
      */
     public static function woo_paid($order_id) {
+        self::locked('woo_paid_locked', array($order_id));
+    }
+
+    /** @param int $order_id Order ID. */
+    private static function woo_paid_locked($order_id) {
         $order = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        if ($order instanceof WC_Order) {
+            $order->read_meta_data(true);
+        }
         if (!$order instanceof WC_Order || $order instanceof WC_Order_Refund || isset(self::$done['woo' . $order->get_id()]) || $order->get_meta(self::META_DONE)) {
             return;
         }
@@ -343,8 +383,20 @@ final class SEOProStats_Purchases {
      * @param int $refund_id Refund order.
      */
     public static function woo_refunded($order_id, $refund_id) {
+        self::locked('woo_refunded_locked', array($order_id, $refund_id));
+    }
+
+    /**
+     * @param int $order_id Original order.
+     * @param int $refund_id Refund order.
+     */
+    private static function woo_refunded_locked($order_id, $refund_id) {
         $order  = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
         $refund = function_exists('wc_get_order') ? wc_get_order($refund_id) : null;
+        if ($order instanceof WC_Order && $refund instanceof WC_Order_Refund) {
+            $order->read_meta_data(true);
+            $refund->read_meta_data(true);
+        }
         $key    = 'woo-refund' . (int) $refund_id;
         if (!self::enabled() || !$order instanceof WC_Order || !$refund instanceof WC_Order_Refund || (int) $refund->get_parent_id() !== (int) $order_id || isset(self::$done[$key]) || $refund->get_meta(self::META_DONE)) {
             return;
@@ -380,7 +432,13 @@ final class SEOProStats_Purchases {
      * @param int $order_id Order ID.
      */
     public static function edd_paid($order_id) {
+        self::locked('edd_paid_locked', array($order_id));
+    }
+
+    /** @param int $order_id Order ID. */
+    private static function edd_paid_locked($order_id) {
         $order_id = (int) $order_id;
+        wp_cache_delete($order_id, 'edd_order_meta');
         if (!function_exists('edd_get_order') || isset(self::$done['edd' . $order_id]) || edd_get_order_meta($order_id, self::META_DONE, true)) {
             return;
         }
@@ -405,9 +463,19 @@ final class SEOProStats_Purchases {
      * @param int $refund_id Refund order (negative total).
      */
     public static function edd_refunded($order_id, $refund_id) {
+        self::locked('edd_refunded_locked', array($order_id, $refund_id));
+    }
+
+    /**
+     * @param int $order_id Original order.
+     * @param int $refund_id Refund order.
+     */
+    private static function edd_refunded_locked($order_id, $refund_id) {
         if (!self::enabled() || !function_exists('edd_get_order')) {
             return;
         }
+        wp_cache_delete((int) $order_id, 'edd_order_meta');
+        wp_cache_delete((int) $refund_id, 'edd_order_meta');
         $refund = edd_get_order((int) $refund_id);
         $key    = 'edd-refund' . (int) $refund_id;
         if (!is_object($refund) || !isset($refund->parent, $refund->type, $refund->total, $refund->currency) || (int) $refund->parent !== (int) $order_id || $refund->type !== 'refund' || isset(self::$done[$key]) || edd_get_order_meta((int) $refund_id, self::META_DONE, true)) {
@@ -486,6 +554,11 @@ final class SEOProStats_Purchases {
      * @param array<string,mixed> $data Event data.
      */
     public static function fluentcart_paid($data) {
+        self::locked('fluentcart_paid_locked', array($data));
+    }
+
+    /** @param array<string,mixed> $data Event payload. */
+    private static function fluentcart_paid_locked($data) {
         $order  = self::fluentcart_order($data);
         $fields = self::fluentcart_fields($order);
         if (!$order || empty($fields['id']) || (isset($fields['type']) && $fields['type'] === 'renewal')) {
@@ -515,6 +588,11 @@ final class SEOProStats_Purchases {
      * @param array<string,mixed> $data Event payload.
      */
     public static function fluentcart_refunded($data) {
+        self::locked('fluentcart_refunded_locked', array($data));
+    }
+
+    /** @param array<string,mixed> $data Event payload. */
+    private static function fluentcart_refunded_locked($data) {
         $order  = self::fluentcart_order($data);
         $fields = self::fluentcart_fields($order);
         $tx     = isset($data['transaction']) ? self::fluentcart_fields($data['transaction']) : array();
@@ -598,6 +676,15 @@ final class SEOProStats_Purchases {
      * @return string recorded, ignored, test, duplicate, not-joined or failed.
      */
     public static function thrivecart_order(array $data) {
+        $result = self::locked('thrivecart_order_locked', array($data));
+        return is_string($result) ? $result : 'failed';
+    }
+
+    /**
+     * @param array<string,mixed> $data Webhook payload.
+     * @return string
+     */
+    private static function thrivecart_order_locked(array $data) {
         if (!self::enabled() || !in_array($data['event'], array('order.success', 'order.refund'), true)) {
             return 'ignored';
         }
@@ -628,6 +715,8 @@ final class SEOProStats_Purchases {
         }
         $orders[]            = $order_id;
         $state['thrivecart'] = array_slice($orders, -self::KEEP_ORDERS);
+        $receipts = isset($state['receipts']) && is_array($state['receipts']) ? $state['receipts'] : array();
+        $state['receipts'] = array_intersect_key($receipts, array_fill_keys($state['thrivecart'], true));
 
         $visit = preg_match('/^[0-9a-f]{16}$/', $pkey) ? self::page_load_visit($pkey) : null;
         if (!$visit) {

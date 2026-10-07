@@ -260,7 +260,15 @@ properties so source and other property revenue agree. WooCommerce marks
 each refund order once, EDD 3 marks each refund order once, and FluentCart
 remembers refund transaction IDs in the original order's recorded mark.
 Only successful buffer writes set these marks; filtered-out purchases and
-failed writes can be retried. Legacy integer marks have no visit and cannot
+failed writes can be retried. A per-site, connection-owned database advisory
+lock serializes receipt checks, buffer appends and recorded marks across
+concurrent shop callbacks; it is released on every exit and automatically
+when the connection closes. State and meta are re-read under the lock.
+The lock waits at most ten seconds; if unavailable, no event or mark is
+written. This prevents overlapping callbacks from double-counting, but the
+file buffer and shop meta are not one transaction: a crash after appending
+and before saving the mark can still require reconciliation.
+Legacy integer marks have no visit and cannot
 be safely attributed, so refunds for those purchases are skipped.
 
 ThriveCart retains private receipts for the last 500 order IDs in its

@@ -391,7 +391,8 @@ final class SEOProStats_Processor {
         foreach ($hits as $h) {
             $v    = $h['visitor'];
             $prev = isset($open[$v]) ? $visits[$open[$v]] : (isset($latest[$v]) ? $latest[$v] : null);
-            if (!empty($h['line']['s']) && $h['type'] === 'e' && $h['hit']['n'] === 'Refund') {
+            $refund = !empty($h['line']['s']) && $h['type'] === 'e' && $h['hit']['n'] === 'Refund';
+            if ($refund) {
                 // Never create a visit for a refund (including after retention).
                 $candidates = isset($history[$v]) ? $history[$v] : array();
                 foreach ($visits as $visit_key => $candidate) {
@@ -413,12 +414,15 @@ final class SEOProStats_Processor {
                 $key = $prev['skey'];
                 if (!isset($visits[$key])) {
                     $visits[$key] = self::new_visit($h, $key, $prev['started'], $prev['n'], true);
+                    $visits[$key]['ended'] = $prev['ended'];
                 }
             } else {
                 $key          = substr(hash('sha256', $v . '|' . $h['ts']), 0, 16);
                 $visits[$key] = self::new_visit($h, $key, $h['ts'], 0, false);
             }
-            $open[$v] = $key;
+            if (!$refund) {
+                $open[$v] = $key;
+            }
             $visit    = &$visits[$key];
             $visit['ended'] = max($visit['ended'], $h['ts']);
             $visit['n']++;
