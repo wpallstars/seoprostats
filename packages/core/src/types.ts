@@ -369,6 +369,10 @@ export interface ChartData<P extends { t: string } = { t: string }> {
 export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
+/** The Search section's reports; the first is the default. */
+export const SEARCH_REPORTS = ['rankings', 'opportunities'] as const;
+export type SearchReport = (typeof SEARCH_REPORTS)[number];
+
 export interface SearchMetrics {
 	clicks: number;
 	impressions: number;
@@ -428,6 +432,65 @@ export interface SearchAnswer extends Answer {
 		change: SearchChange;
 		points: SearchPoint[];
 	};
+}
+
+/** Kinds of search opportunity. */
+export const OPPORTUNITY_KINDS = ['striking', 'ctr', 'decay'] as const;
+export type OpportunityKind = (typeof OPPORTUNITY_KINDS)[number];
+
+/** Likely cause of a page losing clicks. */
+export type DecayCause = 'position' | 'demand' | 'ctr' | 'gone';
+
+/** A page of an opportunity, with links. */
+export interface OpportunityPage {
+	path_id: number;
+	path: string;
+	url: string;
+	post_id: number;
+	edit_url: string | null;
+}
+
+/** A page's query: striking distance or low CTR. */
+export interface OpportunityPair extends OpportunityPage, SearchMetrics {
+	query: string;
+	/** CTR aimed for: the site's at position 3 (striking) or at its position (ctr). */
+	expected_ctr: number;
+	/** Clicks it could gain (striking) or misses (ctr) in the period. */
+	potential: number;
+}
+
+/** A page losing clicks. */
+export interface OpportunityDecay extends OpportunityPage, SearchMetrics {
+	compare: SearchMetrics & { change: SearchChange };
+	lost: number;
+	cause: DecayCause;
+	/** One sentence saying why, in the site's language. */
+	why: string;
+	/** The queries that lost most. */
+	queries: { query: string; lost: number; clicks: number; then_clicks: number; position: number | null; then_position: number | null }[];
+	/** What changed on the page in the two periods, newest first. */
+	changes: Marker[];
+}
+
+export interface OpportunitiesAnswer extends Answer {
+	kind: OpportunityKind;
+	/** The period read: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	first: string;
+	connected: boolean;
+	ignored: string[];
+	rules: Record<string, number>;
+	rows: (OpportunityPair | OpportunityDecay)[];
+	total: number;
+	more: boolean;
+	/** striking and ctr: the site's CTR by position (1–20). */
+	curve?: { source: 'site' | 'mixed' | 'default'; ctr: Record<string, number> } | null;
+	/** decay: the earlier period, and search engine updates in either. */
+	compare?: { range: Range } | null;
+	updates?: Marker[];
 }
 
 export interface ApiError {

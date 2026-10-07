@@ -101,8 +101,13 @@ long-term record.
       position against the previous period, queries, pages, countries
       and devices, page ↔ query drill-down; REST `search`, WP-CLI, the
       `seoprostats/search` ability and demo search data (GH#48).
-- [ ] Opportunities: content performance, striking distance, CTR gaps,
-      decay, likely causes for drops (position, demand, CTR).
+- [x] Opportunities: striking distance, low CTR against the site's own
+      CTR curve, and pages losing clicks with the likely cause (position,
+      demand, CTR, gone), the queries that lost most and the page's
+      changes; REST `opportunities`, WP-CLI, the
+      `seoprostats/opportunities` ability and demo data (GH#53).
+- [ ] Content performance: search joined with each page's visits and
+      conversions (reads the visit tables; needs its own cost check).
 - [ ] Bing Webmaster Tools as a second search engine.
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.

@@ -1,10 +1,15 @@
 /**
- * Search: clicks, impressions, CTR and average position from Google
- * Search Console's imported days, as tiles that pick the chart's metric,
- * with the changes on the timeline under it; then the top search queries,
- * pages, countries and devices. Choose a page to see its queries, or a
- * query to see its pages. Search days are final only (about three days
- * old), so the period stops at the newest one.
+ * Search, from Google Search Console's imported days, in two tabs.
+ *
+ * Rankings: clicks, impressions, CTR and average position as tiles that
+ * pick the chart's metric, with the changes on the timeline under it;
+ * then the top search queries, pages, countries and devices. Choose a
+ * page to see its queries, or a query to see its pages. Search days are
+ * final only (about three days old), so the period stops at the newest
+ * one.
+ *
+ * Opportunities (./Opportunities): where search effort pays; choosing a
+ * row opens it in Rankings.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -13,26 +18,27 @@
 import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { addQueryArgs } from '@wordpress/url';
 import {
 	formatMetric,
 	SEARCH_METRICS,
+	SEARCH_REPORTS,
 	type Marker,
-	type SearchAnswer,
 	type SearchKind,
 	type SearchMetricKey,
+	type SearchReport,
 	type SearchRow,
 	type ViewState,
 } from '@seoprostats/core';
 import { errorMessage, useMarkers, useSearch } from './api';
-import { boot, locale } from './boot';
-import { useDataSet } from './data';
+import { locale } from './boot';
 import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
 import { MainChart } from './components/MainChart';
+import { SearchSetup as Setup, type SearchPick } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
+import { Opportunities } from './Opportunities';
 
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
@@ -94,23 +100,62 @@ function title(page: string, query: string): string {
 	return __('Google Search', 'seoprostats');
 }
 
-function Setup({ answer }: { answer: SearchAnswer }) {
-	const demo = useDataSet() === 'demo';
-	if (demo || answer.through) {
-		return null;
-	}
-	const connections = boot.canManage && boot.settingsUrl ? addQueryArgs(boot.settingsUrl, { tab: 'connections' }) : '';
+/** Search: Rankings (what happened) and Opportunities (where effort pays), as `report` in the address. */
+export function Search(props: ViewProps) {
+	const { state, update } = props;
+	const report: SearchReport = state.report ?? 'rankings';
+	const id = useId();
+	const names: Record<SearchReport, string> = {
+		rankings: __('Rankings', 'seoprostats'),
+		opportunities: __('Opportunities', 'seoprostats'),
+	};
+	// Rankings is the default, so it is left out of the address.
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next });
+
+	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
+		const at = SEARCH_REPORTS.indexOf(report);
+		const next = event.key === 'ArrowRight' ? at + 1 : event.key === 'ArrowLeft' ? at - 1 : null;
+		if (next === null) {
+			return;
+		}
+		event.preventDefault();
+		const target = SEARCH_REPORTS[(next + SEARCH_REPORTS.length) % SEARCH_REPORTS.length] ?? 'rankings';
+		show(target);
+		document.getElementById(`${id}-${target}`)?.focus();
+	};
+
+	// A row of Opportunities opens in Rankings: a page shows its queries; a query alone, its pages.
+	const open = (pick: SearchPick) =>
+		update({ report: undefined, page: pick.page || undefined, query: pick.query || undefined, tab: pick.query && !pick.page ? 'pages' : undefined });
+
 	return (
-		<Notice status="info" isDismissible={false} className="spst-notice">
-			{answer.connected
-				? __('Search Console is connected. Its days are imported in the background, the newest about three days old; they show here as they arrive.', 'seoprostats')
-				: __('Connect Google Search Console to see the searches that show your pages: clicks, impressions, CTR and average position, next to your visits and changes.', 'seoprostats')}{' '}
-			{!answer.connected && connections && <a href={connections}>{__('Settings → Connections', 'seoprostats')}</a>}
-		</Notice>
+		<>
+			<div className="spst-tabs spst-subnav" role="tablist" aria-label={__('Search', 'seoprostats')}>
+				{SEARCH_REPORTS.map((t) => (
+					<button
+						key={t}
+						type="button"
+						role="tab"
+						id={`${id}-${t}`}
+						aria-selected={report === t}
+						aria-controls={`${id}-panel`}
+						tabIndex={report === t ? 0 : -1}
+						className={`spst-tab${report === t ? ' is-active' : ''}`}
+						onClick={() => show(t)}
+						onKeyDown={onKey}
+					>
+						{names[t]}
+					</button>
+				))}
+			</div>
+			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
+				{report === 'rankings' ? <Rankings {...props} /> : <Opportunities {...props} open={open} />}
+			</div>
+		</>
 	);
 }
 
-export function Search({ state, update }: ViewProps) {
+function Rankings({ state, update }: ViewProps) {
 	const kind: SearchKind = state.tab ?? 'queries';
 	const metric: SearchMetricKey = state.chart ?? 'clicks';
 	const page = state.page ?? '';

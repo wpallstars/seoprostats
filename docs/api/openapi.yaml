@@ -714,6 +714,84 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /opportunities:
+    get:
+      operationId: getOpportunities
+      summary: Where search effort pays — striking-distance queries, low-CTR queries or pages losing clicks.
+      description: |
+        From the same imported Search Console days as `/search`, one
+        `kind` of opportunity, best first:
+
+        - `striking`: a page's query at average position 4–20 with
+          enough impressions (`rules.min_impressions`, scaled by the
+          period's days). `potential` is the clicks it could gain at the
+          site's own CTR at position 3: impressions × (that CTR − its
+          CTR).
+        - `ctr`: a page's query in the top 10 whose CTR is under
+          `rules.under` × the site's own CTR at its position (title and
+          description work). `potential` is the clicks it misses:
+          impressions × expected CTR − clicks.
+        - `decay`: pages with at least `rules.min_share` fewer clicks,
+          and `rules.min_lost` or more, than in the earlier period of the
+          same length (the previous one; a year earlier with
+          `compare=year`). Each has a likely `cause`: `gone` (no
+          impressions now), `position` (ranks lower by a place and a
+          tenth or more), else whichever fell more of `demand`
+          (impressions) and `ctr`; a sentence (`why`), the queries that
+          lost most, and the site's recorded changes on the page in both
+          periods. `updates` lists search engine updates in either.
+
+        Expected CTR is the site's own in the period: clicks ÷
+        impressions by rounded position (1–20), made never to rise with
+        position; positions with too few impressions use a cautious
+        default (`curve.source`).
+
+        As `/search`, the period is cut at the newest search day; it is
+        also cut to its newest 91 days (`days`, `cut`), so a long period
+        never reads every query of every day. Page filters apply; other
+        filters are listed in `ignored`.
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [striking, ctr, decay]
+            default: striking
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Opportunities of one kind.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpportunitiesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
   /demo:
     get:
       operationId: getDemo
@@ -2024,6 +2102,172 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/SearchPoint'
+
+    OpportunityPage:
+      type: object
+      required: [path_id, path, url, post_id, edit_url]
+      properties:
+        path_id:
+          type: integer
+        path:
+          type: string
+        url:
+          type: string
+        post_id:
+          type: integer
+          description: 0 when no post matches.
+        edit_url:
+          type: [string, 'null']
+          description: Only when the current user can edit the post.
+
+    OpportunityPair:
+      description: A page's query (striking and ctr).
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [query, expected_ctr, potential]
+          properties:
+            query:
+              type: string
+            expected_ctr:
+              type: number
+              description: The site's CTR at position 3 (striking) or at the query's position (ctr).
+            potential:
+              type: integer
+              description: Clicks it could gain (striking) or misses (ctr) in the period.
+
+    OpportunityDecay:
+      description: A page losing clicks (decay).
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [compare, lost, cause, why, queries, changes]
+          properties:
+            compare:
+              description: The earlier period.
+              allOf:
+                - $ref: '#/components/schemas/SearchMetrics'
+                - type: object
+                  required: [change]
+                  properties:
+                    change:
+                      $ref: '#/components/schemas/SearchChange'
+            lost:
+              type: integer
+              description: Clicks then − clicks now.
+            cause:
+              type: string
+              enum: [position, demand, ctr, gone]
+            why:
+              type: string
+              description: One sentence saying why, in the site's language.
+            queries:
+              type: array
+              description: The queries that lost most clicks (up to 3).
+              items:
+                type: object
+                required: [query, lost, clicks, then_clicks, position, then_position]
+                properties:
+                  query:
+                    type: string
+                  lost:
+                    type: integer
+                  clicks:
+                    type: integer
+                  then_clicks:
+                    type: integer
+                  position:
+                    type: [number, 'null']
+                    description: Null without impressions.
+                  then_position:
+                    type: [number, 'null']
+            changes:
+              type: array
+              description: The site's recorded changes on the page in both periods, newest first (up to 5).
+              items:
+                $ref: '#/components/schemas/Marker'
+
+    OpportunitiesAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
+          properties:
+            kind:
+              type: string
+              enum: [striking, ctr, decay]
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+              description: Days read; 0 without search data.
+            cut:
+              type: boolean
+              description: Whether the period was cut to its newest 91 days.
+            through:
+              type: string
+              description: Newest day with search data (YYYY-MM-DD); empty with none.
+            first:
+              type: string
+              description: Oldest day with search data (YYYY-MM-DD); empty with none.
+            connected:
+              type: boolean
+              description: Whether Search Console is connected (demo data, always).
+            ignored:
+              type: array
+              description: Filter dimensions left out (only page filters apply to search data).
+              items:
+                type: string
+            rules:
+              type: object
+              description: |
+                The thresholds used. striking: min_impressions,
+                position_from, position_to, target. ctr: min_impressions,
+                position_from, position_to, under. decay: min_lost,
+                min_share.
+              additionalProperties:
+                type: number
+            rows:
+              type: array
+              description: OpportunityPair rows (striking, ctr) or OpportunityDecay rows (decay).
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/OpportunityPair'
+                  - $ref: '#/components/schemas/OpportunityDecay'
+            total:
+              type: integer
+              description: All opportunities of this kind.
+            more:
+              type: boolean
+              description: Whether there are more rows after these.
+            curve:
+              type: [object, 'null']
+              description: striking and ctr; null without search data.
+              required: [source, ctr]
+              properties:
+                source:
+                  type: string
+                  enum: [site, mixed, default]
+                  description: The site's own CTR at every position, at some, or at none (a cautious default).
+                ctr:
+                  type: object
+                  description: CTR by position, "1" to "20".
+                  additionalProperties:
+                    type: number
+            compare:
+              type: [object, 'null']
+              description: decay; the earlier period, null without search data.
+              required: [range]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+            updates:
+              type: array
+              description: decay; search engine updates in either period.
+              items:
+                $ref: '#/components/schemas/Marker'
 
     DemoStatus:
       type: object

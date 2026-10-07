@@ -67,6 +67,10 @@ Yes, once you connect it under Settings → Connections with a Google Cloud serv
 
 SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and average position against the previous period, a chart with the site's changes under it, and the search queries, pages, countries and devices. Choose a page to see its queries, or a query to see its pages. Scripts and AI agents read the same report through the REST API (search), wp seoprostats search, and on WordPress 6.9 and later the ability seoprostats/search. Demo data has made-up search data, so you can try it before connecting.
 
+= What does Search → Opportunities show? =
+
+Where search work pays, from the same Search Console data. Striking distance lists a page's search queries at positions 4 to 20 with the clicks each could gain in the top three. Low CTR lists queries in the top 10 that searchers choose much less often than your site's own click-through rate at that position, where a clearer title and description may help. Losing clicks lists pages with at least a fifth fewer clicks than the earlier period, each with the likely cause (it ranks lower, it is searched for less, fewer searchers choose it, or it is no longer shown), the queries that lost most and what changed on the page. Choose a row to open it in Rankings. Scripts and AI agents read it through the REST API (opportunities), wp seoprostats opportunities, and on WordPress 6.9 and later the ability seoprostats/opportunities.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

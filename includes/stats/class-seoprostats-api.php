@@ -78,6 +78,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-conversions.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-clicks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-opportunities.php';
     }
 
     /**
@@ -285,6 +286,19 @@ final class SEOProStats_API {
                     'description' => __('Only this search query (* for any text).', 'seoprostats'),
                     'type'        => 'string',
                     'default'     => '',
+                ),
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/opportunities', $read + array(
+            'callback' => array(__CLASS__, 'opportunities'),
+            'args'     => $base + array(
+                'kind'   => array(
+                    'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position) or decay (pages losing clicks, with the likely cause).', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Opportunities::KINDS,
+                    'default'     => 'striking',
                 ),
                 'limit'  => self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
@@ -762,6 +776,20 @@ final class SEOProStats_API {
         $query = (string) $request->get_param('query');
         return self::report($request, static function ($req) use ($kind, $page, $query) {
             return SEOProStats_Search::report($req, $kind, $page, $query);
+        });
+    }
+
+    /**
+     * GET /opportunities: striking-distance queries, low-CTR queries or
+     * pages losing clicks with the likely cause.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function opportunities($request) {
+        $kind = (string) $request->get_param('kind');
+        return self::report($request, static function ($req) use ($kind) {
+            return SEOProStats_Opportunities::report($req, $kind);
         });
     }
 

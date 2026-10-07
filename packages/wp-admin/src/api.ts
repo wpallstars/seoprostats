@@ -23,6 +23,8 @@ import {
 	type GoalsAnswer,
 	type Marker,
 	type MarkersAnswer,
+	type OpportunitiesAnswer,
+	type OpportunityKind,
 	type PropertiesAnswer,
 	type RealtimeAnswer,
 	type SearchAnswer,
@@ -169,6 +171,18 @@ export function useSearch(scope: Scope, kind: SearchKind, page: string, query: s
 	return useQuery({
 		queryKey: ['search', args],
 		queryFn: () => get<SearchAnswer>('search', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Search opportunities of one kind (decay always against an earlier period: the previous one unless a year ago is chosen). */
+export function useOpportunities(scope: Scope, kind: OpportunityKind, limit = 10, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: scope.compare === 'year' ? 'year' : 'prev' }), kind, limit, offset }, data);
+	return useQuery({
+		queryKey: ['opportunities', args],
+		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

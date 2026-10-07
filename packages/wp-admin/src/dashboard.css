@@ -853,6 +853,72 @@ code.spst-meta {
 	min-width: 180px;
 }
 
+/* Search's tabs: Rankings and Opportunities. */
+.spst-subnav {
+	margin: 0 0 12px;
+	border-bottom: 1px solid var(--spst-border);
+}
+
+.spst-subnav .spst-tab {
+	margin-bottom: -1px;
+	padding: 6px 12px;
+	font-size: 14px;
+}
+
+/* Opportunities: three cards, one under another. */
+.spst-opportunities {
+	display: grid;
+	gap: 16px;
+}
+
+.spst-notice + .spst-opportunities {
+	margin-top: 16px;
+}
+
+.spst-opportunities__intro.spst-note {
+	max-width: 60em;
+	margin: 0 0 12px;
+}
+
+.spst-opportunities .spst-note p {
+	margin: 0 0 4px;
+}
+
+.spst-decay__list {
+	margin: 0;
+	list-style: none;
+}
+
+.spst-decay__list li {
+	margin: 0 0 6px;
+}
+
+.spst-decay__list li:last-child {
+	margin-bottom: 0;
+}
+
+.spst-decay td {
+	min-width: 140px;
+}
+
+.spst-decay .spst-changes__group {
+	align-items: baseline;
+	white-space: normal;
+}
+
+.spst-decay .spst-chart-lane__dot {
+	flex: none;
+}
+
+.spst-cause {
+	font-weight: 600;
+}
+
+.spst-cause.is-position,
+.spst-cause.is-gone {
+	color: var(--spst-bad);
+}
+
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
 .spst-modal.components-modal__frame {
 	width: min(560px, calc(100vw - 32px));

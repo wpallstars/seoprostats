@@ -818,6 +818,147 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Search opportunities from Google Search Console's imported days:
+     * striking distance (a page's query at position 4–20 that could reach
+     * the top three: potential clicks), low CTR (a top-10 query with a CTR
+     * well under the site's own at that position: clicks missed) or decay
+     * (pages losing clicks against the previous period, with the likely
+     * cause: position, demand, ctr or gone). The period is cut at the
+     * newest day with search data and to its newest 91 days.
+     *
+     * ## OPTIONS
+     *
+     * [<kind>]
+     * : striking, ctr or decay.
+     * ---
+     * default: striking
+     * options:
+     *   - striking
+     *   - ctr
+     *   - decay
+     * ---
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : For decay: prev (the default) or year.
+     * ---
+     * default: prev
+     * ---
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats (others do not apply to search data).
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 10
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats opportunities
+     *     wp seoprostats opportunities ctr --range=90d
+     *     wp seoprostats opportunities decay --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function opportunities($args, $assoc) {
+        $kind   = isset($args[0]) ? (string) $args[0] : 'striking';
+        $req    = $this->request($assoc + array('range' => '30d', 'compare' => 'prev'));
+        $answer = $this->on_data($assoc, static function () use ($req, $kind) {
+            return SEOProStats_Opportunities::report($req, $kind);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        if (!$answer['connected']) {
+            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+        }
+        $this->range_line($answer['range']);
+        if ($answer['cut']) {
+            /* translators: %d: days */
+            WP_CLI::log(sprintf(__('Only the newest %d days of the period are read.', 'seoprostats'), $answer['days']));
+        }
+        if (!empty($answer['compare'])) {
+            /* translators: 1: start, 2: end */
+            WP_CLI::log(sprintf(__('Against %1$s to %2$s.', 'seoprostats'), substr($answer['compare']['range']['from'], 0, 10), substr($answer['compare']['range']['to'], 0, 10)));
+        }
+        if ($answer['ignored']) {
+            /* translators: %s: filter dimensions. */
+            WP_CLI::log(sprintf(__('Not applied to search data: %s.', 'seoprostats'), implode(', ', $answer['ignored'])));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No opportunities of this kind in this range.', 'seoprostats'));
+            return;
+        }
+        $pct  = static function ($value) {
+            return sprintf('%.1f%%', (float) $value * 100);
+        };
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            if ($answer['kind'] === 'decay') {
+                $rows[] = array(
+                    'path'     => $row['path'],
+                    'clicks'   => $row['clicks'],
+                    'was'      => $row['compare']['clicks'],
+                    'lost'     => $row['lost'],
+                    'position' => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
+                    'was_pos'  => sprintf('%.1f', $row['compare']['position']),
+                    'cause'    => $row['cause'],
+                    'queries'  => implode('; ', array_column($row['queries'], 'query')),
+                    'changes'  => implode('; ', array_map(static function ($c) {
+                        return substr((string) $c['t'], 0, 10) . ' ' . $c['label'];
+                    }, $row['changes'])),
+                );
+                continue;
+            }
+            $rows[] = array(
+                'path'         => $row['path'],
+                'query'        => $row['query'],
+                'clicks'       => $row['clicks'],
+                'impressions'  => $row['impressions'],
+                'ctr'          => $pct($row['ctr']),
+                'expected_ctr' => $pct($row['expected_ctr']),
+                'position'     => sprintf('%.1f', $row['position']),
+                'potential'    => $row['potential'],
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+        if ($answer['kind'] === 'decay' && $answer['updates']) {
+            /* translators: %s: search engine updates */
+            WP_CLI::log(sprintf(__('Search engine updates in these periods: %s.', 'seoprostats'), implode('; ', array_column($answer['updates'], 'label'))));
+        }
+    }
+
+    /**
      * The change log: posts published, unpublished and edited, SEO fields,
      * prices, stock and coupons, plugins, themes, WordPress, settings,
      * search engine updates and notes, newest first.

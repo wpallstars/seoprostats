@@ -127,7 +127,7 @@ final class SEOProStats_Search {
      *
      * @return bool
      */
-    private static function connected() {
+    public static function connected() {
         require_once __DIR__ . '/class-seoprostats-connections.php';
         return SEOProStats_Connections::get('search-console') !== null;
     }
@@ -138,7 +138,7 @@ final class SEOProStats_Search {
      *
      * @return string
      */
-    private static function version() {
+    public static function version() {
         global $wpdb;
         if (!SEOProStats_Schema::is_current()) {
             return '';
@@ -154,7 +154,7 @@ final class SEOProStats_Search {
      * @param int $engine Engine.
      * @return array{from:string,to:string}
      */
-    private static function bounds($engine) {
+    public static function bounds($engine) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, MIN and MAX of the primary key's (engine, day) prefix.
         $row = $wpdb->get_row($wpdb->prepare('SELECT MIN(day) AS f, MAX(day) AS t FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_totals'), (int) $engine), ARRAY_A);
@@ -173,7 +173,7 @@ final class SEOProStats_Search {
      * @param array{from:string,to:string} $bounds From bounds(); '' for no cut.
      * @return array<string,mixed>|null Null when no day is left.
      */
-    private static function days(array $range, array $bounds) {
+    public static function days(array $range, array $bounds) {
         $tz = wp_timezone();
         /** @var DateTimeImmutable $start */
         $start = $range['start'];
@@ -208,7 +208,7 @@ final class SEOProStats_Search {
      * @param array<string,mixed> $days From days().
      * @return int
      */
-    private static function length(array $days) {
+    public static function length(array $days) {
         /** @var DateTimeImmutable $start */
         $start = $days['start'];
         return (int) $start->diff($days['end'])->days;
@@ -235,7 +235,7 @@ final class SEOProStats_Search {
      * @param string[]                                                      $ignored Filters left out (out).
      * @return int[]|null
      */
-    private static function page_ids(array $filters, $page, array &$ignored) {
+    public static function page_ids(array $filters, $page, array &$ignored) {
         $ids = null;
         foreach ($filters as $filter) {
             if ($filter['dimension'] !== 'page' || $filter['op'] === 'is_not') {
@@ -342,7 +342,7 @@ final class SEOProStats_Search {
      * @param int|string $pos_impr    Position × impressions × 100.
      * @return array{clicks:int,impressions:int,ctr:float,position:float}
      */
-    private static function metrics($clicks, $impressions, $pos_impr) {
+    public static function metrics($clicks, $impressions, $pos_impr) {
         $clicks      = (int) $clicks;
         $impressions = (int) $impressions;
         return array(
@@ -378,7 +378,7 @@ final class SEOProStats_Search {
      * @param array<string,int|float> $then From totals().
      * @return array<string,float|null>
      */
-    private static function change(array $now, array $then) {
+    public static function change(array $now, array $then) {
         $keys            = array_flip(array('clicks', 'impressions', 'ctr', 'position'));
         $out             = SEOProStats_Query::change(array_intersect_key($now, $keys), array_intersect_key($then, $keys));
         $out['position'] = $now['impressions'] && $then['impressions'] ? round((float) $now['position'] - (float) $then['position'], 1) : null;
