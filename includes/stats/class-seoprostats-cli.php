@@ -1046,6 +1046,19 @@ final class SEOProStats_CLI {
             }
             $add('page caches', true, $detail);
         }
+
+        $shops = array_keys(array_filter(array(
+            'WooCommerce' => class_exists('WooCommerce'),
+            'Easy Digital Downloads' => function_exists('edd_get_order'),
+            'FluentCart' => defined('FLUENTCART_VERSION'),
+            'ThriveCart' => SEOProStats_Purchases::thrivecart_secret() !== '',
+        )));
+        if (!SEOProStats_Purchases::enabled()) {
+            $add('purchases', true, 'off (SEO Pro Stats → Settings → Tracking)');
+        } else {
+            $joined = SEOProStats_Purchases::status()['thrivecart_not_joined'];
+            $add('purchases', true, ($shops ? 'recorded from ' . implode(', ', $shops) : 'no supported shop active') . ($joined ? sprintf('; %d ThriveCart orders without a known page load', $joined) : ''));
+        }
         return $out;
     }
 

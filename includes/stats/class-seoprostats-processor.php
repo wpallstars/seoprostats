@@ -24,6 +24,9 @@
  * Clicks and form submits join their page load's visit (looked up by its
  * id once the batch's pageviews are written) and never start or extend one.
  *
+ * Lines marked s (server) are purchases SEOProStats_Purchases wrote with
+ * the checkout visit's hash and time; the collector never sets s.
+ *
  * A pageview's context sets its flags and search words and the visit's
  * login; the item it shows is looked up in WordPress (and kept only when
  * its address is the page's), for the pages table: the hit says which
@@ -245,7 +248,13 @@ final class SEOProStats_Processor {
         $eng    = array();
         $clicks = array();
         foreach ($lines as $line) {
-            $ua = SEOProStats_UA::parse(isset($line['ua']) ? (string) $line['ua'] : '');
+            $agent = isset($line['ua']) ? (string) $line['ua'] : '';
+            $ua    = SEOProStats_UA::parse($agent);
+            // Purchases written on the server (SEOProStats_Purchases, s: 1)
+            // from a page load's visit have no user agent of their own.
+            if ($agent === '' && !empty($line['s'])) {
+                $ua['bot'] = false;
+            }
             if ($ua['bot']) {
                 $done['bots'] += count($line['e']);
                 continue;

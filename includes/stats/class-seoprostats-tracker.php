@@ -109,15 +109,17 @@ final class SEOProStats_Tracker {
      * - x:   paths not tracked (* matches any characters)
      * - c:   autocapture clicks and form submits
      * - a:   affiliate link paths (* matches any characters)
+     * - tc:  ThriveCart is connected: its checkout links carry the page
+     *        load's ID (SEOProStats_Purchases)
      *
-     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[],c:bool,a:string[]}
+     * @return array{u:string,h:string[],q:string[],dnt:bool,x:string[],c:bool,a:string[],tc:bool}
      */
     public static function config() {
         /**
          * Filters the tracker's config, after the settings (Tracking and
          * Privacy) have set it.
          *
-         * @param array<string,mixed> $config u, h, q, dnt, x, c and a (see above).
+         * @param array<string,mixed> $config u, h, q, dnt, x, c, a and tc (see above).
          */
         $config = apply_filters('seoprostats_tracker_config', array(
             'u'   => SEOProStats_Collection::endpoint(),
@@ -127,6 +129,7 @@ final class SEOProStats_Tracker {
             'x'   => SEOProStats_Statistics::excluded_paths(),
             'c'   => SEOProStats_Statistics::autocapture(),
             'a'   => SEOProStats_Statistics::affiliate_paths(),
+            'tc'  => SEOProStats_Purchases::thrivecart_secret() !== '',
         ));
         $config = is_array($config) ? $config : array();
         $list   = static function ($key) use ($config) {
@@ -148,6 +151,7 @@ final class SEOProStats_Tracker {
             'x'   => $list('x'),
             'c'   => !empty($config['c']),
             'a'   => $list('a'),
+            'tc'  => !empty($config['tc']),
         );
     }
 

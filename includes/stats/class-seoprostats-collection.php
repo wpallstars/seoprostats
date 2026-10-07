@@ -82,15 +82,18 @@ final class SEOProStats_Collection {
     }
 
     /**
-     * The one-minute cron schedule.
+     * The one-minute cron schedule. Other plugins can ask for the schedules
+     * before init (WooCommerce does), when translating would load the
+     * translations too early, so the label is translated only after init.
      *
      * @param array<string,array<string,mixed>> $schedules Schedules.
      * @return array<string,array<string,mixed>>
      */
     public static function cron_schedules($schedules) {
+        $label = 'Every minute (SEO Pro Stats)';
         $schedules['seoprostats_minute'] = array(
             'interval' => MINUTE_IN_SECONDS,
-            'display'  => __('Every minute (SEO Pro Stats)', 'seoprostats'),
+            'display'  => did_action('init') ? __('Every minute (SEO Pro Stats)', 'seoprostats') : $label,
         );
         return $schedules;
     }

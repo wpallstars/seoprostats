@@ -45,6 +45,8 @@ SEO Pro Stats in the admin menu, under Dashboard, and a widget on the Dashboard.
 
 Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events that count as conversions; each shows the visits that reached it, the conversion rate and revenue, per currency. Funnels show where visits leave a series of steps, and Properties what was sent with events, such as a plan.
 
+Paid orders from WooCommerce, Easy Digital Downloads and FluentCart are recorded by themselves as a Purchase event with the order's total in its currency, on the visit that placed it, once per order; ThriveCart orders too once its secret word and webhook are set under Settings → Tracking. No order numbers or customer details are kept, and Settings → Tracking can switch it off.
+
 = Does it record what people click? =
 
 Yes, unless you switch it off under Settings → Tracking. Clicks shows what people click on the site or one page, clicks that did nothing (dead clicks), links followed, including affiliate links, files and the forms sent. It never records what anyone types or chooses in a form, hides email addresses and long numbers, and leaves out the text of anything marked with data-sps-mask. Clicks are kept 3 months.

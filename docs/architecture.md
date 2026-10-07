@@ -210,6 +210,49 @@ caches hide repeat visits, so the plugin asks the caches it can (LiteSpeed,
 WP Rocket) not to cache bot requests, and lists the bot user agents for
 the others.
 
+### Purchases
+
+`SEOProStats_Purchases` turns paid orders into one `Purchase` event each:
+revenue `{amount, currency}` (the order's total in its own currency) and
+properties `source` (`woocommerce`, `edd`, `fluentcart`, `thrivecart`)
+and `items`. No order number, customer name, email or address is stored.
+Free orders are not purchases. Settings → Tracking → Record purchases
+(on by default); the `seoprostats_purchase` filter can change or drop one.
+
+- **Shops on the site** (WooCommerce, Easy Digital Downloads 3,
+  FluentCart). When an order is placed in the customer's own checkout
+  request (`woocommerce_checkout_order_processed`,
+  `woocommerce_store_api_checkout_order_processed`, `edd_built_order`,
+  `fluent_cart/order_created`), the visitor hash is worked out as the
+  collector does (today's salt, address, user agent, host; the same
+  exclusions: collection off, excluded addresses and roles, Do Not Track
+  and Global Privacy Control when respected) and kept in the order's meta
+  with the time, the user agent, the country header and the checkout page's
+  path. When the order is paid, then or later (`woocommerce_payment_complete`,
+  `woocommerce_order_status_processing|completed`, `edd_complete_purchase`,
+  `fluent_cart/order_paid`), one line with that hash and the checkout time
+  goes into the buffer, so the processor joins the event to the visit like
+  any other; the meta is replaced by a recorded mark, so the order counts
+  once. Orders made in wp-admin, by cron (subscription renewals) or through
+  an API have no checkout visit and are left out.
+- **ThriveCart** (checkout on its own domain). With the account's secret
+  word saved, the tracker's config has `tc`, and a clicked link to
+  `*.thrivecart.com` gets the page load's random ID as `passthrough[spst]`.
+  ThriveCart's account webhook (`POST /wp-json/seoprostats/v1/thrivecart`,
+  form-encoded; GET and HEAD answer 200 for its address check) is checked
+  against the secret word (`hash_equals`), takes `order.success` (amounts
+  in cents; test mode skipped unless `seoprostats_thrivecart_test_orders`),
+  looks the page load up in `pageviews` by its unique `pkey`, and writes
+  the line with that visit's hash and the page load's time. The last 500
+  order IDs are kept (`seoprostats_purchases`, autoload off) so a retry
+  counts once; orders without a known page load (embedded checkouts,
+  checkouts on a custom domain, links shared elsewhere) are counted there,
+  shown by `wp seoprostats doctor`, and not made into visits.
+
+Lines written this way carry `s: 1` (the collector never sets it): one
+without a user agent of its own (ThriveCart's) is not taken for a bot.
+Refunds and renewals are not recorded yet.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also
