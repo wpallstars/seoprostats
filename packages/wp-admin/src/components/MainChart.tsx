@@ -25,6 +25,7 @@ import { locale } from '../boot';
 import { changesByPoint, chartMarkers, chartSpans, groupColors } from '../changelog';
 import { axisLabel, longLabel } from '../dates';
 import { compareLabel } from '../labels';
+import type { MarkerPick } from './ChangesModal';
 
 interface Props<K extends string> {
 	/** Visits (timeseries) or search (the search report's points). */
@@ -36,8 +37,28 @@ interface Props<K extends string> {
 	height?: number;
 	/** Changes in the range, for the markers lane; none: no lane. */
 	markers?: Marker[];
-	/** A marker chosen: the changes it covers. */
-	onMarker?: (markers: Marker[]) => void;
+	/** A marker chosen: the changes it covers and their days. */
+	onMarker?: (pick: MarkerPick) => void;
+}
+
+/**
+ * The days some points cover (site time zone, as the points' times carry
+ * it): a month's run to its last day, but not past the answer's day.
+ */
+function pointDays(series: ChartData, indexes: number[]): { from: string; to: string } {
+	const first = Math.min(...indexes);
+	const last = Math.max(...indexes);
+	const from = (series.points[first]?.t ?? '').slice(0, 10);
+	let to = (series.points[last]?.t ?? '').slice(0, 10);
+	if (series.grain === 'month' && to) {
+		const [y, m] = to.split('-').map(Number);
+		to = new Date(Date.UTC(y ?? 1970, m ?? 1, 0)).toISOString().slice(0, 10);
+		const today = (series.generated ?? '').slice(0, 10);
+		if (today && today < to) {
+			to = today;
+		}
+	}
+	return { from, to };
 }
 
 /** The admin colour scheme's accent, read from WordPress's variable. */
@@ -157,7 +178,17 @@ export function MainChart<K extends string>({ series, metric, label, format, hei
 			pointLabel: (i) => (series.points[i] ? longLabel(series.points[i].t, series.grain) : ''),
 			/* translators: %s: number of changes not listed. */
 			moreText: (n) => sprintf(_n('and %s more', 'and %s more', n, 'seoprostats'), n.toLocaleString(locale)),
-			onSelect: (indexes) => pick.current?.(indexes.flatMap((i) => byPoint.get(i) ?? [])),
+			onSelect: (indexes) => {
+				const sorted = [...indexes].sort((a, b) => a - b);
+				const label = (i: number) => laneConfig.pointLabel(i);
+				const first = label(sorted[0] ?? 0);
+				const last = label(sorted[sorted.length - 1] ?? 0);
+				pick.current?.({
+					markers: sorted.flatMap((i) => byPoint.get(i) ?? []),
+					...pointDays(series, sorted),
+					when: first === last ? first : `${first} – ${last}`,
+				});
+			},
 			onHover: (i) => chart.current?.guide(i),
 		};
 		if (lane.current) {

@@ -15,6 +15,7 @@ import { filteredPage } from './changelog';
 import { rangeText } from './dates';
 import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
+import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
 import { metricLabel } from './labels';
@@ -27,6 +28,7 @@ export function Overview({ state, update }: ViewProps) {
 	const stats = useStats(state);
 	const series = useTimeseries(state);
 	const markers = useMarkers(state, filteredPage(state.filters));
+	const changes = useChangesModal(update, filteredPage(state.filters));
 	const failed = stats.isError ? stats.error : series.isError ? series.error : null;
 	const answer = stats.data;
 	const empty = answer && answer.metrics.visits === 0;
@@ -56,13 +58,14 @@ export function Overview({ state, update }: ViewProps) {
 							label={metricLabel(state.metric)}
 							format={METRICS[state.metric].format}
 							markers={markers.data?.markers ?? NO_MARKERS}
-							onMarker={() => update({ view: 'changes' })}
+							onMarker={changes.onMarker}
 						/>
 					) : (
 						<div className="spst-chart-placeholder" />
 					)}
 				</div>
 			</Card>
+			{changes.modal}
 
 			{empty && (
 				<Notice status="info" isDismissible={false} className="spst-notice">

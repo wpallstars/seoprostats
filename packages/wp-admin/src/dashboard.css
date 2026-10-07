@@ -865,6 +865,68 @@ code.spst-meta {
 	font-size: 14px;
 }
 
+/* A report's notices and cards, one under another, 16px apart. */
+.spst-subpanel > .spst-notice.components-notice:first-child {
+	margin-top: 0;
+}
+
+.spst-subpanel > * + .components-card {
+	margin-top: 16px;
+}
+
+/* An × inside a text box that empties it. */
+.spst-clearable {
+	position: relative;
+}
+
+.spst-clearable .components-text-control__input {
+	padding-right: 32px;
+}
+
+.spst-clearable__clear {
+	position: absolute;
+	right: 4px;
+	bottom: 4px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	padding: 0;
+	border: 0;
+	border-radius: 2px;
+	background: transparent;
+	color: var(--spst-muted);
+	cursor: pointer;
+}
+
+.spst-clearable__clear:hover {
+	color: var(--spst-bad);
+}
+
+.spst-clearable__clear:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: 0;
+}
+
+/* A chart marker's changes: the table, then Close and Open in Changes. */
+.spst-changes-modal .spst-form__actions {
+	margin-top: 16px;
+}
+
+.spst-changes-modal .spst-changes__group {
+	align-items: baseline;
+	white-space: normal;
+}
+
+.spst-changes-modal td:first-child {
+	min-width: 7em;
+}
+
+.spst-changes-modal td.spst-nowrap {
+	white-space: nowrap;
+}
+
 /* Opportunities: three cards, one under another. */
 .spst-opportunities {
 	display: grid;
@@ -920,12 +982,15 @@ code.spst-meta {
 }
 
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
-.spst-modal.components-modal__frame {
-	width: min(560px, calc(100vw - 32px));
-}
+/* From WordPress's small breakpoint up; below it, its full-width sheet. */
+@media (min-width: 600px) {
+	.spst-modal.components-modal__frame {
+		width: min(560px, calc(100vw - 32px));
+	}
 
-.spst-modal.is-wide.components-modal__frame {
-	width: min(760px, calc(100vw - 32px));
+	.spst-modal.is-wide.components-modal__frame {
+		width: min(760px, calc(100vw - 32px));
+	}
 }
 
 .spst-form {

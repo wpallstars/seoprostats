@@ -35,6 +35,7 @@ import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { SearchSetup as Setup, type SearchPick } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -98,6 +99,15 @@ function title(page: string, query: string): string {
 		return sprintf(__('Google Search: “%s”', 'seoprostats'), query);
 	}
 	return __('Google Search', 'seoprostats');
+}
+
+/** An × in a text box: empties it and applies at once. */
+function ClearButton({ label, onClear }: { label: string; onClear: () => void }) {
+	return (
+		<button type="button" className="spst-clearable__clear" aria-label={label} title={label} onClick={onClear}>
+			<span className="dashicons dashicons-no-alt" aria-hidden="true" />
+		</button>
+	);
 }
 
 /** Search: Rankings (what happened) and Opportunities (where effort pays), as `report` in the address. */
@@ -172,6 +182,7 @@ function Rankings({ state, update }: ViewProps) {
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
 	const search = useSearch(state, shown, page, query);
 	const markers = useMarkers(state, page);
+	const changes = useChangesModal(update, page);
 	const answer = search.data;
 	const rows = answer?.kind === shown ? answer.rows : [];
 	const top = Math.max(...rows.map((r) => r.clicks), 1);
@@ -264,22 +275,44 @@ function Rankings({ state, update }: ViewProps) {
 							choose({ page: typedPage.trim(), query: typedQuery.trim() });
 						}}
 					>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Page', 'seoprostats')}
-							value={typedPage}
-							autoComplete="off"
-							placeholder={__('Any page; * for any text', 'seoprostats')}
-							onChange={setTypedPage}
-						/>
-						<TextControl
-							__nextHasNoMarginBottom
-							label={__('Query', 'seoprostats')}
-							value={typedQuery}
-							autoComplete="off"
-							placeholder={__('Any query; * for any text', 'seoprostats')}
-							onChange={setTypedQuery}
-						/>
+						<div className="spst-clearable">
+							<TextControl
+								__nextHasNoMarginBottom
+								label={__('Page', 'seoprostats')}
+								value={typedPage}
+								autoComplete="off"
+								placeholder={__('Any page; * for any text', 'seoprostats')}
+								onChange={setTypedPage}
+							/>
+							{typedPage && (
+								<ClearButton
+									label={__('Clear the page', 'seoprostats')}
+									onClear={() => {
+										setTypedPage('');
+										choose({ page: '' });
+									}}
+								/>
+							)}
+						</div>
+						<div className="spst-clearable">
+							<TextControl
+								__nextHasNoMarginBottom
+								label={__('Query', 'seoprostats')}
+								value={typedQuery}
+								autoComplete="off"
+								placeholder={__('Any query; * for any text', 'seoprostats')}
+								onChange={setTypedQuery}
+							/>
+							{typedQuery && (
+								<ClearButton
+									label={__('Clear the query', 'seoprostats')}
+									onClear={() => {
+										setTypedQuery('');
+										choose({ query: '' });
+									}}
+								/>
+							)}
+						</div>
 						<Button variant="secondary" type="submit">
 							{__('Apply', 'seoprostats')}
 						</Button>
@@ -326,7 +359,7 @@ function Rankings({ state, update }: ViewProps) {
 								label={metricName(metric)}
 								format={SEARCH_METRICS[metric].format}
 								markers={markers.data?.markers ?? NO_MARKERS}
-								onMarker={() => update({ view: 'changes' })}
+								onMarker={changes.onMarker}
 							/>
 						) : (
 							<div className="spst-chart-placeholder" />
@@ -334,6 +367,7 @@ function Rankings({ state, update }: ViewProps) {
 					</div>
 				)}
 			</Card>
+			{changes.modal}
 
 			<Card className="spst-card is-wide spst-section" size="small">
 				<CardHeader className="spst-card__header">

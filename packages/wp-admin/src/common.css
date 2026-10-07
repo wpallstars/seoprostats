@@ -7,7 +7,8 @@
  */
 
 .spst-app,
-.spst-widget {
+.spst-widget,
+.spst-modal {
 	--spst-accent: var(--wp-admin-theme-color, #2271b1);
 	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
 	--spst-text: #1d2327;
@@ -29,7 +30,8 @@
 
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
 	.spst-app,
-	.spst-widget {
+	.spst-widget,
+	.spst-modal {
 		--spst-accent-soft: color-mix(in srgb, var(--spst-accent) 11%, transparent);
 	}
 }

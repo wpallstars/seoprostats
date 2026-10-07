@@ -335,11 +335,14 @@ The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
 value), that page. `packages/charts/src/markers.ts` draws the lane under the
 plot: each change goes to the point (day, hour or month) it falls in;
-markers closer than 18 px merge, showing their count. Markers are buttons
-in one tab stop (arrow keys, Home and End move), with the changes as their
-accessible name; the screen-reader table has a Changes column. Group
-colours are the `--spst-mark-*` variables (`common.css`). The Changes
-section reads `GET /changes` 50 at a time.
+markers closer than 18 px, or whose pills would touch, merge, showing
+their count. Markers are buttons in one tab stop (arrow keys, Home and End
+move), with the changes as their accessible name; the screen-reader table
+has a Changes column. Choosing one opens its changes (already loaded) in a
+modal (`ChangesModal`, the shared `ChangesTable`); **Open in Changes** goes
+to `#/changes?range=custom&from=…&to=…`, with `page` when the chart is for
+one page. Group colours are the `--spst-mark-*` variables (`common.css`).
+The Changes section reads `GET /changes` 50 at a time.
 
 ### Search engine updates
 
@@ -883,6 +886,7 @@ days, comparison, chart metric, filters); and the section's own choices:
 | Search | `report` (rankings, opportunities), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query` | rankings, queries, clicks, none |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
+| Changes | `page` (else the page the reports are filtered to) | none |
 
 Only applied choices count: text in a box is a draft until Apply or Enter.
 Changing section keeps the shared values and leaves the other section's

@@ -59,7 +59,7 @@ export interface ViewState {
 	 */
 	/** Clicks: the table shown. */
 	kind?: ClickKind;
-	/** Clicks and Search: only this page (a path; * for any text). */
+	/** Clicks, Search and Changes: only this page (a path; * for any text). */
 	page?: string;
 	/** Properties: the property whose values are listed. */
 	key?: string;
@@ -116,6 +116,8 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 	if (state.view === 'clicks') {
 		const kind = oneOf(CLICK_KINDS, params.get('kind'), 'elements');
 		set('kind', kind === 'elements' ? undefined : kind);
+		set('page', text(params.get('page')));
+	} else if (state.view === 'changes') {
 		set('page', text(params.get('page')));
 	} else if (state.view === 'properties') {
 		set('key', text(params.get('key')));

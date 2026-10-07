@@ -11,35 +11,22 @@
  */
 
 import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, ExternalLink, Notice, SelectControl, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { formatNumber, toggleFilterValue, type ChangeGroup, type ChangeSource, type Marker } from '@seoprostats/core';
+import { formatNumber, toggleFilterValue, type ChangeGroup, type Marker } from '@seoprostats/core';
 import { addNote, deleteNote, errorMessage, useBreakdown, useChanges } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
-import { CHANGE_GROUPS, filteredPage, groupLabel, sourceUrl } from './changelog';
-import { momentLabel } from './dates';
+import { CHANGE_GROUPS, filteredPage, groupLabel } from './changelog';
+import { ChangesTable } from './components/ChangesTable';
 import { DefinitionModal } from './components/DefinitionModal';
-import { TableScroll } from './components/TableScroll';
 
 const PER_PAGE = 50;
 
 /** Longest note, as the change log keeps it. */
 const MAX_NOTE = 190;
-
-function sourceLabel(source: ChangeSource): string {
-	const labels: Record<ChangeSource, string> = {
-		wordpress: __('WordPress', 'seoprostats'),
-		cli: __('WP-CLI', 'seoprostats'),
-		api: __('REST API', 'seoprostats'),
-		cron: __('Scheduled', 'seoprostats'),
-		feed: __('Feed', 'seoprostats'),
-		note: __('Note', 'seoprostats'),
-	};
-	return labels[source] ?? source;
-}
 
 function NoteModal({ page, onClose }: { page: string; onClose: () => void }) {
 	const data = useDataSet();
@@ -83,9 +70,21 @@ function NoteModal({ page, onClose }: { page: string; onClose: () => void }) {
 
 export function Changes({ state, update }: ViewProps) {
 	const data = useDataSet();
-	const initial = filteredPage(state.filters);
-	const [page, setPage] = useState(initial);
+	// The address's page (a chart's changes, opened here), else the one the reports are filtered to.
+	const initial = state.page ?? filteredPage(state.filters);
+	const [page, setPagePlain] = useState(initial);
 	const [typed, setTyped] = useState(initial);
+	const setPage = (next: string) => {
+		setPagePlain(next);
+		update({ page: next || undefined });
+	};
+	// Back and forward bring the address's page back.
+	useEffect(() => {
+		if (state.page !== undefined) {
+			setPagePlain(state.page);
+			setTyped(state.page);
+		}
+	}, [state.page]);
 	const [group, setGroup] = useState<ChangeGroup | ''>('');
 	const [offset, setOffset] = useState(0);
 	const [adding, setAdding] = useState(false);
@@ -200,80 +199,7 @@ export function Changes({ state, update }: ViewProps) {
 						</div>
 					)}
 					{rows.length > 0 && (
-						<TableScroll label={__('Changes', 'seoprostats')}>
-							<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
-								<thead>
-									<tr>
-										<th scope="col">{__('When', 'seoprostats')}</th>
-										<th scope="col">{__('Change', 'seoprostats')}</th>
-										<th scope="col">{__('Page', 'seoprostats')}</th>
-										<th scope="col">{__('By', 'seoprostats')}</th>
-										{boot.canManage && (
-											<th scope="col">
-												<span className="screen-reader-text">{__('Actions', 'seoprostats')}</span>
-											</th>
-										)}
-									</tr>
-								</thead>
-								<tbody>
-									{rows.map((change) => (
-										<tr key={change.id}>
-											<td>{momentLabel(change.t)}</td>
-											<td>
-												<span className="spst-changes__group">
-													<span
-														className="spst-chart-lane__dot"
-														style={{ background: `var(--spst-mark-${change.group})` }}
-														aria-hidden="true"
-													/>
-													<span>{change.label}</span>
-												</span>
-												<span className="spst-meta">
-													{groupLabel(change.group)}
-													{sourceUrl(change) && (
-														<>
-															{' · '}
-															<ExternalLink href={sourceUrl(change) ?? ''}>
-																{__('Source', 'seoprostats')}
-																<span className="screen-reader-text"> {change.label}</span>
-															</ExternalLink>
-														</>
-													)}
-												</span>
-											</td>
-											<td>
-												{change.path ? (
-													<button
-														type="button"
-														className="spst-link"
-														title={__('Show this page’s statistics', 'seoprostats')}
-														onClick={() => showPage(change.path ?? '')}
-													>
-														{change.path}
-													</button>
-												) : (
-													<span className="spst-muted">{__('Whole site', 'seoprostats')}</span>
-												)}
-											</td>
-											<td>
-												{change.user ?? <span className="spst-muted">–</span>}
-												<span className="spst-meta">{sourceLabel(change.source)}</span>
-											</td>
-											{boot.canManage && (
-												<td className="spst-actions">
-													{change.group === 'note' && (
-														<Button variant="link" isDestructive onClick={() => void remove(change)}>
-															{__('Delete', 'seoprostats')}
-															<span className="screen-reader-text"> {change.label}</span>
-														</Button>
-													)}
-												</td>
-											)}
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</TableScroll>
+						<ChangesTable rows={rows} refreshing={query.isFetching} onPage={showPage} onDelete={(change) => void remove(change)} />
 					)}
 					{answer && answer.total > PER_PAGE && (
 						<nav className="spst-changes__pager" aria-label={__('Pages of changes', 'seoprostats')}>

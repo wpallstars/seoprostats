@@ -141,7 +141,7 @@ The palette is WordPress's own admin greys with one accent, the admin colour sch
 
 ### Markers
 
-Each group of the change log has a colour (`--spst-mark-{group}`), used for the dots of the chart's markers lane and of the Changes section's rows. A marker shows up to three group dots and, when it holds more than one change, their count; the colour is never the only sign, as each marker's name and tooltip list its changes.
+Each group of the change log has a colour (`--spst-mark-{group}`), used for the dots of the chart's markers lane and of the Changes section's rows. A marker shows up to three group dots and, when it holds more than one change, their count; the colour is never the only sign, as each marker's name and tooltip list its changes. Markers never overlap: ones closer than 18 px, or whose pills would touch (as on a phone), merge into one. Choosing a marker opens its changes in a modal (the Changes table, times only when they share one day), closed with Close or Escape, with **Open in Changes** for the same days and page.
 
 - **Content (`#3858e9`)**: posts and pages published, moved, retitled or edited.
 - **SEO (`#8a3fd1`)**: SEO titles, descriptions, robots, canonicals.
