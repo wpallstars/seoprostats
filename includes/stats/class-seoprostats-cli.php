@@ -905,19 +905,22 @@ final class SEOProStats_CLI {
      * the top three: potential clicks), low CTR (a top-10 query with a CTR
      * well under the site's own at that position: clicks missed) or decay
      * (pages losing clicks against the previous period, with the likely
-     * cause: position, demand, ctr or gone). The period is cut at the
-     * newest day with search data and to its newest 91 days.
+     * cause: position, demand, ctr or gone) or missing (a top-20 query
+     * whose words its page does not have, or has only some of). The
+     * period is cut at the newest day with search data and to its newest
+     * 91 days.
      *
      * ## OPTIONS
      *
      * [<kind>]
-     * : striking, ctr or decay.
+     * : striking, ctr, decay or missing.
      * ---
      * default: striking
      * options:
      *   - striking
      *   - ctr
      *   - decay
+     *   - missing
      * ---
      *
      * [--engine=<engine>]
@@ -1030,6 +1033,19 @@ final class SEOProStats_CLI {
                 );
                 continue;
             }
+            if ($answer['kind'] === 'missing') {
+                $rows[] = array(
+                    'path'        => $row['path'],
+                    'query'       => $row['query'],
+                    'impressions' => $row['impressions'],
+                    'clicks'      => $row['clicks'],
+                    'position'    => sprintf('%.1f', $row['position']),
+                    'match'       => $row['match'],
+                    'missing'     => implode(' ', $row['missing']),
+                    'question'    => $row['question'] ? 'yes' : '',
+                );
+                continue;
+            }
             $rows[] = array(
                 'path'         => $row['path'],
                 'query'        => $row['query'],
@@ -1046,6 +1062,109 @@ final class SEOProStats_CLI {
             /* translators: %s: search engine updates */
             WP_CLI::log(sprintf(__('Search engine updates in these periods: %s.', 'seoprostats'), implode('; ', array_column($answer['updates'], 'label'))));
         }
+    }
+
+    /**
+     * Query coverage of one page: the Google Search Console queries it
+     * shows for, each with how far the page's own words cover it (title,
+     * heading, text, partial or none), the words it lacks and whether it
+     * is a question; and the focus keywords of Rank Math, Yoast SEO,
+     * SEOPress or All in One SEO when one is active. The period is cut at
+     * the newest day with search data and to its newest 91 days.
+     *
+     * ## OPTIONS
+     *
+     * <page>
+     * : A path such as /pricing/, or a post ID.
+     *
+     * [--missing]
+     * : Only queries the page does not cover (partial or none).
+     *
+     * [--questions]
+     * : Only questions.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 90d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats coverage /blog/speed-up-wordpress/
+     *     wp seoprostats coverage 42 --missing
+     *     wp seoprostats coverage /docs/faq/ --questions --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function coverage($args, $assoc) {
+        $target = isset($args[0]) ? trim((string) $args[0]) : '';
+        $post   = preg_match('/^[0-9]+$/', $target) ? (int) $target : 0;
+        $page   = $post ? '' : $target;
+        $req    = $this->request($assoc + array('range' => '90d', 'compare' => 'none'));
+        $answer = $this->on_data($assoc, static function () use ($req, $page, $post) {
+            return SEOProStats_Coverage::report($req, $page, $post);
+        });
+        $rows = array_values(array_filter($answer['rows'], static function ($row) use ($assoc) {
+            return (empty($assoc['missing']) || in_array($row['match'], array('partial', 'none'), true)) && (empty($assoc['questions']) || $row['question']);
+        }));
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode(array('rows' => $rows) + $answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        if (!$answer['connected']) {
+            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['text']) {
+            WP_CLI::log(__('This page is not one post, so its words are not read: every query shows as not covered.', 'seoprostats'));
+        }
+        $totals = $answer['totals'];
+        /* translators: 1: queries, 2: share of impressions covered, 3: queries not covered, 4: questions */
+        WP_CLI::log(sprintf(__('%1$d queries; %2$s of impressions on queries the page covers; %3$d not covered; %4$d questions.', 'seoprostats'), $totals['queries'], sprintf('%.1f%%', $totals['covered'] * 100), $totals['missing'], $totals['questions']));
+        foreach ($answer['focus'] as $focus) {
+            /* translators: 1: focus keyword, 2: SEO plugin, 3: match, 4: impressions */
+            WP_CLI::log(sprintf(__('Focus keyword "%1$s" (%2$s): %3$s on the page, %4$d impressions.', 'seoprostats'), $focus['keyword'], $focus['source'], $focus['match'], $focus['impressions']));
+        }
+        if (!$rows) {
+            WP_CLI::line(__('No queries of this kind in this range.', 'seoprostats'));
+            return;
+        }
+        $out = array();
+        foreach ($rows as $row) {
+            $out[] = array(
+                'query'       => $row['query'],
+                'impressions' => $row['impressions'],
+                'clicks'      => $row['clicks'],
+                'position'    => sprintf('%.1f', $row['position']),
+                'match'       => $row['match'],
+                'missing'     => implode(' ', $row['missing']),
+                'question'    => $row['question'] ? 'yes' : '',
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $out, array_keys($out[0]));
     }
 
     /**

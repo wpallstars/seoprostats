@@ -111,6 +111,13 @@ long-term record.
       landings (refilled backwards) and the goal's own hits; REST
       `content`, WP-CLI, the `seoprostats/content` ability and demo data
       (GH#59).
+- [x] Query coverage: each page's search queries checked against its own
+      words (title, headings, text), its questions, and its SEO plugin's
+      focus keywords (Rank Math, Yoast SEO, SEOPress, All in One SEO, or
+      none); Opportunities → Missing from the page, a block editor panel
+      and classic meta box that re-check as people write; REST
+      `coverage`, WP-CLI, the `seoprostats/coverage` ability and demo
+      page text (GH#64).
 - [x] Bing Webmaster Tools as a second search engine: API-key
       connection, daily site totals and weekly pages, queries and page
       queries (stored on each week's last day), an engine switch on

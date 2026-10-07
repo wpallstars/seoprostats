@@ -11,3 +11,4 @@ export * from './filters';
 export * from './metrics';
 export * from './format';
 export * from './state';
+export * from './coverage';

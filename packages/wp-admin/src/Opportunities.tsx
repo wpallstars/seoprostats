@@ -1,6 +1,6 @@
 /**
  * Search → Opportunities: where search effort pays, from the chosen
- * engine's imported days (Search Console or Bing), in three cards.
+ * engine's imported days (Search Console or Bing), in four cards.
  *
  * - Striking distance: a page's query at position 4–20; the clicks it
  *   could gain in the top three.
@@ -9,6 +9,8 @@
  * - Losing clicks: pages with fewer clicks than the earlier period, with
  *   the likely cause, the queries that lost most and what changed on
  *   the page.
+ * - Missing from the page: a page's query in the top 20 whose words the
+ *   page does not have, or has only some of; questions are marked.
  *
  * Choosing a row opens it in Rankings. The period is cut at the newest
  * search day and to its newest 91 days.
@@ -31,9 +33,11 @@ import {
 	type OpportunitiesAnswer,
 	type OpportunityDecay,
 	type OpportunityKind,
+	type OpportunityMissing,
 	type OpportunityPage,
 	type OpportunityPair,
 } from '@seoprostats/core';
+import { CoverageBadges } from './components/CoverageBadges';
 import { errorMessage, useOpportunities } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
@@ -85,6 +89,7 @@ export function Opportunities({ state, open, onEngines }: OpportunitiesProps) {
 				<KindCard state={state} kind="striking" open={open} />
 				<KindCard state={state} kind="ctr" open={open} />
 				<KindCard state={state} kind="decay" open={open} />
+				<KindCard state={state} kind="missing" open={open} />
 			</div>
 		</>
 	);
@@ -95,6 +100,7 @@ function kindTitle(kind: OpportunityKind): string {
 		striking: __('Striking distance', 'seoprostats'),
 		ctr: __('Low CTR', 'seoprostats'),
 		decay: __('Losing clicks', 'seoprostats'),
+		missing: __('Missing from the page', 'seoprostats'),
 	};
 	return titles[kind];
 }
@@ -128,6 +134,18 @@ function kindIntro(answer: OpportunitiesAnswer): string {
 			percent(rules.under ?? 0.6)
 		);
 	}
+	if (answer.kind === 'missing') {
+		return sprintf(
+			/* translators: 1: highest position, 2: minimum impressions, 3: number of pages read. */
+			__(
+				'Queries a page shows for in the top %1$s (at least %2$s impressions) whose words the page does not have, or has only some of. Use the words in the text or a heading, or answer the question, so the page matches the search. The %3$s pages with most impressions are read.',
+				'seoprostats'
+			),
+			number(rules.position_to ?? 20),
+			number(rules.min_impressions ?? 0),
+			number(rules.pages ?? 50)
+		);
+	}
 	return sprintf(
 		/* translators: 1: share of clicks lost, e.g. 20%, 2: minimum clicks lost. */
 		__(
@@ -155,6 +173,8 @@ function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: Oppo
 		table =
 			kind === 'decay' ? (
 				<DecayTable rows={rows as OpportunityDecay[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
+			) : kind === 'missing' ? (
+				<MissingTable rows={rows as OpportunityMissing[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
 			) : (
 				<PairTable kind={kind} rows={rows as OpportunityPair[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
 			);
@@ -185,7 +205,9 @@ function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: Oppo
 								? __('No search data yet.', 'seoprostats')
 								: kind === 'decay'
 									? __('No page lost clicks this way in this period.', 'seoprostats')
-									: __('Nothing of this kind in this period.', 'seoprostats')}
+									: kind === 'missing'
+										? __('The pages read have the words of every query they show for.', 'seoprostats')
+										: __('Nothing of this kind in this period.', 'seoprostats')}
 						</p>
 					</div>
 				)}
@@ -340,6 +362,52 @@ function PairTable({ kind, rows, open, refreshing, label }: PairTableProps) {
 							<td className="num">
 								<strong>+{number(row.potential)}</strong>
 							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</TableScroll>
+	);
+}
+
+interface MissingTableProps {
+	rows: OpportunityMissing[];
+	open: OpportunitiesProps['open'];
+	refreshing: boolean;
+	label: string;
+}
+
+function MissingTable({ rows, open, refreshing, label }: MissingTableProps) {
+	return (
+		<TableScroll label={label}>
+			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
+				<thead>
+					<tr>
+						<th scope="col">{__('Query and page', 'seoprostats')}</th>
+						<th scope="col">{__('On the page', 'seoprostats')}</th>
+						<th scope="col" className="num">
+							{__('Position', 'seoprostats')}
+						</th>
+						<th scope="col" className="num">
+							{__('Impressions', 'seoprostats')}
+						</th>
+						<th scope="col" className="num">
+							{__('Clicks', 'seoprostats')}
+						</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr key={`${row.path_id}:${row.query}`}>
+							<td>
+								<PageCell row={row} query={row.query} open={open} />
+							</td>
+							<td>
+								<CoverageBadges result={row} />
+							</td>
+							<td className="num">{place(row.position)}</td>
+							<td className="num">{number(row.impressions)}</td>
+							<td className="num">{number(row.clicks)}</td>
 						</tr>
 					))}
 				</tbody>

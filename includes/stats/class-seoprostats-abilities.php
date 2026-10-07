@@ -10,7 +10,10 @@
  * - seoprostats/search: Search Console clicks, impressions, CTR and
  *   position, with top queries, pages, countries or devices (read).
  * - seoprostats/opportunities: striking-distance and low-CTR queries,
- *   and pages losing clicks with the likely cause (read).
+ *   pages losing clicks with the likely cause, and queries missing from
+ *   their page (read).
+ * - seoprostats/coverage: one page's queries, each checked against the
+ *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
  *   visits from search that landed on it and their conversions (read).
  *
@@ -254,7 +257,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/opportunities', array(
             'label'               => __('Search opportunities', 'seoprostats'),
-            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description) or decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page) or missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -265,7 +268,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'enum'        => SEOProStats_Opportunities::KINDS,
                         'default'     => 'striking',
-                        'description' => __('striking, ctr or decay.', 'seoprostats'),
+                        'description' => __('striking, ctr, decay or missing.', 'seoprostats'),
                     ),
                     'engine'  => $engine,
                     'range'   => array(
@@ -314,6 +317,70 @@ final class SEOProStats_Abilities {
                 ),
             ),
             'execute_callback'    => array(__CLASS__, 'opportunities'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/coverage', array(
+            'label'               => __('Query coverage of a page', 'seoprostats'),
+            'description'         => __('The Google Search Console queries one page shows for (most impressions first, up to 200), each with how far the page\'s own words cover it: title (every word in the title or SEO title), heading, text, partial or none, the words missing, and whether it is a question. Also the focus keywords of Rank Math, Yoast SEO, SEOPress or All in One SEO when one is active, with their search figures. Queries the page does not cover are cheap wins: add the words, or answer the question in a heading. Works without any SEO plugin. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'page'  => array(
+                        'type'        => 'string',
+                        'description' => __('The page (a path such as /pricing/); or give post.', 'seoprostats'),
+                    ),
+                    'post'  => array(
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'description' => __('The post whose address is the page; or give page.', 'seoprostats'),
+                    ),
+                    'range' => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '90d',
+                        'description' => __('Period, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'  => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'    => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'data'  => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'page'      => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => 'string'),
+                    'connected' => array('type' => 'boolean'),
+                    'text'      => array('type' => array('object', 'null')),
+                    'focus'     => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'totals'    => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'coverage'),
             'permission_callback' => array('SEOProStats_API', 'can_read'),
             'meta'                => array(
                 'show_in_rest' => true,
@@ -425,6 +492,25 @@ final class SEOProStats_Abilities {
         $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $sort, $goal, $engine) {
             return SEOProStats_Content::report((array) $req, $sort, $goal, $engine);
+        });
+    }
+
+    /**
+     * seoprostats/coverage.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function coverage($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '90d', 'compare' => 'none'));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $page = isset($input['page']) ? (string) $input['page'] : '';
+        $post = isset($input['post']) ? (int) $input['post'] : 0;
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $page, $post) {
+            return SEOProStats_Coverage::report((array) $req, $page, $post);
         });
     }
 

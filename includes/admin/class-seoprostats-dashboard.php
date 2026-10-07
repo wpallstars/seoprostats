@@ -217,16 +217,18 @@ final class SEOProStats_Dashboard {
      * Enqueue a built entry (assets/build/{name}.js and .css) with the
      * dependencies and version its .asset.php file lists.
      *
-     * @param string     $name Entry name.
-     * @param array|null $boot Public boot data, or null for the admin.
+     * @param string     $name  Entry name.
+     * @param array|null $boot  Public boot data, or null for the admin.
+     * @param string[]   $extra Scripts it reads from the page besides those (the editor's).
+     * @return bool Whether it was enqueued.
      */
-    public static function enqueue_entry($name, $boot = null) {
+    public static function enqueue_entry($name, $boot = null, array $extra = array()) {
         $asset_file = SEOPROSTATS_DIR . 'assets/build/' . $name . '.asset.php';
         if (!is_readable($asset_file)) {
-            return;
+            return false;
         }
         $asset   = require $asset_file;
-        $deps    = isset($asset['dependencies']) ? (array) $asset['dependencies'] : array();
+        $deps    = array_values(array_unique(array_merge(isset($asset['dependencies']) ? (array) $asset['dependencies'] : array(), $extra)));
         $version = isset($asset['version']) ? (string) $asset['version'] : SEOPROSTATS_VERSION;
         $handle  = 'seoprostats-' . $name;
 
@@ -248,12 +250,13 @@ final class SEOProStats_Dashboard {
         if (is_readable(SEOPROSTATS_DIR . $style)) {
             wp_enqueue_style($handle, SEOPROSTATS_URL . $style, array('wp-components'), $version);
         }
+        return true;
     }
 
     /**
      * What the app needs to know about the site and the user.
      *
-     * @param string $name Entry name: 'dashboard' or 'widget'.
+     * @param string $name Entry name: 'dashboard', 'widget' or 'editor'.
      * @return array<string,mixed>
      */
     private static function boot($name) {

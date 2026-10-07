@@ -1,0 +1,72 @@
+/*
+ * Search queries in the editor: the block editor's document panel and the
+ * classic editor's meta box. WordPress's own type and colours (DESIGN.md).
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+@import "./common.css";
+
+.spst-editor {
+	--spst-accent: var(--wp-admin-theme-color, #2271b1);
+	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
+	--spst-muted: #50575e;
+	--spst-bad: #b32d2e;
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.spst-editor p {
+	margin: 0 0 12px;
+}
+
+.spst-editor__summary,
+.spst-editor__note {
+	color: #1d2327;
+}
+
+.spst-editor__part + .spst-editor__part {
+	margin-top: 16px;
+}
+
+.spst-editor__heading {
+	margin: 0 0 8px;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.4;
+	text-transform: uppercase;
+	color: #1e1e1e;
+}
+
+.spst-editor__list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.spst-editor__list li {
+	display: grid;
+	gap: 2px;
+	margin: 0 0 10px;
+}
+
+.spst-editor__query {
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.spst-editor__meta {
+	color: #757575;
+	font-size: 12px;
+}
+
+.spst-editor__more {
+	margin-top: 12px;
+}
+
+.spst-editor__loading {
+	display: block;
+	width: 100%;
+	height: 4em;
+}

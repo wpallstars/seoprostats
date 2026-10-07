@@ -17,6 +17,7 @@ module.exports = {
 		dashboard: './packages/wp-admin/src/dashboard.tsx',
 		widget: './packages/wp-admin/src/widget.tsx',
 		share: './packages/wp-admin/src/share.tsx',
+		editor: './packages/wp-admin/src/editor.tsx',
 	},
 	output: {
 		...base.output,

@@ -879,7 +879,7 @@ paths:
   /opportunities:
     get:
       operationId: getOpportunities
-      summary: Where search effort pays — striking-distance queries, low-CTR queries or pages losing clicks.
+      summary: Where search effort pays — striking-distance queries, low-CTR queries, pages losing clicks or queries missing from their page.
       description: |
         From the same imported search days as `/search` (one `engine`),
         one `kind` of opportunity, best first:
@@ -902,6 +902,11 @@ paths:
           (impressions) and `ctr`; a sentence (`why`), the queries that
           lost most, and the site's recorded changes on the page in both
           periods. `updates` lists search engine updates in either.
+        - `missing`: a page's query in the top 20 with enough impressions
+          whose words the page does not have (`none`), or has only some
+          of (`partial`), as `/coverage` checks them; most impressions
+          first. Only the `rules.pages` pages with most impressions are
+          read, and only pages that are one post (or a demo page).
 
         Expected CTR is the site's own in the period: clicks ÷
         impressions by rounded position (1–20), made never to rise with
@@ -918,7 +923,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [striking, ctr, decay]
+            enum: [striking, ctr, decay, missing]
             default: striking
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
@@ -946,6 +951,64 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpportunitiesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /coverage:
+    get:
+      operationId: getCoverage
+      summary: Query coverage of one page — its search queries, which its words do not cover, questions and focus keywords.
+      description: |
+        The Search Console queries one page showed for (most impressions
+        first, up to 200), each checked against the page's own words: its
+        terms are its words without common short words, lightly stemmed
+        (plural s). `match` is `title` when every term is in the post
+        title or SEO title, `heading` when every term is in the headings,
+        `text` when every term is anywhere on the page (text, excerpt,
+        image alt text, SEO description), `partial` when some are, else
+        `none`; `missing` lists the words the page lacks and `phrase`
+        whether the words are there in order. `question` marks queries
+        that start with a question word or hold a question mark.
+
+        `focus` lists the focus keywords of Rank Math, Yoast SEO,
+        SEOPress or All in One SEO when one is active (others can add
+        theirs with the `seoprostats_focus_keywords` filter), with their
+        search figures when they are queries of the page. Without an SEO
+        plugin `focus` is empty and the rest is the same.
+
+        Give the page as `page` (a path) or `post` (a post ID: its
+        address). Only one page's queries are read, by the `path_day`
+        key; its post is read once. As `/opportunities`, the period is
+        cut at the newest search day and to its newest 91 days.
+      parameters:
+        - name: page
+          in: query
+          description: The page, a path such as /pricing/.
+          schema:
+            type: string
+        - name: post
+          in: query
+          description: The post whose address is the page.
+          schema:
+            type: integer
+            minimum: 0
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: The page's queries and how its words cover them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoverageAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2506,6 +2569,134 @@ components:
               items:
                 $ref: '#/components/schemas/Marker'
 
+    CoverageResult:
+      type: object
+      required: [match, phrase, missing, question]
+      properties:
+        match:
+          type: string
+          enum: [title, heading, text, partial, none]
+          description: How far the page's words cover the query, best first.
+        phrase:
+          type: boolean
+          description: The query's words are on the page in order.
+        missing:
+          type: array
+          description: The query's words the page does not have.
+          items:
+            type: string
+        question:
+          type: boolean
+
+    OpportunityMissing:
+      description: A page's query its words do not cover, or only partly (missing).
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - $ref: '#/components/schemas/CoverageResult'
+        - type: object
+          required: [query]
+          properties:
+            query:
+              type: string
+
+    CoverageAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [page, post_id, page_info, range, days, cut, through, first, connected, text, focus, totals, rows, more]
+          properties:
+            page:
+              type: string
+            post_id:
+              type: integer
+              description: The page's post; 0 when it is not one post.
+            page_info:
+              type: [object, 'null']
+              description: Path, url, post_id and edit_url (only when the current user can edit the post).
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+            cut:
+              type: boolean
+            through:
+              type: string
+            first:
+              type: string
+            connected:
+              type: boolean
+            text:
+              type: [object, 'null']
+              description: What the page's words were read from; null when it is not one post.
+              properties:
+                source:
+                  type: string
+                  enum: [post, demo]
+                words:
+                  type: integer
+                plugin:
+                  type: string
+                  description: The SEO plugin read (rank-math, yoast, seopress, aioseo, or another named by the seoprostats_focus_keywords filter; demo for demo data); empty for none.
+                seo_title:
+                  type: string
+                  description: The SEO title, without its plugin's variables.
+                description:
+                  type: string
+            focus:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/CoverageResult'
+                  - type: object
+                    required: [keyword, source, searched, clicks, impressions, position]
+                    properties:
+                      keyword:
+                        type: string
+                      source:
+                        type: string
+                      searched:
+                        type: boolean
+                        description: Whether it is a query the page showed for.
+                      clicks:
+                        type: integer
+                      impressions:
+                        type: integer
+                      position:
+                        type: [number, 'null']
+            totals:
+              type: object
+              required: [queries, impressions, clicks, covered, missing, questions]
+              properties:
+                queries:
+                  type: integer
+                impressions:
+                  type: integer
+                clicks:
+                  type: integer
+                covered:
+                  type: number
+                  description: Share of impressions on queries the page covers (title, heading or text).
+                missing:
+                  type: integer
+                  description: Queries covered partly or not at all.
+                questions:
+                  type: integer
+            rows:
+              type: array
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/SearchMetrics'
+                  - $ref: '#/components/schemas/CoverageResult'
+                  - type: object
+                    required: [query]
+                    properties:
+                      query:
+                        type: string
+            more:
+              type: boolean
+              description: Whether the page has more than 200 queries.
+
     OpportunitiesAnswer:
       allOf:
         - $ref: '#/components/schemas/Answer'
@@ -2518,7 +2709,7 @@ components:
               $ref: '#/components/schemas/SearchEngines'
             kind:
               type: string
-              enum: [striking, ctr, decay]
+              enum: [striking, ctr, decay, missing]
             range:
               $ref: '#/components/schemas/Range'
             days:
@@ -2547,16 +2738,18 @@ components:
                 The thresholds used. striking: min_impressions,
                 position_from, position_to, target. ctr: min_impressions,
                 position_from, position_to, under. decay: min_lost,
-                min_share.
+                min_share. missing: min_impressions, position_from,
+                position_to, pages.
               additionalProperties:
                 type: number
             rows:
               type: array
-              description: OpportunityPair rows (striking, ctr) or OpportunityDecay rows (decay).
+              description: OpportunityPair rows (striking, ctr), OpportunityDecay rows (decay) or OpportunityMissing rows (missing).
               items:
                 oneOf:
                   - $ref: '#/components/schemas/OpportunityPair'
                   - $ref: '#/components/schemas/OpportunityDecay'
+                  - $ref: '#/components/schemas/OpportunityMissing'
             total:
               type: integer
               description: All opportunities of this kind.

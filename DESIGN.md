@@ -165,6 +165,10 @@ Each group of the change log has a colour (`--spst-mark-{group}`), used for the 
 
 Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with ↓ (most first) and `aria-sort`; other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
 
+### Query coverage
+
+Where a query's words are on its page reads as a short label in 12 px semibold (`CoverageBadges`, `.spst-coverage`): In the title, In a heading or In the text in the text colour, Partly or Not on the page in the error colour, then for Partly the words missing in muted text, and Question as a 2 px-rounded tag in the accent on its soft background. The words always say it, so colour is never the only sign. The same labels serve Opportunities → Missing from the page and the editor's Search queries panel, which follows the block editor's sidebar: plain headings per part (Focus keywords, Not covered by the page's words, Questions people search), each query in bold with its labels and figures under it, up to eight per part with "and N more".
+
 ## 3. Typography
 
 <!-- Define typography levels. Most design systems have 9-15 levels. Common categories: -->
