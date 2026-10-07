@@ -72,6 +72,7 @@ final class SEOProStats_Changes {
         51 => array('front_page', 'site'),
         60 => array('search_update', 'search'),
         80 => array('note', 'note'),
+        81 => array('experiment', 'note'),
     );
 
     /**
@@ -83,6 +84,12 @@ final class SEOProStats_Changes {
 
     /** Kind code of a note (annotation) added by a person or an agent. */
     const NOTE = 80;
+
+    /**
+     * Kind code of an experiment's start (SEOProStats_Experiments):
+     * object_type experiment, object_id its id, new its name.
+     */
+    const EXPERIMENT = 81;
 
     /** Groups of kinds, for filters. */
     const GROUPS = array('content', 'seo', 'product', 'site', 'search', 'note');
@@ -1254,12 +1261,13 @@ final class SEOProStats_Changes {
     }
 
     /**
-     * A note's time: Unix time, or a date and time in the site's time zone.
+     * A note's or experiment's time: Unix time, or a date and time in the
+     * site's time zone.
      *
      * @param int|string $when Time; '' for now.
      * @return int|WP_Error
      */
-    private static function when($when) {
+    public static function when($when) {
         $when = trim((string) $when);
         if ($when === '') {
             return time();
@@ -1378,6 +1386,39 @@ final class SEOProStats_Changes {
             if (!isset($out[$id]) || count($out[$id]) < $each) {
                 $out[$id][] = self::shape($row, $paths);
             }
+        }
+        return $out;
+    }
+
+    /**
+     * Every change recorded between two times, oldest first, at most
+     * $limit (by key ts), each as the change log lists it with its
+     * path_id added. Used by experiments to find the pages that changed
+     * and the site-wide changes of a period.
+     *
+     * @param int $from  Start (timestamp, included).
+     * @param int $to    End (timestamp, left out).
+     * @param int $limit Most changes read.
+     * @return array<int,array<string,mixed>>
+     */
+    public static function between($from, $to, $limit = 5000) {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by key ts.
+        $rows  = $wpdb->get_results($wpdb->prepare(
+            'SELECT id, ts, kind, path_id, object_type, object_id, old, new, meta, source, user_id FROM %i FORCE INDEX (`ts`) WHERE ts >= %d AND ts < %d ORDER BY ts ASC LIMIT %d',
+            SEOProStats_Schema::table('changes'),
+            (int) $from,
+            (int) $to,
+            max(1, (int) $limit)
+        ), ARRAY_A);
+        $rows  = is_array($rows) ? $rows : array();
+        $paths = SEOProStats_Dict::values(array_map('intval', wp_list_pluck($rows, 'path_id')));
+        $out   = array();
+        foreach ($rows as $row) {
+            $out[] = self::shape($row, $paths) + array('path_id' => (int) $row['path_id']);
         }
         return $out;
     }
@@ -1658,6 +1699,9 @@ final class SEOProStats_Changes {
                 return sprintf(__('%1$s: %2$s (%3$s)', 'seoprostats'), $engine, $title, human_time_diff((int) $start, (int) max($start, $end)));
             case 'note':
                 return $new;
+            case 'experiment':
+                /* translators: %s: the experiment's hypothesis */
+                return sprintf(__('Experiment started: %s', 'seoprostats'), $new);
             default:
                 return $title;
         }
