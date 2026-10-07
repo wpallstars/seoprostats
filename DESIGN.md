@@ -4,15 +4,22 @@ name: seoprostats
 description: seoprostats interface design system
 colors:
   # Canonical palette (required: primary; recommended MD3 baseline families: secondary, tertiary, error, surface, background, outline)
-  primary: "#{hex}"
-  secondary: "#{hex}"
-  tertiary: "#{hex}"
-  neutral: "#{hex}"
-  background: "#{hex}"
-  surface: "#{hex}"
-  on-surface: "#{hex}"
-  error: "#{hex}"
-  outline: "#{hex}"
+  # WordPress admin colours (packages/wp-admin/src/common.css); primary follows the admin colour scheme.
+  primary: "#2271b1"
+  secondary: "#50575e"
+  tertiary: "#007017"
+  neutral: "#f6f7f7"
+  background: "#f0f0f1"
+  surface: "#ffffff"
+  on-surface: "#1d2327"
+  error: "#b32d2e"
+  outline: "#dcdcde"
+  # Change log groups: chart markers and the Changes section (--spst-mark-*).
+  mark-content: "#3858e9"
+  mark-seo: "#8a3fd1"
+  mark-product: "#008a20"
+  mark-site: "#996800"
+  mark-note: "#1d2327"
 typography:
   # Recommended levels: headline-display, headline-lg, headline-md, body-lg, body-md, body-sm, label-lg, label-md, label-sm
   headline-display:
@@ -119,17 +126,27 @@ Sections 9-10 are aidevops-specific extensions (unknown sections are preserved p
 <!-- `secondary`, `tertiary`, `error`, `surface`, `background`, and `outline`. Prose may use descriptive color names (e.g. "Boston Clay") -->
 <!-- that correspond to token names (e.g. `tertiary`). Tokens are normative; prose provides context. -->
 
-The palette is rooted in {describe: high-contrast neutrals, warm earth tones, cool modernist, etc.} with {one | two | …} accent colour(s) driving interaction.
+The palette is WordPress's own admin greys with one accent, the admin colour scheme's (`--wp-admin-theme-color`), so the screens look like part of wp-admin. Variables live in `packages/wp-admin/src/common.css` (`--spst-*`).
 
-- **Primary (`#{hex}`)**: {role and usage — e.g. headlines, core text, primary actions}
-- **Secondary (`#{hex}`)**: {role — e.g. borders, captions, metadata}
-- **Tertiary (`#{hex}`)**: {role — e.g. accent, CTAs, highlights}
-- **Neutral (`#{hex}`)**: {role — e.g. backgrounds, surfaces}
-- **Background (`#{hex}`)**: {role — e.g. app/page canvas}
-- **Surface (`#{hex}`)**: {role — e.g. cards, panels}
-- **On-surface (`#{hex}`)**: {role — e.g. text on surface}
-- **Error (`#{hex}`)**: {role — e.g. destructive, error states}
-- **Outline (`#{hex}`)**: {role — e.g. borders, dividers, focus affordances}
+- **Primary (`#2271b1`)**: the admin colour scheme's accent (`--spst-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's.
+- **Secondary (`#50575e`)**: muted text, axis labels, captions (`--spst-muted`).
+- **Tertiary (`#007017`)**: a change for the better (`--spst-good`).
+- **Neutral (`#f6f7f7`)**: row and button hover (`--spst-hover`).
+- **Background (`#f0f0f1`)**: the wp-admin canvas.
+- **Surface (`#ffffff`)**: cards and panels.
+- **On-surface (`#1d2327`)**: text (`--spst-text`); also the chart tooltips' background.
+- **Error (`#b32d2e`)**: a change for the worse, destructive actions (`--spst-bad`).
+- **Outline (`#dcdcde`)**: borders and dividers (`--spst-border`).
+
+### Markers
+
+Each group of the change log has a colour (`--spst-mark-{group}`), used for the dots of the chart's markers lane and of the Changes section's rows. A marker shows up to three group dots and, when it holds more than one change, their count; the colour is never the only sign, as each marker's name and tooltip list its changes.
+
+- **Content (`#3858e9`)**: posts and pages published, moved, retitled or edited.
+- **SEO (`#8a3fd1`)**: SEO titles, descriptions, robots, canonicals.
+- **Products (`#008a20`)**: prices, sales, stock, coupons.
+- **Site (`#996800`)**: plugins, themes, WordPress, settings.
+- **Notes (`#1d2327`)**: notes added by people and agents.
 
 ## 3. Typography
 

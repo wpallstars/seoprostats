@@ -57,7 +57,7 @@ Yes. The Overview lists the addresses people reached that were not found, what t
 
 = Does it show what changed on the site? =
 
-Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. Scripts and AI agents read it through the REST API (markers, changes) and wp seoprostats changes, so traffic and sales can be set against what changed.
+Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. The Changes section lists it, and a lane under the Overview's chart marks each change on the day it happened. Administrators add notes for what the log cannot see, such as a newsletter sent. Scripts and AI agents read it and add notes through the REST API (markers, changes, annotations), wp seoprostats changes and annotate, and on WordPress 6.9 and later the abilities seoprostats/markers and seoprostats/annotate, so traffic and sales can be set against what changed.
 
 = Can I see what it shows before my site has visits? =
 

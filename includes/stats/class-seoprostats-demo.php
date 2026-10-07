@@ -292,6 +292,9 @@ final class SEOProStats_Demo {
         array(240, 9, 1, '/blog/speed-up-wordpress/', 'post', 'draft', 'publish', array('name' => 'Speed up WordPress')),
         array(300, 14, 1, '/blog/core-web-vitals-explained/', 'post', 'draft', 'publish', array('name' => 'Core Web Vitals explained')),
         array(330, 10, 1, '/blog/how-to-read-search-rankings/', 'post', 'draft', 'publish', array('name' => 'How to read search rankings')),
+        array(4, 10, 80, '', 'note', '', 'Newsletter sent: October tips', array()),
+        array(38, 9, 80, '/shop/pro-licence/', 'note', '', 'Autumn sale emailed to customers', array()),
+        array(100, 13, 80, '', 'note', '', 'Moved to a faster host', array()),
     );
 
     /** Plugins updated now and then in the demo data: name, file, first version. */
@@ -528,7 +531,7 @@ final class SEOProStats_Demo {
                     'old'         => (string) $old,
                     'new'         => (string) $new,
                     'meta'        => $meta,
-                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : 1,
+                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : ((int) $kind === SEOProStats_Changes::NOTE ? 6 : 1),
                     'user_id'     => 0,
                 );
             }

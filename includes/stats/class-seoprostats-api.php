@@ -151,7 +151,7 @@ final class SEOProStats_API {
                 'default'     => '',
             ),
             'kinds' => array(
-                'description' => __('Only these kinds or groups of change (content, seo, product, site), comma-separated.', 'seoprostats'),
+                'description' => __('Only these kinds or groups of change (content, seo, product, site, note), comma-separated.', 'seoprostats'),
                 'type'        => 'string',
                 'default'     => '',
             ),
@@ -170,6 +170,36 @@ final class SEOProStats_API {
 
         $manage = array(__CLASS__, 'can_manage');
         $data   = array('data' => $base['data']);
+
+        // Notes on the timeline (administrators), on the data set asked for.
+        register_rest_route($ns, '/annotations', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => $manage,
+            'callback'            => array(__CLASS__, 'annotate'),
+            'args'                => $data + array(
+                'note' => array(
+                    'description' => __('What happened, such as "Newsletter sent" (up to 190 characters).', 'seoprostats'),
+                    'type'        => 'string',
+                    'required'    => true,
+                ),
+                'page' => array(
+                    'description' => __('The page it is about (a path such as /pricing/); without it, the whole site.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'time' => array(
+                    'description' => __('When, in the site time zone (2026-10-05 or 2026-10-05 14:30), or Unix time; without it, now.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+            ),
+        ));
+        register_rest_route($ns, '/annotations/(?P<id>\d+)', array(
+            'methods'             => WP_REST_Server::DELETABLE,
+            'permission_callback' => $manage,
+            'callback'            => array(__CLASS__, 'delete_annotation'),
+            'args'                => $data,
+        ));
 
         // Goals and funnels: the report, and (administrators) their definitions.
         foreach (array('goals', 'funnels') as $type) {
@@ -484,6 +514,34 @@ final class SEOProStats_API {
         $page = (string) $request->get_param('page');
         return self::report($request, static function ($req) use ($kind, $page) {
             return SEOProStats_Clicks::report($req, $kind, $page);
+        });
+    }
+
+    /**
+     * POST /annotations: add a note to the timeline.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function annotate($request) {
+        return self::define($request, static function () use ($request) {
+            return SEOProStats_Changes::annotate((string) $request->get_param('note'), (string) $request->get_param('page'), (string) $request->get_param('time'));
+        });
+    }
+
+    /**
+     * DELETE /annotations/{id}: delete a note (only notes).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function delete_annotation($request) {
+        $id = (int) $request->get_param('id');
+        return self::define($request, static function () use ($id) {
+            if (!SEOProStats_Changes::delete_note($id)) {
+                return new WP_Error('seoprostats_not_found', __('There is no such note.', 'seoprostats'), array('status' => 404));
+            }
+            return array('deleted' => true, 'id' => $id);
         });
     }
 

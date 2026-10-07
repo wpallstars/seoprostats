@@ -12,6 +12,7 @@ import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
 	apiArgs,
 	type BreakdownAnswer,
+	type ChangesAnswer,
 	type ClickKind,
 	type ClicksAnswer,
 	type Dimension,
@@ -20,6 +21,8 @@ import {
 	type Goal,
 	type GoalStep,
 	type GoalsAnswer,
+	type Marker,
+	type MarkersAnswer,
 	type PropertiesAnswer,
 	type RealtimeAnswer,
 	type StatsAnswer,
@@ -155,6 +158,54 @@ export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 5
 		placeholderData: keepPreviousData,
 		enabled,
 	});
+}
+
+/**
+ * The changes in the range for the chart's markers lane, oldest first;
+ * with a page, that page's and the site-wide ones.
+ */
+export function useMarkers(scope: Pick<Scope, 'range' | 'from' | 'to'>, page: string) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, filters: [] }), ...(page ? { page } : {}) }, data);
+	return useQuery({
+		queryKey: ['markers', args],
+		queryFn: () => get<MarkersAnswer>('markers', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** The change log in the range, newest first: optionally one page's, of some groups. */
+export function useChanges(scope: Pick<Scope, 'range' | 'from' | 'to'>, page: string, kinds: string, limit: number, offset: number) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData(
+		{ ...apiArgs({ ...scope, filters: [] }), limit, offset, ...(page ? { page } : {}), ...(kinds ? { kinds } : {}) },
+		data
+	);
+	return useQuery({
+		queryKey: ['changes', args],
+		queryFn: () => get<ChangesAnswer>('changes', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** After a note is added or deleted, the markers and the change log are asked again. */
+function refreshChanges(): void {
+	void queryClient.invalidateQueries({ queryKey: ['markers'] });
+	void queryClient.invalidateQueries({ queryKey: ['changes'] });
+}
+
+/** Add a note to the timeline (administrators). time: "YYYY-MM-DD HH:MM" in the site's time zone. */
+export async function addNote(data: DataSet, note: { note: string; page: string; time: string }): Promise<Marker> {
+	const saved = await send<Marker>('annotations', 'POST', { ...note, data });
+	refreshChanges();
+	return saved;
+}
+
+export async function deleteNote(data: DataSet, id: number): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/annotations/${id}`, { data }), method: 'DELETE' });
+	refreshChanges();
 }
 
 /** Goals and funnels belong to the data set shown (demo data has its own). */

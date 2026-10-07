@@ -683,7 +683,7 @@ final class SEOProStats_CLI {
      * : Only changes to this page (* for any text), and the site-wide ones.
      *
      * [--kind=<kinds>]
-     * : Only these kinds or groups (content, seo, product, site), comma-separated.
+     * : Only these kinds or groups (content, seo, product, site, note), comma-separated.
      *
      * [--range=<range>]
      * : As for stats.
@@ -773,6 +773,79 @@ final class SEOProStats_CLI {
             /* translators: 1: changes shown, 2: changes in the range */
             WP_CLI::log(sprintf(__('%1$d of %2$d changes; see more with --offset.', 'seoprostats'), count($rows), $answer['total']));
         }
+    }
+
+    /**
+     * Add a note to the timeline (something the change log cannot see,
+     * such as a newsletter sent or a sale), or delete one.
+     *
+     * Notes show as markers on the charts and in the Changes section, and
+     * in `wp seoprostats changes --kind=note`.
+     *
+     * ## OPTIONS
+     *
+     * [<note>]
+     * : What happened (up to 190 characters).
+     *
+     * [--page=<path>]
+     * : The page it is about; without it, the whole site.
+     *
+     * [--time=<when>]
+     * : When, in the site time zone (2026-10-05 or "2026-10-05 14:30"); without it, now.
+     *
+     * [--delete=<id>]
+     * : Delete this note instead (its id from `changes --kind=note --format=json`).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--porcelain]
+     * : Print only the new note's id.
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats annotate "Newsletter sent"
+     *     wp seoprostats annotate "Sale started" --page=/shop/ --time="2026-10-05 09:00"
+     *     wp seoprostats annotate --delete=42
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function annotate($args, $assoc) {
+        if (isset($assoc['delete'])) {
+            $id      = (int) $assoc['delete'];
+            $deleted = $this->on_data($assoc, static function () use ($id) {
+                return SEOProStats_Changes::delete_note($id);
+            });
+            if (!$deleted) {
+                /* translators: %d: note id */
+                WP_CLI::error(sprintf(__('There is no note %d.', 'seoprostats'), $id));
+            }
+            /* translators: %d: note id */
+            WP_CLI::success(sprintf(__('Note %d deleted.', 'seoprostats'), $id));
+            return;
+        }
+        $note   = isset($args[0]) ? (string) $args[0] : '';
+        $page   = isset($assoc['page']) ? (string) $assoc['page'] : '';
+        $when   = isset($assoc['time']) ? (string) $assoc['time'] : '';
+        $answer = $this->on_data($assoc, static function () use ($note, $page, $when) {
+            return SEOProStats_Changes::annotate($note, $page, $when);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if (isset($assoc['porcelain'])) {
+            WP_CLI::line((string) $answer['id']);
+            return;
+        }
+        /* translators: 1: note id, 2: time, 3: page path or "the whole site" */
+        WP_CLI::success(sprintf(__('Note %1$d added at %2$s, on %3$s.', 'seoprostats'), $answer['id'], $answer['t'], $answer['path'] !== null ? $answer['path'] : __('the whole site', 'seoprostats')));
     }
 
     /**

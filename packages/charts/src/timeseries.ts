@@ -37,11 +37,17 @@ export interface TimeseriesConfig {
 	/** Colour of axis text and grid lines. */
 	axisColor: string;
 	gridColor: string;
+	/** Called after each draw (data, size), e.g. to place a markers lane. */
+	onDraw?: () => void;
 }
 
 export interface TimeseriesChart {
 	update: (config: TimeseriesConfig) => void;
 	resize: (width: number) => void;
+	/** A point's x position in client pixels; null outside the points. */
+	clientX: (index: number) => number | null;
+	/** Show a thin vertical line at a point (null hides it). */
+	guide: (index: number | null) => void;
 	destroy: () => void;
 }
 
@@ -164,7 +170,7 @@ function options(config: TimeseriesConfig, width: number, getConfig: () => Times
 				return [line, { ...line, dash: [2, 4], fill: s.fill ? alpha(s.color, 0.05) : undefined }];
 			}),
 		],
-		plugins: [tooltipPlugin(getConfig)],
+		plugins: [tooltipPlugin(getConfig), { hooks: { draw: () => getConfig().onDraw?.() } }],
 	};
 }
 
@@ -187,6 +193,7 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 	let config = initial;
 	const getConfig = () => config;
 	let plot = new uPlot(options(config, el.clientWidth || 600, getConfig), data(config), el);
+	let guide: HTMLDivElement | null = null;
 
 	return {
 		update(next) {
@@ -200,6 +207,7 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 				// Series changed: make the chart again (cheap; uPlot is small).
 				const width = plot.width;
 				plot.destroy();
+				guide = null;
 				plot = new uPlot(options(config, width, getConfig), data(config), el);
 			} else {
 				plot.setData(data(config));
@@ -210,8 +218,31 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 				plot.setSize({ width, height: config.height });
 			}
 		},
+		clientX(index) {
+			if (index < 0 || index >= config.labels.length) {
+				return null;
+			}
+			const x = plot.valToPos(index, 'x');
+			return Number.isFinite(x) ? plot.over.getBoundingClientRect().left + x : null;
+		},
+		guide(index) {
+			if (index === null || index < 0 || index >= config.labels.length) {
+				if (guide) {
+					guide.style.display = 'none';
+				}
+				return;
+			}
+			if (!guide) {
+				guide = document.createElement('div');
+				guide.className = 'spst-chart-guide';
+				plot.over.appendChild(guide);
+			}
+			guide.style.left = `${plot.valToPos(index, 'x')}px`;
+			guide.style.display = 'block';
+		},
 		destroy() {
 			plot.destroy();
+			guide = null;
 		},
 	};
 }

@@ -81,7 +81,8 @@ long-term record.
       coupons), plugin, theme and core updates, key settings; `markers`,
       `changes`, `wp seoprostats changes` (GH#34).
 - [ ] Page snapshots and word diffs; page detail.
-- [ ] Annotations (UI, API, CLI); markers lane on every chart.
+- [x] Annotations (UI, API, CLI, abilities); markers lane under the
+      Overview's chart; Changes section (GH#35).
 - [ ] Search engine update markers.
 - [ ] Movers and anomalies with possible causes; page detail.
 
@@ -112,7 +113,9 @@ long-term record.
       an agency's branding (issue #26, after #24).
 - [ ] Import (generic events JSON/CSV, daily aggregates) and export;
       undo by import id.
-- [ ] Abilities for MCP clients; aidevops SEO loop recipes in `docs/`.
+- [ ] Abilities for MCP clients (the reports; `seoprostats/markers` and
+      `seoprostats/annotate` came with GH#35); aidevops SEO loop recipes
+      in `docs/`.
 - [ ] Optional location database (DB-IP Lite) with our own reader.
 
 ## Phase 7: move from other statistics plugins (depends on 6's import)

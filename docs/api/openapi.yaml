@@ -244,6 +244,75 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /annotations:
+    post:
+      operationId: addAnnotation
+      summary: Add a note to the timeline (manage_options).
+      description: |
+        A note marks something the change log cannot see, such as a
+        newsletter sent, a campaign started or an outage, so it shows on
+        the charts and in the change log (group note, kind note, source
+        note). Optionally about one page; without a time, now.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  maxLength: 190
+                  examples: [Newsletter sent]
+                page:
+                  type: string
+                  description: The page it is about (a path); empty for the whole site.
+                  examples: [/pricing/]
+                time:
+                  type: string
+                  description: When, in the site time zone (2026-10-05 or 2026-10-05 14:30), or Unix time; empty for now.
+      responses:
+        '200':
+          description: The note as saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Marker'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /annotations/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: The note's id (a change id).
+        schema:
+          type: integer
+          minimum: 1
+      - $ref: '#/components/parameters/data'
+    delete:
+      operationId: deleteAnnotation
+      summary: Delete a note (manage_options). Recorded changes cannot be deleted.
+      responses:
+        '200':
+          $ref: '#/components/responses/Deleted'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /goals:
     get:
       operationId: getGoals
@@ -754,14 +823,14 @@ components:
       in: query
       description: |
         Only these kinds or groups of change, comma-separated. Groups:
-        content, seo, product, site. Kinds: published, unpublished,
+        content, seo, product, site, note. Kinds: published, unpublished,
         address, title, content, links, external_links; seo_title,
         meta_description, robots, canonical; out_of_stock, back_in_stock,
         price_up, price_down, sale_started, sale_ended, coupon_published,
         coupon_changed, coupon_removed; plugin_installed, plugin_updated,
         plugin_activated, plugin_deactivated, plugin_deleted,
         theme_switched, theme_updated, core_updated, search_visibility,
-        permalinks, site_address, front_page.
+        permalinks, site_address, front_page; note.
       schema:
         type: string
         examples: [product, 'plugin_updated,core_updated']
@@ -782,7 +851,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     NotFound:
-      description: There is no such goal or funnel in this data set (or, with data=demo, no demo data).
+      description: There is no such goal, funnel or note in this data set (or, with data=demo, no demo data).
       content:
         application/json:
           schema:
@@ -798,7 +867,8 @@ components:
               deleted:
                 type: boolean
               id:
-                type: string
+                type: [string, integer]
+                description: A goal's or funnel's id (a string), or a note's (an integer).
     NoDemo:
       description: data=demo, and there is no demo data yet (POST /demo makes it).
       content:
@@ -1060,7 +1130,7 @@ components:
           description: What changed (the kinds parameter lists them).
         group:
           type: string
-          enum: [content, seo, product, site]
+          enum: [content, seo, product, site, note]
         label:
           type: string
           description: One line saying what changed, in the site's language.
