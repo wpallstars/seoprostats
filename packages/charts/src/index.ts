@@ -7,4 +7,5 @@
  */
 
 export * from './timeseries';
+export * from './markers';
 export * from './sparkline';

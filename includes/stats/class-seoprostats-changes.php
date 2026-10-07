@@ -70,10 +70,14 @@ final class SEOProStats_Changes {
         49 => array('permalinks', 'site'),
         50 => array('site_address', 'site'),
         51 => array('front_page', 'site'),
+        80 => array('note', 'note'),
     );
 
+    /** Kind code of a note (annotation) added by a person or an agent. */
+    const NOTE = 80;
+
     /** Groups of kinds, for filters. */
-    const GROUPS = array('content', 'seo', 'product', 'site');
+    const GROUPS = array('content', 'seo', 'product', 'site', 'note');
 
     /** Where a change was made: code => name. */
     const SOURCES = array(
@@ -1156,6 +1160,111 @@ final class SEOProStats_Changes {
     // ------------------------------------------------------------------
     // Reading.
 
+    // ------------------------------------------------------------------
+    // Notes (annotations).
+
+    /**
+     * Add a note to the current data set's change log: something the hooks
+     * cannot see, such as a newsletter sent, a sale or a move to a new host.
+     * Run it inside SEOProStats_API::on_data() for the demo data.
+     *
+     * @param string     $note Text; cut to 190 bytes.
+     * @param string     $page Page path or address it is about; '' for the whole site.
+     * @param int|string $when Unix time, or a date and time in the site's time zone (2026-10-05, 2026-10-05 14:30); '' for now.
+     * @return array<string,mixed>|WP_Error The note as the change log lists it.
+     */
+    public static function annotate($note, $page = '', $when = '') {
+        global $wpdb;
+        $note = trim(sanitize_text_field((string) $note));
+        if ($note === '') {
+            return new WP_Error('seoprostats_note', __('A note needs some text.', 'seoprostats'), array('status' => 400));
+        }
+        $ts = self::when($when);
+        if (is_wp_error($ts)) {
+            return $ts;
+        }
+        $page  = trim((string) $page);
+        $saved = self::write(array(
+            'ts'          => $ts,
+            'kind'        => self::NOTE,
+            'path'        => $page !== '' ? self::path($page) : '',
+            'object_type' => 'note',
+            'object_id'   => 0,
+            'old'         => '',
+            'new'         => $note,
+            'meta'        => array(),
+            'source'      => 6,
+            'user_id'     => get_current_user_id(),
+        ));
+        $change = $saved ? self::get((int) $wpdb->insert_id) : null;
+        if (!$change) {
+            return new WP_Error('seoprostats_note_failed', __('The note could not be saved.', 'seoprostats'), array('status' => 500));
+        }
+        return $change;
+    }
+
+    /**
+     * Delete a note from the current data set. Only notes: recorded
+     * changes are the site's history.
+     *
+     * @param int $id Note id.
+     * @return bool Whether a note was deleted.
+     */
+    public static function delete_note($id) {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return false;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        return (bool) $wpdb->delete(SEOProStats_Schema::table('changes'), array('id' => (int) $id, 'kind' => self::NOTE), array('%d', '%d'));
+    }
+
+    /**
+     * One change of the current data set, as the change log lists it.
+     *
+     * @param int $id Change id.
+     * @return array<string,mixed>|null
+     */
+    public static function get($id) {
+        global $wpdb;
+        if ($id <= 0 || !SEOProStats_Schema::is_current()) {
+            return null;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        $row = $wpdb->get_row($wpdb->prepare('SELECT id, ts, kind, path_id, object_type, object_id, old, new, meta, source, user_id FROM %i WHERE id = %d', SEOProStats_Schema::table('changes'), (int) $id), ARRAY_A);
+        if (!is_array($row)) {
+            return null;
+        }
+        require_once __DIR__ . '/class-seoprostats-dict.php';
+        return self::shape($row, SEOProStats_Dict::values(array((int) $row['path_id'])));
+    }
+
+    /**
+     * A note's time: Unix time, or a date and time in the site's time zone.
+     *
+     * @param int|string $when Time; '' for now.
+     * @return int|WP_Error
+     */
+    private static function when($when) {
+        $when = trim((string) $when);
+        if ($when === '') {
+            return time();
+        }
+        if (ctype_digit($when)) {
+            return (int) $when;
+        }
+        $date = date_create_immutable($when, wp_timezone());
+        if (!$date || $date->getTimestamp() <= 0) {
+            return new WP_Error(
+                'seoprostats_note_time',
+                /* translators: %s: the time given */
+                sprintf(__('"%s" is not a date and time. Use, for example, 2026-10-05 or 2026-10-05 14:30.', 'seoprostats'), $when),
+                array('status' => 400)
+            );
+        }
+        return $date->getTimestamp();
+    }
+
     /**
      * Changes in a range, newest first, with paging; or oldest first for
      * the timeline (markers).
@@ -1422,6 +1531,8 @@ final class SEOProStats_Changes {
             case 'front_page':
                 /* translators: 1: setting, 2: value before, 3: value now */
                 return sprintf(__('Front page setting changed: %1$s (%2$s → %3$s)', 'seoprostats'), $title, isset($meta['old_title']) && $meta['old_title'] !== '' ? (string) $meta['old_title'] : $old, isset($meta['new_title']) && $meta['new_title'] !== '' ? (string) $meta['new_title'] : $new);
+            case 'note':
+                return $new;
             default:
                 return $title;
         }

@@ -287,6 +287,23 @@ answer row carries a `label` made when read, in the site's language.
 `wp seoprostats changes` lists them. FluentCart prices are kept in its own
 tables without a save hook for products, so they are not recorded yet.
 
+Notes (annotations) are rows of kind 80 (`note`, group `note`, source 6,
+`object_type` `note`) with the text in `new` (190 characters) and the user
+who added it: `POST /annotations`, `wp seoprostats annotate` and the
+`seoprostats/annotate` ability write them; only they can be deleted
+(`DELETE /annotations/{id}`, `annotate --delete`), as recorded changes are
+the site's history. Both need `manage_options`.
+
+The dashboard reads `GET /markers` with the chart's range and, when the
+reports are filtered to one page (`is`, `matches` or `contains` with one
+value), that page. `packages/charts/src/markers.ts` draws the lane under the
+plot: each change goes to the point (day, hour or month) it falls in;
+markers closer than 18 px merge, showing their count. Markers are buttons
+in one tab stop (arrow keys, Home and End move), with the changes as their
+accessible name; the screen-reader table has a Changes column. Group
+colours are the `--spst-mark-*` variables (`common.css`). The Changes
+section reads `GET /changes` 50 at a time.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also

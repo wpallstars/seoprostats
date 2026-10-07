@@ -141,6 +141,7 @@ final class SEOProStats_Dashboard {
             'funnels'    => __('Funnels', 'seoprostats'),
             'properties' => __('Properties', 'seoprostats'),
             'clicks'     => __('Clicks', 'seoprostats'),
+            'changes'    => __('Changes', 'seoprostats'),
         );
         foreach ($sections as $view => $title) {
             // A slug that is an address, with no callback, is a plain link.

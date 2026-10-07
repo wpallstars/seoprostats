@@ -137,8 +137,9 @@ export interface RealtimeAnswer {
 	generated: string;
 }
 
-/** Groups of changes in the change log. */
-export type ChangeGroup = 'content' | 'seo' | 'product' | 'site';
+/** Groups of changes in the change log; note: added by a person or an agent. */
+export const CHANGE_GROUPS = ['content', 'seo', 'product', 'site', 'note'] as const;
+export type ChangeGroup = (typeof CHANGE_GROUPS)[number];
 
 /** Where a change was made. */
 export type ChangeSource = 'wordpress' | 'cli' | 'api' | 'cron' | 'feed' | 'note';

@@ -1,17 +1,27 @@
 /**
  * The chosen metric over time, with the comparison period as a dashed
- * line. The chart is drawn for sight; a table carries the same numbers for
- * screen readers.
+ * line, and the changes in the range in a markers lane under it. The chart
+ * is drawn for sight; a table carries the same numbers and changes for
+ * screen readers, and the lane's markers are buttons.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { __, sprintf } from '@wordpress/i18n';
-import { createTimeseries, type ChartSeries, type TimeseriesChart, type TimeseriesConfig } from '@seoprostats/charts';
-import { formatMetric, METRICS, type MetricKey, type TimeseriesAnswer } from '@seoprostats/core';
+import { __, _n, sprintf } from '@wordpress/i18n';
+import {
+	createMarkersLane,
+	createTimeseries,
+	type ChartSeries,
+	type MarkersLane,
+	type MarkersLaneConfig,
+	type TimeseriesChart,
+	type TimeseriesConfig,
+} from '@seoprostats/charts';
+import { formatMetric, METRICS, type Marker, type MetricKey, type TimeseriesAnswer } from '@seoprostats/core';
 import { locale } from '../boot';
+import { changesByPoint, chartMarkers, groupColors } from '../changelog';
 import { axisLabel, longLabel } from '../dates';
 import { compareLabel, metricLabel } from '../labels';
 
@@ -19,6 +29,10 @@ interface Props {
 	series: TimeseriesAnswer;
 	metric: MetricKey;
 	height?: number;
+	/** Changes in the range, for the markers lane; none: no lane. */
+	markers?: Marker[];
+	/** A marker chosen: the changes it covers. */
+	onMarker?: (markers: Marker[]) => void;
 }
 
 /** The admin colour scheme's accent, read from WordPress's variable. */
@@ -55,11 +69,24 @@ function pointLabel(t: string, grain: TimeseriesAnswer['grain'], partial: boolea
 	return partial ? sprintf(__('%s (so far)', 'seoprostats'), label) : label;
 }
 
-export function MainChart({ series, metric, height = 260 }: Props) {
+export function MainChart({ series, metric, height = 260, markers, onMarker }: Props) {
 	const holder = useRef<HTMLDivElement>(null);
+	const laneHolder = useRef<HTMLDivElement>(null);
 	const chart = useRef<TimeseriesChart | null>(null);
+	const lane = useRef<MarkersLane | null>(null);
 	const spec = METRICS[metric];
 	const partial = useMemo(() => partialIndex(series), [series]);
+	const byPoint = useMemo(() => changesByPoint(series, markers ?? []), [series, markers]);
+	const pick = useRef(onMarker);
+	pick.current = onMarker;
+
+	// Place the lane's markers where the chart draws its points.
+	const layoutLane = () => {
+		const current = chart.current;
+		if (current) {
+			lane.current?.layout((i) => current.clientX(i));
+		}
+	};
 
 	const config = useMemo((): Omit<TimeseriesConfig, 'axisColor' | 'gridColor'> => {
 		const grain = series.grain;
@@ -103,13 +130,38 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 			series: config.series.map((s, i) => ({ ...s, color: i === 0 ? accent : '#8c8f94' })),
 			axisColor: '#50575e',
 			gridColor: 'rgba(0, 0, 0, 0.06)',
+			onDraw: layoutLane,
 		};
 		if (chart.current) {
 			chart.current.update(full);
 		} else {
 			chart.current = createTimeseries(el, full);
 		}
+		// layoutLane reads refs only.
 	}, [config]);
+
+	useEffect(() => {
+		const el = laneHolder.current;
+		if (!el) {
+			return;
+		}
+		const colors = groupColors(el);
+		const laneConfig: MarkersLaneConfig = {
+			markers: chartMarkers(byPoint, colors),
+			label: __('Changes', 'seoprostats'),
+			pointLabel: (i) => (series.points[i] ? longLabel(series.points[i].t, series.grain) : ''),
+			/* translators: %s: number of changes not listed. */
+			moreText: (n) => sprintf(_n('and %s more', 'and %s more', n, 'seoprostats'), n.toLocaleString(locale)),
+			onSelect: (indexes) => pick.current?.(indexes.flatMap((i) => byPoint.get(i) ?? [])),
+			onHover: (i) => chart.current?.guide(i),
+		};
+		if (lane.current) {
+			lane.current.update(laneConfig);
+		} else {
+			lane.current = createMarkersLane(el, laneConfig);
+		}
+		layoutLane();
+	}, [byPoint, series]);
 
 	useEffect(() => {
 		const el = holder.current;
@@ -123,6 +175,8 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 		observer.observe(el);
 		return () => {
 			observer.disconnect();
+			lane.current?.destroy();
+			lane.current = null;
 			chart.current?.destroy();
 			chart.current = null;
 		};
@@ -132,6 +186,7 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 	return (
 		<figure className="spst-chart">
 			<div ref={holder} className="spst-chart__plot" aria-hidden="true" style={{ minHeight: height }} />
+			{markers !== undefined && <div ref={laneHolder} />}
 			<figcaption className="screen-reader-text">
 				{metricLabel(metric)}
 			</figcaption>
@@ -141,6 +196,7 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 						<th scope="col">{__('Period', 'seoprostats')}</th>
 						<th scope="col">{metricLabel(metric)}</th>
 						{compare && <th scope="col">{compareLabel(compare.range.key === 'year' ? 'year' : 'prev')}</th>}
+						{markers !== undefined && <th scope="col">{__('Changes', 'seoprostats')}</th>}
 					</tr>
 				</thead>
 				<tbody>
@@ -151,6 +207,7 @@ export function MainChart({ series, metric, height = 260 }: Props) {
 								<th scope="row">{pointLabel(p.t, series.grain, i === partial)}</th>
 								<td>{formatMetric(p[metric], spec.format, locale)}</td>
 								{compare && <td>{before ? formatMetric(before[metric], spec.format, locale) : '—'}</td>}
+								{markers !== undefined && <td>{(byPoint.get(i) ?? []).map((m) => m.label).join('; ')}</td>}
 							</tr>
 						);
 					})}

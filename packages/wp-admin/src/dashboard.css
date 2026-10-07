@@ -285,6 +285,109 @@
 	color: #c3c4c7;
 }
 
+/* Markers lane: the changes in the range, under the plot. */
+.spst-chart-lane {
+	position: relative;
+	height: 28px;
+	margin-top: 4px;
+	border-top: 1px solid var(--spst-border);
+}
+
+.spst-chart-lane.is-empty {
+	height: 0;
+	margin: 0;
+	border: 0;
+}
+
+.spst-chart-lane__marker {
+	position: absolute;
+	top: 4px;
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 4px;
+	transform: translateX(-50%);
+	border: 1px solid var(--spst-border);
+	border-radius: 10px;
+	background: #fff;
+	color: var(--spst-text);
+	font-size: 11px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.spst-chart-lane__marker:hover {
+	background: var(--spst-hover);
+}
+
+.spst-chart-lane__marker:focus-visible {
+	outline: 2px solid var(--spst-accent);
+	outline-offset: 1px;
+}
+
+.spst-chart-lane__dot {
+	flex: none;
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+}
+
+.spst-chart-lane__count {
+	margin-left: 2px;
+	font-weight: 600;
+}
+
+/* Above the markers, over the plot, so the card never clips it. */
+.spst-chart-lane__tip {
+	bottom: 30px;
+	max-width: 360px;
+	white-space: normal;
+}
+
+.spst-chart-lane__tip .spst-chart-lane__dot {
+	box-shadow: 0 0 0 1px #fff;
+}
+
+.spst-chart-lane__when,
+.spst-chart-lane__more {
+	color: #c3c4c7;
+}
+
+.spst-chart-guide {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 0;
+	border-left: 1px dashed var(--spst-muted);
+	pointer-events: none;
+}
+
+/* Changes section. */
+.spst-changes__filters {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 8px 16px;
+	padding: 12px 16px 0;
+}
+
+.spst-changes__group {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	white-space: nowrap;
+}
+
+.spst-changes__pager {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 12px;
+}
+
 .spst-notice.components-notice {
 	margin: 16px 0 0;
 }
