@@ -1,5 +1,5 @@
 /**
- * Search, from Google Search Console's imported days, in two tabs.
+ * Search, from Google Search Console's imported days, in three tabs.
  *
  * Rankings: clicks, impressions, CTR and average position as tiles that
  * pick the chart's metric, with the changes on the timeline under it;
@@ -8,8 +8,9 @@
  * final only (about three days old), so the period stops at the newest
  * one.
  *
- * Opportunities (./Opportunities): where search effort pays; choosing a
- * row opens it in Rankings.
+ * Opportunities (./Opportunities): where search effort pays; Content
+ * (./Content): each page's search clicks with its visits from search and
+ * their conversions. Choosing a row in either opens it in Rankings.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -40,6 +41,7 @@ import { MainChart } from './components/MainChart';
 import { SearchSetup as Setup, type SearchPick } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 import { Opportunities } from './Opportunities';
+import { Content } from './Content';
 
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
@@ -110,7 +112,7 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 	);
 }
 
-/** Search: Rankings (what happened) and Opportunities (where effort pays), as `report` in the address. */
+/** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
 export function Search(props: ViewProps) {
 	const { state, update } = props;
 	const report: SearchReport = state.report ?? 'rankings';
@@ -118,9 +120,10 @@ export function Search(props: ViewProps) {
 	const names: Record<SearchReport, string> = {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
+		content: __('Content', 'seoprostats'),
 	};
-	// Rankings is the default, so it is left out of the address.
-	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next });
+	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content.
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
 		const at = SEARCH_REPORTS.indexOf(report);
@@ -134,9 +137,16 @@ export function Search(props: ViewProps) {
 		document.getElementById(`${id}-${target}`)?.focus();
 	};
 
-	// A row of Opportunities opens in Rankings: a page shows its queries; a query alone, its pages.
+	// A row of Opportunities or Content opens in Rankings: a page shows its queries; a query alone, its pages.
 	const open = (pick: SearchPick) =>
-		update({ report: undefined, page: pick.page || undefined, query: pick.query || undefined, tab: pick.query && !pick.page ? 'pages' : undefined });
+		update({
+			report: undefined,
+			sort: undefined,
+			goal: undefined,
+			page: pick.page || undefined,
+			query: pick.query || undefined,
+			tab: pick.query && !pick.page ? 'pages' : undefined,
+		});
 
 	return (
 		<>
@@ -159,7 +169,9 @@ export function Search(props: ViewProps) {
 				))}
 			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
-				{report === 'rankings' ? <Rankings {...props} /> : <Opportunities {...props} open={open} />}
+				{report === 'rankings' && <Rankings {...props} />}
+				{report === 'opportunities' && <Opportunities {...props} open={open} />}
+				{report === 'content' && <Content {...props} open={open} />}
 			</div>
 		</>
 	);

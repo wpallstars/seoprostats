@@ -106,8 +106,11 @@ long-term record.
       demand, CTR, gone), the queries that lost most and the page's
       changes; REST `opportunities`, WP-CLI, the
       `seoprostats/opportunities` ability and demo data (GH#53).
-- [ ] Content performance: search joined with each page's visits and
-      conversions (reads the visit tables; needs its own cost check).
+- [x] Content performance: search joined with each page's visits from
+      search and conversions of a goal, by a daily summary of search
+      landings (refilled backwards) and the goal's own hits; REST
+      `content`, WP-CLI, the `seoprostats/content` ability and demo data
+      (GH#59).
 - [ ] Bing Webmaster Tools as a second search engine.
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.

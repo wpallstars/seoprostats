@@ -792,6 +792,77 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /content:
+    get:
+      operationId: getContent
+      summary: Content performance — each page's search clicks with its visits from search and their conversions.
+      description: |
+        Per page, Search Console's clicks, impressions, CTR and position
+        (Google) beside the visits from organic search (any engine) that
+        started on the page, with their bounce rate, views per visit and
+        time, and how many of those visits reached a goal: `goal`, or the
+        first goal when left out (`conversions` is null without goals).
+        A page with clicks but no visits, or visits but no clicks, is
+        listed too.
+
+        Every read uses an index and none grows with all the visits:
+        the search tables by their keys, the daily summaries of search
+        landings, and the goal's hits joined to their visits. Days
+        summarised before search landings existed are filled in, newest
+        first, a few minutes after an update; until then `partial` is
+        true and `landings_from` is the oldest day counted.
+
+        As `/search`, the period is cut at the newest search day and
+        the comparison has as many days. Page filters apply; other
+        filters are listed in `ignored`.
+      parameters:
+        - name: sort
+          in: query
+          description: Order of the pages, most first.
+          schema:
+            type: string
+            enum: [clicks, visits, conversions]
+            default: clicks
+        - name: goal
+          in: query
+          description: ID of the goal whose conversions are counted; the first goal when left out.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Totals and pages.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContentAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
   /demo:
     get:
       operationId: getDemo
@@ -2268,6 +2339,137 @@ components:
               description: decay; search engine updates in either period.
               items:
                 $ref: '#/components/schemas/Marker'
+
+    ContentMetrics:
+      description: Search figures (Google) with the visits from organic search that started on the page.
+      allOf:
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [visits, bounce_rate, views_per_visit, visit_duration, conversions, conversion_rate]
+          properties:
+            visits:
+              type: integer
+              description: Visits from organic search (any engine) that started on the page.
+            bounce_rate:
+              type: number
+            views_per_visit:
+              type: number
+            visit_duration:
+              type: integer
+              description: Seconds.
+            conversions:
+              type: [integer, 'null']
+              description: Of those visits, the ones that reached the goal; null without goals.
+            conversion_rate:
+              type: [number, 'null']
+              description: conversions ÷ visits; null without goals.
+
+    ContentChange:
+      description: As SearchChange, with relative changes of the visit metrics and conversions.
+      type: object
+      additionalProperties:
+        type: [number, 'null']
+
+    ContentRow:
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/ContentMetrics'
+        - type: object
+          required: [id, value, label]
+          properties:
+            id:
+              type: string
+            value:
+              type: string
+            label:
+              type: string
+            compare:
+              description: The comparison period.
+              allOf:
+                - $ref: '#/components/schemas/ContentMetrics'
+                - type: object
+                  required: [change]
+                  properties:
+                    change:
+                      $ref: '#/components/schemas/ContentChange'
+
+    ContentAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            through:
+              type: string
+              description: Newest day with search data (YYYY-MM-DD); empty with none.
+            first:
+              type: string
+              description: Oldest day with search data (YYYY-MM-DD); empty with none.
+            connected:
+              type: boolean
+              description: Whether Search Console is connected (demo data, always).
+            ignored:
+              type: array
+              description: Filter dimensions left out (only page filters apply to search data).
+              items:
+                type: string
+            sort:
+              type: string
+              enum: [clicks, visits, conversions]
+            goal:
+              type: [object, 'null']
+              description: The goal counted; null without goals.
+              required: [id, name, kind, match]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                kind:
+                  type: string
+                match:
+                  type: string
+            goals:
+              type: array
+              description: Every goal, to choose another.
+              items:
+                type: object
+                required: [id, name]
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+            landings_from:
+              type: string
+              description: Oldest day whose visits from search are counted (YYYY-MM-DD); empty before the first summary.
+            partial:
+              type: boolean
+              description: Whether some days of the period or comparison are still to be filled in.
+            totals:
+              $ref: '#/components/schemas/ContentMetrics'
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContentRow'
+            total:
+              type: integer
+              description: All pages with search clicks or visits from search.
+            more:
+              type: boolean
+              description: Whether there are more rows after these.
+            compare:
+              type: object
+              required: [range, totals, change]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                totals:
+                  $ref: '#/components/schemas/ContentMetrics'
+                change:
+                  $ref: '#/components/schemas/ContentChange'
 
     DemoStatus:
       type: object

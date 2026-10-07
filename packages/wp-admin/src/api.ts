@@ -15,6 +15,8 @@ import {
 	type ChangesAnswer,
 	type ClickKind,
 	type ClicksAnswer,
+	type ContentAnswer,
+	type ContentSort,
 	type Dimension,
 	type Funnel,
 	type FunnelsAnswer,
@@ -183,6 +185,18 @@ export function useOpportunities(scope: Scope, kind: OpportunityKind, limit = 10
 	return useQuery({
 		queryKey: ['opportunities', args],
 		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first). */
+export function useContent(scope: Scope, sort: ContentSort, goal: string, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
+	return useQuery({
+		queryKey: ['content', args],
+		queryFn: () => get<ContentAnswer>('content', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

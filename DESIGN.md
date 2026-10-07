@@ -150,6 +150,10 @@ Each group of the change log has a colour (`--spst-mark-{group}`), used for the 
 - **Search engines (`#c9356e`)**: search engine updates. A rollout also draws a 3 px bar in the group's colour under the markers, from its start to its end (or now), at 55% opacity so overlapping rollouts stay visible; it is decorative, as the marker's label gives the duration.
 - **Notes (`#1d2327`)**: notes added by people and agents.
 
+### Tiles and tables
+
+Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with ↓ (most first) and `aria-sort`; other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
+
 ## 3. Typography
 
 <!-- Define typography levels. Most design systems have 9-15 levels. Common categories: -->

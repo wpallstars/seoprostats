@@ -919,12 +919,12 @@ final class SEOProStats_Query {
     }
 
     /**
-     * Metrics from summed columns.
+     * Metrics from summed columns (also SEOProStats_Content's).
      *
      * @param array<string,mixed> $row visitors, visits, pageviews, bounces, engaged_ms, events.
      * @return array<string,int|float>
      */
-    private static function metrics(array $row) {
+    public static function metrics(array $row) {
         $visits    = isset($row['visits']) ? (int) $row['visits'] : 0;
         $pageviews = isset($row['pageviews']) ? (int) $row['pageviews'] : 0;
         return array(

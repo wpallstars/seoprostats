@@ -513,7 +513,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
-| `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
+| `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`, or `SEARCH_LANDING` (18): visits from organic search by entry page, for the content report), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Search Console above) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
 | `changes` | change to the site, a marker on the timeline (schema v6; Changes below) | `id`, `ts`, `kind` (a code in `SEOProStats_Changes::KINDS`), `path_id` (0: site-wide), `object_type` (the post type, or `coupon`, `plugin`, `theme`, `core`, `option`), `object_id`, `old`, `new` (190 characters), `meta` (JSON), `source` (1 WordPress, 2 WP-CLI, 3 API, 4 cron, 5 feed, 6 note), `user_id` |
@@ -774,6 +774,34 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
   effect sit together. Changes and editor links are added after the
   shared cache, as people's names and editor links depend on the viewer.
 
+Content (`SEOProStats_Content`) joins search with what its visits did, per
+page, with the same cut, page filters, `ignored` and cache key (which
+adds the oldest day with search landings). Three reads, each by an index
+and none growing with all the visits:
+
+- **Search**: `gsc_pages` sums per page, by the primary key (or
+  `path_day` with page filters): clicks, impressions, CTR, position.
+- **Visits from search**: the daily summaries' search landings
+  (`SEOProStats_Rollup::SEARCH_LANDING`, by `dim_val_day`): visits from
+  organic search (any engine) by entry page, with their visitors,
+  pageviews, bounces, time and events. The rollup writes them with each
+  day; days summarised before they existed are filled in, newest first,
+  by `SEOProStats_Rollup::refill()` within the cron budget, down to the
+  newest of the first search day, the first visit and the oldest visit
+  kept (`landings_floor()`). The state's `landings` is the oldest day
+  done; until the period's days are, the answer says `partial`.
+- **Conversions**: one goal at a time (the first, or `goal`): its hits by
+  `name_ts` or `path_ts`, joined to their visits by the primary key and
+  kept to organic search, counted once per visit by entry page
+  (`SEOProStats_Conversions::by_entry()`); so the cost is the goal's hits
+  in the period. Only pages with visits from search count them.
+
+Rows are every page with clicks or visits from search, ordered by
+`sort` (clicks, visits or conversions), then clicks, visits and
+impressions; with a comparison the rows shown get their figures then and
+the change. Search figures are Google's, visits any engine's, so the two
+differ.
+
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
 months, last year, all time, custom; comparison with the previous period
@@ -792,7 +820,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `demo`,
+  `opportunities`, `content`, `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
@@ -803,7 +831,8 @@ in the future meets the same length of the other period.
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
   `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
-  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `pages`,
+  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `content
+  [--sort=<sort>] [--goal=<id>]`, `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -813,8 +842,8 @@ in the future meets the same length of the other period.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter. So far
-  `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search` and
-  `seoprostats/opportunities`.
+  `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
+  `seoprostats/opportunities` and `seoprostats/content`.
 
 ## Dashboard app
 
@@ -849,7 +878,7 @@ on WordPress's React.
 
 Sections: Overview · Behaviour (Flow, Journeys, Clicks, Funnels, Goals,
 Properties) · Pages (All, New, Not found, Site search, page detail) ·
-Search (Rankings, Opportunities, Backlinks) · Health (Speed, Errors,
+Search (Rankings, Opportunities, Content, Backlinks) · Health (Speed, Errors,
 Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
 
 The Overview's cards: Sources; Pages (top, entry, exit, not found);
@@ -857,11 +886,11 @@ Content (authors, categories, post types); Site search (searches, no
 results); Locations; Devices (devices, browsers, systems, logged in);
 Events.
 
-Built so far: Overview, Search (Rankings, Opportunities), Goals, Funnels,
-Properties, Clicks and Changes, as WordPress tabs
+Built so far: Overview, Search (Rankings, Opportunities, Content), Goals,
+Funnels, Properties, Clicks and Changes, as WordPress tabs
 at the top of the screen and as submenu items (links to the hash, marked
 current by the app). The period, comparison, Live/Demo switch and filters
-are shared by every section. Search has two tabs. Rankings shows clicks,
+are shared by every section. Search has three tabs. Rankings shows clicks,
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,
 pages, countries and devices; choosing a page shows its queries and
@@ -869,8 +898,12 @@ choosing a query its pages. Opportunities has three cards (striking
 distance, low CTR, losing clicks), ten rows a page; choosing a row opens
 it in Rankings with its page and query. Losing clicks is always against
 an earlier period (the previous one unless the same period last year is
-chosen). Before Search Console is connected both link to Settings →
-Connections. Choosing a breakdown row, goal or funnel step
+chosen). Content shows search clicks, visits from search, their bounce
+rate and conversions of a goal (chosen in a list) as tiles, then the
+pages with clicks, position, CTR, visits, bounce rate, time, conversions
+and conversion rate, 25 a page; the Clicks, Visits and Conversions
+headers sort; choosing a page opens it in Rankings. Before Search
+Console is connected all three link to Settings → Connections. Choosing a breakdown row, goal or funnel step
 filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
 and events seen in the last 90 days are offered as they type.
@@ -883,7 +916,7 @@ days, comparison, chart metric, filters); and the section's own choices:
 | Section | Address | Default (left out) |
 |---|---|---|
 | Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`: the card's open tab | each card's first tab |
-| Search | `report` (rankings, opportunities), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query` | rankings, queries, clicks, none |
+| Search | `report` (rankings, opportunities, content), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query`; with Content, `sort` (clicks, visits, conversions) and `goal` (a goal's ID) | rankings, queries, clicks, none; clicks, the first goal |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
 | Changes | `page` (else the page the reports are filtered to) | none |

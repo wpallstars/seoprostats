@@ -94,10 +94,10 @@ final class SEOProStats_Demo {
      */
     const SOURCES = array(
         'direct'     => array(24, '', '', 'home'),
-        'google'     => array(30, 'https://www.google.com/', '', 'content'),
-        'bing'       => array(4, 'https://www.bing.com/', '', 'content'),
-        'duckduckgo' => array(2.5, 'https://duckduckgo.com/', '', 'content'),
-        'ecosia'     => array(0.5, 'https://www.ecosia.org/', '', 'content'),
+        'google'     => array(30, 'https://www.google.com/', '', 'search'),
+        'bing'       => array(4, 'https://www.bing.com/', '', 'search'),
+        'duckduckgo' => array(2.5, 'https://duckduckgo.com/', '', 'search'),
+        'ecosia'     => array(0.5, 'https://www.ecosia.org/', '', 'search'),
         'chatgpt'    => array(3, 'https://chatgpt.com/', '?utm_source=chatgpt.com', 'content'),
         'perplexity' => array(1.2, 'https://www.perplexity.ai/', '', 'content'),
         'claude'     => array(0.6, 'https://claude.ai/', '', 'content'),
@@ -117,9 +117,10 @@ final class SEOProStats_Demo {
         'github'     => array(1, 'https://github.com/', '', 'docs'),
     );
 
-    /** Landing pages by kind: path => weight. */
+    /** Landing pages by kind: path => weight. Search follows where SEARCH_QUERIES' clicks go (Search → Content). */
     const LANDINGS = array(
         'home'     => array('/' => 10, '/about/' => 1),
+        'search'   => array('/blog/core-web-vitals-explained/' => 6, '/blog/how-to-read-search-rankings/' => 5, '/blog/privacy-friendly-analytics/' => 5, '/blog/speed-up-wordpress/' => 4.5, '/blog/what-changed-after-an-update/' => 2.5, '/' => 6, '/features/' => 2, '/pricing/' => 1.6, '/docs/' => 0.8, '/docs/getting-started/' => 0.8, '/docs/faq/' => 1, '/shop/pro-licence/' => 0.3),
         'content'  => array('/blog/core-web-vitals-explained/' => 6, '/blog/how-to-read-search-rankings/' => 6, '/blog/privacy-friendly-analytics/' => 5, '/blog/speed-up-wordpress/' => 5, '/blog/what-changed-after-an-update/' => 3, '/docs/faq/' => 2, '/' => 3),
         'product'  => array('/features/' => 5, '/pricing/' => 4, '/' => 3),
         'campaign' => array('/blog/what-changed-after-an-update/' => 5, '/pricing/' => 3),
@@ -711,6 +712,10 @@ final class SEOProStats_Demo {
                 $more = true;
             }
         }
+        // Demo data made before search landings were summarised gets them here.
+        if (!$more && SEOProStats_Feature::more_time($start, $budget) && !SEOProStats_Rollup::refill($rollup_start)) {
+            $more = true;
+        }
         if (!$more && $state['status'] !== 'ready') {
             $state['status'] = 'ready';
             $state['made']   = time();
@@ -1018,7 +1023,7 @@ final class SEOProStats_Demo {
         // What WordPress would say about the pages: some landings are not
         // found, some visits search the site, a few are logged in.
         $context = array_fill(0, count($paths), array());
-        if ($landing === 'content' && self::chance(0.03)) {
+        if (($landing === 'content' || $landing === 'search') && self::chance(0.03)) {
             $paths[0]   = self::pick_key(self::NOT_FOUND);
             $context[0] = array('n' => 1);
         }

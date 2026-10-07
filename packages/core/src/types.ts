@@ -370,7 +370,7 @@ export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as cons
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 export interface SearchMetrics {
@@ -491,6 +491,54 @@ export interface OpportunitiesAnswer extends Answer {
 	/** decay: the earlier period, and search engine updates in either. */
 	compare?: { range: Range } | null;
 	updates?: Marker[];
+}
+
+/** Orders of the content report, most first. */
+export const CONTENT_SORTS = ['clicks', 'visits', 'conversions'] as const;
+export type ContentSort = (typeof CONTENT_SORTS)[number];
+
+/** A page's search figures with its visits from search and their conversions of the goal. */
+export interface ContentMetrics extends SearchMetrics {
+	/** Visits from organic search (any engine) that started on the page. */
+	visits: number;
+	bounce_rate: number;
+	views_per_visit: number;
+	/** Seconds. */
+	visit_duration: number;
+	/** Visits that reached the goal; null without goals. */
+	conversions: number | null;
+	conversion_rate: number | null;
+}
+
+export type ContentChange = Partial<Record<keyof ContentMetrics, number | null>>;
+
+export interface ContentRow extends ContentMetrics, OpportunityPage {
+	id: string;
+	value: string;
+	label: string;
+	compare?: ContentMetrics & { change: ContentChange };
+}
+
+export interface ContentAnswer extends Answer {
+	/** The range cut at the newest day with search data. */
+	range: Range;
+	through: string;
+	first: string;
+	connected: boolean;
+	ignored: string[];
+	sort: ContentSort;
+	/** The goal counted (the first unless one is chosen); null without goals. */
+	goal: { id: string; name: string; kind: string; match: string } | null;
+	goals: { id: string; name: string }[];
+	/** Oldest day whose visits from search are summarised; '' before the first. */
+	landings_from: string;
+	/** Whether some days of the period (or comparison) are not summarised yet. */
+	partial: boolean;
+	totals: ContentMetrics;
+	rows: ContentRow[];
+	total: number;
+	more: boolean;
+	compare?: { range: Range; totals: ContentMetrics; change: ContentChange };
 }
 
 export interface ApiError {

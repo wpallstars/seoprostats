@@ -71,6 +71,10 @@ SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and
 
 Where search work pays, from the same Search Console data. Striking distance lists a page's search queries at positions 4 to 20 with the clicks each could gain in the top three. Low CTR lists queries in the top 10 that searchers choose much less often than your site's own click-through rate at that position, where a clearer title and description may help. Losing clicks lists pages with at least a fifth fewer clicks than the earlier period, each with the likely cause (it ranks lower, it is searched for less, fewer searchers choose it, or it is no longer shown), the queries that lost most and what changed on the page. Choose a row to open it in Rankings. Scripts and AI agents read it through the REST API (opportunities), wp seoprostats opportunities, and on WordPress 6.9 and later the ability seoprostats/opportunities.
 
+= What does Search → Content show? =
+
+Which pages earn their search traffic. For each page: its search clicks, position and click-through rate, beside the visits from search that started on it, their bounce rate and time, and how many reached a goal you pick. A page that ranks but whose visitors leave needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Sort by clicks, visits or conversions. Scripts and AI agents read it through the REST API (content), wp seoprostats content, and on WordPress 6.9 and later the ability seoprostats/content.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.
