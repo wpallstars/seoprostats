@@ -389,9 +389,14 @@ seoprostats connect`), each off until connected. The first is Google
 Search Console (`SEOProStats_Source_Search_Console`), through a service
 account: the owner makes one in Google Cloud with the Search Console API
 on, gives it a JSON key and adds its address as a user of the property
-(Restricted is enough). Connecting signs in and lists the properties it
+(Restricted is enough). The Connections tab lists these as six steps,
+each linking to the Google page it needs
+(`SEOProStats_Connections_Tab::LINKS`, as Google's own documentation
+links them). Connecting signs in and lists the properties it
 can read before anything is stored; without a property asked for, the
-site's own is chosen (a domain property before an address one).
+site's own is chosen (a domain property before an address one). Sign in
+with Google through a relay we host is planned (issue #50); an OAuth
+client each owner makes is not.
 
 The connection is one option, `seoprostats_connections` (autoload off):
 per source the credentials, encrypted with libsodium's secretbox (a
@@ -848,7 +853,7 @@ Every chart has a table view for screen readers.
 
 | Integration | How | Stored in |
 |---|---|---|
-| Search Console | Opt-in: a service account's key, stored encrypted (an OAuth client later); hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
+| Search Console | Opt-in: a service account's key, stored encrypted (Sign in with Google through our relay later, issue #50); hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
 | Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
 | Search engine updates | Opt-in: Google Search Status Dashboard's JSON history and the owner's other feeds, daily (Search engine updates above) | `changes` |
 | Backlinks | Referrers verified by fetching the referring page; optional provider (DataForSEO) with the owner's key | `links` |
