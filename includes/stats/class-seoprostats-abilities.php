@@ -11,6 +11,8 @@
  *   position, with top queries, pages, countries or devices (read).
  * - seoprostats/opportunities: striking-distance and low-CTR queries,
  *   and pages losing clicks with the likely cause (read).
+ * - seoprostats/content: per page, search clicks and position with the
+ *   visits from search that landed on it and their conversions (read).
  *
  * On older WordPress the hooks never run.
  *
@@ -307,6 +309,105 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/content', array(
+            'label'               => __('Content performance', 'seoprostats'),
+            'description'         => __('Which pages earn their search traffic: per page, Google Search Console clicks, impressions, CTR and position, with the visits from search that landed on the page (bounce rate, views per visit, visit duration in seconds) and how many reached a goal (conversions, conversion rate; the first goal unless one is named). A page that ranks but whose visits leave or never convert needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Final search days only.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'sort'    => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Content::SORTS,
+                        'default'     => 'clicks',
+                        'description' => __('Order, most first: search clicks, visits from search, or conversions.', 'seoprostats'),
+                    ),
+                    'goal'    => array(
+                        'type'        => 'string',
+                        'description' => __('ID of the goal counted (the answer lists the goals); the first when left out.', 'seoprostats'),
+                    ),
+                    'range'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'      => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'compare' => array(
+                        'type'        => 'string',
+                        'enum'        => array('none', 'prev', 'year'),
+                        'default'     => 'none',
+                        'description' => __('Also the period before (prev) or the same period last year (year), with the change.', 'seoprostats'),
+                    ),
+                    'limit'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Query::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'range'         => array('type' => 'object'),
+                    'through'       => array('type' => 'string'),
+                    'connected'     => array('type' => 'boolean'),
+                    'goal'          => array('type' => array('object', 'null')),
+                    'goals'         => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'partial'       => array('type' => 'boolean'),
+                    'landings_from' => array('type' => 'string'),
+                    'totals'        => array('type' => 'object'),
+                    'rows'          => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'         => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'content'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/content.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function content($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'compare' => 'none', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $sort = isset($input['sort']) ? (string) $input['sort'] : 'clicks';
+        $goal = isset($input['goal']) ? (string) $input['goal'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $sort, $goal) {
+            return SEOProStats_Content::report((array) $req, $sort, $goal);
+        });
     }
 
     /**

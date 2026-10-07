@@ -56,6 +56,13 @@ final class SEOProStats_Rollup {
         'login'        => 17,
     );
 
+    /**
+     * Daily code of search landings: visits from organic search by entry
+     * page (val: its path id), for SEOProStats_Content. Not a report
+     * dimension, so it is not in DIMS; never change or reuse it either.
+     */
+    const SEARCH_LANDING = 18;
+
     /** Seconds per run. */
     const BUDGET = 20;
 
@@ -91,7 +98,10 @@ final class SEOProStats_Rollup {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
 
         $done['days'] = self::catch_up($start);
-        $state        = self::state();
+        if (self::due() === null) {
+            self::refill($start);
+        }
+        $state = self::state();
         if (!empty($state['through']) && (!isset($state['pruned']) || $state['pruned'] !== wp_date('Y-m-d')) && self::due() === null) {
             $done['deleted'] = self::prune($start)['deleted'];
         }
@@ -111,6 +121,10 @@ final class SEOProStats_Rollup {
         }
         $state = self::state();
         $count = 0;
+        if (empty($state['through']) && !isset($state['landings'])) {
+            // The first day summarised has its search landings: nothing to refill.
+            $state['landings'] = $day->format('Y-m-d');
+        }
         if (!empty($state['through']) && SEOProStats_Feature::more_time($start, self::BUDGET)) {
             // Again, with engagement that arrived after it was summarised.
             self::summarise(new DateTimeImmutable((string) $state['through'], wp_timezone()));
@@ -220,6 +234,7 @@ final class SEOProStats_Rollup {
                     break;
                 }
             }
+            $ok = $ok && self::insert_landings($date, $from, $to);
         }
         if ($ok) {
             $wpdb->query('COMMIT');
@@ -228,6 +243,100 @@ final class SEOProStats_Rollup {
         }
         // phpcs:enable
         return $ok;
+    }
+
+    /**
+     * Add one day's search landings (SEARCH_LANDING) to the daily table:
+     * visits from organic search by entry page, with the visit sums.
+     *
+     * @param string $date Y-m-d.
+     * @param int    $from Its site-local midnight.
+     * @param int    $to   The next one.
+     * @return bool Whether the query worked.
+     */
+    private static function insert_landings($date, $from, $to) {
+        global $wpdb;
+        $cols = SEOProStats_Query::VISIT_METRICS;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables, one day by index `started`; $cols is fixed SQL.
+        return $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT %s, %d, s.entry_id AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d AND s.channel = %d GROUP BY v", SEOProStats_Schema::table('daily'), $date, self::SEARCH_LANDING, SEOProStats_Schema::table('sessions'), $from, $to, SEOProStats_Query::CHANNELS['organic_search'])) !== false;
+    }
+
+    /**
+     * Add search landings to days summarised before they existed, newest
+     * first, down to the oldest day with search data whose visits are
+     * kept, within the budget. Progress: `landings` in the state, the
+     * oldest day that has them.
+     *
+     * @param float $start microtime(true) when the run began.
+     * @return bool Whether every such day has them.
+     */
+    public static function refill($start) {
+        global $wpdb;
+        $state = self::state();
+        if (empty($state['through'])) {
+            return true;
+        }
+        $tz = wp_timezone();
+        if (!isset($state['landings'])) {
+            // Days summarised from now on have them.
+            $state['landings'] = (new DateTimeImmutable((string) $state['through'], $tz))->modify('+1 day')->format('Y-m-d');
+            update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        $floor = self::landings_floor();
+        $day   = new DateTimeImmutable((string) $state['landings'], $tz);
+        $d     = SEOProStats_Schema::table('daily');
+        while ($floor !== '' && $day->modify('-1 day')->format('Y-m-d') >= $floor) {
+            if (!SEOProStats_Feature::more_time($start, self::BUDGET)) {
+                return false;
+            }
+            $day  = $day->modify('-1 day');
+            $date = $day->format('Y-m-d');
+            // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table by its primary key (day, dim).
+            $wpdb->query('START TRANSACTION');
+            $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND dim = %d', $d, $date, self::SEARCH_LANDING)) !== false
+                && self::insert_landings($date, $day->getTimestamp(), $day->modify('+1 day')->getTimestamp());
+            if (!$ok) {
+                $wpdb->query('ROLLBACK');
+                return false;
+            }
+            $wpdb->query('COMMIT');
+            // phpcs:enable
+            $state['landings'] = $date;
+            update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
+        }
+        return true;
+    }
+
+    /**
+     * The oldest day search landings are needed for: the latest of the
+     * first day with search data, the first visit and the oldest visit
+     * kept. '' without search data. Older days never get them, so they
+     * are not missing either.
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function landings_floor() {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; MIN() of the primary key's (engine, day) prefix.
+        $search = (string) $wpdb->get_var($wpdb->prepare('SELECT MIN(day) FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_totals'), SEOProStats_Schema::ENGINE_GOOGLE));
+        $first  = max(self::first_visit(), self::kept_from());
+        $day    = $first ? wp_date('Y-m-d', $first) : false;
+        if ($search === '' || !is_string($day)) {
+            return '';
+        }
+        return max($search, $day);
+    }
+
+    /**
+     * The oldest day with search landings in the daily table, or '' before
+     * the first summary. Older days have none (before the refill reaches
+     * them, or without search data).
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function landings_from() {
+        $state = self::state();
+        return !empty($state['through']) && isset($state['landings']) ? (string) $state['landings'] : '';
     }
 
     /**

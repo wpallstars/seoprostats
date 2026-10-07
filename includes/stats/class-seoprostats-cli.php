@@ -959,6 +959,137 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Content performance: per page, Google Search Console's clicks,
+     * impressions, CTR and position with the visits from search that
+     * landed on it (bounce rate, views per visit, time) and how many of
+     * them reached a goal. The period is cut at the newest day with
+     * search data.
+     *
+     * ## OPTIONS
+     *
+     * [--sort=<sort>]
+     * : Order, most first.
+     * ---
+     * default: clicks
+     * options:
+     *   - clicks
+     *   - visits
+     *   - conversions
+     * ---
+     *
+     * [--goal=<id>]
+     * : ID of the goal counted (wp seoprostats goals); the first when left out.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : none, prev or year.
+     * ---
+     * default: none
+     * ---
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats (others do not apply to search data).
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 10
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats content
+     *     wp seoprostats content --sort=conversions --range=90d
+     *     wp seoprostats content --filter=page:/blog/* --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function content($args, $assoc) {
+        $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : 'clicks';
+        $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
+        $req    = $this->request($assoc + array('range' => '30d', 'compare' => 'none'));
+        $answer = $this->on_data($assoc, static function () use ($req, $sort, $goal) {
+            return SEOProStats_Content::report($req, $sort, $goal);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        if (!$answer['connected']) {
+            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+        }
+        $this->range_line($answer['range']);
+        if ($answer['partial']) {
+            WP_CLI::log($answer['landings_from'] === ''
+                ? __('Visits from search are still being summarised.', 'seoprostats')
+                /* translators: %s: date */
+                : sprintf(__('Visits from search are summarised from %s; older days are still being summarised.', 'seoprostats'), $answer['landings_from']));
+        }
+        if ($answer['ignored']) {
+            /* translators: %s: filter dimensions. */
+            WP_CLI::log(sprintf(__('Not applied to search data: %s.', 'seoprostats'), implode(', ', $answer['ignored'])));
+        }
+        $goal_name = $answer['goal'] ? $answer['goal']['name'] : '';
+        if ($goal_name !== '') {
+            /* translators: %s: goal name */
+            WP_CLI::log(sprintf(__('Conversions: %s.', 'seoprostats'), $goal_name));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No pages with search clicks or visits from search in this range.', 'seoprostats'));
+            return;
+        }
+        $pct  = static function ($value) {
+            return sprintf('%.1f%%', (float) $value * 100);
+        };
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $item = array(
+                'path'        => $row['path'],
+                'clicks'      => $row['clicks'],
+                'impressions' => $row['impressions'],
+                'ctr'         => $pct($row['ctr']),
+                'position'    => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
+                'visits'      => $row['visits'],
+                'bounce_rate' => $pct($row['bounce_rate']),
+                'duration'    => $row['visit_duration'] . 's',
+            );
+            if ($goal_name !== '') {
+                $item['conversions']     = $row['conversions'];
+                $item['conversion_rate'] = $pct($row['conversion_rate']);
+            }
+            $rows[] = $item;
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * The change log: posts published, unpublished and edited, SEO fields,
      * prices, stock and coupons, plugins, themes, WordPress, settings,
      * search engine updates and notes, newest first.

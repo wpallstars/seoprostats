@@ -204,6 +204,40 @@ final class SEOProStats_Conversions {
     }
 
     /**
+     * One goal's conversions among the visits of a channel, by each
+     * visit's entry page (SEOProStats_Content): the goal's hits by
+     * `name_ts` or `path_ts`, joined to their visits by the primary key,
+     * so the cost is the goal's hits in the period.
+     *
+     * @param array<string,mixed> $goal    Goal.
+     * @param array<string,mixed> $range   from and to (Unix), as from SEOProStats_Query::range().
+     * @param int                 $channel Channel code (SEOProStats_Query::CHANNELS).
+     * @return array<int,int> Entry path id => visits that reached the goal.
+     */
+    public static function by_entry(array $goal, array $range, $channel) {
+        global $wpdb;
+        list($table, $column, $ids) = self::target($goal['kind'], $goal['match']);
+        if (!$ids) {
+            return array();
+        }
+        $holders = implode(', ', array_fill(0, count($ids), '%d'));
+        $args    = array_merge(
+            array(SEOProStats_Schema::table('sessions'), $table),
+            SEOProStats_Query::fact_window($range),
+            array($column),
+            $ids,
+            array($range['from'], $range['to'], (int) $channel)
+        );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `name_ts` or `path_ts`, and the primary key; $holders holds only placeholders.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT s.entry_id AS p, COUNT(DISTINCT f.session_id) AS n FROM %i s INNER JOIN %i f ON f.session_id = s.id WHERE f.ts >= %d AND f.ts < %d AND f.%i IN ($holders) AND s.started >= %d AND s.started < %d AND s.channel = %d GROUP BY s.entry_id", $args), ARRAY_A);
+        $out  = array();
+        foreach ((array) $rows as $row) {
+            $out[(int) $row['p']] = (int) $row['n'];
+        }
+        return $out;
+    }
+
+    /**
      * Funnel rows for one period.
      *
      * @param array<int,array<string,mixed>>                                $funnels Funnels.

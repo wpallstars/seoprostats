@@ -3,6 +3,7 @@
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
+* New: Search → Content, beside Opportunities (report=content): per page, Google's search clicks, position and CTR with the visits from organic search that started on it (any engine), their bounce rate, views and time, and how many reached a goal (the first, or one chosen), against the previous period. Sort by clicks, visits or conversions (sort=, goal= in the address); choose a page to open it in Rankings. Reads gsc_pages by its keys, a new daily summary of search landings by entry page, and the goal's hits by their index; days summarised before the update are filled in, newest first, by the background rollup, and the report says so until they are. REST route content, wp seoprostats content and, on WordPress 6.9 and later, the ability seoprostats/content. Demo visits from search engines now land on the pages its search data sends clicks to.
 * Changed: choosing a marker under a chart (Overview or Search) shows its changes in a window over the report, closed with Close or Escape, with Open in Changes for the same days (and page); the Changes section keeps its page in the address. Markers whose pills would touch, as on a phone, merge into one, so each can be chosen.
 * Changed: Search's Page and Query boxes each have an × that clears the box and applies at once.
 * Fixed: space between the Search Console notice and the cards under it, and between Search's cards; a one-day period reads as one day; windows fill a phone's width.

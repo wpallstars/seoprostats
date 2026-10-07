@@ -255,8 +255,8 @@ function Notes({ answer }: { answer: OpportunitiesAnswer }) {
 	);
 }
 
-/** A page: its path (opens Rankings) and View and Edit links. */
-function PageCell({ row, query, open }: { row: OpportunityPage; query: string; open: OpportunitiesProps['open'] }) {
+/** A page: its path (opens Rankings) and View and Edit links; also Content's. */
+export function PageCell({ row, query, open }: { row: OpportunityPage; query: string; open: OpportunitiesProps['open'] }) {
 	return (
 		<>
 			<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: row.path, query })}>

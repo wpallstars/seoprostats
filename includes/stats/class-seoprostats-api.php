@@ -1,7 +1,8 @@
 <?php
 /**
  * The REST API (namespace seoprostats/v1): the reports stats, timeseries,
- * breakdown, realtime, markers, changes, goals, funnels, properties, clicks and search, each on
+ * breakdown, realtime, markers, changes, goals, funnels, properties, clicks,
+ * search, opportunities and content, each on
  * live data or the demo data (data=demo); goals and funnels also add,
  * change and delete their definitions (administrators); demo (make, carry
  * on, remove) and view (the data set a person sees). Contract:
@@ -79,6 +80,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-clicks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-opportunities.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-content.php';
     }
 
     /**
@@ -299,6 +301,24 @@ final class SEOProStats_API {
                     'type'        => 'string',
                     'enum'        => SEOProStats_Opportunities::KINDS,
                     'default'     => 'striking',
+                ),
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/content', $read + array(
+            'callback' => array(__CLASS__, 'content'),
+            'args'     => $base + array(
+                'sort'   => array(
+                    'description' => __('Order of the pages, most first: search clicks, visits from search, or conversions of the goal.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Content::SORTS,
+                    'default'     => 'clicks',
+                ),
+                'goal'   => array(
+                    'description' => __('ID of the goal whose conversions are counted; the first goal when left out.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
                 ),
                 'limit'  => self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
@@ -790,6 +810,21 @@ final class SEOProStats_API {
         $kind = (string) $request->get_param('kind');
         return self::report($request, static function ($req) use ($kind) {
             return SEOProStats_Opportunities::report($req, $kind);
+        });
+    }
+
+    /**
+     * GET /content: per page, search clicks and position with the visits
+     * from search that landed on it and their conversions of a goal.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function content($request) {
+        $sort = (string) $request->get_param('sort');
+        $goal = (string) $request->get_param('goal');
+        return self::report($request, static function ($req) use ($sort, $goal) {
+            return SEOProStats_Content::report($req, $sort, $goal);
         });
     }
 
