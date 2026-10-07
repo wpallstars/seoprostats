@@ -53,7 +53,8 @@ final class SEOProStats_Clicks {
     public static function report(array $req, $kind = 'elements', $page = '') {
         $kind = in_array($kind, self::KINDS, true) ? (string) $kind : 'elements';
         $page = trim((string) $page);
-        $answer = SEOProStats_Query::cached('clicks', $req + array('kind' => $kind, 'page' => $page), static function () use ($req, $kind, $page) {
+        // Version the answer shape so pre-upgrade cache entries cannot omit page_info.
+        $answer = SEOProStats_Query::cached('clicks-pages', $req + array('kind' => $kind, 'page' => $page), static function () use ($req, $kind, $page) {
             $range  = SEOProStats_Query::range($req);
             $now    = self::scope($range, $req['filters'], $page);
             $totals = self::totals($now);

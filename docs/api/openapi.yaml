@@ -582,7 +582,8 @@ paths:
         Totals of the period, and rows of one `kind`: clicked elements (by
         selector and label, with their dead clicks), dead clicks only, link
         destinations, file links, or forms sent (by name, selector and
-        destination). Sorted by count. `page` keeps clicks on that page;
+        destination), or pages grouped by path with clicks, dead-click rate,
+        link clicks, forms sent and visits. Sorted by count. `page` keeps clicks on that page;
         filters select the visits, and a page filter also keeps clicks on
         that page. Clicks are kept 3 months by default (Settings → Data),
         so older ranges are empty. Never carries what anyone typed.
