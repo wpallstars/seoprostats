@@ -156,37 +156,33 @@ start_site() {
 }
 
 install_shops() {
-	local shop version pin metadata compatible
+	local shop version pin metadata url
 	local pins=()
-	local flags=()
-	# Older PHP images carry an older WP-CLI without requirement checks.
-	# Inspect its actual command schema instead of guessing a version cutoff.
-	if wp_cli cli cmd-dump | jq -e '.. | objects | select(.name? == "plugin") | .subcommands[] | select(.name == "install") | .synopsis | contains("--ignore-requirements")' >/dev/null; then
-		flags+=(--ignore-requirements)
-	fi
 	IFS=',' read -r -a pins <<<"$SHOP_VERSIONS"
 	for shop in woocommerce easy-digital-downloads fluent-cart; do
 		version=latest
 		for pin in ${pins[@]+"${pins[@]}"}; do
 			[[ "${pin%%=*}" != "$shop" ]] || version="${pin#*=}"
 		done
-		# Download without activation first: check the actual installed headers,
-		# not a guessed minimum. Do not turn arbitrary install failures into skips.
-		if [[ "$version" == latest ]]; then
-			wp_cli plugin install "$shop" ${flags[@]+"${flags[@]}"} --quiet
-		else
-			wp_cli plugin install "$shop" --version="$version" ${flags[@]+"${flags[@]}"} --quiet
-		fi
-		metadata="$(wp_cli plugin get "$shop" --format=json)"
-		printf '%s %s\n' "$shop" "$(jq -r .version <<<"$metadata")"
+		# Inspect the downloaded version's headers before installation. Older
+		# WP-CLI images have no --ignore-requirements flag; installing an
+		# incompatible shop would fail before we could report a clean skip.
 		# shellcheck disable=SC2016 # PHP variables, not shell expansion.
-		compatible="$(wp_cli eval 'require_once ABSPATH . "wp-admin/includes/plugin.php"; foreach (get_plugins() as $file => $data) { if (strpos($file, "'"$shop"'/") === 0) { echo is_wp_version_compatible($data["RequiresWP"]) && is_php_version_compatible($data["RequiresPHP"]) ? "yes" : "requires WordPress " . $data["RequiresWP"] . " / PHP " . $data["RequiresPHP"]; break; } }')"
-		if [[ "$compatible" != yes ]]; then
-			[[ -n "$compatible" ]] || die "cannot find installed headers for $shop"
-			printf 'SKIP %s: %s\n' "$shop" "$compatible"
+		url="$(wp_cli eval 'require_once ABSPATH . "wp-admin/includes/plugin-install.php"; $info = plugins_api("plugin_information", array("slug" => "'"$shop"'", "fields" => array("versions" => true))); if (is_wp_error($info)) { WP_CLI::error($info->get_error_message()); } $version = "'"$version"'"; $url = $version === "latest" ? $info->download_link : ($info->versions[$version] ?? ""); if (!$url) { WP_CLI::error("Shop version not found"); } echo $url;')"
+		[[ "$url" == https://downloads.wordpress.org/plugin/* ]] || die "unexpected download host for $shop"
+		curl -fSs --max-time 120 "$url" -o "$TMP_DIR/zips/$shop.zip"
+		mkdir "$TMP_DIR/zips/$shop-source"
+		unzip -q "$TMP_DIR/zips/$shop.zip" -d "$TMP_DIR/zips/$shop-source"
+		chmod -R a+rX "$TMP_DIR/zips/$shop-source"
+		# shellcheck disable=SC2016 # Only the fixed, validated shop slug is interpolated.
+		metadata="$(wp_cli eval 'require_once ABSPATH . "wp-admin/includes/plugin.php"; $file = "/zips/'"$shop"'-source/'"$shop"'/'"$shop"'.php"; if (!is_file($file)) { WP_CLI::error("Shop main file missing"); } $data = get_plugin_data($file, false, false); $data["compatible"] = is_wp_version_compatible($data["RequiresWP"]) && is_php_version_compatible($data["RequiresPHP"]); echo wp_json_encode($data);')"
+		printf '%s %s\n' "$shop" "$(jq -r .Version <<<"$metadata")"
+		if [[ "$(jq -r .compatible <<<"$metadata")" != true ]]; then
+			printf 'SKIP %s: requires WordPress %s / PHP %s\n' "$shop" "$(jq -r .RequiresWP <<<"$metadata")" "$(jq -r .RequiresPHP <<<"$metadata")"
 			continue
 		fi
-		wp_cli plugin activate "$shop" --quiet
+		chmod 644 "$TMP_DIR/zips/$shop.zip"
+		wp_cli plugin install "/zips/$shop.zip" --activate --quiet
 		SHOPS+=("$shop")
 	done
 	wp_cli eval 'seoprostats_shop_test_setup();'
@@ -207,9 +203,9 @@ request() {
 
 visit() {
 	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
-		--data '{"h":"127.0.0.1","e":[{"t":"p","p":"1111222233334444","u":"/?utm_source=shop-test&utm_medium=email&utm_campaign=purchases"}]}'
+		--data '{"h":"127.0.0.1","e":[{"t":"pv","p":"1111222233334444","u":"/?utm_source=shop-test&utm_medium=email&utm_campaign=purchases"}]}'
 	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
-		--data '{"h":"127.0.0.1","e":[{"t":"p","p":"5555666677778888","u":"/checkout/"}]}'
+		--data '{"h":"127.0.0.1","e":[{"t":"pv","p":"5555666677778888","u":"/checkout/"}]}'
 	wp_cli seoprostats process
 	return 0
 }
@@ -281,7 +277,7 @@ check_results() {
 main() {
 	parse_args "$@"
 	local tool zip
-	for tool in docker curl jq; do command -v "$tool" >/dev/null || die "needs $tool"; done
+	for tool in docker curl jq unzip; do command -v "$tool" >/dev/null || die "needs $tool"; done
 	docker info >/dev/null 2>&1 || die 'Docker is not running'
 	plugin_identity "$REF" || die 'cannot identify plugin'
 	NAME="$PLUGIN_SLUG-shop-$$"
