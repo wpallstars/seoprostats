@@ -61,8 +61,14 @@ long-term record.
       `rel="sponsored"`, with an Affiliate link event) and file flags;
       `clicks` table (schema v4) kept 3 months; REST, WP-CLI, demo data
       and a Clicks section (issue #22).
-- [ ] Enhanced: 404s, site search, author and categories, logged-in,
-      WooCommerce and Easy Digital Downloads purchases (once per order).
+- [x] Enhanced: pages not found, site search (words optional, masked;
+      no results), views by author, category and post type (`pages`
+      table filled by the minute job), logged-in visits; schema v5;
+      REST, WP-CLI, demo data and Overview cards (issue #27).
+- [ ] Purchases: WooCommerce and Easy Digital Downloads orders as
+      revenue events, once per order (server side, on payment), in each
+      order's currency.
+- [ ] Clicks by page with View and Edit links (issue #25).
 - [ ] Journeys (visitor per day timeline), Flow (Sankey), segments.
 
 ## Phase 3: changes and causes (depends on 1)
@@ -93,7 +99,11 @@ long-term record.
 ## Phase 6: reach (depends on 1–5)
 
 - [ ] Alerts and email reports, webhooks.
-- [ ] Shared read-only dashboards (private link, password, expiry).
+- [ ] Each section's view in the address (filters, period, tabs), so
+      any view can be bookmarked and shared (issue #24).
+- [ ] Shared client reports: saved interactive views (private link,
+      password, expiry) that clients keep watching, with the site's and
+      an agency's branding (issue #26, after #24).
 - [ ] Import (generic events JSON/CSV, daily aggregates) and export;
       undo by import id.
 - [ ] Abilities for MCP clients; aidevops SEO loop recipes in `docs/`.

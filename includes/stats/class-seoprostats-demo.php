@@ -145,6 +145,54 @@ final class SEOProStats_Demo {
         '/shop/pro-licence/'                   => 4,
     );
 
+    /** What the demo pages show (SEOProStats_Processor::write_pages()): path => post type, author, category. */
+    const CONTENT = array(
+        '/'                                    => array('page', 9001, 0),
+        '/blog/core-web-vitals-explained/'     => array('post', 9002, 9102),
+        '/blog/how-to-read-search-rankings/'   => array('post', 9001, 9101),
+        '/blog/privacy-friendly-analytics/'    => array('post', 9003, 9103),
+        '/blog/speed-up-wordpress/'            => array('post', 9002, 9102),
+        '/blog/what-changed-after-an-update/'  => array('post', 9001, 9104),
+        '/features/'                           => array('page', 9001, 0),
+        '/pricing/'                            => array('page', 9001, 0),
+        '/docs/'                               => array('page', 9003, 0),
+        '/docs/getting-started/'               => array('page', 9003, 0),
+        '/docs/faq/'                           => array('page', 9003, 0),
+        '/about/'                              => array('page', 9001, 0),
+        '/contact/'                            => array('page', 9001, 0),
+        '/shop/pro-licence/'                   => array('product', 9001, 9105),
+        '/cart/'                               => array('page', 9001, 0),
+        '/checkout/'                           => array('page', 9001, 0),
+    );
+
+    /** Names of the demo authors, categories and post types, by ID or name. */
+    const NAMES = array(
+        'author'    => array(9001 => 'Sam Rivera', 9002 => 'Priya Shah', 9003 => 'Jonas Weber'),
+        'category'  => array(9101 => 'Guides', 9102 => 'Performance', 9103 => 'Privacy', 9104 => 'News', 9105 => 'Licences'),
+        'post_type' => array('post' => 'Post', 'page' => 'Page', 'product' => 'Product'),
+    );
+
+    /** Addresses that are not found: old ones still linked from elsewhere, and typos. path => weight. */
+    const NOT_FOUND = array(
+        '/blog/seo-checklist-2024/'     => 5,
+        '/blog/core-web-vitals/'        => 3,
+        '/prcing/'                      => 2,
+        '/docs/instal/'                 => 1,
+        '/wp-content/uploads/guide.pdf' => 1,
+    );
+
+    /** Site searches: words => [weight, results]. */
+    const SEARCHES = array(
+        'core web vitals' => array(5, 3),
+        'pricing'         => array(3, 1),
+        'speed'           => array(3, 4),
+        'gdpr'            => array(3, 2),
+        'refund'          => array(2, 0),
+        'woocommerce'     => array(2, 0),
+        'import from csv' => array(1, 0),
+        'dark mode'       => array(1, 0),
+    );
+
     /** Browsers and devices: weight, user agent, screen width. */
     const DEVICES = array(
         array(30, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36', 1920),
@@ -445,6 +493,38 @@ final class SEOProStats_Demo {
     }
 
     /**
+     * What a demo page shows, as SEOProStats_Processor::page() finds it for
+     * a live one; null for lists and pages not found.
+     *
+     * @param string $path Page path.
+     * @return array{post_id:int,post_type:string,author_id:int,term_id:int}|null
+     */
+    public static function page($path) {
+        if (!isset(self::CONTENT[$path])) {
+            return null;
+        }
+        list($type, $author, $term) = self::CONTENT[$path];
+        return array(
+            'post_id'   => 1000 + (int) array_search($path, array_keys(self::CONTENT), true),
+            'post_type' => $type,
+            'author_id' => $author,
+            'term_id'   => $term,
+        );
+    }
+
+    /**
+     * Name of a demo author, category or post type (SEOProStats_Query
+     * labels demo rows with these, as the IDs are not the site's).
+     *
+     * @param string $dimension author, category or post_type.
+     * @param string $value     ID or post type name.
+     * @return string '' when unknown.
+     */
+    public static function name($dimension, $value) {
+        return isset(self::NAMES[$dimension][$value]) ? self::NAMES[$dimension][$value] : '';
+    }
+
+    /**
      * The collector's lines for the visits that start in [from, to), in
      * time order. Hits after now are left out.
      *
@@ -547,6 +627,24 @@ final class SEOProStats_Demo {
             }
         }
 
+        // What WordPress would say about the pages: some landings are not
+        // found, some visits search the site, a few are logged in.
+        $context = array_fill(0, count($paths), array());
+        if ($landing === 'content' && self::chance(0.03)) {
+            $paths[0]   = self::pick_key(self::NOT_FOUND);
+            $context[0] = array('n' => 1);
+        }
+        if (count($paths) > 1 && self::chance(0.12)) {
+            $words = self::pick_key(self::SEARCHES);
+            array_splice($paths, 1, 0, array('/'));
+            array_splice($context, 1, 0, array(array('q' => 1, 's' => $words, 'r' => self::SEARCHES[$words][1])));
+        }
+        if (self::chance(0.05)) {
+            foreach (array_keys($context) as $i) {
+                $context[$i]['l'] = 1;
+            }
+        }
+
         $lines  = array();
         $ts     = $started;
         $id     = bin2hex(random_bytes(6));
@@ -554,6 +652,9 @@ final class SEOProStats_Demo {
         foreach ($paths as $seq => $path) {
             $pkey = bin2hex(random_bytes(8));
             $hit  = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
+            if ($context[$seq]) {
+                $hit['x'] = $context[$seq];
+            }
             if ($seq === 0) {
                 $hit['u'] .= strtr($query, array('{c}' => strtolower($time->format('F')) . '-update', '{id}' => $id));
                 $hit['r']  = $referrer;

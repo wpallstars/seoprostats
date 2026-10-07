@@ -1,6 +1,8 @@
 /**
  * Overview: headline metrics, the chart, and where visits came from, what
- * they viewed, where and on what, and what they did (events).
+ * they viewed (pages, pages not found, content by author, category and
+ * type), what they searched for, where and on what, and what they did
+ * (events).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -71,6 +73,26 @@ export function Overview({ state, update }: ViewProps) {
 						{ dimension: 'page', title: __('Top pages', 'seoprostats') },
 						{ dimension: 'entry', title: __('Entry pages', 'seoprostats') },
 						{ dimension: 'exit', title: __('Exit pages', 'seoprostats') },
+						{ dimension: 'not_found', title: __('Not found', 'seoprostats') },
+					]}
+				/>
+				<BreakdownCard
+					title={__('Content', 'seoprostats')}
+					state={state}
+					update={update}
+					tabs={[
+						{ dimension: 'author', title: __('Authors', 'seoprostats') },
+						{ dimension: 'category', title: __('Categories', 'seoprostats') },
+						{ dimension: 'post_type', title: __('Post types', 'seoprostats') },
+					]}
+				/>
+				<BreakdownCard
+					title={__('Site search', 'seoprostats')}
+					state={state}
+					update={update}
+					tabs={[
+						{ dimension: 'search', title: __('Searches', 'seoprostats') },
+						{ dimension: 'no_results', title: __('No results', 'seoprostats') },
 					]}
 				/>
 				<BreakdownCard
@@ -90,6 +112,7 @@ export function Overview({ state, update }: ViewProps) {
 						{ dimension: 'device', title: __('Devices', 'seoprostats') },
 						{ dimension: 'browser', title: __('Browsers', 'seoprostats') },
 						{ dimension: 'os', title: __('Systems', 'seoprostats') },
+						{ dimension: 'login', title: __('Logged in', 'seoprostats') },
 					]}
 				/>
 				<BreakdownCard

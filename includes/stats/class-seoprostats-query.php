@@ -43,9 +43,12 @@ final class SEOProStats_Query {
     const OPS = array('is', 'is_not', 'contains', 'matches');
 
     /**
-     * Dimensions for filters and breakdowns: name => [level, column, kind].
-     * Level: session (a column of the visit), page (pageviews), event
-     * (events). Kind: a dictionary kind, or 'enum' or 'text'.
+     * Dimensions for filters and breakdowns: name => [level, column, kind,
+     * flag]. Level: session (a column of the visit), page (pageviews),
+     * event (events). Kind: a dictionary kind, 'enum', 'text', or
+     * 'content' (a column of the pages table, through the pageview's
+     * path). Flag (pages): a SEOProStats_Schema::PAGE_* flag the views
+     * must have.
      */
     const DIMENSIONS = array(
         'channel'      => array('session', 'channel', 'enum'),
@@ -60,9 +63,16 @@ final class SEOProStats_Query {
         'browser'      => array('session', 'browser_id', SEOProStats_Schema::DICT_BROWSER),
         'os'           => array('session', 'os_id', SEOProStats_Schema::DICT_OS),
         'language'     => array('session', 'lang_id', SEOProStats_Schema::DICT_LANGUAGE),
+        'login'        => array('session', 'login', 'enum'),
         'entry'        => array('session', 'entry_id', SEOProStats_Schema::DICT_PATH),
         'exit'         => array('session', 'exit_id', SEOProStats_Schema::DICT_PATH),
         'page'         => array('page', 'path_id', SEOProStats_Schema::DICT_PATH),
+        'not_found'    => array('page', 'path_id', SEOProStats_Schema::DICT_PATH, SEOProStats_Schema::PAGE_NOT_FOUND),
+        'search'       => array('page', 'search_id', SEOProStats_Schema::DICT_SEARCH, SEOProStats_Schema::PAGE_SEARCH),
+        'no_results'   => array('page', 'search_id', SEOProStats_Schema::DICT_SEARCH, SEOProStats_Schema::PAGE_NO_RESULTS),
+        'author'       => array('page', 'author_id', 'content'),
+        'category'     => array('page', 'term_id', 'content'),
+        'post_type'    => array('page', 'post_type', 'content'),
         'event'        => array('event', 'name_id', SEOProStats_Schema::DICT_EVENT),
     );
 
@@ -85,6 +95,12 @@ final class SEOProStats_Query {
         'desktop' => 1,
         'mobile'  => 2,
         'tablet'  => 3,
+    );
+
+    /** Login codes (SEOProStats_Processor) by name. */
+    const LOGINS = array(
+        'logged_out' => 0,
+        'logged_in'  => 1,
     );
 
     /** Seconds an answer is kept. */
@@ -493,9 +509,10 @@ final class SEOProStats_Query {
 
         foreach ($filters as $filter) {
             list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
+            $flag                        = isset(self::DIMENSIONS[$filter['dimension']][3]) ? self::DIMENSIONS[$filter['dimension']][3] : 0;
             $negate                      = $filter['op'] === 'is_not';
             // One visit value: its daily row (-1: no value matches).
-            $single = count($filters) === 1 && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1;
+            $single = count($filters) === 1 && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1 && isset(SEOProStats_Rollup::DIMS[$filter['dimension']]);
 
             if ($kind === 'text') {
                 if ($single) {
@@ -516,7 +533,13 @@ final class SEOProStats_Query {
                 continue;
             }
 
-            $ids = $kind === 'enum' ? self::codes($filter) : self::dict_ids($kind, $filter);
+            if ($kind === 'content') {
+                // Authors, categories, post types: the addresses that show them.
+                $ids    = self::content_paths($column, $filter);
+                $column = 'path_id';
+            } else {
+                $ids = $kind === 'enum' ? self::codes($filter) : self::dict_ids($kind, $filter);
+            }
             if ($single) {
                 $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], $ids ? (int) $ids[0] : -1);
             }
@@ -535,11 +558,14 @@ final class SEOProStats_Query {
                 continue;
             }
 
-            // Pages and events select the visits that have one.
+            // Pages and events select the visits that have one (with the
+            // dimension's flag: a page not found, a search).
             $table   = SEOProStats_Schema::table($level === 'page' ? 'pageviews' : 'events');
-            $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . " (SELECT f.session_id FROM %i f WHERE f.%i IN ($holders) AND f.ts >= %d AND f.ts < %d)";
-            $args    = array_merge($args, array($table, $column), $ids, self::fact_window($range));
-            if ($level === 'page' && !$negate) {
+            $cond    = $flag ? ' AND (f.flags & %d) > 0' : '';
+            $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . " (SELECT f.session_id FROM %i f WHERE f.%i IN ($holders)$cond AND f.ts >= %d AND f.ts < %d)";
+            $args    = array_merge($args, array($table, $column), $ids, $flag ? array($flag) : array(), self::fact_window($range));
+            // Pageviews then count views of these addresses only.
+            if ($level === 'page' && !$negate && $column === 'path_id') {
                 $pages = $pages === null ? $ids : array_values(array_intersect($pages, $ids));
             }
         }
@@ -770,7 +796,7 @@ final class SEOProStats_Query {
         $s     = SEOProStats_Schema::table('sessions');
         $where = $compiled['where'];
         $base  = array($range['from'], $range['to']);
-        $part  = $compiled['summary'] === array(0, 0) ? self::summary_part($range, $compiled) : null;
+        $part  = $compiled['summary'] === array(0, 0) && isset(SEOProStats_Rollup::DIMS[$dimension]) ? self::summary_part($range, $compiled) : null;
 
         if ($part) {
             $rows = self::daily_rows($dimension, $range, $part, $limit, $offset);
@@ -786,9 +812,15 @@ final class SEOProStats_Query {
                 $pages   = $compiled['pages'] ? $compiled['pages'] : array(0);
                 $holders = ' AND p.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
             }
-            $args = array_merge(array($s, SEOProStats_Schema::table('pageviews')), self::fact_window($range), $base, $compiled['args'], $pages, array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where and $holders hold only placeholders.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+            // Content: through the pages table by its primary key. A flag: those views only.
+            $flag    = isset(self::DIMENSIONS[$dimension][3]) ? self::DIMENSIONS[$dimension][3] : 0;
+            $content = $kind === 'content';
+            $value   = $content ? 'pg.%i' : 'p.%i';
+            $join    = $content ? ' INNER JOIN %i pg ON pg.path_id = p.path_id' : '';
+            $cond    = $flag ? ' AND (p.flags & %d) > 0' : '';
+            $args    = array_merge(array($column, $s, SEOProStats_Schema::table('pageviews')), $content ? array(SEOProStats_Schema::table('pages')) : array(), self::fact_window($range), $base, $flag ? array($flag) : array(), $compiled['args'], $pages, array($limit, $offset));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary keys; $value, $join, $cond, $where and $holders are fixed SQL and placeholders.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT $value AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id$join WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$cond$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         } else {
             $args = array_merge(array($s, SEOProStats_Schema::table('events')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
@@ -796,7 +828,7 @@ final class SEOProStats_Query {
         }
 
         $rows = (array) $rows;
-        $text = is_int($kind) ? self::texts(array_column($rows, 'v')) : array();
+        $text = is_int($kind) ? self::texts(array_column($rows, 'v')) : ($kind === 'content' ? self::content_names($dimension, array_column($rows, 'v')) : array());
         $out  = array();
         foreach ($rows as $row) {
             list($value, $label) = self::label($dimension, $kind, $row['v'], $text);
@@ -909,28 +941,153 @@ final class SEOProStats_Query {
     /**
      * A dimension value as the API shows it: [value to filter by, label].
      *
-     * @param string            $dimension Dimension name.
-     * @param int|string        $kind      Dictionary kind, enum or text.
-     * @param mixed             $raw       Stored value.
-     * @param array<int,string> $text      Dictionary texts by id.
+     * @param string                   $dimension Dimension name.
+     * @param int|string               $kind      Dictionary kind, enum, text or content.
+     * @param mixed                    $raw       Stored value.
+     * @param array<int|string,string> $text      Dictionary texts by id; content names by value.
      * @return array{0:string,1:string}
      */
     private static function label($dimension, $kind, $raw, array $text) {
         if ($kind === 'enum') {
-            $names = $dimension === 'channel' ? array_flip(self::CHANNELS) : array_flip(self::DEVICES);
+            $names = array_flip(self::enum_codes($dimension));
             $name  = isset($names[(int) $raw]) ? $names[(int) $raw] : 'unknown';
-            $label = $dimension === 'channel' ? self::channel_labels() : self::device_labels();
+            $label = self::enum_labels($dimension);
             return array($name, isset($label[$name]) ? $label[$name] : $name);
         }
         if ($kind === 'text') {
             $code = (string) $raw;
             return array($code, $code === '' ? __('Unknown', 'seoprostats') : $code);
         }
+        if ($kind === 'content') {
+            $value = (string) $raw;
+            if ($value === '' || $value === '0') {
+                return array($value, __('(none)', 'seoprostats'));
+            }
+            return array($value, isset($text[$value]) && $text[$value] !== '' ? $text[$value] : $value);
+        }
         $value = isset($text[(int) $raw]) ? $text[(int) $raw] : '';
         if ($value !== '') {
             return array($value, $value);
         }
+        if ($dimension === 'search' || $dimension === 'no_results') {
+            return array('', __('(words not recorded)', 'seoprostats'));
+        }
         return array('', $dimension === 'source' ? __('Direct', 'seoprostats') : __('(none)', 'seoprostats'));
+    }
+
+    /**
+     * Codes of an enum dimension by name.
+     *
+     * @param string $dimension channel, device or login.
+     * @return array<string,int>
+     */
+    private static function enum_codes($dimension) {
+        if ($dimension === 'channel') {
+            return self::CHANNELS;
+        }
+        return $dimension === 'login' ? self::LOGINS : self::DEVICES;
+    }
+
+    /**
+     * Labels of an enum dimension's names.
+     *
+     * @param string $dimension channel, device or login.
+     * @return array<string,string>
+     */
+    private static function enum_labels($dimension) {
+        if ($dimension === 'channel') {
+            return self::channel_labels();
+        }
+        if ($dimension === 'login') {
+            return array(
+                'logged_out' => __('Not logged in', 'seoprostats'),
+                'logged_in'  => __('Logged in', 'seoprostats'),
+            );
+        }
+        return self::device_labels();
+    }
+
+    /**
+     * Names of authors, categories (or other terms) or post types, looked
+     * up now (demo data: SEOProStats_Demo's), by value.
+     *
+     * @param string           $dimension author, category or post_type.
+     * @param array<int,mixed> $values    IDs, or post type names.
+     * @return array<int|string,string> Value => name (absent: not found); IDs are integer keys.
+     */
+    public static function content_names($dimension, array $values) {
+        $values = array_values(array_unique(array_filter(array_map('strval', $values), static function ($v) {
+            return $v !== '' && $v !== '0';
+        })));
+        $out = array();
+        if (!$values) {
+            return $out;
+        }
+        if (SEOProStats_Schema::set() === 'demo' && class_exists('SEOProStats_Demo')) {
+            foreach ($values as $value) {
+                $name = SEOProStats_Demo::name($dimension, $value);
+                if ($name !== '') {
+                    $out[$value] = $name;
+                }
+            }
+            return $out;
+        }
+        if ($dimension === 'post_type') {
+            foreach ($values as $value) {
+                $object = get_post_type_object($value);
+                if ($object) {
+                    $out[$value] = (string) $object->labels->singular_name;
+                }
+            }
+        } elseif ($dimension === 'author') {
+            foreach (get_users(array('include' => array_map('intval', $values), 'fields' => array('ID', 'display_name'))) as $user) {
+                $out[(string) $user->ID] = (string) $user->display_name;
+            }
+        } else {
+            $terms = get_terms(array('include' => array_map('intval', $values), 'hide_empty' => false, 'fields' => 'id=>name'));
+            if (is_array($terms)) {
+                foreach ($terms as $id => $name) {
+                    $out[(string) $id] = (string) $name;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Path ids of the addresses whose author, category or post type a
+     * filter selects (is_not: those it excludes). A value matches by its
+     * ID or name, or, for contains and matches, its name in any case.
+     *
+     * @param string                                            $column Column of the pages table.
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @return int[]
+     */
+    private static function content_paths($column, array $filter) {
+        global $wpdb;
+        $table = SEOProStats_Schema::table('pages');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by the column's index; a report request.
+        $known = array_map('strval', (array) $wpdb->get_col($wpdb->prepare('SELECT DISTINCT %i FROM %i LIMIT %d', $column, $table, self::MAX_IDS)));
+        $names = self::content_names($filter['dimension'], $known);
+        $chose = array();
+        foreach ($known as $value) {
+            $name = isset($names[$value]) ? $names[$value] : '';
+            foreach ($filter['values'] as $wanted) {
+                $hit = in_array($filter['op'], array('is', 'is_not'), true)
+                    ? ($wanted === $value || ($name !== '' && strtolower($wanted) === strtolower($name)))
+                    : (self::text_matches($filter['op'], strtolower($value), strtolower($wanted)) || ($name !== '' && self::text_matches($filter['op'], strtolower($name), strtolower($wanted))));
+                if ($hit) {
+                    $chose[] = $value;
+                    break;
+                }
+            }
+        }
+        if (!$chose) {
+            return array();
+        }
+        $holders = implode(', ', array_fill(0, count($chose), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by the column's index; fixed placeholders.
+        return array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i WHERE %i IN ($holders) LIMIT %d", array_merge(array($table, $column), $chose, array(self::MAX_IDS)))));
     }
 
     /**
@@ -974,7 +1131,7 @@ final class SEOProStats_Query {
      * @return int[]
      */
     private static function codes(array $filter) {
-        $codes = $filter['dimension'] === 'channel' ? self::CHANNELS : self::DEVICES;
+        $codes = self::enum_codes($filter['dimension']);
         $out   = array();
         foreach ($codes as $name => $code) {
             foreach ($filter['values'] as $value) {

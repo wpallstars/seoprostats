@@ -12,7 +12,9 @@
  *
  * Hit fields (from the tracker; all optional except t):
  *   pv:  p page-load id (16 hex), u path and query, r referrer URL,
- *        w screen width, tz time zone, l language, d properties
+ *        w screen width, tz time zone, l language, d properties,
+ *        x context (SEOProStats_Tracker::context(): n not found, q site
+ *        search, s its words, r its results, i the item shown, l logged in)
  *   eng: p page-load id, s visible milliseconds so far, sc deepest scroll %
  *   e:   p page-load id, n name, u path, d properties, rv {a amount, c currency}
  *   c:   p page-load id, s selector (tag#id.class), l label, h link target,
@@ -21,6 +23,11 @@
  *
  * Clicks and form submits join their page load's visit (looked up by its
  * id once the batch's pageviews are written) and never start or extend one.
+ *
+ * A pageview's context sets its flags and search words and the visit's
+ * login; the item it shows is looked up in WordPress (and kept only when
+ * its address is the page's), for the pages table: the hit says which
+ * item, never its author or category, so a forged hit cannot set them.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -294,6 +301,8 @@ final class SEOProStats_Processor {
                 $texts[SEOProStats_Schema::DICT_PATH][] = $h['path'];
                 if ($h['type'] === 'e') {
                     $texts[SEOProStats_Schema::DICT_EVENT][] = $h['name'];
+                } elseif ($h['search'] !== '') {
+                    $texts[SEOProStats_Schema::DICT_SEARCH][] = $h['search'];
                 }
                 foreach ($h['props'] as $key => $value) {
                     $texts[SEOProStats_Schema::DICT_PROP_KEY][] = (string) $key;
@@ -319,6 +328,7 @@ final class SEOProStats_Processor {
         $written            = self::write_clicks($clicks, $ids);
         $done['clicks']    += $written;
         $done['skipped']   += count($clicks) - $written;
+        self::write_pages($visits, $ids);
 
         // 5. Engagement onto its pageviews.
         $touched = array_values($session_ids);
@@ -383,7 +393,9 @@ final class SEOProStats_Processor {
             $visit    = &$visits[$key];
             $visit['ended'] = max($visit['ended'], $h['ts']);
             $visit['n']++;
-            $visit['hits'][] = self::fact($h, $visit['n']);
+            $fact            = self::fact($h, $visit['n']);
+            $visit['login']  = max($visit['login'], $fact['login']);
+            $visit['hits'][] = $fact;
             unset($visit);
         }
         return $visits;
@@ -434,6 +446,7 @@ final class SEOProStats_Processor {
             'os_ver'   => min(65535, $h['ua']['os_ver']),
             'device'   => $h['ua']['device'],
             'screen'   => self::int_in($hit, 'w', 0, 65535),
+            'login'    => 0,
         );
     }
 
@@ -462,6 +475,19 @@ final class SEOProStats_Processor {
             $revenue  = (int) round((float) $hit['rv']['a'] * 100);
             $currency = strtoupper((string) $hit['rv']['c']);
         }
+        // The page's context (pageviews only).
+        $ctx    = $h['type'] === 'pv' && isset($hit['x']) && is_array($hit['x']) ? $hit['x'] : array();
+        $flags  = 0;
+        $search = '';
+        if (!empty($ctx['n'])) {
+            $flags = SEOProStats_Schema::PAGE_NOT_FOUND;
+        } elseif (!empty($ctx['q'])) {
+            $flags = SEOProStats_Schema::PAGE_SEARCH;
+            if (isset($ctx['r']) && is_numeric($ctx['r']) && (int) $ctx['r'] === 0) {
+                $flags |= SEOProStats_Schema::PAGE_NO_RESULTS;
+            }
+            $search = isset($ctx['s']) && is_string($ctx['s']) ? self::search_words($ctx['s']) : '';
+        }
         return array(
             'type'     => $h['type'],
             'pkey'     => $h['pkey'],
@@ -472,7 +498,30 @@ final class SEOProStats_Processor {
             'props'    => $props,
             'revenue'  => $revenue,
             'currency' => $currency,
+            'flags'    => $flags,
+            'search'   => $search,
+            'post'     => $flags === 0 ? self::int_in($ctx, 'i', 0, PHP_INT_MAX) : 0,
+            'login'    => empty($ctx['l']) ? 0 : 1,
         );
+    }
+
+    /**
+     * Site search words as stored: one line, lower case, emails and long
+     * numbers masked (as click labels), at most 100 characters; '' when
+     * Settings → Tracking leaves them out (the tracker can be bypassed).
+     *
+     * @param string $words Words searched for.
+     * @return string
+     */
+    private static function search_words($words) {
+        if (!SEOProStats_Statistics::search_terms()) {
+            return '';
+        }
+        $words = trim((string) preg_replace('/[\s\x00-\x1F\x7F]+/u', ' ', $words));
+        $words = (string) preg_replace(array('/[^\s@]+@[^\s@]+/u', '/\+?\d(?:[\s().-]?\d){5,}/'), array('…@…', '#'), $words);
+        $words = function_exists('mb_strtolower') ? mb_substr(mb_strtolower($words, 'UTF-8'), 0, 100, 'UTF-8') : substr(strtolower($words), 0, 100);
+        // PHP 7.4 gives false, not '', for nothing left.
+        return (string) $words;
     }
 
     /**
@@ -520,13 +569,15 @@ final class SEOProStats_Processor {
                     self::id($ids, SEOProStats_Schema::DICT_OS, $v['os']),
                     $v['os_ver'],
                     $v['device'],
-                    $v['screen']
+                    $v['screen'],
+                    $v['login']
                 );
             }
-            // Continued visits keep their first-hit details; only the end moves.
-            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), UNHEX(%s), %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d, %d, %d)'));
+            // Continued visits keep their first-hit details; only the end
+            // moves, and a login part-way through counts for the visit.
+            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), UNHEX(%s), %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %s, %d, %d, %d, %d, %d, %d, %d, %d)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
-            $wpdb->query($wpdb->prepare("INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen) VALUES $groups ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended))", $args));
+            $wpdb->query($wpdb->prepare("INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen, login) VALUES $groups ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended)), login = GREATEST(login, VALUES(login))", $args));
 
             $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
@@ -570,12 +621,12 @@ final class SEOProStats_Processor {
         foreach (array_chunk($pv, self::BATCH) as $chunk) {
             $args = array(SEOProStats_Schema::table('pageviews'));
             foreach ($chunk as $h) {
-                array_push($args, $h['pkey'], $h['session_id'], $h['ts'], $h['seq'], $h['path_id']);
+                array_push($args, $h['pkey'], $h['session_id'], $h['ts'], $h['seq'], $h['path_id'], $h['flags'], self::id($ids, SEOProStats_Schema::DICT_SEARCH, $h['search']));
             }
             // A page-load id seen before (a resumed batch) is skipped.
-            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, %d, %d)'));
+            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, %d, %d, %d, %d)'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
-            $pageviews += (int) $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id) VALUES $groups", $args));
+            $pageviews += (int) $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id, flags, search_id) VALUES $groups", $args));
 
             $with_props = array_filter($chunk, static function ($h) {
                 return (bool) $h['props'];
@@ -784,6 +835,133 @@ final class SEOProStats_Processor {
             $inserted += (int) $wpdb->query($wpdb->prepare("INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields) VALUES $groups", $args));
         }
         return $inserted;
+    }
+
+    /**
+     * What the batch's pages show (post type, author, category), in the
+     * pages table: one row per address, written again at most once an
+     * hour. Live: the item a pageview names, looked up in WordPress and
+     * kept only when its address is the page's. Demo: SEOProStats_Demo's.
+     *
+     * @param array<string,array<string,mixed>> $visits Visits.
+     * @param array<int,array<string,int>>      $ids    Dictionary ids by kind.
+     */
+    private static function write_pages(array $visits, array $ids) {
+        global $wpdb;
+        $demo  = SEOProStats_Schema::set() === 'demo';
+        $views = array(); // path id => [path, post id, time]
+        foreach ($visits as $visit) {
+            foreach ($visit['hits'] as $h) {
+                if ($h['type'] !== 'pv' || $h['flags'] !== 0 || (!$demo && $h['post'] === 0)) {
+                    continue;
+                }
+                $path_id = self::id($ids, SEOProStats_Schema::DICT_PATH, $h['path']);
+                if ($path_id > 0 && (!isset($views[$path_id]) || $h['ts'] >= $views[$path_id][2])) {
+                    $views[$path_id] = array($h['path'], $h['post'], $h['ts']);
+                }
+            }
+        }
+        if (!$views) {
+            return;
+        }
+        $table = SEOProStats_Schema::table('pages');
+
+        // Rows checked in the last hour for the same item stay as they are.
+        $holders = implode(', ', array_fill(0, count($views), '%d'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; fixed placeholders.
+        $known = $wpdb->get_results($wpdb->prepare("SELECT path_id, post_id, seen FROM %i WHERE path_id IN ($holders)", array_merge(array($table), array_keys($views))));
+        foreach ((array) $known as $row) {
+            $view = $views[(int) $row->path_id];
+            if (($demo || (int) $row->post_id === $view[1]) && (int) $row->seen > $view[2] - HOUR_IN_SECONDS) {
+                unset($views[(int) $row->path_id]);
+            }
+        }
+        if (!$demo && $views) {
+            _prime_post_caches(array_values(array_unique(array_column($views, 1))), true, true);
+        }
+
+        $args = array($table);
+        $rows = 0;
+        foreach ($views as $path_id => $view) {
+            $page = $demo ? SEOProStats_Demo::page($view[0]) : self::page($view[0], $view[1]);
+            if ($page) {
+                array_push($args, $path_id, $page['post_id'], $page['post_type'], $page['author_id'], $page['term_id'], $view[2]);
+                $rows++;
+            }
+        }
+        if (!$rows) {
+            return;
+        }
+        $groups = implode(', ', array_fill(0, $rows, '(%d, %d, %s, %d, %d, %d)'));
+        // A later view wins; seen moves last, so the others compare with the old one.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
+        $wpdb->query($wpdb->prepare("INSERT INTO %i (path_id, post_id, post_type, author_id, term_id, seen) VALUES $groups ON DUPLICATE KEY UPDATE post_id = IF(VALUES(seen) >= seen, VALUES(post_id), post_id), post_type = IF(VALUES(seen) >= seen, VALUES(post_type), post_type), author_id = IF(VALUES(seen) >= seen, VALUES(author_id), author_id), term_id = IF(VALUES(seen) >= seen, VALUES(term_id), term_id), seen = GREATEST(seen, VALUES(seen))", $args));
+    }
+
+    /**
+     * What a post (or page, or other single item) is, when its address is
+     * the page's: its type, author and category (the primary one an SEO
+     * plugin set, else the first; for types without categories, the first
+     * term of their first public hierarchical taxonomy).
+     *
+     * @param string $path    Page path, with any query kept.
+     * @param int    $post_id Item the page showed.
+     * @return array{post_id:int,post_type:string,author_id:int,term_id:int}|null
+     */
+    private static function page($path, $post_id) {
+        $post = get_post($post_id);
+        if (!$post instanceof WP_Post || !in_array($post->post_status, array('publish', 'private'), true)) {
+            return null;
+        }
+        $link = get_permalink($post);
+        if (!is_string($link)) {
+            return null;
+        }
+        $want = self::split_url($link)['path'];
+        // Kept query parameters (?lang=…) still show the item; plain
+        // permalinks (?p=…) need theirs.
+        $have = strpos($want, '?') === false ? explode('?', $path, 2)[0] : $path;
+        if (untrailingslashit($want) !== untrailingslashit($have)) {
+            return null;
+        }
+        $taxonomy = is_object_in_taxonomy($post->post_type, 'category') ? 'category' : '';
+        if ($taxonomy === '') {
+            foreach (get_object_taxonomies($post->post_type, 'objects') as $object) {
+                if ($object->hierarchical && $object->public) {
+                    $taxonomy = $object->name;
+                    break;
+                }
+            }
+        }
+        $term = 0;
+        if ($taxonomy !== '') {
+            $terms = get_the_terms($post, $taxonomy);
+            if (is_array($terms) && $terms) {
+                $assigned = array_map('intval', wp_list_pluck($terms, 'term_id'));
+                $term     = $assigned[0];
+                foreach (array('_yoast_wpseo_primary_' . $taxonomy, 'rank_math_primary_' . $taxonomy) as $key) {
+                    $primary = (int) get_post_meta($post->ID, $key, true);
+                    if ($primary && in_array($primary, $assigned, true)) {
+                        $term = $primary;
+                        break;
+                    }
+                }
+            }
+        }
+        /**
+         * Filters the category (or other term) a post counts under in the
+         * statistics' Content report.
+         *
+         * @param int     $term Term ID, or 0 for none.
+         * @param WP_Post $post The post.
+         */
+        $term = (int) apply_filters('seoprostats_page_term', $term, $post);
+        return array(
+            'post_id'   => (int) $post->ID,
+            'post_type' => substr($post->post_type, 0, 20),
+            'author_id' => (int) $post->post_author,
+            'term_id'   => max(0, $term),
+        );
     }
 
     /**

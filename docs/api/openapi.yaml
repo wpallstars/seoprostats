@@ -747,12 +747,22 @@ components:
   schemas:
     Dimension:
       type: string
-      enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, entry, exit, page, event]
+      enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type, event]
       description: |
         channel: direct, organic_search, paid_search, ai, organic_social,
         paid_social, email, referral, paid_other. source: referring host.
-        device: desktop, mobile, tablet, unknown. entry, exit: first and
-        last page of a visit. page: any page viewed. event: event name.
+        device: desktop, mobile, tablet, unknown. login: logged_in,
+        logged_out (visits recorded before logins were counted are
+        logged_out). entry, exit:
+        first and last page of a visit. page: any page viewed. not_found:
+        a page that answered 404. search: the words of a site search (''
+        when not recorded); no_results: searches that found nothing.
+        author, category, post_type: what a viewed post, page or other
+        single item is; values are user IDs, term IDs and post type names,
+        and a filter also takes the name. Pageview dimensions count views
+        (pageviews); not_found, search, no_results, author, category and
+        post_type are read from the visits, not the daily summaries.
+        event: event name.
 
     Range:
       type: object

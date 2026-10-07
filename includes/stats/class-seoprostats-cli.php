@@ -172,7 +172,7 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * <dimension>
-     * : channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, entry, exit, page or event.
+     * : channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type or event.
      *
      * [--range=<range>]
      * : As for stats.

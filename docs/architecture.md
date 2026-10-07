@@ -82,7 +82,7 @@ batched and as `text/plain` so no CORS preflight:
 
 | Type | When | What |
 |---|---|---|
-| `pv` pageview | load, SPA navigation (`pushState`, `replaceState`, `popstate`; hash routes when enabled) | path and allowed query parameters, referrer, UTM tags, screen width, time zone, language, page properties (`data-props`) |
+| `pv` pageview | load, SPA navigation (`pushState`, `replaceState`, `popstate`; hash routes when enabled) | path and allowed query parameters, referrer, UTM tags, screen width, time zone, language, page properties (`data-props`); the page as loaded also sends its context (`data-ctx`: not found, site search with its words and result count, the post or other single item shown, logged in) |
 | `eng` engagement | page hidden or left | visible seconds, deepest scroll %, for the pageview it follows |
 | `e` event | `seoprostats('Name', {props, revenue})`, outbound links, affiliate links, file downloads, `data-sps-event` attributes | name, up to 30 properties (300 characters each, scalars only), revenue as `{amount, currency}` |
 | `c` click / `f` form | clicks on things made to be clicked (links, buttons, `role=button`…), images and elements shown with a pointer; form submits (autocapture, Settings → Tracking) | `tag#id.class` selector (names with three digits in a row left out), visible label (60 characters), destination (a path here, origin and path elsewhere, `mailto:`/`tel:` without the address), flags (dead, outbound, affiliate, file); a form's name, destination and field count. Never field values. |
@@ -148,6 +148,15 @@ query parameters, the DNT/GPC switch and excluded paths. Printing costs no
 query: the endpoint choice is an autoloaded option
 (`seoprostats_endpoint`) written by the loopback test. Do Not Track and GPC
 are checked in the browser, so a page cache can keep one copy of the page.
+
+The page's context (`SEOProStats_Tracker::context()`, in `data-ctx`) comes
+from the request's own main query only: `is_404()`, `is_search()` with the
+search words and `found_posts` (first page of results only), the queried
+object's ID on single items, and `is_user_logged_in()`. It names the item
+shown but never its author or category: the processor looks those up, so
+visitor pages pay nothing and a forged hit cannot set them. Search words
+are left out when Settings → Tracking says so; page addresses never keep
+the `s` parameter.
 
 ### Collector
 
@@ -222,7 +231,16 @@ to a fresh file, and processes it in batches within a time budget:
    as two. Hits are grouped per visit in memory, then written with one
    `INSERT … ON DUPLICATE KEY UPDATE` per visit.
 6. Facts: pageviews, events, clicks, vitals and errors in bulk inserts.
-   Engagement updates the pageview it belongs to.
+   Engagement updates the pageview it belongs to. A pageview's context
+   sets its flags (not found, site search, no results) and search words
+   (one line, lower case, emails and long numbers masked, 100 characters),
+   and a visit with any logged-in pageview counts as logged in.
+7. Pages: for each address in the batch that showed a single item, the
+   item is looked up in WordPress (`_prime_post_caches()`, then its
+   permalink, type, author and category: the primary one an SEO plugin set,
+   else the first; filter `seoprostats_page_term`) and kept in `pages`
+   only when its permalink is the page's address. An address checked in
+   the last hour for the same item is skipped.
 
 Text values (paths, referrers, campaign names, event names, selectors…)
 are stored once in a dictionary table and referenced by number, so fact
@@ -247,8 +265,8 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | Table | One row per | Key columns |
 |---|---|---|
 | `dict` | distinct text of a kind | `id`, `kind`, `hash` BINARY(8) (unique with kind), `value` |
-| `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `lang_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `source`, `import_id` (revenue is per event, in its currency) |
-| `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (404, site search) |
+| `sessions` | visit | `id`, `skey` (unique), `visitor`, `day`, `started`, `ended`, `pageviews`, `events`, `engaged_ms`, `entry_id`, `exit_id`, `ref_host_id`, `ref_path_id`, `channel`, `utm_*_id` (5), `country`, `region_id`, `city_id`, `lang_id`, `browser_id`, `browser_ver`, `os_id`, `os_ver`, `device`, `screen`, `source`, `import_id`, `login` (1: logged in on any of its pages; schema v5) (revenue is per event, in its currency) |
+| `pageviews` | page load | `id`, `pkey` (the tracker's page-load ID, unique), `session_id`, `ts`, `seq`, `path_id`, `engaged_ms`, `scroll`, `flags` (1 not found, 2 site search, 4 no results), `search_id` (the search words; 0 when none or not recorded; schema v5) |
 | `events` | custom or automatic event | `id`, `session_id`, `ts`, `seq`, `path_id`, `name_id`, `revenue`, `currency` |
 | `props` | property of a pageview or event | `owner`, `owner_id`, `key_id`, `value_id`, `ts` (reports by period, and retention) |
 | `clicks` | click or form submit (schema v4) | `id`, `session_id`, `ts`, `seq`, `path_id` (the page load's: clicks join it by its ID and never start or extend a visit), `kind` (1 click, 2 form), `selector_id`, `label_id`, `target_id`, `flags` (1 dead, 2 outbound, 4 affiliate, 8 file), `fields` (a form's) |
@@ -260,7 +278,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | day × page / query / page and query / device and country | `clicks`, `impressions`, `pos_impr` (position × impressions, for weighted averages) |
 | `changes` | marker on the timeline | `id`, `ts`, `kind`, `path_id`, `object_type`, `object_id`, `old`, `new`, `meta` (JSON), `source`, `user_id` |
 | `snapshots` | stored version of a page | `path_id`, `post_id`, `ts`, title, description, H1, word count, text hash, compressed text |
-| `pages` | known URL | `path_id`, `post_id`, `title`, `launched`, `removed`, `status` |
+| `pages` | address that shows one item (schema v5) | `path_id` (primary key), `post_id`, `post_type`, `author_id`, `term_id`, `seen` (when last checked; the latest view wins); later `title`, `launched`, `removed`, `status` |
 | `links` | backlink | source URL and host, target page, anchor, rel, first and last seen, lost, authority, how found |
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run | source, status, rows, days covered; imported rows carry its id so it can be undone |
@@ -279,6 +297,9 @@ seq)` for journeys and funnels, `(path_id, ts)` for page reports and
 `(dim, val, day)` on `daily`. `props` has `(owner, ts)` for listing keys
 and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
 `clicks` has `ts` and `(path_id, ts)` for one page's clicks (schema v4);
+`pageviews` has `(search_id, ts)` for search filters, and `pages` a key
+on each of `post_type`, `author_id` and `term_id` for content filters
+(schema v5);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -329,8 +350,11 @@ ones, and making demo data tests them. By default it covers 400 days
 moves a little with the seasons, has the odd spike (a post shared on a
 forum, a newsletter), and has a monthly newsletter campaign, paid search
 and social, AI answers, events with properties, purchases with revenue
-in three currencies, and for its last three months clicks (some dead, some
-on affiliate links) and form submits. Making it is done in slices of up to ten seconds per
+in three currencies, pages not found (old addresses and typos), site
+searches (some finding nothing), logged-in visits, authors, categories
+and post types for its pages (`SEOProStats_Demo::CONTENT`, with names of
+its own, as the IDs are not the site's), and for its last three months
+clicks (some dead, some on affiliate links) and form submits. Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
 making the same visits. While someone looks at it, demo data is topped
@@ -374,6 +398,15 @@ comma means any of, separate filters mean all of. Visit-level filters
 the visits that have one, and a page filter also limits pageviews to that
 page. Dictionary filters look up ids first (`SEOProStats_Dict::find()`,
 `like()`), so the fact tables are only ever matched on integer ids.
+
+Some page dimensions are pageviews with a flag: `not_found` (paths that
+answered 404), `search` and `no_results` (search words, by `(search_id,
+ts)`). `author`, `category` and `post_type` go through `pages`: a
+breakdown joins it by its primary key; a filter turns the values into the
+path ids that show them (matching an ID or post type name, or a name,
+which is looked up when the report is made, so renames show at once) and
+then works as a page filter. These, unlike `login`, are not in `daily`:
+they read the fact tables, so they reach back as far as visits are kept.
 
 Visits belong to a range by their start time. A range that starts at
 midnight reads `daily` for its whole days up to the last rolled one, and
@@ -482,6 +515,11 @@ Sections: Overview · Behaviour (Flow, Journeys, Clicks, Funnels, Goals,
 Properties) · Pages (All, New, Not found, Site search, page detail) ·
 Search (Rankings, Opportunities, Backlinks) · Health (Speed, Errors,
 Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
+
+The Overview's cards: Sources; Pages (top, entry, exit, not found);
+Content (authors, categories, post types); Site search (searches, no
+results); Locations; Devices (devices, browsers, systems, logged in);
+Events.
 
 Built so far: Overview, Goals, Funnels, Properties and Clicks, as WordPress tabs
 at the top of the screen and as submenu items (links to the hash, marked
