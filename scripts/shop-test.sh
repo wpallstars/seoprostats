@@ -223,12 +223,15 @@ woo() {
 			-H "Nonce: $nonce" -H 'Content-Type: application/json' \
 			--data "{\"billing_address\":{\"first_name\":\"Shop\",\"last_name\":\"Test\",\"address_1\":\"1 Test Road\",\"city\":\"New York\",\"state\":\"NY\",\"postcode\":\"10001\",\"country\":\"US\",\"email\":\"shop@example.com\"},\"payment_method\":\"$method\"}"
 		order="$(jq -er '.order_id' "$TMP_DIR/response")"
+		[[ "$order" =~ ^[1-9][0-9]*$ ]] || die 'Store API did not return an order ID'
 		if [[ "$method" == bacs ]]; then
+			# shellcheck disable=SC2016 # Numeric ID above, PHP variables stay literal.
+			wp_cli eval '$order = wc_get_order('"$order"'); if ($order->get_status() !== "on-hold" || !$order->get_meta("_seoprostats_visit") || $order->get_meta("_seoprostats_recorded")) { WP_CLI::error("FAIL WooCommerce: unpaid bank transfer must retain its visit, not a purchase"); }'
 			wp_cli wc shop_order update "$order" --status=completed --user=1 --porcelain
 			wp_cli wc shop_order update "$order" --status=processing --user=1 --porcelain
 		fi
 	done
-	wp_cli wc shop_order create --status=completed --user=1 --porcelain
+	wp_cli wc shop_order create --status=completed --line_items="[{\"product_id\":$product,\"quantity\":2}]" --user=1 --porcelain
 	return 0
 }
 
