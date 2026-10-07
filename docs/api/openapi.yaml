@@ -178,8 +178,10 @@ paths:
         charts: posts and pages published, unpublished, moved, retitled and
         edited; SEO titles, descriptions, robots and canonicals; prices,
         sales, stock and coupons; plugins, themes and WordPress updated or
-        switched; and settings that change how search engines see the site.
-        `page` keeps that page's changes and the site-wide ones.
+        switched; settings that change how search engines see the site;
+        search engine updates when switched on, with those that began up to
+        60 days before the range and were still rolling out in it; and
+        notes. `page` keeps that page's changes and the site-wide ones.
       parameters:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
@@ -827,17 +829,19 @@ components:
       in: query
       description: |
         Only these kinds or groups of change, comma-separated. Groups:
-        content, seo, product, site, note. Kinds: published, unpublished,
-        address, title, content, links, external_links; seo_title,
-        meta_description, robots, canonical; out_of_stock, back_in_stock,
-        price_up, price_down, sale_started, sale_ended, coupon_published,
-        coupon_changed, coupon_removed; plugin_installed, plugin_updated,
-        plugin_activated, plugin_deactivated, plugin_deleted,
-        theme_switched, theme_updated, core_updated, search_visibility,
-        permalinks, site_address, front_page; note.
+        content, seo, product, site, search, note. Kinds: published,
+        unpublished, address, title, content, links, external_links;
+        seo_title, meta_description, robots, canonical; out_of_stock,
+        back_in_stock, price_up, price_down, sale_started, sale_ended,
+        coupon_published, coupon_changed, coupon_removed; plugin_installed,
+        plugin_updated, plugin_activated, plugin_deactivated,
+        plugin_deleted, theme_switched, theme_updated, core_updated,
+        search_visibility, permalinks, site_address, front_page;
+        search_update (search engine updates, when switched on under
+        Settings → Data); note.
       schema:
         type: string
-        examples: [product, 'plugin_updated,core_updated']
+        examples: [product, 'plugin_updated,core_updated', search]
     id:
       name: id
       in: path
@@ -1134,7 +1138,7 @@ components:
           description: What changed (the kinds parameter lists them).
         group:
           type: string
-          enum: [content, seo, product, site, note]
+          enum: [content, seo, product, site, search, note]
         label:
           type: string
           description: One line saying what changed, in the site's language.
@@ -1146,17 +1150,17 @@ components:
           description: The page it affects; null for site-wide changes.
         old:
           type: string
-          description: Value before (a path, title, word count, price, version or setting); empty when there was none.
+          description: Value before (a path, title, word count, price, version or setting); empty when there was none. For search_update, its type (core, spam, link_spam, helpful_content, reviews, product_reviews, site_reputation, discover, ranking, crawling, indexing, serving or announcement).
         new:
           type: string
-          description: Value after.
+          description: Value after. For search_update, its id at the source.
         object:
           type: object
           required: [type, id]
           properties:
             type:
               type: string
-              description: The post type, or coupon, plugin, theme, core, option.
+              description: The post type, or coupon, plugin, theme, core, option; for search_update the engine (google, or a key from the feed's name).
             id:
               type: integer
         meta:
@@ -1166,7 +1170,9 @@ components:
             (words); links: added, removed, changed (each to and text);
             external_links: gained, lost (hosts); prices: currency, field
             (regular, sale or price); plugins: file; coupons: fields
-            changed (old and new).
+            changed (old and new); search_update: name, engine (to show),
+            url (at the source), ended (ISO 8601; empty while rolling out;
+            only for updates that roll out over a span), feed (other feeds).
           additionalProperties: true
         source:
           type: string

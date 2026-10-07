@@ -19,6 +19,7 @@ colors:
   mark-seo: "#8a3fd1"
   mark-product: "#008a20"
   mark-site: "#996800"
+  mark-search: "#c9356e"
   mark-note: "#1d2327"
 typography:
   # Recommended levels: headline-display, headline-lg, headline-md, body-lg, body-md, body-sm, label-lg, label-md, label-sm
@@ -146,6 +147,7 @@ Each group of the change log has a colour (`--spst-mark-{group}`), used for the 
 - **SEO (`#8a3fd1`)**: SEO titles, descriptions, robots, canonicals.
 - **Products (`#008a20`)**: prices, sales, stock, coupons.
 - **Site (`#996800`)**: plugins, themes, WordPress, settings.
+- **Search engines (`#c9356e`)**: search engine updates. A rollout also draws a 3 px bar in the group's colour under the markers, from its start to its end (or now), at 55% opacity so overlapping rollouts stay visible; it is decorative, as the marker's label gives the duration.
 - **Notes (`#1d2327`)**: notes added by people and agents.
 
 ## 3. Typography

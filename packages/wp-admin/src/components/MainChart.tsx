@@ -1,6 +1,7 @@
 /**
  * The chosen metric over time, with the comparison period as a dashed
- * line, and the changes in the range in a markers lane under it. The chart
+ * line, and the changes in the range in a markers lane under it, with
+ * search engine updates' rollouts as bars. The chart
  * is drawn for sight; a table carries the same numbers and changes for
  * screen readers, and the lane's markers are buttons.
  *
@@ -21,7 +22,7 @@ import {
 } from '@seoprostats/charts';
 import { formatMetric, METRICS, type Marker, type MetricKey, type TimeseriesAnswer } from '@seoprostats/core';
 import { locale } from '../boot';
-import { changesByPoint, chartMarkers, groupColors } from '../changelog';
+import { changesByPoint, chartMarkers, chartSpans, groupColors } from '../changelog';
 import { axisLabel, longLabel } from '../dates';
 import { compareLabel, metricLabel } from '../labels';
 
@@ -148,6 +149,7 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 		const colors = groupColors(el);
 		const laneConfig: MarkersLaneConfig = {
 			markers: chartMarkers(byPoint, colors),
+			spans: chartSpans(series, markers ?? [], colors),
 			label: __('Changes', 'seoprostats'),
 			pointLabel: (i) => (series.points[i] ? longLabel(series.points[i].t, series.grain) : ''),
 			/* translators: %s: number of changes not listed. */
@@ -161,7 +163,7 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 			lane.current = createMarkersLane(el, laneConfig);
 		}
 		layoutLane();
-	}, [byPoint, series]);
+	}, [byPoint, series, markers]);
 
 	useEffect(() => {
 		const el = holder.current;

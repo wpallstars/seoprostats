@@ -1,7 +1,8 @@
 /**
  * Changes: the change log for the period, newest first. What changed,
  * when, on which page and by whom: posts, SEO fields, products, plugins,
- * themes and settings, and notes people and agents add. Optionally one
+ * themes and settings, search engine updates (when switched on), and
+ * notes people and agents add. Optionally one
  * page's (with the site-wide changes) or one group's. Administrators add
  * and delete notes here.
  *
@@ -10,7 +11,7 @@
  */
 
 import { useEffect, useId, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, ExternalLink, Notice, SelectControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, toggleFilterValue, type ChangeGroup, type ChangeSource, type Marker } from '@seoprostats/core';
 import { addNote, deleteNote, errorMessage, useBreakdown, useChanges } from './api';
@@ -18,7 +19,7 @@ import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
-import { CHANGE_GROUPS, filteredPage, groupLabel } from './changelog';
+import { CHANGE_GROUPS, filteredPage, groupLabel, sourceUrl } from './changelog';
 import { momentLabel } from './dates';
 import { DefinitionModal } from './components/DefinitionModal';
 import { TableScroll } from './components/TableScroll';
@@ -194,7 +195,7 @@ export function Changes({ state, update }: ViewProps) {
 						<div className="spst-empty">
 							<p>{__('No changes in this period.', 'seoprostats')}</p>
 							<p>
-								{__('Posts and pages published or edited, SEO titles and descriptions, product prices and stock, plugins, themes and settings are logged as they change.', 'seoprostats')}
+								{__('Posts and pages published or edited, SEO titles and descriptions, product prices and stock, plugins, themes and settings are logged as they change. Google’s search updates show here too once switched on under Settings → Data.', 'seoprostats')}
 							</p>
 						</div>
 					)}
@@ -227,7 +228,18 @@ export function Changes({ state, update }: ViewProps) {
 													/>
 													<span>{change.label}</span>
 												</span>
-												<span className="spst-meta">{groupLabel(change.group)}</span>
+												<span className="spst-meta">
+													{groupLabel(change.group)}
+													{sourceUrl(change) && (
+														<>
+															{' · '}
+															<ExternalLink href={sourceUrl(change) ?? ''}>
+																{__('Source', 'seoprostats')}
+																<span className="screen-reader-text"> {change.label}</span>
+															</ExternalLink>
+														</>
+													)}
+												</span>
 											</td>
 											<td>
 												{change.path ? (

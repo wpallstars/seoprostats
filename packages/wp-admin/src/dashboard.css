@@ -327,6 +327,16 @@
 	outline-offset: 1px;
 }
 
+/* A search engine update's rollout, under its marker. */
+.spst-chart-lane__span {
+	position: absolute;
+	bottom: 1px;
+	height: 3px;
+	border-radius: 2px;
+	opacity: 0.55;
+	pointer-events: none;
+}
+
 .spst-chart-lane__dot {
 	flex: none;
 	width: 8px;

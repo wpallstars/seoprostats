@@ -39,6 +39,9 @@ final class SEOProStats_Collection {
     /** Cron hook, every minute: the processor (one file check when idle). */
     const PROCESS_HOOK = 'seoprostats_process';
 
+    /** Daily cron hook: search engine updates (only while that setting is on). */
+    const DAILY_HOOK = 'seoprostats_daily';
+
     /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
     const PROCESS_OPTION = 'seoprostats_processor';
 
@@ -54,6 +57,7 @@ final class SEOProStats_Collection {
     public static function init() {
         add_action(self::CRON_HOOK, array(__CLASS__, 'refresh'));
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process'));
+        add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
         add_filter('cron_schedules', array(__CLASS__, 'cron_schedules')); // phpcs:ignore WordPress.WP.CronInterval -- one minute on purpose: hits wait in the buffer until it runs, and an idle run is one file check.
         add_action('rest_api_init', array(__CLASS__, 'register_route'));
         add_action('admin_init', array(__CLASS__, 'schedule'));
@@ -73,6 +77,13 @@ final class SEOProStats_Collection {
         }
         if (!wp_next_scheduled(self::PROCESS_HOOK)) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, 'seoprostats_minute', self::PROCESS_HOOK);
+        }
+        // Search engine updates: the first run a minute after the setting is switched on.
+        $daily = wp_next_scheduled(self::DAILY_HOOK);
+        if (SEOProStats_Statistics::search_updates() && !$daily) {
+            wp_schedule_event(time() + MINUTE_IN_SECONDS, 'daily', self::DAILY_HOOK);
+        } elseif ($daily && !SEOProStats_Statistics::search_updates()) {
+            wp_clear_scheduled_hook(self::DAILY_HOOK);
         }
         if (get_option(self::ENDPOINT_OPTION) === false) {
             // Sites from before the option: the last test's answer, until the next test.
@@ -108,6 +119,15 @@ final class SEOProStats_Collection {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
         SEOProStats_Processor::run();
         SEOProStats_Rollup::run();
+    }
+
+    /**
+     * Daily cron: search engine updates (the class loads only here and in
+     * WP-CLI).
+     */
+    public static function daily() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
+        SEOProStats_Search_Updates::run();
     }
 
     /**
@@ -386,6 +406,8 @@ final class SEOProStats_Collection {
         }
         wp_clear_scheduled_hook(self::CRON_HOOK);
         wp_clear_scheduled_hook(self::PROCESS_HOOK);
+        wp_clear_scheduled_hook(self::DAILY_HOOK);
+        delete_option('seoprostats_search_updates');
         delete_option(self::SALTS_OPTION);
         delete_option(self::STATE_OPTION);
         delete_option(self::ENDPOINT_OPTION);

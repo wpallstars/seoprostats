@@ -7,7 +7,7 @@
  */
 
 import { __ } from '@wordpress/i18n';
-import type { ChartMarker } from '@seoprostats/charts';
+import type { ChartMarker, ChartSpan } from '@seoprostats/charts';
 import { CHANGE_GROUPS, type ChangeGroup, type Filter, type Marker, type TimeseriesAnswer } from '@seoprostats/core';
 
 export { CHANGE_GROUPS };
@@ -18,6 +18,7 @@ export function groupLabel(group: ChangeGroup): string {
 		seo: __('SEO', 'seoprostats'),
 		product: __('Products', 'seoprostats'),
 		site: __('Site', 'seoprostats'),
+		search: __('Search engines', 'seoprostats'),
 		note: __('Notes', 'seoprostats'),
 	};
 	return labels[group] ?? group;
@@ -29,8 +30,24 @@ const COLORS: Record<ChangeGroup, string> = {
 	seo: '#8a3fd1',
 	product: '#008a20',
 	site: '#996800',
+	search: '#c9356e',
 	note: '#1d2327',
 };
+
+/**
+ * A search engine update's rollout: its end ('' while rolling out), or
+ * undefined for a change that does not last (an announcement, a post).
+ */
+export function rolloutEnd(marker: Marker): string | undefined {
+	const ended = marker.kind === 'search_update' ? marker.meta.ended : undefined;
+	return typeof ended === 'string' ? ended : undefined;
+}
+
+/** A search engine update's address at its source, if any. */
+export function sourceUrl(marker: Marker): string | undefined {
+	const url = marker.kind === 'search_update' ? marker.meta.url : undefined;
+	return typeof url === 'string' && /^https?:\/\//.test(url) ? url : undefined;
+}
 
 /** Each group's colour, from the stylesheet when it can be read. */
 export function groupColors(el: Element | null): Record<ChangeGroup, string> {
@@ -80,14 +97,53 @@ export function pointIndex(series: TimeseriesAnswer, t: string): number {
 	return found;
 }
 
-/** Changes by point, for the chart's lane and table. */
+/** Whether a time falls before the series' first point. */
+function beforeRange(series: TimeseriesAnswer, t: string): boolean {
+	const first = Date.parse(series.points[0]?.t ?? '');
+	return Number.isFinite(first) && Date.parse(t) < first;
+}
+
+/**
+ * Changes by point, for the chart's lane and table. A rollout that began
+ * before the range (the API adds those still running) shows on its first
+ * point.
+ */
 export function changesByPoint(series: TimeseriesAnswer, markers: Marker[]): Map<number, Marker[]> {
 	const out = new Map<number, Marker[]>();
 	for (const marker of markers) {
-		const i = pointIndex(series, marker.t);
+		let i = pointIndex(series, marker.t);
+		if (i < 0 && rolloutEnd(marker) !== undefined && beforeRange(series, marker.t) && series.points.length) {
+			i = 0;
+		}
 		if (i >= 0) {
 			out.set(i, [...(out.get(i) ?? []), marker]);
 		}
+	}
+	return out;
+}
+
+/**
+ * Rollouts as spans: from the point they began in (or the first) to the
+ * point they ended in, or to now while rolling out.
+ */
+export function chartSpans(series: TimeseriesAnswer, markers: Marker[], colors: Record<ChangeGroup, string>): ChartSpan[] {
+	const last = series.points.length - 1;
+	if (last < 0) {
+		return [];
+	}
+	const out: ChartSpan[] = [];
+	for (const marker of markers) {
+		const ended = rolloutEnd(marker);
+		if (ended === undefined) {
+			continue;
+		}
+		const start = beforeRange(series, marker.t) ? 0 : pointIndex(series, marker.t);
+		const until = ended === '' ? series.generated ?? new Date().toISOString() : ended;
+		if (start < 0 || beforeRange(series, until)) {
+			continue;
+		}
+		const end = pointIndex(series, until);
+		out.push({ from: start, to: end < 0 ? last : end, color: colors[marker.group] ?? COLORS.search });
 	}
 	return out;
 }

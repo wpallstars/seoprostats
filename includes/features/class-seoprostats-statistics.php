@@ -218,6 +218,22 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Clicks and form submits', 'seoprostats'),
                 'description' => __('Many rows, most useful while a page is new or changing. Never kept longer than their visits.', 'seoprostats'),
             ),
+            'search_updates'          => array(
+                'type'        => 'bool',
+                'default'     => false,
+                'tab'         => 'data',
+                'label'       => __('Show search engine updates', 'seoprostats'),
+                'description' => __('Mark Google\'s ranking updates (core, spam, reviews and others) and its crawling, indexing and serving incidents on the charts and in Changes, with how long each rolled out, so a change in traffic can be weighed against them. Once a day the site asks Google\'s Search Status Dashboard (status.search.google.com) for them: one request, sending nothing about the site or its visitors. The last two years it lists are added the first time.', 'seoprostats'),
+            ),
+            'search_updates_feeds'    => array(
+                'type'        => 'lines',
+                'default'     => '',
+                'parent'      => 'search_updates',
+                'rows'        => 3,
+                'label'       => __('Other feeds', 'seoprostats'),
+                'description' => __('RSS, Atom or JSON Feed addresses of other sources you trust, such as a search engine\'s blog, one per line; after a space, the name to show (without one, the domain). Their posts whose title names an update are added once a day, one request to each.', 'seoprostats'),
+                'placeholder' => 'https://example.com/feed/ Bing',
+            ),
             'viewers'                 => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -463,6 +479,33 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
             }
         }
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Whether search engine updates are fetched.
+     *
+     * @return bool
+     */
+    public static function search_updates() {
+        return (bool) SEOProStats_Settings::get('search_updates');
+    }
+
+    /**
+     * The other search update feeds: address, engine key and name, each
+     * address once, at most SEOProStats_Search_Updates::MAX_FEEDS.
+     *
+     * @return array<int,array{url:string,engine:string,name:string}>
+     */
+    public static function search_feeds() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
+        $out = array();
+        foreach (self::lines('search_updates_feeds') as $line) {
+            $feed = SEOProStats_Search_Updates::parse_feed_line($line);
+            if ($feed && !isset($out[$feed['url']])) {
+                $out[$feed['url']] = $feed;
+            }
+        }
+        return array_slice(array_values($out), 0, SEOProStats_Search_Updates::MAX_FEEDS);
     }
 
     /**

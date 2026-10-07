@@ -59,7 +59,7 @@ Yes. The Overview lists the addresses people reached that were not found, what t
 
 = Does it show what changed on the site? =
 
-Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. The Changes section lists it, and a lane under the Overview's chart marks each change on the day it happened. Administrators add notes for what the log cannot see, such as a newsletter sent. Scripts and AI agents read it and add notes through the REST API (markers, changes, annotations), wp seoprostats changes and annotate, and on WordPress 6.9 and later the abilities seoprostats/markers and seoprostats/annotate, so traffic and sales can be set against what changed.
+Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. The Changes section lists it, and a lane under the Overview's chart marks each change on the day it happened. Administrators add notes for what the log cannot see, such as a newsletter sent. Switched on under Settings → Data, Google's search ranking updates and search incidents show there too, with how long each rolled out, along with update posts from other feeds you add. Scripts and AI agents read it and add notes through the REST API (markers, changes, annotations), wp seoprostats changes and annotate, and on WordPress 6.9 and later the abilities seoprostats/markers and seoprostats/annotate, so traffic and sales can be set against what changed.
 
 = Can I see what it shows before my site has visits? =
 
@@ -71,11 +71,17 @@ Ask aidevops (https://aidevops.sh): open the plugin's repository, or your site, 
 
 = Does it contact other services? =
 
-No. The WordPress.org build contacts nothing outside WordPress.
+Not unless you switch on Show search engine updates under Settings → Data (off by default). Then, once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
 
 = When do versions reach WordPress.org? =
 
 GitHub releases are the stable beta channel: each version comes out there first. WordPress.org gets it 30 days later, except security releases, which come out on both at once.
+
+== External services ==
+
+**Google Search Status Dashboard** (status.search.google.com), only when Settings → Data → Show search engine updates is on: once a day the site downloads the dashboard's public list of Google Search ranking updates and incidents (https://status.search.google.com/incidents.json), to mark them on the charts. The request sends nothing about the site or its visitors: no cookies and no site address; the user agent names only the plugin and its version. Google's terms: https://policies.google.com/terms; privacy policy: https://policies.google.com/privacy.
+
+**Other feeds** you add under Settings → Data → Other feeds are downloaded the same way, once a day each, and only while the setting is on; their own terms apply.
 
 == Screenshots ==
 

@@ -306,6 +306,7 @@ customer whose order sold the last item is not named).
 | seo | `seo_title`, `meta_description`, `robots`, `canonical` | Post meta of Yoast SEO, Rank Math, SEOPress and The SEO Framework (`SEOProStats_Changes::SEO_META`), before and after |
 | product | `out_of_stock`, `back_in_stock`, `price_up`, `price_down` (regular, sale or active price, with the currency), `sale_started`, `sale_ended`, `coupon_published`, `coupon_changed`, `coupon_removed` | `woocommerce_before_product_object_save` and its variation hook (stored values from `get_data()`, new from `get_changes()`; a sale scheduled for later starts when WooCommerce's cron sets the price); `woocommerce_before_coupon_object_save` and coupon status; Easy Digital Downloads `edd_price` meta |
 | site | `plugin_installed`, `plugin_updated`, `plugin_activated`, `plugin_deactivated`, `plugin_deleted`, `theme_switched`, `theme_updated`, `core_updated`, `search_visibility` (`blog_public`), `permalinks`, `site_address` (`home`, `siteurl`), `front_page` | `upgrader_pre_install` keeps the version before; `upgrader_process_complete`; `activated_plugin`, `deactivated_plugin`, `delete_plugin`/`deleted_plugin`; `switch_theme`; `_core_updated_successfully`; `update_option_{name}` |
+| search | `search_update` (kind 60) | The daily job, when switched on (Search engine updates below) |
 
 Changes only reach the page they affect (`path_id`, the post's permalink
 path as the processor stores page paths); site-wide ones have 0. Imports
@@ -339,6 +340,46 @@ in one tab stop (arrow keys, Home and End move), with the changes as their
 accessible name; the screen-reader table has a Changes column. Group
 colours are the `--spst-mark-*` variables (`common.css`). The Changes
 section reads `GET /changes` 50 at a time.
+
+### Search engine updates
+
+`SEOProStats_Search_Updates` puts search engine updates on the timeline,
+so a change in traffic can be weighed against them. It is **opt-in**
+(Settings → Data → Show search engine updates, off by default): while it
+is off, nothing is fetched. When on, the daily cron job
+(`seoprostats_daily`, scheduled by an admin page, first run a minute after
+the setting is switched on) makes one request to each source with
+`wp_safe_remote_get` (public addresses only, 10-second timeout, 2 MB at
+most, no cookies, a user agent naming the plugin but not the site).
+Nothing about the site or its visitors is sent. Never on a visitor page.
+
+| Source | Address | What |
+|---|---|---|
+| Google | `https://status.search.google.com/incidents.json`, the Search Status Dashboard's JSON history (an array, newest first; `begin` and `end` in RFC 3339; `end` missing while it rolls out) | Ranking updates (product `Ranking`) with their type from the title: `core`, `spam`, `link_spam`, `helpful_content`, `reviews`, `product_reviews`, `site_reputation`, `discover`, else `ranking`; and `crawling`, `indexing` and `serving` incidents |
+| Other feeds | Settings → Data → Other feeds: up to 10 RSS 2.0, Atom or JSON Feed addresses, one per line, each followed by the name to show (else its domain) | Posts whose title names an update (update, algorithm, rollout…), with a type from the title or `announcement`. Bing's webmaster blog publishes no update rollouts, so it has no built-in source; add a trusted feed here |
+
+Each update is one `changes` row: kind 60 (`search_update`, group `search`,
+source 5 feed), `path_id` 0 (site-wide), `ts` its start, `object_type` the
+engine (`google`, or a key made from the feed's name), `old` the type,
+`new` its id at the source (Google's incident id; for feeds an MD5 of the
+post's id or address), and `meta` `{name, engine, url, ended}` (`ended`, ISO
+8601 UTC, `''` while rolling out, only for updates that roll out over a
+span; feeds also keep `feed`). The engine and id find a stored update,
+which a later fetch brings up to date (its end, a corrected start or title)
+instead of adding it again. The first fetch adds what the source lists
+from the last two years (Google's history holds the recent months). A
+failed source is kept in `seoprostats_search_updates` (not autoloaded) with
+its error, shown by `wp seoprostats doctor` and `wp seoprostats
+search-updates status`, and asked again the next day. `wp seoprostats
+search-updates fetch` fetches now, even with the setting off.
+
+The label reads like "Google: May 2026 core update (2 weeks)" or "(rolling
+out)". `GET /markers` and the `seoprostats/markers` ability also return
+updates that began up to 60 days before the range and were still rolling
+out in it (`SEOProStats_Changes::ROLLOUT_LOOKBACK`, by key `kind_ts`); the
+lane shows those on its first point. The lane draws each rollout as a bar
+from its start to its end (or now), and Changes links each update to its
+source.
 
 ## Processing
 
@@ -487,7 +528,8 @@ and post types for its pages (`SEOProStats_Demo::CONTENT`, with names of
 its own, as the IDs are not the site's), and for its last three months
 clicks (some dead, some on affiliate links) and form submits, and changes
 for the markers (posts published and edited, a price drop and a sale,
-stock running out, plugin and WordPress updates, a theme switch;
+stock running out, plugin and WordPress updates, a theme switch, and
+made-up core and spam updates with their rollouts;
 `SEOProStats_Demo::CHANGES`). Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
@@ -689,7 +731,7 @@ Every chart has a table view for screen readers.
 |---|---|---|
 | Search Console | Service-account key (or an OAuth client the owner makes); daily job for the day three days back, 16-month backfill on connect; pages, queries and pairs by impressions | `gsc_*` |
 | Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
-| Search engine updates | Google Search Status Dashboard incidents feed, daily | `changes` |
+| Search engine updates | Opt-in: Google Search Status Dashboard's JSON history and the owner's other feeds, daily (Search engine updates above) | `changes` |
 | Backlinks | Referrers verified by fetching the referring page; optional provider (DataForSEO) with the owner's key | `links` |
 | Mentions and spikes | Referral spike check every 3 hours (≥ 3× the 14-day daily average and ≥ 50 visits); search of the platform behind the referrer (Hacker News, Reddit, Bluesky, YouTube) | `changes` |
 | Uptime and gaps | Hourly check that hits arrive at their usual rate; optional outside monitor webhook | `incidents` |

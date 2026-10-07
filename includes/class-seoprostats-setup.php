@@ -163,7 +163,7 @@ final class SEOProStats_Setup {
             ),
             'data'     => array(
                 'label'       => __('Data', 'seoprostats'),
-                'description' => __('How long visits are kept, and who can see the statistics.', 'seoprostats'),
+                'description' => __('How long visits are kept, search engine updates on the charts, and who can see the statistics.', 'seoprostats'),
             ),
         );
     }

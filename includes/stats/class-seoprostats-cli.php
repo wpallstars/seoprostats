@@ -1,8 +1,8 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, clicks, changes, process, rollup, prune, doctor, demo and
- * purge-caches. Reports come from
+ * goals, funnels, properties, clicks, changes, annotate, search-updates,
+ * process, rollup, prune, doctor, demo and purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
  *
@@ -674,8 +674,8 @@ final class SEOProStats_CLI {
 
     /**
      * The change log: posts published, unpublished and edited, SEO fields,
-     * prices, stock and coupons, plugins, themes, WordPress and settings,
-     * newest first.
+     * prices, stock and coupons, plugins, themes, WordPress, settings,
+     * search engine updates and notes, newest first.
      *
      * ## OPTIONS
      *
@@ -683,7 +683,7 @@ final class SEOProStats_CLI {
      * : Only changes to this page (* for any text), and the site-wide ones.
      *
      * [--kind=<kinds>]
-     * : Only these kinds or groups (content, seo, product, site, note), comma-separated.
+     * : Only these kinds or groups (content, seo, product, site, search, note), comma-separated.
      *
      * [--range=<range>]
      * : As for stats.
@@ -729,6 +729,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats changes
      *     wp seoprostats changes --page=/pricing/ --range=90d
      *     wp seoprostats changes --kind=product,plugin_updated --format=json
+     *     wp seoprostats changes --kind=search --range=12mo
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -1121,6 +1122,75 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Search engine updates: fetch them now, or show the last fetch.
+     *
+     * Fetching asks Google's Search Status Dashboard and the other feeds
+     * set under Settings → Data, once each, and adds what is new to the
+     * change log; the daily job does the same while the setting is on.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : fetch (now, even with the setting off) or status.
+     * ---
+     * options:
+     *   - fetch
+     *   - status
+     * ---
+     *
+     * [--format=<format>]
+     * : table or json.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats search-updates fetch
+     *     wp seoprostats changes --kind=search_update --range=12mo
+     *
+     * @subcommand search-updates
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function search_updates($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
+        $state = $args[0] === 'fetch' ? SEOProStats_Search_Updates::run(true) : SEOProStats_Search_Updates::state();
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($state + array('enabled' => SEOProStats_Statistics::search_updates()), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        if (!SEOProStats_Statistics::search_updates()) {
+            WP_CLI::log(__('Search engine updates are off (SEO Pro Stats → Settings → Data): the daily job fetches nothing.', 'seoprostats'));
+        }
+        if (!$state['sources']) {
+            WP_CLI::log(__('Not fetched yet.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($state['sources'] as $source) {
+            $rows[] = array(
+                'source'  => (string) $source['name'],
+                'status'  => !empty($source['ok']) ? 'ok' : 'fail',
+                'entries' => (int) $source['entries'],
+                'added'   => (int) $source['added'],
+                'updated' => (int) $source['updated'],
+                'when'    => human_time_diff((int) $source['at']) . ' ago',
+                'detail'  => !empty($source['ok']) ? (string) $source['url'] : (string) $source['error'],
+            );
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('source', 'status', 'entries', 'added', 'updated', 'when', 'detail'));
+        $failed = array_filter($rows, static function ($row) {
+            return $row['status'] === 'fail';
+        });
+        if ($args[0] === 'fetch' && $failed) {
+            /* translators: %d: number of sources */
+            WP_CLI::warning(sprintf(_n('%d source failed; the daily job asks again tomorrow.', '%d sources failed; the daily job asks again tomorrow.', count($failed), 'seoprostats'), count($failed)));
+        }
+    }
+
+    /**
      * Check that statistics are collected and processed: tables, collector
      * folder and config, salts, endpoint, cron, waiting hits and daily
      * summaries.
@@ -1150,7 +1220,10 @@ final class SEOProStats_CLI {
             /* translators: %d: number of failed checks */
             WP_CLI::error(sprintf(_n('%d check failed.', '%d checks failed.', $failed, 'seoprostats'), $failed));
         }
-        WP_CLI::success(__('Statistics are collected and processed.', 'seoprostats'));
+        // JSON stays parseable: no line after it.
+        if ($this->format($assoc) !== 'json') {
+            WP_CLI::success(__('Statistics are collected and processed.', 'seoprostats'));
+        }
     }
 
     /**
@@ -1192,6 +1265,22 @@ final class SEOProStats_CLI {
         foreach (array(SEOProStats_Collection::CRON_HOOK, SEOProStats_Collection::PROCESS_HOOK) as $hook) {
             $next = wp_next_scheduled($hook);
             $add('cron ' . $hook, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
+        $updates = SEOProStats_Search_Updates::state();
+        if (!SEOProStats_Statistics::search_updates()) {
+            $add('search engine updates', true, 'off (SEO Pro Stats → Settings → Data)');
+        } else {
+            $next   = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
+            $failed = array();
+            foreach ($updates['sources'] as $source) {
+                if (empty($source['ok'])) {
+                    $failed[] = $source['name'] . ': ' . $source['error'];
+                }
+            }
+            $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
+            $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
+            $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
         }
         if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
             $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');

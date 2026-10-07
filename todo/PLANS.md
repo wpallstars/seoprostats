@@ -83,7 +83,8 @@ long-term record.
 - [ ] Page snapshots and word diffs; page detail.
 - [x] Annotations (UI, API, CLI, abilities); markers lane under the
       Overview's chart; Changes section (GH#35).
-- [ ] Search engine update markers.
+- [x] Search engine update markers: Google's Search Status Dashboard and
+      the owner's other feeds, opt-in, daily; rollout spans (GH#36).
 - [ ] Movers and anomalies with possible causes; page detail.
 
 ## Phase 4: search (depends on 1, 3)

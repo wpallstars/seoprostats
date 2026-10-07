@@ -137,8 +137,11 @@ export interface RealtimeAnswer {
 	generated: string;
 }
 
-/** Groups of changes in the change log; note: added by a person or an agent. */
-export const CHANGE_GROUPS = ['content', 'seo', 'product', 'site', 'note'] as const;
+/**
+ * Groups of changes in the change log; search: search engine updates
+ * (from feeds); note: added by a person or an agent.
+ */
+export const CHANGE_GROUPS = ['content', 'seo', 'product', 'site', 'search', 'note'] as const;
 export type ChangeGroup = (typeof CHANGE_GROUPS)[number];
 
 /** Where a change was made. */
@@ -149,7 +152,7 @@ export interface Marker {
 	id: number;
 	/** When it changed (ISO, site time zone). */
 	t: string;
-	/** What changed: published, price_down, plugin_updated… */
+	/** What changed: published, price_down, plugin_updated, search_update… */
 	kind: string;
 	group: ChangeGroup;
 	/** One line saying what changed, in the site's language. */
@@ -158,9 +161,16 @@ export interface Marker {
 	title: string;
 	/** The page it affects; null for site-wide changes. */
 	path: string | null;
+	/** Before; for search_update, its type (core, spam, reviews…). */
 	old: string;
+	/** After; for search_update, its id at the source. */
 	new: string;
+	/** For search_update, type is the engine (google, or a feed's name). */
 	object: { type: string; id: number };
+	/**
+	 * Details; for search_update: name, engine, url, and ended (ISO; ''
+	 * while rolling out) when it rolls out over a span.
+	 */
 	meta: Record<string, unknown>;
 	source: ChangeSource;
 	/** Who made it, for people who may list users. */

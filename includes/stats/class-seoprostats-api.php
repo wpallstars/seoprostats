@@ -151,7 +151,7 @@ final class SEOProStats_API {
                 'default'     => '',
             ),
             'kinds' => array(
-                'description' => __('Only these kinds or groups of change (content, seo, product, site, note), comma-separated.', 'seoprostats'),
+                'description' => __('Only these kinds or groups of change (content, seo, product, site, search, note), comma-separated.', 'seoprostats'),
                 'type'        => 'string',
                 'default'     => '',
             ),
@@ -422,17 +422,19 @@ final class SEOProStats_API {
 
     /**
      * GET /markers: the changes in the range, oldest first, for the
-     * timeline (at most SEOProStats_Changes::MAX_LIMIT).
+     * timeline (at most SEOProStats_Changes::MAX_LIMIT), with search
+     * engine updates that started earlier and were still rolling out.
      *
      * @param WP_REST_Request $request Request.
      * @return WP_REST_Response|WP_Error
      */
     public static function markers($request) {
         $args = array(
-            'page'  => (string) $request->get_param('page'),
-            'kinds' => (string) $request->get_param('kinds'),
-            'limit' => SEOProStats_Changes::MAX_LIMIT,
-            'order' => 'asc',
+            'page'    => (string) $request->get_param('page'),
+            'kinds'   => (string) $request->get_param('kinds'),
+            'limit'   => SEOProStats_Changes::MAX_LIMIT,
+            'order'   => 'asc',
+            'running' => true,
         );
         return self::report($request, static function ($req) use ($args) {
             $answer = SEOProStats_Changes::list_changes($req, $args);
