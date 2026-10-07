@@ -1,8 +1,8 @@
 /**
  * Markers lane: the changes in a chart's range, in a strip under its plot,
  * one marker per point (day, hour or month) with changes. Markers closer
- * than a finger's width merge into one with a count, so a year of daily
- * changes stays readable. Each marker is a button: hover or focus lists its
+ * than a finger's width, or whose pills would touch, merge into one with a
+ * count, so a year of daily changes (or a phone's width) stays readable. Each marker is a button: hover or focus lists its
  * changes, choosing it calls back. Arrow keys move between markers (one tab
  * stop for the lane). Spans (a search engine update's rollout) are thin
  * bars under the markers, from their first point to their last.
@@ -63,8 +63,22 @@ export interface MarkersLane {
 /** Closest two markers may be, in pixels, before they merge. */
 const MIN_GAP = 18;
 
+/** Space kept between two markers' pills, in pixels. */
+const PILL_GAP = 2;
+
 /** Most changes listed in a tooltip. */
 const MAX_LISTED = 8;
+
+/**
+ * A marker's width as the stylesheet draws it (DESIGN.md → Markers): 4px
+ * padding and a 1px border each side, up to three 8px dots 2px apart, and
+ * the count; at least 20px.
+ */
+function markerWidth(items: ChartMarkerItem[]): number {
+	const dots = Math.min(3, new Set(items.map((item) => item.color)).size);
+	const count = items.length > 1 ? 4 + 7 * String(items.length).length : 0;
+	return Math.max(20, 10 + 8 * dots + 2 * Math.max(0, dots - 1) + count);
+}
 
 interface Group {
 	x: number;
@@ -143,9 +157,12 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 		}
 		placed.sort((a, b) => a.x - b.x || a.marker.index - b.marker.index);
 		const out: Array<Group & { xs: number[] }> = [];
+		const centre = (g: { xs: number[] }) => g.xs.reduce((sum, x) => sum + x, 0) / g.xs.length;
 		for (const p of placed) {
 			const last = out[out.length - 1];
-			if (last && p.x - (last.xs[0] ?? p.x) < MIN_GAP) {
+			// Merge when closer than a finger's width, or when the two pills would touch.
+			const touch = last ? (markerWidth(last.items) + markerWidth(p.marker.items)) / 2 + PILL_GAP : 0;
+			if (last && (p.x - (last.xs[0] ?? p.x) < MIN_GAP || p.x - centre(last) < touch)) {
 				last.xs.push(p.x);
 				last.indexes.push(p.marker.index);
 				last.items.push(...p.marker.items);
@@ -153,7 +170,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 				out.push({ x: p.x, xs: [p.x], indexes: [p.marker.index], items: [...p.marker.items] });
 			}
 		}
-		return out.map((g) => ({ x: g.xs.reduce((sum, x) => sum + x, 0) / g.xs.length, indexes: g.indexes, items: g.items }));
+		return out.map((g) => ({ x: centre(g), indexes: g.indexes, items: g.items }));
 	}
 
 	function renderSpans(): void {

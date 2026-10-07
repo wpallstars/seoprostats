@@ -123,8 +123,9 @@ long-term record.
 ## Phase 6: reach (depends on 1–5)
 
 - [ ] Alerts and email reports, webhooks.
-- [ ] Each section's view in the address (filters, period, tabs), so
-      any view can be bookmarked and shared (issue #24).
+- [x] Each section's view in the address (filters, period, tabs), so
+      any view can be bookmarked and shared (issue #24; Search's report
+      with GH#53, Changes' page with GH#57).
 - [ ] Shared client reports: saved interactive views (private link,
       password, expiry) that clients keep watching, with the site's and
       an agency's branding (issue #26, after #24).

@@ -60,11 +60,19 @@ export function momentLabel(iso: string): string {
 	return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(wallClock(iso));
 }
 
-/** A range's days, for "compared with …": 1 Sep – 30 Sep 2026. */
+/** A moment's time of day, in the site's time zone: 14:05. */
+export function timeLabel(iso: string): string {
+	return df({ hour: 'numeric', minute: '2-digit' }).format(wallClock(iso));
+}
+
+/** A range's days, for "compared with …": 1 Sep – 30 Sep 2026, or one day. */
 export function rangeText(fromIso: string, toIso: string): string {
 	const from = wallClock(fromIso);
 	// `to` is exclusive: show the last day included.
 	const to = new Date(wallClock(toIso).getTime() - 1);
+	if (from.toISOString().slice(0, 10) === to.toISOString().slice(0, 10)) {
+		return df({ day: 'numeric', month: 'short', year: 'numeric' }).format(to);
+	}
 	const sameYear = from.getUTCFullYear() === to.getUTCFullYear();
 	const start = df(sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' }).format(from);
 	const end = df({ day: 'numeric', month: 'short', year: 'numeric' }).format(to);
