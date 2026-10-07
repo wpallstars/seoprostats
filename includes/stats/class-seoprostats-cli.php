@@ -564,7 +564,7 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * [<kind>]
-     * : elements, dead, links, downloads or forms.
+     * : elements, dead, links, downloads, forms or pages.
      * ---
      * default: elements
      * options:
@@ -573,6 +573,7 @@ final class SEOProStats_CLI {
      *   - links
      *   - downloads
      *   - forms
+     *   - pages
      * ---
      *
      * [--page=<path>]
@@ -644,6 +645,21 @@ final class SEOProStats_CLI {
         $totals = $answer['totals'];
         /* translators: 1: clicks, 2: dead clicks, 3: percentage, 4: outbound, 5: affiliate, 6: file links, 7: form submits, 8: visits */
         WP_CLI::log(sprintf(__('%1$d clicks, %2$d dead (%3$s); %4$d outbound, %5$d affiliate, %6$d file links; %7$d forms sent; in %8$d visits.', 'seoprostats'), $totals['clicks'], $totals['dead'], sprintf('%.1f%%', $totals['dead_rate'] * 100), $totals['outbound'], $totals['affiliate'], $totals['downloads'], $totals['forms'], $totals['visits']));
+        if ($page !== '') {
+            $info = $answer['page_info'];
+            /* translators: %s: page path. */
+            WP_CLI::log(sprintf(__('Page: %s', 'seoprostats'), $page));
+            if ($info !== null) {
+                WP_CLI::log($info['url']);
+                if ($info['post_id']) {
+                    /* translators: %d: post ID. */
+                    WP_CLI::log(sprintf(__('Post ID: %d', 'seoprostats'), $info['post_id']));
+                }
+                if ($info['edit_url'] !== null) {
+                    WP_CLI::log($info['edit_url']);
+                }
+            }
+        }
         if (isset($answer['compare'])) {
             $change = $answer['compare']['change']['clicks'];
             /* translators: 1: clicks in the other period, 2: change */
@@ -668,6 +684,7 @@ final class SEOProStats_CLI {
             'links'     => array('target', 'label', 'flags', 'count', 'visits', 'share'),
             'downloads' => array('target', 'label', 'count', 'visits', 'share'),
             'forms'     => array('label', 'selector', 'target', 'fields', 'count', 'visits'),
+            'pages'     => array('path', 'count', 'dead', 'dead_rate', 'links', 'forms', 'visits'),
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields[$answer['kind']]);
     }

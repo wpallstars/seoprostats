@@ -6,22 +6,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-export const RANGE_KEYS = [
-	'realtime',
-	'today',
-	'yesterday',
-	'24h',
-	'7d',
-	'30d',
-	'90d',
-	'week',
-	'month',
-	'year',
-	'12mo',
-	'lastyear',
-	'all',
-	'custom',
-] as const;
+export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
 
 export const COMPARE_KEYS = ['none', 'prev', 'year'] as const;
@@ -232,7 +217,11 @@ export interface GoalRow extends Goal {
 	/** visits ÷ all visits. */
 	conversion_rate: number;
 	revenue: Revenue[];
-	change?: { visits: number | null; completions: number | null; conversion_rate: number | null };
+	change?: {
+		visits: number | null;
+		completions: number | null;
+		conversion_rate: number | null;
+	};
 }
 
 export interface GoalsAnswer extends Answer {
@@ -262,7 +251,11 @@ export interface FunnelRow {
 	/** completed ÷ all visits. */
 	conversion_rate: number;
 	steps: FunnelStepRow[];
-	change?: { entered: number | null; completed: number | null; conversion_rate: number | null };
+	change?: {
+		entered: number | null;
+		completed: number | null;
+		conversion_rate: number | null;
+	};
 }
 
 export interface FunnelsAnswer extends Answer {
@@ -292,7 +285,7 @@ export interface PropertiesAnswer extends Answer {
 }
 
 /** Rows of the clicks report. */
-export const CLICK_KINDS = ['elements', 'dead', 'links', 'downloads', 'forms'] as const;
+export const CLICK_KINDS = ['elements', 'dead', 'links', 'downloads', 'forms', 'pages'] as const;
 export type ClickKind = (typeof CLICK_KINDS)[number];
 
 export interface ClickTotals {
@@ -313,6 +306,15 @@ export interface ClickTotals {
 	visits: number;
 }
 
+export interface ClickPageInfo {
+	path: string;
+	url: string;
+	/** Zero when the path is not a post on this site. */
+	post_id: number;
+	/** Omitted by shared read-only interfaces; null without edit permission. */
+	edit_url?: string | null;
+}
+
 export interface ClickRow {
 	/** tag#id.class of the element or form. */
 	selector: string;
@@ -331,15 +333,27 @@ export interface ClickRow {
 	download: boolean;
 	/** A form's fields (never their values). */
 	fields: number;
+	/** Present only for pages rows. */
+	path?: string;
+	url?: string;
+	post_id?: number;
+	edit_url?: string | null;
+	links?: number;
+	forms?: number;
 }
 
 export interface ClicksAnswer extends Answer {
 	range: Range;
 	kind: ClickKind;
 	page: string;
+	page_info: ClickPageInfo | null;
 	totals: ClickTotals;
 	rows: ClickRow[];
-	compare?: { range: Range; totals: ClickTotals; change: Record<keyof ClickTotals, number | null> };
+	compare?: {
+		range: Range;
+		totals: ClickTotals;
+		change: Record<keyof ClickTotals, number | null>;
+	};
 }
 
 export interface ApiError {

@@ -591,7 +591,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [elements, dead, links, downloads, forms]
+            enum: [elements, dead, links, downloads, forms, pages]
             default: elements
         - name: page
           in: query
@@ -1508,20 +1508,56 @@ components:
         fields:
           type: integer
           description: A form's fields (never their values); 0 for clicks.
+        path:
+          type: string
+          description: Pages rows only; the page where clicks happened.
+        url:
+          type: string
+          description: Pages rows only; address on this site.
+        post_id:
+          type: integer
+          description: Pages rows only; 0 when no post matches.
+        edit_url:
+          type: [string, 'null']
+          description: Pages rows only; null without edit_post permission. Shared read-only views omit it.
+        links:
+          type: integer
+          description: Pages rows only; link clicks on the page.
+        forms:
+          type: integer
+          description: Pages rows only; forms sent on the page.
+
+    ClickPageInfo:
+      type: [object, 'null']
+      description: Exact local page only; null for an empty page or a wildcard. Post identity is resolved inside the report cache, edit permission checked on every request. Shared read-only views must omit edit_url.
+      required: [path, url, post_id]
+      properties:
+        path:
+          type: string
+        url:
+          type: string
+        post_id:
+          type: integer
+          description: 0 when no post matches, including made-up demo paths.
+        edit_url:
+          type: [string, 'null']
+          description: Editor address only when the current user can edit the post; otherwise null.
 
     ClicksAnswer:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [range, kind, page, totals, rows]
+          required: [range, kind, page, page_info, totals, rows]
           properties:
             range:
               $ref: '#/components/schemas/Range'
             kind:
               type: string
-              enum: [elements, dead, links, downloads, forms]
+              enum: [elements, dead, links, downloads, forms, pages]
             page:
               type: string
+            page_info:
+              $ref: '#/components/schemas/ClickPageInfo'
             totals:
               $ref: '#/components/schemas/ClickTotals'
             rows:
