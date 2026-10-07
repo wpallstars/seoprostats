@@ -10,6 +10,10 @@
  * - decay: pages with fewer clicks than in the previous period of the
  *   same length, each with a likely cause (position, demand, CTR, gone),
  *   the queries that lost most and what changed on the page.
+ * - missing: a page's query in the top 20 with enough impressions whose
+ *   words the page does not have, or has only some of
+ *   (SEOProStats_Coverage); the pages with most impressions, at most
+ *   MISSING_PAGES, are read.
  *
  * Expected CTR is the site's own: clicks ÷ impressions of its pages'
  * queries by rounded position in the period, never rising with position;
@@ -36,7 +40,7 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Opportunities {
 
     /** Kinds of opportunity. */
-    const KINDS = array('striking', 'ctr', 'decay');
+    const KINDS = array('striking', 'ctr', 'decay', 'missing');
 
     /** Days read at most: the newest of the period. */
     const MAX_DAYS = 91;
@@ -55,6 +59,9 @@ final class SEOProStats_Opportunities {
 
     /** Pairs considered at most, most impressions first. */
     const CANDIDATES = 2000;
+
+    /** Missing from the page: pages whose text is read at most, most impressions first. */
+    const MISSING_PAGES = 50;
 
     /** Impressions a position needs for the site's own CTR there. */
     const CURVE_MIN = 500;
@@ -135,7 +142,7 @@ final class SEOProStats_Opportunities {
         if ($kind === 'decay') {
             $answer['compare'] = null;
             $answer['updates'] = array();
-        } else {
+        } elseif ($kind !== 'missing') {
             $answer['curve'] = null;
         }
         if (!$now || ($pages !== null && !$pages)) {
@@ -154,6 +161,9 @@ final class SEOProStats_Opportunities {
             $answer['updates'] = SEOProStats_Changes::updates_between((int) $then['from'], (int) $now['to']);
             $answer['span']    = array((int) $then['from'], (int) $now['to']);
             $answer['rows']    = self::decay_rows($engine, $now, $then, array_slice($list, $offset, $limit));
+        } elseif ($kind === 'missing') {
+            $list           = self::missing_list($engine, $now, $pages, $answer['rules']);
+            $answer['rows'] = self::missing_rows(array_slice($list, $offset, $limit));
         } else {
             $curve           = self::curve($engine, $now);
             $answer['curve'] = $curve;
@@ -171,7 +181,7 @@ final class SEOProStats_Opportunities {
      * @param array<string,mixed> $days From SEOProStats_Search::days().
      * @return array<string,mixed>
      */
-    private static function cut(array $days) {
+    public static function cut(array $days) {
         if (SEOProStats_Search::length($days) <= self::MAX_DAYS) {
             return $days;
         }
@@ -198,6 +208,14 @@ final class SEOProStats_Opportunities {
             return array(
                 'min_lost'   => max(5, (int) round($days / 4)),
                 'min_share'  => self::DECAY_SHARE,
+            );
+        }
+        if ($kind === 'missing') {
+            return array(
+                'min_impressions' => max(10, $days),
+                'position_from'   => 1,
+                'position_to'     => 20,
+                'pages'           => self::MISSING_PAGES,
             );
         }
         if ($kind === 'ctr') {
@@ -331,6 +349,69 @@ final class SEOProStats_Opportunities {
                 'expected_ctr' => $row['expected_ctr'],
                 'potential'    => $row['potential'],
             );
+        }
+        return $out;
+    }
+
+    /**
+     * Queries missing from their page, most impressions first: path_id,
+     * query_id, query, metrics and the match (SEOProStats_Coverage::match()).
+     * Only the MISSING_PAGES pages with most impressions among the
+     * candidates are read, each once.
+     *
+     * @param int                     $engine Engine.
+     * @param array<string,mixed>     $days   From SEOProStats_Search::days().
+     * @param int[]|null              $pages  Path ids, or null for every page.
+     * @param array<string,int|float> $rules  From rules().
+     * @return array<int,array<string,mixed>>
+     */
+    private static function missing_list($engine, array $days, $pages, array $rules) {
+        global $wpdb;
+        require_once __DIR__ . '/class-seoprostats-coverage.php';
+        $on   = self::where($engine, $days, $pages);
+        $high = (int) round(((float) $rules['position_to'] + 0.5) * 100);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by its primary key (engine, day) or path_day; $on holds only placeholders and a fixed key name.
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT path_id AS pg, query_id AS q, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`{$on['key']}`) WHERE {$on['where']} GROUP BY path_id, query_id HAVING i >= %d AND p < %d * i ORDER BY i DESC, path_id, query_id LIMIT %d", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $on['args'], array((int) $rules['min_impressions'], $high, self::CANDIDATES))), ARRAY_A);
+
+        $read = array();
+        foreach ($rows as $row) {
+            if (count($read) >= (int) $rules['pages']) {
+                break;
+            }
+            $read[(int) $row['pg']] = true;
+        }
+        $index = array();
+        foreach (SEOProStats_Coverage::texts(SEOProStats_Query::texts(array_keys($read))) as $path_id => $text) {
+            $index[$path_id] = SEOProStats_Coverage::index($text);
+        }
+        $rows  = array_values(array_filter($rows, static function ($row) use ($index) {
+            return isset($index[(int) $row['pg']]);
+        }));
+        $words = SEOProStats_Query::texts(array_column($rows, 'q'));
+
+        $list = array();
+        foreach ($rows as $row) {
+            $query = isset($words[(int) $row['q']]) ? $words[(int) $row['q']] : '';
+            $match = $query !== '' ? SEOProStats_Coverage::match($query, $index[(int) $row['pg']]) : null;
+            if ($match && in_array($match['match'], array('partial', 'none'), true)) {
+                $list[] = array('path_id' => (int) $row['pg'], 'query' => $query) + SEOProStats_Search::metrics($row['c'], $row['i'], $row['p']) + $match;
+            }
+        }
+        return $list;
+    }
+
+    /**
+     * Missing-query rows as the answer gives them: page, query, figures
+     * and match.
+     *
+     * @param array<int,array<string,mixed>> $list From missing_list(), the rows shown.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function missing_rows(array $list) {
+        $text = SEOProStats_Query::texts(array_column($list, 'path_id'));
+        $out  = array();
+        foreach ($list as $row) {
+            $out[] = self::page($row['path_id'], $text) + array_diff_key($row, array('path_id' => true));
         }
         return $out;
     }

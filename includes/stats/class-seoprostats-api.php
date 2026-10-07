@@ -81,6 +81,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-clicks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-opportunities.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-coverage.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-content.php';
     }
 
@@ -299,13 +300,29 @@ final class SEOProStats_API {
             'callback' => array(__CLASS__, 'opportunities'),
             'args'     => $base + array(
                 'kind'   => array(
-                    'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position) or decay (pages losing clicks, with the likely cause).', 'seoprostats'),
+                    'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position), decay (pages losing clicks, with the likely cause) or missing (top-20 queries whose words the page does not have).', 'seoprostats'),
                     'type'        => 'string',
                     'enum'        => SEOProStats_Opportunities::KINDS,
                     'default'     => 'striking',
                 ),
                 'limit'  => self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/coverage', $read + array(
+            'callback' => array(__CLASS__, 'coverage'),
+            'args'     => $base + array(
+                'page' => array(
+                    'description' => __('The page (a path such as /pricing/); or give post.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'post' => array(
+                    'description' => __('The post whose address is the page; or give page.', 'seoprostats'),
+                    'type'        => 'integer',
+                    'minimum'     => 0,
+                    'default'     => 0,
+                ),
             ),
         ));
         register_rest_route($ns, '/content', $read + array(
@@ -1043,6 +1060,21 @@ final class SEOProStats_API {
         $kind = (string) $request->get_param('kind');
         return self::report($request, static function ($req) use ($kind) {
             return SEOProStats_Opportunities::report($req, $kind);
+        });
+    }
+
+    /**
+     * GET /coverage: a page's search queries, each with how far the page's
+     * own words cover it, questions and the SEO plugin's focus keywords.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function coverage($request) {
+        $page = (string) $request->get_param('page');
+        $post = (int) $request->get_param('post');
+        return self::report($request, static function ($req) use ($page, $post) {
+            return SEOProStats_Coverage::report($req, $page, $post);
         });
     }
 

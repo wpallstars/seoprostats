@@ -819,6 +819,36 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
   `updates_between()` (`kind_ts`) the search engine updates, so cause and
   effect sit together. Changes and editor links are added after the
   shared cache, as people's names and editor links depend on the viewer.
+- **Missing from the page** (`missing`): pairs in the top 20 with enough
+  impressions (one read of `gsc_pairs`, the 2,000 with most impressions)
+  whose query the page's words do not cover, or only partly, as query
+  coverage checks them (below); most impressions first. Only the 50 pages
+  with most impressions among them are read (`MISSING_PAGES`, `rules.
+  pages`), each once.
+
+Query coverage (`SEOProStats_Coverage`) checks a page's search queries
+against the page's own words. A query's terms are its words, lower case
+and without accents, less common short English words, lightly stemmed
+(plural s); `match` is `title` (every term in the post title or SEO
+title), `heading`, `text` (anywhere: text, excerpt, image alt text, SEO
+description), `partial` or `none`, with the words `missing`, whether the
+words are there in order (`phrase`) and whether it is a `question` (it
+starts with a question word or holds a question mark).
+`packages/core/src/coverage.ts` does the same, so the editor re-checks as
+people write; keep the two in step. The words come from the post
+(`post_content` with shortcode tags left out, unrendered, so no filters
+or shortcodes run; filter `seoprostats_coverage_text` adds a page
+builder's text) or, for demo data, `SEOProStats_Demo::PAGE_TEXT`. A path
+finds its post in the `pages` table (by its primary key), else with
+`url_to_postid()`. SEO titles, descriptions and focus keywords come from
+Rank Math, Yoast SEO, SEOPress and All in One SEO (its `aioseo_posts`
+table, by `post_id`) when present, and titles and descriptions from The
+SEO Framework (the same meta as the change log's `SEO_META`)
+(`seoprostats_focus_keywords` adds others); without one the report is the
+same less `focus`. The one-page report (`GET /coverage`, by `page` or
+`post`) reads that page's queries by `path_day` (the 200 with most
+impressions, newest 91 days) and its post once; the cache key adds the
+post's modified time. Nothing runs on visitor pages.
 
 Content (`SEOProStats_Content`) joins search with what its visits did, per
 page, with the same cut, page filters, `ignored` and cache key (which
@@ -866,7 +896,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `content`, `demo`,
+  `opportunities`, `coverage`, `content`, `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
@@ -877,8 +907,9 @@ in the future meets the same length of the other period.
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
   `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
-  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `content
-  [--sort=<sort>] [--goal=<id>]`, `pages`,
+  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `coverage
+  <page|post> [--missing] [--questions]`, `content [--sort=<sort>]
+  [--goal=<id>]`, `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -889,7 +920,8 @@ in the future meets the same length of the other period.
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
-  `seoprostats/opportunities` and `seoprostats/content`.
+  `seoprostats/opportunities`, `seoprostats/coverage` and
+  `seoprostats/content`.
 
 ## Dashboard app
 
@@ -916,9 +948,21 @@ their arrangement. When SEO Pro Stack tidies the Dashboard, the
 `seoprostack_dashboard_layout` filter puts it at the top of that layout's
 visitors and SEO column (`column3`), unless the rules already place it.
 
-Built entries are `assets/build/dashboard.js` and `widget.js`; their
-`*.asset.php` files list WordPress's scripts as dependencies, so React
-and `@wordpress/components` are not bundled. WordPress before 6.6 has no
+The post editor (`includes/admin/class-seoprostats-editor.php`, the
+`editor` entry) shows a post's search queries to people who can read the
+statistics, on post types with public pages (filter
+`seoprostats_editor_coverage`): a **Search queries** panel in the block
+editor's document sidebar (`wp.plugins` and `PluginDocumentSettingPanel`,
+read from the page), or a meta box in the classic editor. It asks
+`GET /coverage?post=<id>&range=90d` once, then re-checks the queries
+against the words in the editor a moment after each change, so a query
+turns covered as soon as its words are added: the summary, the focus
+keywords, the queries not covered and the questions, with a link to the
+page in Search.
+
+Built entries are `assets/build/dashboard.js`, `widget.js`, `editor.js`
+and `share.js` (the shared report page); their `*.asset.php` files list WordPress's scripts as
+dependencies, so React and `@wordpress/components` are not bundled. WordPress before 6.6 has no
 `react-jsx-runtime` script; the screen then adds a small stand-in built
 on WordPress's React.
 
@@ -940,8 +984,8 @@ are shared by every section. Search has three tabs. Rankings shows clicks,
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,
 pages, countries and devices; choosing a page shows its queries and
-choosing a query its pages. Opportunities has three cards (striking
-distance, low CTR, losing clicks), ten rows a page; choosing a row opens
+choosing a query its pages. Opportunities has four cards (striking
+distance, low CTR, losing clicks, missing from the page), ten rows a page; choosing a row opens
 it in Rankings with its page and query. Losing clicks is always against
 an earlier period (the previous one unless the same period last year is
 chosen). Content shows search clicks, visits from search, their bounce
