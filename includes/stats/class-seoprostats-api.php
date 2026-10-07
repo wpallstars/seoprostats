@@ -644,13 +644,13 @@ final class SEOProStats_API {
     /**
      * Separate public routes: share credentials never authorize normal routes.
      *
-     * @param string $ns REST namespace.
+     * @param non-falsy-string $ns REST namespace.
      */
     private static function share_routes($ns) {
         $manage = array(__CLASS__, 'can_manage');
         register_rest_route($ns, '/shares', array(
             array('methods' => 'GET', 'permission_callback' => $manage, 'callback' => static function () {
-                return array('shares' => array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all())));
+                return array('shares' => array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all())), 'defaults' => SEOProStats_Shares::branding(array()));
             }),
             array('methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
                 return SEOProStats_Shares::save((array) $request->get_json_params());
@@ -671,9 +671,18 @@ final class SEOProStats_API {
         ));
         register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})', array(
             'methods' => 'POST', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_open'),
+            'args' => array('password' => array('type' => 'string', 'maxLength' => 256, 'default' => '')),
         ));
         register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})/(?P<section>overview|goals|clicks)/(?P<report>stats|timeseries|breakdown|markers|realtime|goals|clicks)', array(
             'methods' => 'GET', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_report'),
+            'args' => self::args(false) + array(
+                'page' => array('type' => 'string', 'maxLength' => 2048),
+                'kind' => array('type' => 'string', 'enum' => array('elements', 'dead', 'links', 'downloads', 'forms', 'pages')),
+                'dimension' => array('type' => 'string', 'enum' => array_keys(SEOProStats_Query::DIMENSIONS)),
+                'grain' => array('type' => 'string', 'enum' => SEOProStats_Query::GRAINS),
+                'limit' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 100),
+                'offset' => array('type' => 'integer', 'minimum' => 0, 'maximum' => 1000),
+            ),
         ));
         add_filter('rest_post_dispatch', array(__CLASS__, 'share_headers'), 10, 3);
     }
@@ -714,10 +723,10 @@ final class SEOProStats_API {
         if (!SEOProStats_Shares::unlocked($share, $grant) && !wp_check_password((string) $request->get_param('password'), $share['password_hash'])) {
             return SEOProStats_Shares::denied();
         }
-        $all = SEOProStats_Shares::all();
-        $all[$share['id']]['last_opened'] = time();
-        ++$all[$share['id']]['opens'];
-        update_option(SEOProStats_Shares::OPTION, $all, false);
+        $share = SEOProStats_Shares::opened($share);
+        if (is_wp_error($share)) {
+            return $share;
+        }
         $answer = SEOProStats_Shares::summary($share);
         unset($answer['id'], $answer['created'], $answer['opens'], $answer['last_opened'], $answer['revoked']);
         $answer['unlock'] = SEOProStats_Shares::grant($share, time() + HOUR_IN_SECONDS);
@@ -747,7 +756,7 @@ final class SEOProStats_API {
             return SEOProStats_Shares::denied();
         }
         $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind')));
-        $filters = SEOProStats_Query::parse_filters($args['filters'] ?? array());
+        $filters = SEOProStats_Shares::filters($args['filters'] ?? array());
         if (is_wp_error($filters)) {
             return $filters;
         }
@@ -773,10 +782,8 @@ final class SEOProStats_API {
         if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], array('search', 'no_results', 'source', 'utm_term'), true)) {
             return rest_ensure_response(array('dimension' => $req['dimension'], 'rows' => array(), 'total' => 0, 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
         }
-        // The change log contains users, configuration and arbitrary note text.
-        // Do not expose it through chart markers until there is a scoped projection.
         if ($report === 'markers') {
-            return rest_ensure_response(array('markers' => array(), 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
+            return self::share_markers($req, $share, $args['page'] ?? '');
         }
         $safe = new WP_REST_Request('GET');
         foreach ($args as $key => $value) {
@@ -786,8 +793,67 @@ final class SEOProStats_API {
         if (is_wp_error($answer)) {
             return $answer;
         }
-        $answer->set_data(self::share_redact($answer->get_data()));
+        $data = self::share_redact($answer->get_data());
+        if ($report === 'realtime' && $share['hide_sensitive']) {
+            $data['sources'] = array();
+        }
+        $answer->set_data($data);
         return $answer;
+    }
+
+    /**
+     * A minimal chart projection, never users, settings or arbitrary notes.
+     * Visit-level locks cannot scope site changes, so omit that lane.
+     *
+     * @param array $req Checked report request.
+     * @param array $share Share.
+     * @param string $page Chart page.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function share_markers(array $req, array $share, $page) {
+        $answer = array('range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req)), 'markers' => array(), 'total' => 0);
+        foreach ($share['locked_filters'] as $filter) {
+            if ($filter['dimension'] !== 'page') {
+                return rest_ensure_response($answer);
+            }
+        }
+        $changes = SEOProStats_Changes::list_changes($req, array('page' => $page, 'limit' => 1000, 'order' => 'asc'));
+        if (is_wp_error($changes)) {
+            return $changes;
+        }
+        foreach ($changes['changes'] as $change) {
+            if ($change['group'] === 'note') {
+                continue;
+            }
+            $allowed = true;
+            foreach ($share['locked_filters'] as $filter) {
+                if (!$change['path']) {
+                    $allowed = $change['group'] === 'search';
+                    continue;
+                }
+                $matches = false;
+                foreach ($filter['values'] as $value) {
+                    if ($filter['op'] === 'matches') {
+                        $pattern = '/^' . str_replace('\\*', '.*', preg_quote($value, '/')) . '$/D';
+                        $matches = $matches || (bool) preg_match($pattern, $change['path']);
+                    } elseif ($filter['op'] === 'contains') {
+                        $matches = $matches || strpos($change['path'], $value) !== false;
+                    } else {
+                        $matches = $matches || $change['path'] === $value;
+                    }
+                }
+                $allowed = $allowed && ($filter['op'] === 'is_not' ? !$matches : $matches);
+            }
+            if ($allowed) {
+                $safe = array_intersect_key($change, array_flip(array('id', 't', 'kind', 'group', 'path', 'source')));
+                $safe['label'] = ucfirst(str_replace('_', ' ', $change['kind']));
+                $safe['user'] = null;
+                $safe['meta'] = array();
+                $answer['markers'][] = $safe;
+            }
+        }
+        $answer['total'] = count($answer['markers']);
+        return rest_ensure_response($answer);
     }
 
     /**

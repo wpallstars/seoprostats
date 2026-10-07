@@ -50,7 +50,19 @@ final class SEOProStats_Shares {
         if (!is_array($view) || !isset($view['view']) || !in_array($view['view'], self::SECTIONS, true)) {
             return self::invalid();
         }
-        $req = SEOProStats_Query::request(array_merge($view, array('range' => $view['range'] ?? '30d')));
+        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page') as $key) {
+            if (isset($view[$key]) && (!is_string($view[$key]) || strlen($view[$key]) > 2048)) {
+                return self::invalid();
+            }
+        }
+        if (isset($view['filters']) && (!is_array($view['filters']) || count($view['filters']) > 20)) {
+            return self::invalid();
+        }
+        $filters = self::filters($view['filters'] ?? array());
+        if (is_wp_error($filters)) {
+            return $filters;
+        }
+        $req = SEOProStats_Query::request(array_merge($view, array('range' => $view['range'] ?? '30d', 'compare' => $view['compare'] ?? 'prev', 'filters' => $filters)));
         if (is_wp_error($req)) {
             return $req;
         }
@@ -58,7 +70,7 @@ final class SEOProStats_Shares {
             'view'    => $view['view'],
             'range'   => $req['range'],
             'compare' => $req['compare'],
-            'metric'  => in_array($view['metric'] ?? '', array('visitors', 'visits', 'pageviews', 'bounce_rate', 'duration', 'events'), true) ? $view['metric'] : 'visitors',
+            'metric'  => in_array($view['metric'] ?? '', array('visitors', 'visits', 'pageviews', 'views_per_visit', 'bounce_rate', 'visit_duration'), true) ? $view['metric'] : 'visitors',
             'filters' => $req['filters'],
         );
         if ($req['range'] === 'custom') {
@@ -67,11 +79,15 @@ final class SEOProStats_Shares {
         }
         if ($out['view'] === 'clicks') {
             $kind = $view['kind'] ?? 'elements';
-            if (!in_array($kind, array('elements', 'dead', 'links', 'files', 'forms', 'pages'), true)) {
+            if (!in_array($kind, array('elements', 'dead', 'links', 'downloads', 'forms', 'pages'), true)) {
                 return self::invalid();
             }
             $out['kind'] = $kind;
-            $out['page'] = sanitize_text_field($view['page'] ?? '');
+            $page = $view['page'] ?? '';
+            if ($page !== trim($page) || preg_match('/[\x00-\x1f\x7f]/', $page)) {
+                return self::invalid();
+            }
+            $out['page'] = $page;
         }
         if ($out['view'] === 'overview' && isset($view['tabs']) && is_array($view['tabs'])) {
             $tabs = array(
@@ -100,6 +116,27 @@ final class SEOProStats_Shares {
      * @return array|WP_Error
      */
     public static function save(array $input, $id = '') {
+        return self::mutate(static function () use ($input, $id) {
+            return self::save_locked($input, $id);
+        });
+    }
+
+    /**
+     * Save under the site-wide mutation lock.
+     *
+     * @param array  $input Fields.
+     * @param string $id ID.
+     * @return array|WP_Error
+     */
+    private static function save_locked(array $input, $id) {
+        foreach (array('name', 'note', 'password') as $key) {
+            if (isset($input[$key]) && !is_string($input[$key])) {
+                return self::invalid();
+            }
+        }
+        if ((isset($input['branding']) && !is_array($input['branding'])) || (isset($input['locked_filters']) && (!is_array($input['locked_filters']) || count($input['locked_filters']) > 20))) {
+            return self::invalid();
+        }
         $all = self::all();
         if (($id && !isset($all[$id])) || (!$id && count($all) >= 50)) {
             return self::invalid();
@@ -117,7 +154,7 @@ final class SEOProStats_Shares {
             }
         }
         unset($view);
-        $locked = SEOProStats_Query::parse_filters($raw['locked_filters'] ?? array());
+        $locked = self::filters($raw['locked_filters'] ?? array());
         if (is_wp_error($locked)) {
             return $locked;
         }
@@ -161,24 +198,69 @@ final class SEOProStats_Shares {
     }
 
     /**
+     * Validate public filter shapes before the engine coerces their values.
+     *
+     * @param mixed $raw Filter list or serialized filters.
+     * @return array|WP_Error
+     */
+    public static function filters($raw) {
+        if (is_string($raw)) {
+            if (strlen($raw) > 16384) {
+                return self::invalid();
+            }
+            $raw = substr(ltrim($raw), 0, 1) === '[' ? json_decode($raw, true) : array($raw);
+        }
+        if (!is_array($raw) || count($raw) > 20) {
+            return self::invalid();
+        }
+        foreach ($raw as $filter) {
+            if (is_string($filter) && strlen($filter) <= 2048) {
+                continue;
+            }
+            if (!is_array($filter) || !is_string($filter['dimension'] ?? null) || !is_string($filter['op'] ?? 'is') || !is_array($filter['values'] ?? null) || count($filter['values']) > 100) {
+                return self::invalid();
+            }
+            foreach ($filter['values'] as $value) {
+                if (!is_string($value) || strlen($value) > 2048 || preg_match('/[\x00-\x1f\x7f]/', $value)) {
+                    return self::invalid();
+                }
+            }
+        }
+        return SEOProStats_Query::parse_filters($raw);
+    }
+
+    /**
      * Accept only local raster media; URLs are never fetched server-side.
      *
      * @param array $raw Branding fields.
      * @return array
      */
     public static function branding(array $raw) {
+        $raw = array_merge(self::defaults(), $raw);
         $out = array();
         foreach (array('title', 'agency', 'byline') as $key) {
-            $out[$key] = substr(sanitize_text_field($raw[$key] ?? ''), 0, 190);
+            $out[$key] = is_string($raw[$key] ?? '') ? substr(sanitize_text_field($raw[$key] ?? ''), 0, 190) : '';
         }
-        $out['website'] = esc_url_raw($raw['website'] ?? '', array('https', 'http'));
+        $out['website'] = is_string($raw['website'] ?? '') ? esc_url_raw($raw['website'] ?? '', array('https', 'http')) : '';
         foreach (array('logo', 'agency_logo') as $key) {
             $id  = (int) ($raw[$key] ?? 0);
             $out[$key] = self::local_logo($id) ? $id : 0;
         }
-        $out['accent'] = sanitize_hex_color($raw['accent'] ?? '') ?: '#2271b1';
+        $out['accent'] = is_string($raw['accent'] ?? '') ? (sanitize_hex_color($raw['accent'] ?? '') ?: '#2271b1') : '#2271b1';
+        if (strlen($out['accent']) === 4) {
+            $out['accent'] = '#' . $out['accent'][1] . $out['accent'][1] . $out['accent'][2] . $out['accent'][2] . $out['accent'][3] . $out['accent'][3];
+        }
         $out['mode']   = in_array($raw['mode'] ?? '', array('light', 'dark', 'system'), true) ? $raw['mode'] : 'system';
         $out['credit'] = !isset($raw['credit']) || (bool) $raw['credit'];
+        return $out;
+    }
+
+    /** @return array Branding defaults from the shared reports settings tab. */
+    public static function defaults() {
+        $out = array();
+        foreach (array('agency', 'website', 'byline', 'agency_logo', 'accent', 'mode', 'credit') as $key) {
+            $out[$key] = SEOProStats_Settings::get('share_' . $key);
+        }
         return $out;
     }
 
@@ -204,6 +286,19 @@ final class SEOProStats_Shares {
      * @return array|WP_Error
      */
     public static function revoke($id, $renew = false) {
+        return self::mutate(static function () use ($id, $renew) {
+            return self::revoke_locked($id, $renew);
+        });
+    }
+
+    /**
+     * Rotate under the site-wide mutation lock.
+     *
+     * @param string $id ID.
+     * @param bool $renew Renew.
+     * @return array|WP_Error
+     */
+    private static function revoke_locked($id, $renew) {
         $all = self::all();
         if (!isset($all[$id])) {
             return self::invalid();
@@ -213,6 +308,50 @@ final class SEOProStats_Shares {
         $all[$id]['revoked']    = !$renew;
         update_option(self::OPTION, $all, false);
         return $renew ? array('url' => self::url($token)) : array('revoked' => true);
+    }
+
+    /**
+     * Count opens without restoring a concurrently revoked link.
+     *
+     * @param array $share Resolved share.
+     * @return array|WP_Error
+     */
+    public static function opened(array $share) {
+        return self::mutate(static function () use ($share) {
+            $all = self::all();
+            $now = $all[$share['id']] ?? null;
+            if (!$now || $now['revoked'] || !hash_equals($now['token_hash'], $share['token_hash']) || !hash_equals($now['password_hash'], $share['password_hash']) || ($now['expires'] && $now['expires'] <= time())) {
+                return self::denied();
+            }
+            $now['last_opened'] = time();
+            ++$now['opens'];
+            $all[$now['id']] = $now;
+            update_option(self::OPTION, $all, false);
+            return $now;
+        });
+    }
+
+    /**
+     * Serialize option mutations; refresh the request cache after locking.
+     *
+     * @param callable $work Mutation.
+     * @return mixed
+     */
+    private static function mutate(callable $work) {
+        global $wpdb;
+        $lock = substr('seoprostats_shares_' . hash('sha256', $wpdb->prefix), 0, 64);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- security-sensitive read/modify/write serialization.
+        if ((int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 3)', $lock)) !== 1) {
+            return self::denied();
+        }
+        try {
+            wp_cache_delete(self::OPTION, 'options');
+            wp_cache_delete('notoptions', 'options');
+            return $work();
+        } finally {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- release the connection-owned lock.
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock));
+        }
     }
 
     /**
@@ -263,7 +402,7 @@ final class SEOProStats_Shares {
                 $window = array('until' => time() + 60, 'count' => 0);
             }
             ++$window['count'];
-            set_transient($key, $window, max(1, $window['until'] - time()));
+            set_transient($key, $window, max(1, (int) $window['until'] - time()));
             return $window['count'] <= $limit;
         } finally {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- releases the connection-owned lock.

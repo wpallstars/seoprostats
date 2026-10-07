@@ -55,6 +55,11 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
     const [branding, setBranding] = useState<ShareBranding>(share?.branding ?? { title: '', logo: 0, agency: '', agency_logo: 0, website: '', byline: '', accent: '#2271b1', mode: 'system', credit: true });
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        if (!share) {
+            void apiFetch<{ defaults: ShareBranding }>({ path }).then((answer) => setBranding(answer.defaults)).catch((e: unknown) => setError(errorMessage(e, __('Could not load branding defaults.', 'seoprostats'))));
+        }
+    }, [share]);
     const save = async () => {
         setBusy(true);
         try {

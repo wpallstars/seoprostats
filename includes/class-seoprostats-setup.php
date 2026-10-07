@@ -155,6 +155,10 @@ final class SEOProStats_Setup {
      */
     public static function settings_tabs() {
         return array(
+            'shared-reports' => array(
+                'label' => __('Shared reports', 'seoprostats'),
+                'description' => __('Default branding for new private reports. Each report can override it.', 'seoprostats'),
+            ),
             'tracking' => array(
                 'label'       => __('Tracking', 'seoprostats'),
                 'description' => __('What is collected, from which pages and domains.', 'seoprostats'),

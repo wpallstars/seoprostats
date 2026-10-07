@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { Button, Notice, TextControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import { parseHash, buildHash, type ViewState } from '@seoprostats/core';
+import { shareView, type ViewState } from '@seoprostats/core';
 import { errorMessage, queryClient, shareAccess, shareFetch } from './api';
 import type { SharedReport } from './Shares';
 import { Controls } from './components/Controls';
@@ -39,12 +39,23 @@ function Report({ share }: { share: Opened }) {
     const [index, setIndex] = useState(0);
     const [state, setState] = useState<ViewState>(share.views[0]!);
     const [mode, setMode] = useState(share.branding.mode);
-    const dark = mode === 'dark' || (mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const [systemDark, setSystemDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
+    useEffect(() => {
+        const media = window.matchMedia('(prefers-color-scheme: dark)');
+        const changed = () => setSystemDark(media.matches);
+        media.addEventListener('change', changed);
+        return () => media.removeEventListener('change', changed);
+    }, []);
+    const dark = mode === 'dark' || (mode === 'system' && systemDark);
     const accent = contrast(share.branding.accent, dark ? '#1d2327' : '#ffffff') >= 4.5 ? share.branding.accent : dark ? '#72aee6' : '#2271b1';
     shareAccess.section = state.view;
+    useEffect(() => {
+        document.body.classList.toggle('spst-share-dark', dark);
+        document.body.style.setProperty('--spst-share-accent', accent);
+    }, [dark, accent]);
     const update = (patch: Partial<ViewState>) => {
         // Canonicalize mutable choices; locks are displayed separately and added by the server.
-        setState(parseHash(buildHash({ ...state, ...patch, view: share.views[index]!.view })));
+        setState(shareView({ ...state, ...patch, view: share.views[index]!.view })!);
     };
     const props = { state, update };
     return <div className={`spst-app spst-report ${dark ? 'is-dark' : 'is-light'}`} style={{ '--spst-share-accent': accent } as React.CSSProperties}>

@@ -85,6 +85,7 @@ final class SEOProStats_CLI {
             $answer = SEOProStats_Shares::revoke($args[1] ?? '', $action === 'renew');
         } else {
             WP_CLI::error('Use list, create, revoke or renew.');
+            return;
         }
         if (is_wp_error($answer)) {
             WP_CLI::error($answer->get_error_message());
