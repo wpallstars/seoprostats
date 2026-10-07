@@ -30,10 +30,12 @@
 	flex-wrap: wrap;
 	align-items: center;
 	justify-content: flex-end;
-	gap: 8px 16px;
+	gap: 8px 12px;
 	margin-inline-start: auto;
 	padding-block: 4px;
-	padding-inline: 16px 12px;
+	/* The right edge lines up with the header's buttons. Narrower than
+	   about 1430px the controls take a row of their own, on the right. */
+	padding-inline: 8px 12px;
 }
 
 .spst-nav__end:empty {
