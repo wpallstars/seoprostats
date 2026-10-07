@@ -163,7 +163,7 @@ class SEOProStats_Admin_Page {
      */
     private static function nav_group($label, array $tabs, $active, array $page_tabs) {
         ?>
-        <div class="spst-nav__group" role="group" aria-label="<?php echo esc_attr($label); ?>">
+        <div class="spst-nav__group" role="group" aria-label="<?php echo esc_attr($label); ?>"><?php // NOSONAR: links, not form controls, so not <fieldset>. ?>
             <?php foreach ($tabs as $slug => $tab) : ?>
                 <?php $slug = (string) $slug; ?>
                 <a href="<?php echo esc_url(SEOProStats_Admin_Manager::tab_url($slug)); ?>"
