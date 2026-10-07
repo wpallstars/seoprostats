@@ -36,8 +36,10 @@ final class SEOProStats_Schema {
      * v8: experiments (a change's hypothesis, measured before and after).
      * v9: queue (decision queue items someone accepted, did or dismissed).
      * v10: page_facts (the content audit's facts about each published page).
+     * v11: page_links (links between the site's own pages) and
+     *      page_facts.links_in (pages linking to each).
      */
-    const VERSION = 10;
+    const VERSION = 11;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -102,7 +104,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links');
     }
 
     /**
@@ -579,7 +581,8 @@ final class SEOProStats_Schema {
             // by the daily cron. Times are Unix seconds; lengths are
             // characters. title_hash, desc_hash: 8-byte keys of the shown
             // title and description (zeros for none). flags: the page's
-            // own findings, SEOProStats_Audit::FLAGS.
+            // own findings, SEOProStats_Audit::FLAGS. links_in: other pages
+            // whose content links to it (SEOProStats_Links), at most 65535.
             'page_facts' => "CREATE TABLE {$t['page_facts']} (
   path_id int unsigned NOT NULL,
   post_id bigint unsigned NOT NULL DEFAULT 0,
@@ -597,12 +600,27 @@ final class SEOProStats_Schema {
   noindex tinyint unsigned NOT NULL DEFAULT 0,
   canonical_away tinyint unsigned NOT NULL DEFAULT 0,
   flags smallint unsigned NOT NULL DEFAULT 0,
+  links_in smallint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (path_id),
   KEY post_id (post_id),
   KEY checked (checked),
   KEY flags (flags),
   KEY title_hash (title_hash),
-  KEY desc_hash (desc_hash)
+  KEY desc_hash (desc_hash),
+  KEY links_in (links_in)
+) $charset;",
+
+            // Links in the content of published pages to the site's own
+            // pages (SEOProStats_Links), read with their page_facts row:
+            // one row per page and page it links to, with the first link's
+            // text (a dictionary id, DICT_LABEL) and how many links there are.
+            'page_links' => "CREATE TABLE {$t['page_links']} (
+  from_path int unsigned NOT NULL,
+  to_path int unsigned NOT NULL,
+  text_id int unsigned NOT NULL DEFAULT 0,
+  links smallint unsigned NOT NULL DEFAULT 1,
+  PRIMARY KEY  (from_path,to_path),
+  KEY to_path (to_path)
 ) $charset;",
         );
     }

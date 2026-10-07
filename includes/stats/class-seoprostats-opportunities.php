@@ -275,7 +275,7 @@ final class SEOProStats_Opportunities {
      * @param int[]|null          $pages  Path ids, or null for every page.
      * @return array{key:string,where:string,args:array<int,mixed>}
      */
-    private static function where($engine, array $days, $pages) {
+    public static function where($engine, array $days, $pages) {
         $where = 'engine = %d AND day >= %s AND day <= %s';
         $args  = array((int) $engine, (string) $days['day_from'], (string) $days['day_to']);
         if ($pages !== null) {

@@ -611,18 +611,20 @@ final class SEOProStats_Changes {
     }
 
     /**
-     * Links in a post's content: internal ones (path => anchor text) and
-     * the hosts of external ones. Internal: no host, or one of the site's
-     * hosts (as the collector's).
+     * Links in a post's content: internal ones (path => the first link's
+     * anchor text, and path => how many links), and the hosts of external
+     * ones. Internal: no host, or one of the site's hosts (as the
+     * collector's).
      *
      * @param string $html Content.
-     * @return array{internal:array<string,string>,hosts:string[]}
+     * @return array{internal:array<string,string>,counts:array<string,int>,hosts:string[]}
      */
     public static function links($html) {
         $internal = array();
+        $counts   = array();
         $hosts    = array();
         if (!preg_match_all('/<a\s[^>]*>(.*?)<\/a>/is', (string) $html, $matches, PREG_SET_ORDER)) {
-            return array('internal' => $internal, 'hosts' => $hosts);
+            return array('internal' => $internal, 'counts' => $counts, 'hosts' => $hosts);
         }
         $site = SEOProStats_Collection::hosts();
         foreach ($matches as $match) {
@@ -645,13 +647,14 @@ final class SEOProStats_Changes {
                 if (!isset($internal[$to])) {
                     $internal[$to] = self::short(trim((string) preg_replace('/\s+/u', ' ', wp_strip_all_tags($match[1]))));
                 }
+                $counts[$to] = isset($counts[$to]) ? $counts[$to] + 1 : 1;
             } else {
                 $hosts[strpos($host, 'www.') === 0 ? substr($host, 4) : $host] = true;
             }
         }
         $hosts = array_keys($hosts);
         sort($hosts);
-        return array('internal' => $internal, 'hosts' => array_map('strval', $hosts));
+        return array('internal' => $internal, 'counts' => $counts, 'hosts' => array_map('strval', $hosts));
     }
 
     /**
