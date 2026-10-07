@@ -24,6 +24,9 @@ add_action('doing_it_wrong_run', static function ($function, $message) {
 /** Configure shops using their own APIs, without creating purchase events. */
 function seoprostats_shop_test_setup() {
     SEOProStats_Settings::set('purchases_thrivecart', 'shop-test-only');
+    // Cron is disabled and no admin page has run the initial schedule yet.
+    SEOProStats_Collection::rotate_salts();
+    SEOProStats_Collection::write_config();
     if (function_exists('WC')) {
         update_option('woocommerce_currency', 'USD');
         update_option('woocommerce_calc_taxes', 'no');

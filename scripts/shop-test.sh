@@ -158,6 +158,12 @@ start_site() {
 install_shops() {
 	local shop version pin metadata compatible
 	local pins=()
+	local flags=()
+	# Older PHP images carry an older WP-CLI without requirement checks.
+	# Inspect its actual command schema instead of guessing a version cutoff.
+	if wp_cli cli cmd-dump | jq -e '.. | objects | select(.name? == "plugin") | .subcommands[] | select(.name == "install") | .synopsis | contains("--ignore-requirements")' >/dev/null; then
+		flags+=(--ignore-requirements)
+	fi
 	IFS=',' read -r -a pins <<<"$SHOP_VERSIONS"
 	for shop in woocommerce easy-digital-downloads fluent-cart; do
 		version=latest
@@ -167,9 +173,9 @@ install_shops() {
 		# Download without activation first: check the actual installed headers,
 		# not a guessed minimum. Do not turn arbitrary install failures into skips.
 		if [[ "$version" == latest ]]; then
-			wp_cli plugin install "$shop" --ignore-requirements --quiet
+			wp_cli plugin install "$shop" ${flags[@]+"${flags[@]}"} --quiet
 		else
-			wp_cli plugin install "$shop" --version="$version" --ignore-requirements --quiet
+			wp_cli plugin install "$shop" --version="$version" ${flags[@]+"${flags[@]}"} --quiet
 		fi
 		metadata="$(wp_cli plugin get "$shop" --format=json)"
 		printf '%s %s\n' "$shop" "$(jq -r .version <<<"$metadata")"
