@@ -323,7 +323,11 @@ paths:
         visits in the range (with the filters); `completions` counts every
         time it was reached. Revenue comes from the matching events, one
         amount per currency (never added across currencies). Goals keep
-        the order they were added in.
+        the order they were added in. An exact Purchase event goal subtracts
+        Refund amounts on the original visits and purchase dates, without
+        counting refunds as conversions or completions. Property revenue for
+        Purchase or all events also subtracts refunds; an explicit Refund
+        report shows positive returned amounts.
       parameters:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'

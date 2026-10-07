@@ -251,7 +251,35 @@ Free orders are not purchases. Settings → Tracking → Record purchases
 
 Lines written this way carry `s: 1` (the collector never sets it): one
 without a user agent of its own (ThriveCart's) is not taken for a bot.
-Refunds and renewals are not recorded yet.
+
+Refunds produce a separate `Refund` event with a positive amount, on the
+purchase's original daily hash and checkout time. Recorded marks now keep
+that visit, currency, path and event properties as JSON (still truthy); the
+checkout's user agent and country are removed. Refunds keep the purchase's
+properties so source and other property revenue agree. WooCommerce marks
+each refund order once, EDD 3 marks each refund order once, and FluentCart
+remembers refund transaction IDs in the original order's recorded mark.
+Only successful buffer writes set these marks; filtered-out purchases and
+failed writes can be retried. Legacy integer marks have no visit and cannot
+be safely attributed, so refunds for those purchases are skipped.
+
+ThriveCart retains private receipts for the last 500 order IDs in its
+existing non-autoloaded state. `order.refund` uses `refund.amount` in cents
+and the stable `webhook_id` (or legacy `event_id`) for deduplication;
+`refund.id` identifies the product, not a refund. Unknown orders are
+ignored, and refunds without a delivery identity fail rather than guessing.
+Receipts and refund identities expire together when an order leaves the
+bounded list. Order and refund identities never enter the statistics.
+
+The processor rejoins historical server-side Refund events to the visit
+containing the original timestamp, even if a later visit used that day's
+hash. If the original visit has been pruned, it drops the refund instead
+of inventing a visit. Refunds revise the original purchase period, not the
+day money was returned. Purchase goal revenue and property revenue subtract
+the positive Refund amounts per currency; purchase completions are unchanged.
+Renewals are not recorded yet: subscription extension payloads still need
+verification; ThriveCart's account webhook documents
+`order.subscription_payment`, not `order.rebill_success`.
 
 ### Changes
 
@@ -480,7 +508,7 @@ widget follows the same choice and says when it shows demo data.
 | Scroll depth | median deepest scroll % of pageviews of the page (average until then) |
 | Conversions | visits that reached the goal (viewed its page or sent its event) |
 | Conversion rate | visits that reached the goal ÷ visits |
-| Revenue | sum of event revenue in the goal's currency; currencies are never added together |
+| Revenue | sum of event revenue per currency; an exact `Purchase` goal subtracts `Refund` amounts on the original visits and purchase dates without changing conversions or completions. Property revenue for all events or `Purchase` also subtracts refunds carrying those properties; an explicit `Refund` report shows positive returned amounts. Currencies are never added together. |
 | Funnel step | visits that reached every step up to this one, in order, within the visit (other hits may come between) |
 | Funnel completion rate | visits at the last step ÷ visits at the first |
 | Drop-off | visits at the step before that did not reach this one |

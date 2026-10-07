@@ -47,6 +47,8 @@ Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events th
 
 Paid orders from WooCommerce, Easy Digital Downloads and FluentCart are recorded by themselves as a Purchase event with the order's total in its currency, on the visit that placed it, once per order; ThriveCart orders too once its secret word and webhook are set under Settings → Tracking. No order numbers or customer details are kept, and Settings → Tracking can switch it off.
 
+Refunds of newly recorded orders count once on the original visit and purchase date. Purchase goal and property revenue subtract them per currency without adding purchase completions. Older purchases without a saved visit cannot be adjusted; subscription renewals are still left out. ThriveCart refunds need a delivery ID and a remembered order (last 500).
+
 = Does it record what people click? =
 
 Yes, unless you switch it off under Settings → Tracking. Clicks shows what people click on the site or one page, clicks that did nothing (dead clicks), links followed, including affiliate links, files and the forms sent. It never records what anyone types or chooses in a form, hides email addresses and long numbers, and leaves out the text of anything marked with data-sps-mask. Clicks are kept 3 months.
