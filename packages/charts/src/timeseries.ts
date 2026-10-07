@@ -34,6 +34,8 @@ export interface TimeseriesConfig {
 	series: ChartSeries[];
 	height: number;
 	formatValue: (value: number) => string;
+	/** Counts use whole-number gridlines; rates and averages keep fractional steps. */
+	integer?: boolean;
 	/** Colour of axis text and grid lines. */
 	axisColor: string;
 	gridColor: string;
@@ -148,6 +150,7 @@ function options(config: TimeseriesConfig, width: number, getConfig: () => Times
 				size: 56,
 				grid: { stroke: config.gridColor, width: 1 },
 				ticks: { show: false },
+				incrs: config.integer ? Array.from({ length: 16 }, (_, i) => [1, 2, 5].map((n) => n * 10 ** i)).flat() : undefined,
 				values: (_u, splits) => splits.map((v) => getConfig().formatValue(v)),
 			},
 		],
@@ -197,7 +200,7 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 
 	return {
 		update(next) {
-			const shape = next.series.length !== config.series.length || next.series.some((s, i) => {
+			const shape = next.integer !== config.integer || next.series.length !== config.series.length || next.series.some((s, i) => {
 				const was = config.series[i];
 				const length = next.labels.length;
 				return !was || was.color !== s.color || was.dashed !== s.dashed || was.fill !== s.fill || hasPartial(was, config.labels.length) !== hasPartial(s, length);
