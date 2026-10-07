@@ -51,6 +51,10 @@ function seoprostats_shop_test_setup() {
         update_option('seoprostats_shop_test_product', $product->save(), false);
     }
     if (function_exists('edd_build_order')) {
+        // Session components are registered on the first full EDD bootstrap,
+        // after activation; install these too before checkout empties a cart.
+        edd_install_component_database_tables();
+        edd_run_install();
         edd_update_option('currency', 'EUR');
         edd_update_option('enable_taxes', false);
         $product = wp_insert_post(array('post_type' => 'download', 'post_status' => 'publish', 'post_title' => 'Shop test download'));
