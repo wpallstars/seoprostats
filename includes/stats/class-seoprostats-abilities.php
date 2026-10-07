@@ -61,7 +61,7 @@ final class SEOProStats_Abilities {
         );
         wp_register_ability('seoprostats/markers', array(
             'label'               => __('Changes on the timeline', 'seoprostats'),
-            'description'         => __('What changed on the site in a period, oldest first: posts published, edited or moved, SEO fields, prices and stock, plugin, theme and WordPress updates, settings, and notes. Set them against traffic and sales to see what moved them.', 'seoprostats'),
+            'description'         => __('What changed on the site in a period, oldest first: posts published, edited or moved, SEO fields, prices and stock, plugin, theme and WordPress updates, settings, search engine updates (when switched on) and notes. Set them against traffic and sales to see what moved them.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -88,7 +88,7 @@ final class SEOProStats_Abilities {
                     ),
                     'kinds' => array(
                         'type'        => 'string',
-                        'description' => __('Only these kinds or groups of change (content, seo, product, site, note), comma-separated.', 'seoprostats'),
+                        'description' => __('Only these kinds or groups of change (content, seo, product, site, search, note), comma-separated.', 'seoprostats'),
                     ),
                     'data'  => $data,
                 ),
@@ -168,10 +168,11 @@ final class SEOProStats_Abilities {
             return $req;
         }
         $args = array(
-            'page'  => isset($input['page']) ? (string) $input['page'] : '',
-            'kinds' => isset($input['kinds']) ? (string) $input['kinds'] : '',
-            'limit' => SEOProStats_Changes::MAX_LIMIT,
-            'order' => 'asc',
+            'page'    => isset($input['page']) ? (string) $input['page'] : '',
+            'kinds'   => isset($input['kinds']) ? (string) $input['kinds'] : '',
+            'limit'   => SEOProStats_Changes::MAX_LIMIT,
+            'order'   => 'asc',
+            'running' => true,
         );
         $answer = SEOProStats_API::on_data(self::data($input), static function () use ($req, $args) {
             return SEOProStats_Changes::list_changes((array) $req, $args);

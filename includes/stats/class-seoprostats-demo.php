@@ -531,7 +531,7 @@ final class SEOProStats_Demo {
                     'old'         => (string) $old,
                     'new'         => (string) $new,
                     'meta'        => $meta,
-                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : ((int) $kind === SEOProStats_Changes::NOTE ? 6 : 1),
+                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : ((int) $kind === SEOProStats_Changes::NOTE ? 6 : ((int) $kind === SEOProStats_Changes::SEARCH_UPDATE ? 5 : 1)),
                     'user_id'     => 0,
                 );
             }
@@ -561,6 +561,21 @@ final class SEOProStats_Demo {
             $gone   = 10 + ($n * 29) % 90;
             $name   = ucfirst(str_replace(array('blog/', '-'), array('', ' '), trim($path, '/')));
             $add($days, 11, 5, $path, 'post', (string) $before, (string) ($before + $added - $gone), array('name' => $name, 'before' => $before, 'after' => $before + $added - $gone, 'added' => $added, 'removed' => $gone));
+        }
+        // Made-up search engine updates: a core update every 95 days rolling out over 13, a spam update every 70 over 2.
+        foreach (array(array('core', 95, 30, 13), array('spam', 70, 12, 2)) as $update) {
+            list($type, $every, $first, $length) = $update;
+            $n = 0;
+            for ($days = $span - $first; $days >= 1; $days -= $every, $n++) {
+                $ended = $days - $length;
+                $add($days, 16, SEOProStats_Changes::SEARCH_UPDATE, '', 'google', $type, 'demo-' . $type . '-' . $n, array(
+                    /* translators: %d: a made-up update's number, for the demo data */
+                    'name'   => sprintf($type === 'core' ? __('Demo core update %d', 'seoprostats') : __('Demo spam update %d', 'seoprostats'), $n + 1),
+                    'engine' => 'Google',
+                    'url'    => 'https://status.search.google.com/',
+                    'ended'  => $ended > 0 ? gmdate('c', $today->modify('-' . $ended . ' days')->setTime(12, 0)->getTimestamp()) : '',
+                ));
+            }
         }
         usort($rows, static function ($x, $y) {
             return $x['ts'] - $y['ts'];

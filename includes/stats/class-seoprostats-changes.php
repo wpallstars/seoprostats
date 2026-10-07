@@ -70,14 +70,28 @@ final class SEOProStats_Changes {
         49 => array('permalinks', 'site'),
         50 => array('site_address', 'site'),
         51 => array('front_page', 'site'),
+        60 => array('search_update', 'search'),
         80 => array('note', 'note'),
     );
+
+    /**
+     * Kind code of a search engine update (SEOProStats_Search_Updates):
+     * object_type the engine, old its type (core, spam…), new its id at
+     * the source; meta name, engine, url, and ended for rollouts.
+     */
+    const SEARCH_UPDATE = 60;
 
     /** Kind code of a note (annotation) added by a person or an agent. */
     const NOTE = 80;
 
     /** Groups of kinds, for filters. */
-    const GROUPS = array('content', 'seo', 'product', 'site', 'note');
+    const GROUPS = array('content', 'seo', 'product', 'site', 'search', 'note');
+
+    /**
+     * How far before a range the timeline looks for search engine updates
+     * still rolling out in it.
+     */
+    const ROLLOUT_LOOKBACK = 60 * DAY_IN_SECONDS;
 
     /** Where a change was made: code => name. */
     const SOURCES = array(
@@ -1319,12 +1333,44 @@ final class SEOProStats_Changes {
             array_merge(array($table), $vals, array($limit, $offset))
         ), ARRAY_A);
         // phpcs:enable
-        $rows  = is_array($rows) ? $rows : array();
+        $rows = is_array($rows) ? $rows : array();
+        if (!empty($args['running']) && $offset === 0 && (!$kinds || in_array(self::SEARCH_UPDATE, $kinds, true))) {
+            $running      = self::running($table, (int) $range['from']);
+            $rows         = $order === 'ASC' ? array_merge($running, $rows) : array_merge($rows, $running);
+            $out['total'] += count($running);
+        }
         $paths = SEOProStats_Dict::values(array_map('intval', wp_list_pluck($rows, 'path_id')));
         foreach ($rows as $row) {
             $out['changes'][] = self::shape($row, $paths);
         }
         return $out;
+    }
+
+    /**
+     * Search engine updates that started before a range and were still
+     * rolling out when it began (or still are), oldest first.
+     *
+     * @param string $table The changes table.
+     * @param int    $from  The range's start.
+     * @return array<int,array<string,mixed>> Rows.
+     */
+    private static function running($table, $from) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by key kind_ts.
+        $rows = $wpdb->get_results($wpdb->prepare(
+            'SELECT id, ts, kind, path_id, object_type, object_id, old, new, meta, source, user_id FROM %i WHERE kind = %d AND ts >= %d AND ts < %d ORDER BY ts ASC, id ASC',
+            $table,
+            self::SEARCH_UPDATE,
+            $from - self::ROLLOUT_LOOKBACK,
+            $from
+        ), ARRAY_A);
+        return array_values(array_filter(is_array($rows) ? $rows : array(), static function ($row) use ($from) {
+            $meta = json_decode((string) $row['meta'], true);
+            if (!is_array($meta) || !array_key_exists('ended', $meta)) {
+                return false;
+            }
+            return $meta['ended'] === '' || strtotime((string) $meta['ended']) >= $from;
+        }));
     }
 
     /**
@@ -1531,6 +1577,20 @@ final class SEOProStats_Changes {
             case 'front_page':
                 /* translators: 1: setting, 2: value before, 3: value now */
                 return sprintf(__('Front page setting changed: %1$s (%2$s → %3$s)', 'seoprostats'), $title, isset($meta['old_title']) && $meta['old_title'] !== '' ? (string) $meta['old_title'] : $old, isset($meta['new_title']) && $meta['new_title'] !== '' ? (string) $meta['new_title'] : $new);
+            case 'search_update':
+                $engine = isset($meta['engine']) && $meta['engine'] !== '' ? (string) $meta['engine'] : (isset($c['object']['type']) ? (string) $c['object']['type'] : '');
+                if (!array_key_exists('ended', $meta)) {
+                    /* translators: 1: search engine or feed, 2: what it announced */
+                    return sprintf(__('%1$s: %2$s', 'seoprostats'), $engine, $title);
+                }
+                if ($meta['ended'] === '') {
+                    /* translators: 1: search engine, 2: the update's name */
+                    return sprintf(__('%1$s: %2$s (rolling out)', 'seoprostats'), $engine, $title);
+                }
+                $start = strtotime((string) $c['t']);
+                $end   = strtotime((string) $meta['ended']);
+                /* translators: 1: search engine, 2: the update's name, 3: how long it took, such as "12 days" */
+                return sprintf(__('%1$s: %2$s (%3$s)', 'seoprostats'), $engine, $title, human_time_diff((int) $start, (int) max($start, $end)));
             case 'note':
                 return $new;
             default:

@@ -4,7 +4,8 @@
  * than a finger's width merge into one with a count, so a year of daily
  * changes stays readable. Each marker is a button: hover or focus lists its
  * changes, choosing it calls back. Arrow keys move between markers (one tab
- * stop for the lane).
+ * stop for the lane). Spans (a search engine update's rollout) are thin
+ * bars under the markers, from their first point to their last.
  *
  * The lane knows nothing of dates or the plot: the caller places it with
  * a function giving each point's x position (TimeseriesChart.clientX) and
@@ -27,8 +28,19 @@ export interface ChartMarker {
 	items: ChartMarkerItem[];
 }
 
+/** Something that lasts (a search engine update's rollout), drawn as a bar under the markers. */
+export interface ChartSpan {
+	/** First point (by index) it covers. */
+	from: number;
+	/** Last point (by index) it covers. */
+	to: number;
+	color: string;
+}
+
 export interface MarkersLaneConfig {
 	markers: ChartMarker[];
+	/** Spans, for sight only: the markers' labels carry their dates. */
+	spans?: ChartSpan[];
 	/** Name of the lane for screen readers, e.g. "Changes". */
 	label: string;
 	/** A point's long label (its day, hour or month). */
@@ -65,6 +77,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 	let config = initial;
 	let clientX: ((index: number) => number | null) | null = null;
 	let buttons: HTMLButtonElement[] = [];
+	let bars: HTMLElement[] = [];
 	let focusIndex = 0;
 
 	el.classList.add('spst-chart-lane');
@@ -143,6 +156,30 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 		return out.map((g) => ({ x: g.xs.reduce((sum, x) => sum + x, 0) / g.xs.length, indexes: g.indexes, items: g.items }));
 	}
 
+	function renderSpans(): void {
+		bars.forEach((b) => b.remove());
+		bars = [];
+		if (!clientX) {
+			return;
+		}
+		const base = el.getBoundingClientRect().left;
+		for (const span of config.spans ?? []) {
+			const x1 = clientX(Math.min(span.from, span.to));
+			const x2 = clientX(Math.max(span.from, span.to));
+			if (x1 === null || x2 === null || !Number.isFinite(x1) || !Number.isFinite(x2)) {
+				continue;
+			}
+			const bar = document.createElement('span');
+			bar.className = 'spst-chart-lane__span';
+			bar.setAttribute('aria-hidden', 'true');
+			bar.style.left = `${x1 - base}px`;
+			bar.style.width = `${Math.max(2, x2 - x1)}px`;
+			bar.style.background = span.color;
+			el.insertBefore(bar, el.firstChild);
+			bars.push(bar);
+		}
+	}
+
 	function move(to: number): void {
 		const target = buttons[Math.max(0, Math.min(to, buttons.length - 1))];
 		if (target) {
@@ -157,6 +194,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 		buttons.forEach((b) => b.remove());
 		buttons = [];
 		el.setAttribute('aria-label', config.label);
+		renderSpans();
 		const list = groups();
 		focusIndex = Math.min(focusIndex, Math.max(0, list.length - 1));
 		list.forEach((group, i) => {
@@ -226,6 +264,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 		},
 		destroy() {
 			buttons.forEach((b) => b.remove());
+			bars.forEach((b) => b.remove());
 			tip.remove();
 			el.classList.remove('spst-chart-lane', 'is-empty');
 			el.removeAttribute('role');
