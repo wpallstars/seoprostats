@@ -18,6 +18,10 @@ import {
 	type ContentAnswer,
 	type ContentSort,
 	type Dimension,
+	type Experiment,
+	type ExperimentInput,
+	type ExperimentResult,
+	type ExperimentsAnswer,
 	type Funnel,
 	type FunnelsAnswer,
 	type Goal,
@@ -264,6 +268,47 @@ export function useChanges(scope: Pick<Scope, 'range' | 'from' | 'to'>, page: st
 		placeholderData: keepPreviousData,
 		enabled,
 	});
+}
+
+/** Experiments, due ones first (measured now, or as decided). */
+export function useExperiments() {
+	const { data, enabled } = useReportData();
+	const args = withData({}, data);
+	return useQuery({
+		queryKey: ['experiments', args],
+		queryFn: () => get<ExperimentsAnswer>('experiments', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** After an experiment is added, decided or deleted: the list, and the markers and change log (its start). */
+function refreshExperiments(): void {
+	void queryClient.invalidateQueries({ queryKey: ['experiments'] });
+	refreshChanges();
+}
+
+/** Record an experiment (administrators); its start shows on the timeline. */
+export async function addExperiment(data: DataSet, input: ExperimentInput): Promise<Experiment> {
+	const saved = await send<Experiment>('experiments', 'POST', { ...input, data });
+	refreshExperiments();
+	return saved;
+}
+
+/** Decide (with a result), change the note of, or cancel an experiment. */
+export async function updateExperiment(
+	data: DataSet,
+	id: number,
+	change: { action: 'decide' | 'note' | 'cancel'; result?: ExperimentResult; note?: string }
+): Promise<Experiment> {
+	const saved = await send<Experiment>(`experiments/${id}`, 'POST', { ...change, data });
+	refreshExperiments();
+	return saved;
+}
+
+export async function deleteExperiment(data: DataSet, id: number): Promise<void> {
+	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/experiments/${id}`, { data }), method: 'DELETE' });
+	refreshExperiments();
 }
 
 /** After a note is added or deleted, the markers and the change log are asked again. */

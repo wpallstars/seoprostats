@@ -176,26 +176,20 @@ final class SEOProStats_Dashboard {
 
     /**
      * The screen: the settings screen's header (name, version, feature
-     * search and links), the tab bar, then the app. The bar holds the
-     * sections as the settings screen's tabs and, on the right, the app's
-     * period, comparison, live count and Live/Demo switch
-     * (#spst-dashboard-controls). The app marks the section shown and
-     * keeps the period and filters in the tabs' links
-     * (packages/wp-admin/src/App.tsx).
+     * search and links), the sections as the settings screen's tabs, then
+     * the app. The app marks the section shown and keeps the period and
+     * filters in the tabs' links (packages/wp-admin/src/App.tsx).
      */
     public static function render() {
         ?>
         <div class="wrap spst-wrap">
             <?php SEOProStats_Admin_Manager::render_header(); ?>
             <hr class="wp-header-end">
-            <div class="spst-nav" id="spst-dashboard-nav">
-                <nav class="spst-nav__group" aria-label="<?php esc_attr_e('Sections', 'seoprostats'); ?>">
-                    <?php foreach (self::sections() as $view => $label) : ?>
-                        <a class="spst-nav__tab" href="<?php echo esc_url('#/' . $view); ?>" data-spst-view="<?php echo esc_attr($view); ?>"><?php echo esc_html($label); ?></a>
-                    <?php endforeach; ?>
-                </nav>
-                <div class="spst-nav__end" id="spst-dashboard-controls"></div>
-            </div>
+            <nav class="spst-nav" id="spst-dashboard-nav" aria-label="<?php esc_attr_e('Sections', 'seoprostats'); ?>">
+                <?php foreach (self::sections() as $view => $label) : ?>
+                    <a class="spst-nav__tab" href="<?php echo esc_url('#/' . $view); ?>" data-spst-view="<?php echo esc_attr($view); ?>"><?php echo esc_html($label); ?></a>
+                <?php endforeach; ?>
+            </nav>
             <div id="spst-dashboard" class="spst-main">
                 <p class="spst-loading"><?php esc_html_e('Loading statistics…', 'seoprostats'); ?></p>
                 <noscript><p><?php esc_html_e('The statistics need JavaScript. They are also available through the REST API and WP-CLI (wp seoprostats stats).', 'seoprostats'); ?></p></noscript>

@@ -318,7 +318,8 @@ skipped, as are new meta on a post published in the same request. A
 change is written once per request; one post's changes in one save share
 a time. The `seoprostats_record_change` filter can change or drop one.
 Kind codes never change meaning: 60 and up are kept for search engine
-updates (feeds) and 80 and up for notes (annotations).
+updates (feeds) and 80 and up for notes (80 annotations, 81 an
+experiment's start).
 
 `GET /markers` answers the range's changes oldest first (at most 1,000) and
 `GET /changes` newest first with paging; both take `page` (that page's
@@ -333,6 +334,22 @@ who added it: `POST /annotations`, `wp seoprostats annotate` and the
 `seoprostats/annotate` ability write them; only they can be deleted
 (`DELETE /annotations/{id}`, `annotate --delete`), as recorded changes are
 the site's history. Both need `manage_options`.
+
+Experiments (schema v8, `SEOProStats_Experiments`; design and measuring:
+`docs/seo-loop.md` → Experiments) record a change and what it should do
+before the result is known, then measure the pages before and after it
+against unchanged pages, with the usual spread, the data needed and the
+confounders, and suggest keep, revise, undo or inconclusive; a person or
+agent decides, and the decision keeps the measurement it was made on.
+Each writes a row of kind 81 (`experiment`, group `note`) at its start,
+so it shows on the markers lane and in Changes; deleting the experiment
+deletes that row. A measurement is cached like the reports. `GET
+/experiments` and `GET /experiments/{id}`, `wp seoprostats experiments`
+and the `seoprostats/experiments` ability read them; `POST /experiments`,
+`POST` and `DELETE /experiments/{id}` and `seoprostats/experiment-record`
+(`manage_options`) add, decide, note, cancel and delete them. The
+dashboard has them under Search → Experiments, and each row of Changes
+with a page can start one.
 
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
@@ -567,6 +584,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `links` | backlink | source URL and host, target page, anchor, rel, first and last seen, lost, authority, how found |
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
+| `experiments` | a change's hypothesis, measured before and after against unchanged pages (schema v8; `docs/seo-loop.md`) | `id`, `created`, `user_id`, `name`, `start`, `days`, `review` (the after window's last day), `engine`, `metric` (1 clicks, 2 impressions, 3 CTR, 4 position, 5 visits, 6 conversions), `direction`, `threshold` (percent, or tenths of a place), `change_id`, `path_id` (0: several pages, in `meta`), `status` (1 running, 2 decided, 3 cancelled), `result` (1 keep, 2 revise, 3 undo, 4 inconclusive), `decided`, `meta` (pages, goal, hypothesis, note, the change row it wrote, the measurement decided on) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -587,7 +605,8 @@ on each of `post_type`, `author_id` and `term_id` for content filters
 (schema v5); `changes` has `ts`, `(path_id, ts)` and `(kind, ts)` (schema
 v6); the `gsc_*` tables have `(path_id, day)` and `(query_id, day)` for
 one page's or query's search data, and `imports` `(source, status)`
-(schema v7);
+(schema v7); `experiments` has `(status, review)`, `path_id` and `start`
+(schema v8);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -952,7 +971,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `coverage`, `content`, `demo`,
+  `opportunities`, `coverage`, `content`, `experiments`, `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
@@ -965,7 +984,8 @@ in the future meets the same length of the other period.
   `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
   [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `coverage
   <page|post> [--missing] [--questions]`, `content [--sort=<sort>]
-  [--goal=<id>]`, `pages`,
+  [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
+  `cancel`, `note`, `delete`), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -976,8 +996,9 @@ in the future meets the same length of the other period.
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
-  `seoprostats/opportunities`, `seoprostats/coverage` and
-  `seoprostats/content`.
+  `seoprostats/opportunities`, `seoprostats/coverage`,
+  `seoprostats/content`, `seoprostats/experiments` and
+  `seoprostats/experiment-record`.
 
 ## Dashboard app
 
@@ -1039,8 +1060,7 @@ Funnels, Properties, Clicks and Changes, as the settings screen's tabs
 under the header (drawn by the server, `SEOProStats_Dashboard::render()`)
 and as submenu items: links to the hash, which the app marks current and
 whose tabs keep the period and filters. The period, comparison, Live/Demo switch and filters
-are shared by every section; all but the filters sit on the tab bar's
-right (the app renders them into `#spst-dashboard-controls`). Search has three tabs. Rankings shows clicks,
+are shared by every section. Search has three tabs. Rankings shows clicks,
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,
 pages, countries and devices; choosing a page shows its queries and

@@ -32,14 +32,21 @@ interface Props {
 	refreshing?: boolean;
 	/** A page chosen; without it, pages are plain text. */
 	onPage?: (path: string) => void;
-	/** Delete a note (administrators); without it, no actions column. */
+	/** Delete a note (administrators). */
 	onDelete?: (change: Marker) => void;
+	/** Start an experiment on a page's change (administrators). */
+	onExperiment?: (change: Marker) => void;
 	/** All on one day (named elsewhere): show the time only. */
 	timeOnly?: boolean;
 }
 
-export function ChangesTable({ rows, refreshing = false, onPage, onDelete, timeOnly = false }: Props) {
-	const actions = boot.canManage && !!onDelete;
+/** A change an experiment can measure: one page's own, not a note, update or experiment. */
+function measurable(change: Marker): boolean {
+	return !!change.path && change.group !== 'note' && change.group !== 'search';
+}
+
+export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Props) {
+	const actions = boot.canManage && (!!onDelete || !!onExperiment);
 	return (
 		<TableScroll label={__('Changes', 'seoprostats')}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -98,8 +105,14 @@ export function ChangesTable({ rows, refreshing = false, onPage, onDelete, timeO
 							</td>
 							{actions && (
 								<td className="spst-actions">
-									{change.group === 'note' && (
-										<Button variant="link" isDestructive onClick={() => onDelete?.(change)}>
+									{onExperiment && measurable(change) && (
+										<Button variant="link" onClick={() => onExperiment(change)}>
+											{__('Start an experiment', 'seoprostats')}
+											<span className="screen-reader-text"> {change.label}</span>
+										</Button>
+									)}
+									{onDelete && change.kind === 'note' && (
+										<Button variant="link" isDestructive onClick={() => onDelete(change)}>
 											{__('Delete', 'seoprostats')}
 											<span className="screen-reader-text"> {change.label}</span>
 										</Button>

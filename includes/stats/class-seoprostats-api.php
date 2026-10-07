@@ -83,6 +83,8 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-opportunities.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-coverage.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-content.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-experiments.php';
     }
 
     /**
@@ -352,6 +354,7 @@ final class SEOProStats_API {
                 'offset' => self::args(true)['offset'],
             ),
         ));
+        self::experiment_routes($read, $manage, $data);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
@@ -444,6 +447,153 @@ final class SEOProStats_API {
             'callback'            => array(__CLASS__, 'view'),
             'args'                => array('data' => array('required' => true) + array_diff_key($base['data'], array('default' => true))),
         ));
+    }
+
+    /**
+     * Register the experiment routes: read with view_seoprostats; add,
+     * decide and delete with manage_options.
+     *
+     * @param array<string,mixed>   $read   Read route base.
+     * @param callable              $manage Write permission callback.
+     * @param array<string,mixed>   $data   The data argument.
+     */
+    private static function experiment_routes(array $read, $manage, array $data) {
+        $ns = SEOProStats_Collection::REST_NAMESPACE;
+        register_rest_route($ns, '/experiments', array(
+            $read + array(
+                'callback' => array(__CLASS__, 'experiments'),
+                'args'     => $data + array(
+                    'status' => array(
+                        'description' => __('Only experiments in this state: running, due (running, with data through the review day), decided or cancelled.', 'seoprostats'),
+                        'type'        => 'string',
+                        'enum'        => array('', 'running', 'due', 'decided', 'cancelled'),
+                        'default'     => '',
+                    ),
+                    'page'   => array(
+                        'description' => __('Only experiments on this page (a path such as /pricing/).', 'seoprostats'),
+                        'type'        => 'string',
+                        'default'     => '',
+                    ),
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'experiment_add'),
+                'args'                => $data + self::experiment_args(),
+            ),
+        ));
+        register_rest_route($ns, '/experiments/(?P<id>\d+)', array(
+            $read + array(
+                'callback' => array(__CLASS__, 'experiment'),
+                'args'     => $data,
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'experiment_update'),
+                'args'                => $data + array(
+                    'action' => array(
+                        'description' => __('decide (with result), note (change the note) or cancel.', 'seoprostats'),
+                        'type'        => 'string',
+                        'enum'        => array('decide', 'note', 'cancel'),
+                        'required'    => true,
+                    ),
+                    'result' => array(
+                        'description' => __('For decide: keep, revise, undo or inconclusive.', 'seoprostats'),
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), array_values(SEOProStats_Experiments::RESULTS)),
+                        'default'     => '',
+                    ),
+                    'note'   => array(
+                        'description' => __('Why, or what was learnt (up to 2,000 characters).', 'seoprostats'),
+                        'type'        => 'string',
+                        'default'     => '',
+                    ),
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::DELETABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'experiment_delete'),
+                'args'                => $data,
+            ),
+        ));
+    }
+
+    /**
+     * Fields of a new experiment.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    private static function experiment_args() {
+        return array(
+            'name'       => array(
+                'description' => __('The change and what it should do, in one line (up to 190 characters).', 'seoprostats'),
+                'type'        => 'string',
+                'required'    => true,
+            ),
+            'change'     => array(
+                'description' => __('The change it measures (its id in /changes): its time is the start, its page the page unless page is given.', 'seoprostats'),
+                'type'        => 'integer',
+                'minimum'     => 0,
+                'default'     => 0,
+            ),
+            'start'      => array(
+                'description' => __('Without change: when the change was made, in the site time zone (2026-10-05 or 2026-10-05 14:30) or Unix time; without it, now.', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+            'page'       => array(
+                'description' => __('Its page (a path such as /pricing/), or several, comma-separated (up to 50).', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+            'days'       => array(
+                'description' => __('Days in each window, before and after.', 'seoprostats'),
+                'type'        => 'integer',
+                'enum'        => SEOProStats_Experiments::WINDOWS,
+                'default'     => SEOProStats_Experiments::DAYS,
+            ),
+            'engine'     => array(
+                'description' => __('Search engine whose data measures it: google or bing.', 'seoprostats'),
+                'type'        => 'string',
+                'enum'        => array_keys(SEOProStats_Search::ENGINES),
+                'default'     => 'google',
+            ),
+            'metric'     => array(
+                'description' => __('What it should change: clicks, impressions, ctr, position, visits (from search) or conversions (of goal).', 'seoprostats'),
+                'type'        => 'string',
+                'enum'        => array_values(SEOProStats_Experiments::METRICS),
+                'default'     => 'clicks',
+            ),
+            'direction'  => array(
+                'description' => __('Expected direction: up or down (for position, up means a better place).', 'seoprostats'),
+                'type'        => 'string',
+                'enum'        => array_values(SEOProStats_Experiments::DIRECTIONS),
+                'default'     => 'up',
+            ),
+            'threshold'  => array(
+                'description' => __('The smallest change that counts: percent for counts and CTR (default 10), places for position (default 1).', 'seoprostats'),
+                'type'        => 'number',
+                'minimum'     => 0,
+            ),
+            'goal'       => array(
+                'description' => __('For conversions: the goal\'s id.', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+            'hypothesis' => array(
+                'description' => __('The reasoning, in more words (up to 2,000 characters).', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+            'note'       => array(
+                'description' => __('A note (up to 2,000 characters).', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+        );
     }
 
     /**
@@ -1131,6 +1281,87 @@ final class SEOProStats_API {
             }
             return array('deleted' => true, 'id' => $id);
         });
+    }
+
+    /**
+     * GET /experiments: the newest experiments, due ones first.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function experiments($request) {
+        $args = array('status' => (string) $request->get_param('status'), 'page' => (string) $request->get_param('page'));
+        return self::experiment_answer($request, static function () use ($args) {
+            return SEOProStats_Experiments::list_experiments($args);
+        });
+    }
+
+    /**
+     * GET /experiments/{id}: one experiment with its measurement.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function experiment($request) {
+        $id = (int) $request->get_param('id');
+        return self::experiment_answer($request, static function () use ($id) {
+            return SEOProStats_Experiments::get($id);
+        });
+    }
+
+    /**
+     * POST /experiments: record an experiment.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function experiment_add($request) {
+        $input = (array) $request->get_params();
+        return self::experiment_answer($request, static function () use ($input) {
+            return SEOProStats_Experiments::add($input);
+        });
+    }
+
+    /**
+     * POST /experiments/{id}: decide, note or cancel.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function experiment_update($request) {
+        $id    = (int) $request->get_param('id');
+        $input = (array) $request->get_params();
+        return self::experiment_answer($request, static function () use ($id, $input) {
+            return SEOProStats_Experiments::update($id, $input);
+        });
+    }
+
+    /**
+     * DELETE /experiments/{id}: delete an experiment and its timeline marker.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function experiment_delete($request) {
+        $id = (int) $request->get_param('id');
+        return self::define($request, static function () use ($id) {
+            if (!SEOProStats_Experiments::delete($id)) {
+                return new WP_Error('seoprostats_not_found', __('There is no such experiment.', 'seoprostats'), array('status' => 404));
+            }
+            return array('deleted' => true, 'id' => $id);
+        });
+    }
+
+    /**
+     * Run experiment work on the data set asked for, with short decimals.
+     *
+     * @param WP_REST_Request $request Request.
+     * @param callable        $work    Makes the answer or an error.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function experiment_answer($request, callable $work) {
+        self::short_floats();
+        return self::define($request, $work);
     }
 
     /**

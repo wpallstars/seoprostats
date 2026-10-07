@@ -218,8 +218,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 			const button = document.createElement('button');
 			button.type = 'button';
 			button.className = 'spst-chart-lane__marker';
-			// Whole pixels, so the ring and its dots stay sharp.
-			button.style.left = `${Math.round(group.x)}px`;
+			button.style.left = `${group.x}px`;
 			button.tabIndex = i === focusIndex ? 0 : -1;
 			const listed = group.items.slice(0, MAX_LISTED).map((item) => item.label);
 			const rest = group.items.length - listed.length;

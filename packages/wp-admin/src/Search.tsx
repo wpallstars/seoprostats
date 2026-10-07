@@ -13,6 +13,7 @@
  * Opportunities (./Opportunities): where search effort pays; Content
  * (./Content): each page's search clicks with its visits from search and
  * their conversions. Choosing a row in either opens it in Rankings.
+ * Experiments (./Experiments): changes measured against unchanged pages.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -45,6 +46,7 @@ import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type 
 import { TableScroll } from './components/TableScroll';
 import { Opportunities } from './Opportunities';
 import { Content } from './Content';
+import { Experiments } from './Experiments';
 
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
@@ -132,9 +134,10 @@ export function Search(props: ViewProps) {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
 		content: __('Content', 'seoprostats'),
+		experiments: __('Experiments', 'seoprostats'),
 	};
-	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content.
-	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined });
+	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content, a change with Experiments.
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
 		const at = SEARCH_REPORTS.indexOf(report);
@@ -188,6 +191,7 @@ export function Search(props: ViewProps) {
 				{report === 'rankings' && <Rankings {...reportProps} />}
 				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
 				{report === 'content' && <Content {...reportProps} open={open} />}
+				{report === 'experiments' && <Experiments {...reportProps} />}
 			</div>
 		</>
 	);
