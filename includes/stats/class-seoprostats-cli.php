@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, clicks, search, changes, annotate, experiments, search-updates,
+ * goals, funnels, properties, clicks, search, changes, annotate, experiments, queue, search-updates,
  * process, rollup, prune, doctor, demo and purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
@@ -1674,6 +1674,203 @@ final class SEOProStats_CLI {
             /* translators: 1: experiment id, 2: its state */
             WP_CLI::success(sprintf(__('Experiment %1$d: %2$s.', 'seoprostats'), $answer['id'], $answer['result'] !== null ? $answer['status'] . ' (' . $answer['result'] . ')' : $answer['status']));
         }
+    }
+
+    /**
+     * The decision queue: one ranked list of search work, made from
+     * Opportunities (low CTR, missing from the page, striking distance,
+     * losing clicks). Each item says why it is listed and how its score is
+     * made: potential clicks per 28 days × value (how well the page's
+     * visits from search convert) × confidence ÷ effort. Pages with a
+     * running experiment are left out. Done opens an experiment on the
+     * page; dismissed items stay hidden for 90 days.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : list, accept, done, dismiss, restore, effort or note.
+     * ---
+     * default: list
+     * options:
+     *   - list
+     *   - accept
+     *   - done
+     *   - dismiss
+     *   - restore
+     *   - effort
+     *   - note
+     * ---
+     *
+     * [<key>]
+     * : The item's key (from the list), for every action but list.
+     *
+     * [<effort>]
+     * : For effort: 1 (least) to 5.
+     *
+     * [--status=<status>]
+     * : For list: open (new and accepted), new, accepted, done, dismissed or all.
+     * ---
+     * default: open
+     * ---
+     *
+     * [--engine=<engine>]
+     * : google or bing.
+     * ---
+     * default: google
+     * ---
+     *
+     * [--goal=<id>]
+     * : The goal whose conversions give a page its value; the first goal when left out.
+     *
+     * [--range=<range>]
+     * : The period the list is made from, as for stats (at most its newest 91 days are read).
+     * ---
+     * default: 90d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats.
+     *
+     * [--limit=<limit>]
+     * : Most items.
+     * ---
+     * default: 20
+     * ---
+     *
+     * [--note=<text>]
+     * : A note (up to 190 characters), with any action.
+     *
+     * [--name=<name>]
+     * : For done: the experiment's name; without it, one made from the item.
+     *
+     * [--days=<days>]
+     * : For done: days in each window of the experiment: 7, 14, 28, 56 or 84.
+     * ---
+     * default: 28
+     * ---
+     *
+     * [--threshold=<n>]
+     * : For done: the smallest change that counts: percent (default 10), or places for position (default 1).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats queue
+     *     wp seoprostats queue --status=done --format=json
+     *     wp seoprostats queue accept 3f9c0a1b2d4e5f60
+     *     wp seoprostats queue done 3f9c0a1b2d4e5f60 --note="New title and description"
+     *     wp seoprostats queue effort 3f9c0a1b2d4e5f60 3
+     *     wp seoprostats queue dismiss 3f9c0a1b2d4e5f60 --note="Brand query; not worth it"
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function queue($args, $assoc) {
+        $action = isset($args[0]) ? (string) $args[0] : 'list';
+        $key    = isset($args[1]) ? (string) $args[1] : '';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
+        $req    = $this->request($assoc + array('range' => '90d', 'limit' => '20', 'compare' => 'none'));
+        if ($action !== 'list') {
+            if ($key === '') {
+                WP_CLI::error(__('Give the item\'s key: wp seoprostats queue lists them.', 'seoprostats'));
+            }
+            $input  = array(
+                'action'    => $action,
+                'effort'    => isset($args[2]) ? (int) $args[2] : 0,
+                'note'      => isset($assoc['note']) ? (string) $assoc['note'] : '',
+                'name'      => isset($assoc['name']) ? (string) $assoc['name'] : '',
+                'days'      => isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Experiments::DAYS,
+                'threshold' => isset($assoc['threshold']) ? (string) $assoc['threshold'] : '',
+            );
+            $answer = $this->on_data($assoc, static function () use ($key, $input, $req, $engine, $goal) {
+                return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
+            });
+            if (is_wp_error($answer)) {
+                WP_CLI::error($answer->get_error_message());
+            }
+            if ($this->format($assoc) === 'json') {
+                WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                return;
+            }
+            WP_CLI\Utils\format_items('table', array($this->queue_row($answer)), array_keys($this->queue_row($answer)));
+            if ($answer['experiment']) {
+                /* translators: 1: experiment id, 2: its name, 3: review day */
+                WP_CLI::log(sprintf(__('Experiment %1$d: %2$s (review %3$s).', 'seoprostats'), $answer['experiment']['id'], $answer['experiment']['name'], $answer['experiment']['review']));
+            }
+            /* translators: 1: item key, 2: its state */
+            WP_CLI::success(sprintf(__('Item %1$s: %2$s.', 'seoprostats'), $answer['key'], $answer['status']));
+            return;
+        }
+        $status = isset($assoc['status']) ? (string) $assoc['status'] : 'open';
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $status, $goal) {
+            return SEOProStats_Queue::report($req, $engine, $status, $goal);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        /* translators: 1: new, 2: accepted, 3: done, 4: dismissed */
+        WP_CLI::log(sprintf(__('New %1$d, accepted %2$d, done %3$d, dismissed %4$d.', 'seoprostats'), $answer['counts']['new'], $answer['counts']['accepted'], $answer['counts']['done'], $answer['counts']['dismissed']));
+        if ($answer['left_out']) {
+            /* translators: %d: items */
+            WP_CLI::log(sprintf(_n('%d item left out: its page has a running experiment.', '%d items left out: their pages have a running experiment.', $answer['left_out'], 'seoprostats'), $answer['left_out']));
+        }
+        if (!$answer['items']) {
+            WP_CLI::line(__('Nothing to do in this state for this period.', 'seoprostats'));
+            return;
+        }
+        $rows = array_map(array($this, 'queue_row'), $answer['items']);
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+        WP_CLI::log(__('Score = potential clicks per 28 days × value × confidence ÷ effort. --format=json gives each item\'s why and figures.', 'seoprostats'));
+    }
+
+    /**
+     * One queue item as a table row.
+     *
+     * @param array<string,mixed> $item Item.
+     * @return array<string,string|int|float>
+     */
+    private function queue_row(array $item) {
+        $exp = is_array($item['experiment']) ? $item['experiment'] : null;
+        return array(
+            'key'        => $item['key'],
+            'status'     => $item['status'] . ($item['found'] ? '' : ' *'),
+            'kind'       => $item['kind'],
+            'page'       => $item['path'],
+            'query'      => (string) $item['query'],
+            'score'      => $item['score'],
+            'clicks'     => $item['parts']['clicks'],
+            'value'      => $item['parts']['value'],
+            'confidence' => $item['parts']['confidence'],
+            'effort'     => $item['parts']['effort'],
+            'experiment' => $exp ? '#' . $exp['id'] . ' ' . ($exp['result'] !== null ? (string) $exp['result'] : ($exp['due'] ? 'due' : (string) $exp['status'])) . ($exp['suggested'] !== null && $exp['result'] === null ? ' (' . $exp['suggested'] . ')' : '') : '',
+        );
     }
 
     /**

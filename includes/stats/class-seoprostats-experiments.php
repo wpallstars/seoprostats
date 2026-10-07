@@ -76,6 +76,9 @@ final class SEOProStats_Experiments {
     /** Most experiments listed (the newest). */
     const LIST_LIMIT = 50;
 
+    /** Most running experiments read for their pages (running_pages()). */
+    const MAX_RUNNING = 500;
+
     /** Most pages in the comparison group (most impressions or visits before). */
     const GROUP = 200;
 
@@ -355,6 +358,32 @@ final class SEOProStats_Experiments {
         });
         $out['experiments'] = $list;
         $out['total']       = count($list);
+        return $out;
+    }
+
+    /**
+     * The pages of the running experiments of the current data set (the
+     * newest MAX_RUNNING), by key status_review: a second change there
+     * would spoil the measurement.
+     *
+     * @return array<int,int> Path id => experiment id.
+     */
+    public static function running_pages() {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        require_once __DIR__ . '/class-seoprostats-dict.php';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by key status_review.
+        $rows = $wpdb->get_results($wpdb->prepare('SELECT id, path_id, meta FROM %i FORCE INDEX (`status_review`) WHERE status = 1 ORDER BY review DESC LIMIT %d', SEOProStats_Schema::table('experiments'), self::MAX_RUNNING), ARRAY_A);
+        $out  = array();
+        foreach (is_array($rows) ? $rows : array() as $row) {
+            foreach (self::row_path_ids($row, self::meta($row)) as $path_id) {
+                if (!isset($out[$path_id])) {
+                    $out[(int) $path_id] = (int) $row['id'];
+                }
+            }
+        }
         return $out;
     }
 

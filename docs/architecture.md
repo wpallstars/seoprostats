@@ -351,6 +351,20 @@ and the `seoprostats/experiments` ability read them; `POST /experiments`,
 dashboard has them under Search → Experiments, and each row of Changes
 with a page can start one.
 
+The decision queue (schema v9, `SEOProStats_Queue`; design:
+`docs/seo-loop.md` → Decision queue) ranks what Opportunities finds (low
+CTR, missing from the page, striking distance, losing clicks) as one list:
+potential clicks per 28 days × value (the page's conversion rate of visits
+from search against the site's) × confidence ÷ effort, each part in the
+answer. Items are worked out when the list is read from the cached
+reports; only those someone accepted, did, dismissed or gave an effort
+or note are stored in `queue`. New items on a page with a running
+experiment are left out; done opens an experiment on the item's page with
+the kind's measure. `GET /queue`, `wp seoprostats queue` and the
+`seoprostats/queue` ability read it; `POST /queue/{key}`, the queue
+actions of the command and `seoprostats/queue-update` (`manage_options`)
+act on an item. The dashboard has it under Search → Plan.
+
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
 value), that page. `packages/charts/src/markers.ts` draws the lane under the
@@ -585,6 +599,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
 | `experiments` | a change's hypothesis, measured before and after against unchanged pages (schema v8; `docs/seo-loop.md`) | `id`, `created`, `user_id`, `name`, `start`, `days`, `review` (the after window's last day), `engine`, `metric` (1 clicks, 2 impressions, 3 CTR, 4 position, 5 visits, 6 conversions), `direction`, `threshold` (percent, or tenths of a place), `change_id`, `path_id` (0: several pages, in `meta`), `status` (1 running, 2 decided, 3 cancelled), `result` (1 keep, 2 revise, 3 undo, 4 inconclusive), `decided`, `meta` (pages, goal, hypothesis, note, the change row it wrote, the measurement decided on) |
+| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -606,7 +621,8 @@ on each of `post_type`, `author_id` and `term_id` for content filters
 v6); the `gsc_*` tables have `(path_id, day)` and `(query_id, day)` for
 one page's or query's search data, and `imports` `(source, status)`
 (schema v7); `experiments` has `(status, review)`, `path_id` and `start`
-(schema v8);
+(schema v8); `queue` has unique `ikey` and `(status, updated)` (schema
+v9);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -971,7 +987,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `coverage`, `content`, `experiments`, `demo`,
+  `opportunities`, `coverage`, `content`, `experiments`, `queue`, `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
@@ -985,7 +1001,8 @@ in the future meets the same length of the other period.
   [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `coverage
   <page|post> [--missing] [--questions]`, `content [--sort=<sort>]
   [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
-  `cancel`, `note`, `delete`), `pages`,
+  `cancel`, `note`, `delete`), `queue` (`list`, `accept`, `done`,
+  `dismiss`, `restore`, `effort`, `note`), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -997,8 +1014,9 @@ in the future meets the same length of the other period.
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
   `seoprostats/opportunities`, `seoprostats/coverage`,
-  `seoprostats/content`, `seoprostats/experiments` and
-  `seoprostats/experiment-record`.
+  `seoprostats/content`, `seoprostats/experiments`,
+  `seoprostats/experiment-record`, `seoprostats/queue` and
+  `seoprostats/queue-update`.
 
 ## Dashboard app
 
