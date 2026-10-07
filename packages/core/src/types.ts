@@ -371,7 +371,7 @@ export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as cons
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content', 'plan', 'experiments'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'plan', 'experiments'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 /**
@@ -787,8 +787,87 @@ export interface ExperimentInput {
 	hypothesis?: string;
 }
 
-/** Kinds of decision queue item: each an opportunity kind. */
-export type QueueKind = OpportunityKind;
+/** Content audit findings, most serious first. */
+export const AUDIT_FINDINGS = [
+	'noindex',
+	'canonical',
+	'thin',
+	'title_missing',
+	'title_duplicate',
+	'title_long',
+	'description_missing',
+	'description_duplicate',
+	'description_long',
+	'h1_none',
+	'h1_several',
+	'images_alt',
+] as const;
+export type AuditFinding = (typeof AUDIT_FINDINGS)[number];
+
+/** What the content audit read from a page's post and SEO plugin fields. */
+export interface AuditFacts {
+	/** Characters of the title shown: the SEO title, else the post title. */
+	title_length: number;
+	/** Characters of the SEO title as written (0 when it is the plugin's variables). */
+	seo_title_length: number;
+	/** Characters of the description: the SEO plugin's, else the excerpt. */
+	description_length: number;
+	/** H1s in the text (themes show the title as one more). */
+	h1: number;
+	words: number;
+	images: number;
+	images_no_alt: number;
+	noindex: boolean;
+	canonical_away: boolean;
+	/** When the post was last changed and its facts read (ISO 8601). */
+	modified: string | null;
+	checked: string;
+}
+
+/** A page with audit findings and its search figures in the period. */
+export interface AuditRow extends OpportunityPage, SearchMetrics {
+	findings: AuditFinding[];
+	facts: AuditFacts;
+	/** Other pages with the same title or description (up to five). */
+	same_title: string[];
+	same_description: string[];
+}
+
+export interface AuditAnswer extends Answer, SearchEngineAnswer {
+	/** The period of the search figures: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	first: string;
+	connected: boolean;
+	ignored: string[];
+	/** The finding asked for; '' for all. */
+	finding: AuditFinding | '';
+	rules: {
+		title_max: number;
+		description_max: number;
+		thin_words: number;
+		thin_impressions: number;
+		batch: number;
+		stale_days: number;
+	};
+	/** Pages with facts, and when the oldest and newest were read. */
+	checked: { pages: number; oldest: string | null; newest: string | null };
+	/** The SEO plugin read: rank-math, yoast, seopress, aioseo, demo or ''. */
+	plugin: string;
+	/** Pages per finding (of every page, whatever finding is asked for). */
+	counts: Record<AuditFinding, number>;
+	/** Pages with any finding. */
+	pages: number;
+	/** Most impressions first. */
+	rows: AuditRow[];
+	total: number;
+	more: boolean;
+}
+
+/** Kinds of decision queue item: each an opportunity kind, and audit findings. */
+export type QueueKind = OpportunityKind | 'audit';
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -831,6 +910,11 @@ export interface QueueFigures {
 	switched?: boolean;
 	/** overlap: the pages sharing the query. */
 	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number; share: number }[];
+	/** audit: the finding, its share of the page's expected clicks, the page's facts and the other pages with the same title or description. */
+	finding?: AuditFinding;
+	share?: number;
+	facts?: AuditFacts;
+	same?: string[];
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -842,6 +926,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
+	/** audit: the finding (the item is one per page and finding); else null. */
+	finding: AuditFinding | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -889,6 +975,8 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 	rules: {
 		scale_days: number;
 		effort: Record<QueueKind, number>;
+		/** Audit findings whose effort is not the audit kind's. */
+		audit_effort: Partial<Record<AuditFinding, number>>;
 		confidence: Record<QueueKind, number>;
 		full_impressions: number;
 		missing_share: number;

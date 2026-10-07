@@ -254,6 +254,7 @@ final class SEOProStats_Queue {
                 'rules'     => array(
                     'scale_days'       => self::SCALE_DAYS,
                     'effort'           => self::EFFORT,
+                    'audit_effort'     => self::AUDIT_EFFORT,
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
                     'missing_share'    => self::MISSING_SHARE,

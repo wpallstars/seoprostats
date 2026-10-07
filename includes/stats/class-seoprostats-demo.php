@@ -290,6 +290,35 @@ final class SEOProStats_Demo {
         '/shop/pro-licence/'                  => array('Pro', array('What you get'), 'One year of updates and support for one site.', array()),
     );
 
+    /**
+     * The demo pages' SEO fields and more of their HTML, for the content
+     * audit (SEOProStats_Audit): path => [SEO title, description, HTML
+     * added, noindex, canonical]. Their words are the pages' own, so the
+     * queries left out of PAGE_TEXT stay missing. Findings: no
+     * description and an image without alt text (Core Web Vitals), a long
+     * SEO title (rankings guide), an H1 in the text (privacy), a long
+     * description (speed), the same SEO title (pricing and the licence)
+     * and description (docs and getting started), noindex (docs) and a
+     * canonical address elsewhere (FAQ).
+     */
+    const PAGE_SEO = array(
+        '/'                                   => array('SEO Pro Stats', 'Private site statistics for WordPress: see which pages bring visitors and what changed when numbers move.', '', false, ''),
+        '/blog/core-web-vitals-explained/'    => array('', '', '<figure><img src="/wp-content/uploads/lcp-chart.png" alt="Largest Contentful Paint chart"></figure><figure><img src="/wp-content/uploads/cls-example.png"></figure>', false, ''),
+        '/blog/how-to-read-search-rankings/'  => array('How to read search rankings in Search Console: average position, clicks and impressions', 'This guide explains how to read rankings and average position in Search Console without being misled by averages.', '', false, ''),
+        '/blog/privacy-friendly-analytics/'   => array('', 'Analytics without cookies or stored IP addresses still shows where visitors come from and what they read.', '<h1>Privacy-friendly analytics</h1>', false, ''),
+        '/blog/speed-up-wordpress/'           => array('', 'Seven practical steps to speed up WordPress: page caching, smaller images, fewer plugins and a faster host, with what each step changes and how to check it on your own site.', '<img src="/wp-content/uploads/caching.png" alt="Page caching settings">', false, ''),
+        '/blog/what-changed-after-an-update/' => array('', 'When traffic moves after a plugin or theme update, the change log shows what changed and when.', '', false, ''),
+        '/features/'                          => array('Everything SEO Pro Stats does', 'Analytics with rankings and traffic in one place: Search Console data inside WordPress, goals, funnels and a change log.', '', false, ''),
+        '/pricing/'                           => array('Pricing | SEO Pro Stats', 'SEO Pro Stats pricing: one plan for one site, more for agencies.', '', false, ''),
+        '/docs/'                              => array('', 'SEO Pro Stats docs: install, connect Search Console and read the reports.', '', true, ''),
+        '/docs/getting-started/'              => array('', 'SEO Pro Stats docs: install, connect Search Console and read the reports.', '', false, ''),
+        '/docs/faq/'                          => array('', 'Questions people ask about SEO Pro Stats, such as refunds within 30 days.', '', false, '/docs/'),
+        '/shop/pro-licence/'                  => array('Pricing | SEO Pro Stats', 'One year of updates and support for one site.', '', false, ''),
+    );
+
+    /** Content audit facts made by this version of the demo; older ones are made again. */
+    const AUDIT_VERSION = 1;
+
     /** Search data made by this version of the demo; older demo search days are made again. */
     const SEARCH_VERSION = 4;
 
@@ -775,13 +804,48 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::experiments();
         }
+        // The content audit's facts of the demo pages (again when they change).
+        $state = self::state();
+        if (!$more && (empty($state['audit']) || (int) $state['audit'] < self::AUDIT_VERSION)) {
+            $state['audit'] = self::AUDIT_VERSION;
+            update_option(self::OPTION, $state, false);
+            self::audit();
+        }
         // Then the decision queue: one item accepted, one done (once).
+        $state = self::state();
         if (!$more && empty($state['queue'])) {
             $state          = self::state();
             $state['queue'] = 1;
             update_option(self::OPTION, $state, false);
             self::queue();
         }
+    }
+
+    /**
+     * Write the content audit's facts of the demo pages (PAGE_TEXT and
+     * PAGE_SEO), as the audit reads a live post; on the demo tables (called
+     * inside run()).
+     */
+    private static function audit() {
+        require_once __DIR__ . '/class-seoprostats-audit.php';
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            return;
+        }
+        $facts = array();
+        $n     = 0;
+        foreach (array_keys(self::PAGE_TEXT) as $path) {
+            $text = self::text($path);
+            $page = self::page($path);
+            if ($text && $page) {
+                $facts[$path] = SEOProStats_Audit::facts($text, $path) + array(
+                    'post_id'  => $page['post_id'],
+                    // Edited on different days over the last two months.
+                    'modified' => time() - (3 + 5 * $n++) * DAY_IN_SECONDS,
+                );
+            }
+        }
+        SEOProStats_Audit::write($facts);
+        SEOProStats_Audit::touch();
     }
 
     /**
@@ -1170,21 +1234,25 @@ final class SEOProStats_Demo {
             return null;
         }
         list($title, $headings, $body, $focus) = self::PAGE_TEXT[$path];
-        $html = '';
+        list($seo_title, $description, $more, $noindex, $canonical) = isset(self::PAGE_SEO[$path]) ? self::PAGE_SEO[$path] : array('', '', '', false, '');
+        $html = (string) $more;
         foreach ($headings as $heading) {
             $html .= '<h2>' . esc_html($heading) . '</h2>';
         }
         return array(
-            'source'      => 'demo',
-            'title'       => $title,
-            'content'     => $html . '<p>' . esc_html($body) . '</p>',
-            'excerpt'     => '',
-            'plugin'      => $focus ? 'demo' : '',
-            'seo_title'   => '',
-            'description' => '',
-            'focus'       => array_map(static function ($keyword) {
+            'source'         => 'demo',
+            'title'          => $title,
+            'content'        => $html . '<p>' . esc_html($body) . '</p>',
+            'excerpt'        => '',
+            'plugin'         => $focus ? 'demo' : '',
+            'seo_title'      => (string) $seo_title,
+            'seo_title_vars' => false,
+            'description'    => (string) $description,
+            'focus'          => array_map(static function ($keyword) {
                 return array('keyword' => $keyword, 'source' => 'demo');
             }, $focus),
+            'noindex'        => (bool) $noindex,
+            'canonical'      => (string) $canonical,
         );
     }
 

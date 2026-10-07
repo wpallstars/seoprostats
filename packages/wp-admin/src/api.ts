@@ -11,6 +11,8 @@ import { addQueryArgs } from '@wordpress/url';
 import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
 	apiArgs,
+	type AuditAnswer,
+	type AuditFinding,
 	type BreakdownAnswer,
 	type ChangesAnswer,
 	type ClickKind,
@@ -227,6 +229,18 @@ export function useOpportunities(scope: SearchScope, kind: OpportunityKind, limi
 	return useQuery({
 		queryKey: ['opportunities', args],
 		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** The content audit: pages with findings ('' for all), most impressions first; the comparison does not apply. */
+export function useAudit(scope: SearchScope, finding: AuditFinding | '', limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), limit, offset, ...(finding ? { finding } : {}) }, data);
+	return useQuery({
+		queryKey: ['audit', args],
+		queryFn: () => get<AuditAnswer>('audit', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

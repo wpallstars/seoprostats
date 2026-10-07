@@ -13,6 +13,7 @@
 
 import { parseFilter, serializeFilter, type Filter } from './filters';
 import {
+	AUDIT_FINDINGS,
 	CLICK_KINDS,
 	COMPARE_KEYS,
 	CONTENT_SORTS,
@@ -21,6 +22,7 @@ import {
 	SEARCH_ENGINES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
+	type AuditFinding,
 	type ClickKind,
 	type CompareKey,
 	type ContentSort,
@@ -77,8 +79,10 @@ export interface ViewState {
 	key?: string;
 	/** Properties: only properties sent with this event. */
 	event?: string;
-	/** Search: Rankings (the default), Opportunities or Content. */
+	/** Search: Rankings (the default), Opportunities, Audit, Content, Plan or Experiments. */
 	report?: SearchReport;
+	/** Search → Audit: only pages with this finding (all when left out). */
+	finding?: AuditFinding;
 	/** Search: the engine (Google when left out); kept across its reports. */
 	engine?: SearchEngine;
 	/** Search → Content: the order of the pages. */
@@ -100,7 +104,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -158,6 +162,10 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const status = oneOf(QUEUE_FILTERS, params.get('status'), 'open');
 			set('status', status === 'open' ? undefined : status);
 			set('goal', text(params.get('goal')));
+		}
+		if (report === 'audit') {
+			const finding = params.get('finding');
+			set('finding', finding !== null && (AUDIT_FINDINGS as readonly string[]).includes(finding) ? (finding as AuditFinding) : undefined);
 		}
 		if (report === 'experiments') {
 			const change = params.get('change') ?? '';

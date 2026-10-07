@@ -1,7 +1,8 @@
 /**
  * Search → Plan: one ranked list of what to do next, made from what
  * Opportunities finds (low CTR, missing from the page, striking distance,
- * losing clicks). Each item says why it is listed, what to do, and how
+ * losing clicks, overlapping pages) and the content audit's findings
+ * (./Audit). Each item says why it is listed, what to do, and how
  * its score is made:
  *
  *     potential clicks per 28 days × value × confidence ÷ effort
@@ -40,6 +41,7 @@ import { useDataSet } from './data';
 import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
+import { findingName } from './Audit';
 import { metricLabel, resultLabel } from './Experiments';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -56,8 +58,16 @@ export function kindName(kind: QueueKind): string {
 		striking: __('Striking distance', 'seoprostats'),
 		decay: __('Losing clicks', 'seoprostats'),
 		overlap: __('Overlapping pages', 'seoprostats'),
+		audit: __('Content audit', 'seoprostats'),
 	};
 	return names[kind];
+}
+
+/** An item's kind, with the finding for an audit item. */
+function itemKind(item: QueueItem): string {
+	return item.kind === 'audit' && item.finding
+		? sprintf(/* translators: 1: "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), findingName(item.finding))
+		: kindName(item.kind);
 }
 
 function statusName(status: QueueStatus): string {
@@ -308,7 +318,7 @@ function ItemTable({ answer, items, offset, state, goal, open, refreshing, onErr
 							<tr className={shown === item.key ? 'is-selected' : ''}>
 								<td className="num">{number(offset + i + 1)}</td>
 								<td>
-									<strong className="spst-plan__kind">{kindName(item.kind)}</strong>
+									<strong className="spst-plan__kind">{itemKind(item)}</strong>
 									<PageCell row={item} query={item.query ?? ''} open={open} />
 								</td>
 								<td>
@@ -464,7 +474,7 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const { busy, act } = useAct({ item, state, goal, onError });
 	const [note, setNote] = useState(item.note);
 	const p = item.parts;
-	const kindEffort = answer.rules.effort[item.kind];
+	const kindEffort = (item.kind === 'audit' && item.finding ? answer.rules.audit_effort?.[item.finding] : undefined) ?? answer.rules.effort[item.kind];
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
@@ -496,7 +506,13 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 								)
 							: item.kind === 'overlap'
 								? __('Potential clicks: those the search would have if all its pages’ impressions had the best of their CTRs, scaled to 28 days.', 'seoprostats')
-								: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+								: item.kind === 'audit'
+									? sprintf(
+											/* translators: 1: share, e.g. 15%. */
+											__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what this finding puts at stake), scaled to 28 days.', 'seoprostats'),
+											`${number((f.share ?? 0) * 100)}%`
+										)
+									: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null

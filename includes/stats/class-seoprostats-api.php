@@ -86,6 +86,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-experiments.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-queue.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
     }
 
     /**
@@ -318,6 +319,20 @@ final class SEOProStats_API {
                 ),
                 'limit'  => self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/audit', $read + array(
+            'callback' => array(__CLASS__, 'audit'),
+            'args'     => $base + array(
+                'engine'  => $engine,
+                'finding' => array(
+                    'description' => __('Only pages with this finding; all findings when left out.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), SEOProStats_Audit::FINDINGS),
+                    'default'     => '',
+                ),
+                'limit'   => self::args(true)['limit'],
+                'offset'  => self::args(true)['offset'],
             ),
         ));
         register_rest_route($ns, '/coverage', $read + array(
@@ -1300,6 +1315,21 @@ final class SEOProStats_API {
         $engine = (string) $request->get_param('engine');
         return self::report($request, static function ($req) use ($kind, $engine) {
             return SEOProStats_Opportunities::report($req, $kind, $engine);
+        });
+    }
+
+    /**
+     * GET /audit: published pages with findings from their WordPress
+     * content and SEO fields, most search impressions first.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function audit($request) {
+        $engine  = (string) $request->get_param('engine');
+        $finding = (string) $request->get_param('finding');
+        return self::report($request, static function ($req) use ($engine, $finding) {
+            return SEOProStats_Audit::report($req, $engine, $finding);
         });
     }
 
