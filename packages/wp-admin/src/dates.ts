@@ -55,6 +55,11 @@ export function longLabel(iso: string, grain: Grain): string {
 	return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(d);
 }
 
+/** A moment, in the site's time zone: Tue 16 Sep 2026, 14:05. */
+export function momentLabel(iso: string): string {
+	return df({ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(wallClock(iso));
+}
+
 /** A range's days, for "compared with …": 1 Sep – 30 Sep 2026. */
 export function rangeText(fromIso: string, toIso: string): string {
 	const from = wallClock(fromIso);

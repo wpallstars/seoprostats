@@ -17,6 +17,12 @@
 	--spst-hover: #f6f7f7;
 	--spst-good: #007017;
 	--spst-bad: #b32d2e;
+	/* Change log groups: markers and the Changes section (DESIGN.md → Markers). */
+	--spst-mark-content: #3858e9;
+	--spst-mark-seo: #8a3fd1;
+	--spst-mark-product: #008a20;
+	--spst-mark-site: #996800;
+	--spst-mark-note: #1d2327;
 	font-variant-numeric: tabular-nums;
 }
 

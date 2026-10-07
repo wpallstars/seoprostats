@@ -10,16 +10,22 @@
 
 import { Card, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { errorMessage, useStats, useTimeseries } from './api';
+import { errorMessage, useMarkers, useStats, useTimeseries } from './api';
+import { filteredPage } from './changelog';
 import { rangeText } from './dates';
 import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
+import type { Marker } from '@seoprostats/core';
+
+/** No changes (one list, so the chart is not redrawn for a new empty one). */
+const NO_MARKERS: Marker[] = [];
 
 export function Overview({ state, update }: ViewProps) {
 	const stats = useStats(state);
 	const series = useTimeseries(state);
+	const markers = useMarkers(state, filteredPage(state.filters));
 	const failed = stats.isError ? stats.error : series.isError ? series.error : null;
 	const answer = stats.data;
 	const empty = answer && answer.metrics.visits === 0;
@@ -42,7 +48,16 @@ export function Overview({ state, update }: ViewProps) {
 					loading={stats.isPending}
 				/>
 				<div className={`spst-summary__chart${series.isFetching && series.data ? ' is-refreshing' : ''}`}>
-					{series.data ? <MainChart series={series.data} metric={state.metric} /> : <div className="spst-chart-placeholder" />}
+					{series.data ? (
+						<MainChart
+							series={series.data}
+							metric={state.metric}
+							markers={markers.data?.markers ?? NO_MARKERS}
+							onMarker={() => update({ view: 'changes' })}
+						/>
+					) : (
+						<div className="spst-chart-placeholder" />
+					)}
 				</div>
 			</Card>
 
