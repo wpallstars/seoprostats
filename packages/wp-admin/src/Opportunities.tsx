@@ -1,6 +1,6 @@
 /**
- * Search → Opportunities: where search effort pays, from Search Console's
- * imported days, in three cards.
+ * Search → Opportunities: where search effort pays, from the chosen
+ * engine's imported days (Search Console or Bing), in four cards.
  *
  * - Striking distance: a page's query at position 4–20; the clicks it
  *   could gain in the top three.
@@ -44,7 +44,7 @@ import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
-import { SearchSetup, type SearchPick } from './components/SearchSetup';
+import { SearchSetup, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 
 const PER_PAGE = 10;
@@ -68,14 +68,15 @@ function day(marker: Marker): string {
 	return longLabel(marker.t, 'day');
 }
 
-interface OpportunitiesProps extends ViewProps {
+type OpportunitiesProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
-}
+};
 
-export function Opportunities({ state, open }: OpportunitiesProps) {
+export function Opportunities({ state, open, onEngines }: OpportunitiesProps) {
 	// The striking card's own request (the same arguments, so fetched once).
 	const striking = useOpportunities(state, 'striking', PER_PAGE, 0);
 	const answer = striking.data;
+	useReportEngines(answer, onEngines);
 	return (
 		<>
 			{answer && <SearchSetup answer={answer} />}
@@ -157,8 +158,8 @@ function kindIntro(answer: OpportunitiesAnswer): string {
 }
 
 function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: OpportunityKind; open: OpportunitiesProps['open'] }) {
-	// Back to the first rows when the period or filters change.
-	const scope = JSON.stringify(apiArgs(state));
+	// Back to the first rows when the period, filters or engine change.
+	const scope = JSON.stringify({ ...apiArgs(state), engine: state.engine ?? 'google' });
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });

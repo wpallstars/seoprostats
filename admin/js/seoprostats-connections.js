@@ -55,7 +55,9 @@
 		select.setAttribute('data-spst-field', 'property');
 		var none = document.createElement('option');
 		none.value = '';
-		none.textContent = __('Choose a property', 'seoprostats');
+		none.textContent = card.getAttribute('data-spst-connection') === 'bing'
+			? __('Choose a site', 'seoprostats')
+			: __('Choose a property', 'seoprostats');
 		select.appendChild(none);
 		properties.forEach(function (property) {
 			var option = document.createElement('option');
@@ -127,10 +129,15 @@
 				method: 'POST'
 			}, function (answer) {
 				var run = answer && answer.run ? answer.run : { days: 0, rows: 0 };
-				reload(card, run.days
+				var message = __('Nothing new to import: every final day is in.', 'seoprostats');
+				if (run.days) {
 					/* translators: 1: number of days, 2: number of rows */
-					? sprintf(__('%1$d days imported (%2$d rows).', 'seoprostats'), run.days, run.rows)
-					: __('Nothing new to import: every final day is in.', 'seoprostats'));
+					message = sprintf(__('%1$d days imported (%2$d rows).', 'seoprostats'), run.days, run.rows);
+				} else if (run.pages) {
+					/* translators: 1: number of pages, 2: number of rows */
+					message = sprintf(__('The search queries of %1$d pages imported (%2$d rows).', 'seoprostats'), run.pages, run.rows);
+				}
+				reload(card, message);
 			});
 		},
 

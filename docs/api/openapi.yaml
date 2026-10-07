@@ -790,18 +790,26 @@ paths:
   /search:
     get:
       operationId: getSearch
-      summary: Google Search Console clicks, impressions, CTR and position, with rows.
+      summary: Search clicks, impressions, CTR and position from Google or Bing, with rows.
       description: |
-        Search data imported from Google Search Console (`/connections`):
-        totals of the period, a point per day (per month past 120 days),
-        and rows of one `kind`: search queries, pages, countries or
-        devices, sorted by clicks. `page` keeps the searches that showed
-        that page (its queries), `query` keeps one query (its pages);
-        countries and devices exist for the whole site only, so with
-        either they are empty.
+        Search data imported from Google Search Console or Bing Webmaster
+        Tools (`/connections`), one `engine` at a time: totals of the
+        period, a point per day (per month past 120 days), and rows of
+        one `kind`: search queries, pages, countries or devices, sorted
+        by clicks. `page` keeps the searches that showed that page (its
+        queries), `query` keeps one query (its pages); countries and
+        devices exist for the whole site only, so with either they are
+        empty.
 
-        Search days are the engine's own (Pacific time for Google) and
-        final only, so the newest is about three days old. The period is
+        Bing gives its pages and queries by week, and no countries or
+        devices: the period is widened at its start to the whole weeks its
+        days fall in (cut instead before the first day with data), a page's
+        or query's points are by week (`grain` `week`), and a day's
+        position is its week's.
+
+        Search days are the engine's own (Pacific time for Google, UTC
+        for Bing) and final only, so the newest is about three days old
+        (Bing: the end of its newest week, a week or more). The period is
         cut at the newest day with search data (`through`), and the
         comparison has the same number of days, so days not imported yet
         never look like a drop. Page filters apply like `page`; other
@@ -811,9 +819,10 @@ paths:
         CTR is clicks ÷ impressions. Position is the average of the
         highest place a page held each time it was shown, weighted by
         impressions; lower is better, and 0 means no impressions.
-        Search Console leaves out rare searches, so rows add up to less
-        than the totals. Demo data has made-up search days.
+        Both engines leave out rare searches, so rows add up to less
+        than the totals. Demo data has made-up search days for both.
       parameters:
+        - $ref: '#/components/parameters/engine'
         - name: kind
           in: query
           schema:
@@ -872,8 +881,8 @@ paths:
       operationId: getOpportunities
       summary: Where search effort pays — striking-distance queries, low-CTR queries, pages losing clicks or queries missing from their page.
       description: |
-        From the same imported Search Console days as `/search`, one
-        `kind` of opportunity, best first:
+        From the same imported search days as `/search` (one `engine`),
+        one `kind` of opportunity, best first:
 
         - `striking`: a page's query at average position 4–20 with
           enough impressions (`rules.min_impressions`, scaled by the
@@ -909,6 +918,7 @@ paths:
         never reads every query of every day. Page filters apply; other
         filters are listed in `ignored`.
       parameters:
+        - $ref: '#/components/parameters/engine'
         - name: kind
           in: query
           schema:
@@ -1013,8 +1023,9 @@ paths:
       operationId: getContent
       summary: Content performance — each page's search clicks with its visits from search and their conversions.
       description: |
-        Per page, Search Console's clicks, impressions, CTR and position
-        (Google) beside the visits from organic search (any engine) that
+        Per page, the search engine's clicks, impressions, CTR and
+        position (`engine`: Google or Bing) beside the visits from
+        organic search (any engine) that
         started on the page, with their bounce rate, views per visit and
         time, and how many of those visits reached a goal: `goal`, or the
         first goal when left out (`conversions` is null without goals).
@@ -1032,6 +1043,7 @@ paths:
         the comparison has as many days. Page filters apply; other
         filters are listed in `ignored`.
       parameters:
+        - $ref: '#/components/parameters/engine'
         - name: sort
           in: query
           description: Order of the pages, most first.
@@ -1227,6 +1239,12 @@ paths:
         few seconds later: the 16 months Search Console keeps, newest
         first, then each day once Search Console marks it final. Another
         property starts the import again from the beginning.
+
+        Bing Webmaster Tools: checks the API key (Bing Webmaster Tools →
+        Settings → API access) by listing its verified sites before
+        anything is stored. The import is the same: the 16 months Bing
+        keeps, then each week once Bing gives it, then each top page's
+        queries.
       requestBody:
         content:
           application/json:
@@ -1235,10 +1253,10 @@ paths:
               properties:
                 key:
                   type: string
-                  description: The service account's JSON key, as text. Without it, the saved key is kept (to change the property).
+                  description: Search Console, the service account's JSON key, as text; Bing, the API key. Without it, the saved key is kept (to change the property or site).
                 property:
                   type: string
-                  description: The property to import. Without it, the one for this site's address (a domain property before an address one).
+                  description: The property (Search Console) or verified site (Bing) to import. Without it, the one for this site's address (Search Console, a domain property before an address one).
                   examples: ['sc-domain:example.com', 'https://example.com/']
       responses:
         '200':
@@ -1249,10 +1267,10 @@ paths:
                 $ref: '#/components/schemas/Connection'
         '400':
           description: |
-            The key cannot be read, Google refused the sign-in, or the
-            service account cannot read the property. When a property is the
-            problem, `data.properties` lists the ones it can read and
-            `data.account` is its address, to add in Search Console.
+            The key cannot be read, Google or Bing refused it, or it cannot
+            read the property or site. When a property or site is the
+            problem, `data.properties` lists the ones it can read and (Search
+            Console) `data.account` is its address, to add in Search Console.
           content:
             application/json:
               schema:
@@ -1318,6 +1336,9 @@ paths:
                             type: integer
                           rows:
                             type: integer
+                          pages:
+                            type: integer
+                            description: Bing, pages whose queries were imported in this run.
                           import:
                             type: integer
                             description: The imports row it wrote (0 when there was nothing new).
@@ -1355,7 +1376,8 @@ paths:
       summary: Undo an import, deleting the rows it wrote.
       description: |
         The job does not import those days again; `wp seoprostats
-        search-console reimport --from=… --to=…` does. Undoing an import
+        search-console reimport --from=… --to=…` (or `bing reimport`)
+        does. Undoing an import
         already undone deletes nothing.
       parameters:
         - name: id
@@ -1474,6 +1496,18 @@ components:
         type: string
         enum: [live, demo]
         default: live
+    engine:
+      name: engine
+      in: query
+      description: |
+        Search engine: google (Search Console) or bing (Bing Webmaster
+        Tools). Bing gives no devices or countries, and its pages and
+        queries by week: the period is widened at its start to whole weeks,
+        and a page's or query's points are by week.
+      schema:
+        type: string
+        enum: [google, bing]
+        default: google
     changePage:
       name: page
       in: query
@@ -1514,7 +1548,7 @@ components:
       description: An outside data source.
       schema:
         type: string
-        enum: [search-console]
+        enum: [search-console, bing]
 
   responses:
     BadDefinition:
@@ -2386,8 +2420,12 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
+          required: [engine, engines, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
           properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
             range:
               $ref: '#/components/schemas/Range'
             through:
@@ -2398,7 +2436,7 @@ components:
               description: Oldest day with search data (YYYY-MM-DD); empty with none.
             connected:
               type: boolean
-              description: Whether Search Console is connected (demo data, always).
+              description: Whether the engine's source is connected (demo data, always).
             kind:
               type: string
               enum: [queries, pages, countries, devices]
@@ -2417,7 +2455,8 @@ components:
               $ref: '#/components/schemas/SearchMetrics'
             grain:
               type: string
-              enum: [day, month]
+              enum: [day, week, month]
+              description: week for a page or query of Bing (each point is the week's last day).
             points:
               type: array
               items:
@@ -2662,8 +2701,12 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
+          required: [engine, engines, kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
           properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
             kind:
               type: string
               enum: [striking, ctr, decay, missing]
@@ -2683,7 +2726,7 @@ components:
               description: Oldest day with search data (YYYY-MM-DD); empty with none.
             connected:
               type: boolean
-              description: Whether Search Console is connected (demo data, always).
+              description: Whether the engine's source is connected (demo data, always).
             ignored:
               type: array
               description: Filter dimensions left out (only page filters apply to search data).
@@ -2740,8 +2783,20 @@ components:
               items:
                 $ref: '#/components/schemas/Marker'
 
+    SearchEngine:
+      type: string
+      enum: [google, bing]
+      description: The search engine answered for.
+
+    SearchEngines:
+      type: array
+      description: The engines with search data or a connected source, Google first (at least Google).
+      items:
+        type: string
+        enum: [google, bing]
+
     ContentMetrics:
-      description: Search figures (Google) with the visits from organic search that started on the page.
+      description: Search figures (the chosen engine's) with the visits from organic search that started on the page.
       allOf:
         - $ref: '#/components/schemas/SearchMetrics'
         - type: object
@@ -2797,8 +2852,12 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
+          required: [engine, engines, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
           properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
             range:
               $ref: '#/components/schemas/Range'
             through:
@@ -2809,7 +2868,7 @@ components:
               description: Oldest day with search data (YYYY-MM-DD); empty with none.
             connected:
               type: boolean
-              description: Whether Search Console is connected (demo data, always).
+              description: Whether the engine's source is connected (demo data, always).
             ignored:
               type: array
               description: Filter dimensions left out (only page filters apply to search data).
@@ -2902,12 +2961,12 @@ components:
       description: |
         An outside data source's status, without credentials. Fields after
         `connected` are there only while it is connected. Days are the
-        source's own (Search Console: Pacific time).
+        source's own (Search Console: Pacific time; Bing: UTC).
       required: [source, name, connected]
       properties:
         source:
           type: string
-          enum: [search-console]
+          enum: [search-console, bing]
         name:
           type: string
         connected:

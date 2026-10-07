@@ -853,10 +853,21 @@ code.spst-meta {
 	min-width: 180px;
 }
 
-/* Search's tabs: Rankings and Opportunities. */
+/* Search's tabs (Rankings, Opportunities, Content), and the engine switch at the end of the row. */
 .spst-subnav {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 8px;
 	margin: 0 0 12px;
 	border-bottom: 1px solid var(--spst-border);
+}
+
+.spst-engines {
+	display: flex;
+	gap: 4px;
+	padding-bottom: 6px;
 }
 
 .spst-subnav .spst-tab {

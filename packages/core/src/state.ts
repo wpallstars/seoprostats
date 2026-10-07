@@ -17,6 +17,7 @@ import {
 	COMPARE_KEYS,
 	CONTENT_SORTS,
 	RANGE_KEYS,
+	SEARCH_ENGINES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
 	type ClickKind,
@@ -25,6 +26,7 @@ import {
 	type Dimension,
 	type MetricKey,
 	type RangeKey,
+	type SearchEngine,
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchReport,
@@ -75,6 +77,8 @@ export interface ViewState {
 	event?: string;
 	/** Search: Rankings (the default), Opportunities or Content. */
 	report?: SearchReport;
+	/** Search: the engine (Google when left out); kept across its reports. */
+	engine?: SearchEngine;
 	/** Search → Content: the order of the pages. */
 	sort?: ContentSort;
 	/** Search → Content: the goal counted (its ID); the first when left out. */
@@ -90,7 +94,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'sort', 'goal', 'tab', 'chart', 'key', 'event', 'page', 'query'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'tab', 'chart', 'key', 'event', 'page', 'query'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -137,12 +141,16 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 	} else if (state.view === 'search') {
 		const report = oneOf(SEARCH_REPORTS, params.get('report'), 'rankings');
 		set('report', report === 'rankings' ? undefined : report);
+		const engine = oneOf(SEARCH_ENGINES, params.get('engine'), 'google');
+		set('engine', engine === 'google' ? undefined : engine);
 		if (report === 'content') {
 			const sort = oneOf(CONTENT_SORTS, params.get('sort'), 'clicks');
 			set('sort', sort === 'clicks' ? undefined : sort);
 			set('goal', text(params.get('goal')));
 		}
-		const tab = oneOf(SEARCH_KINDS, params.get('tab'), 'queries');
+		// Bing has no countries or devices.
+		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
+		const tab = oneOf(tabs, params.get('tab'), 'queries');
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
 		set('tab', tab === 'queries' ? undefined : tab);
 		set('chart', chart === 'clicks' ? undefined : chart);

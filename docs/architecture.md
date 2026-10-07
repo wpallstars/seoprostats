@@ -24,7 +24,7 @@ Principles, in order:
    cron does the work in batches. Every query uses an index; reports read
    daily summaries where they can and cache answers.
 3. **The owner's data, in the owner's database.** Outside services are
-   opt-in and only add facts (Search Console, backlinks, mentions, a
+   opt-in and only add facts (Search Console, Bing Webmaster Tools, backlinks, mentions, a
    location database). Every table can be exported, imported and pruned by
    a retention setting.
 4. **WordPress first in the admin, portable underneath.** The admin looks
@@ -43,7 +43,8 @@ WordPress hooks ──► change log          processor (sessions, UA, channel,
  themes, options)                                           │ nightly
                                                             ▼
 Search Console, ──► import jobs ──────────────────► daily summaries
-backlinks, mentions                                         │
+Bing, backlinks,                                            │
+mentions                                                    │
                                                             ▼
                      report engine (filters, compare, metrics, cache)
                        │            │             │            │
@@ -450,6 +451,48 @@ data stays unless asked to delete it too. A failed run keeps Google's
 message in the state, shown on the tab and by `doctor`, and the next run
 tries again.
 
+### Bing Webmaster Tools
+
+The second source and engine (`SEOProStats_Source_Bing`, engine 2),
+connected with the owner's API key from Bing Webmaster Tools (Settings →
+API access): no OAuth app and no outside server. The owner verifies the
+site in Bing first (Bing can import it from Search Console). Connecting
+lists the key's verified sites before anything is stored and picks the
+one for this site's address (`--property` or the tab's list chooses
+another). The key is stored and kept out of answers as Search Console's
+key is; it is sent in the request address, as Bing asks, and removed
+from any error message.
+
+Bing's API answers whole periods, not single days:
+
+| Request | Gives | Stored as |
+|---|---|---|
+| `GetRankAndTrafficStats` | the site's clicks and impressions by day, no position | `gsc_totals`, one row a day (device 0, country `''`) |
+| `GetPageStats`, `GetQueryStats` | the top pages and queries by week: clicks, impressions, average position | `gsc_pages`, `gsc_queries` on the week's last day |
+| `GetPageQueryStats` (one page) | that page's queries by week | `gsc_pairs` on the week's last day |
+
+A weekly row dated D covers the seven days before D (checked against
+the daily figures over 16 months of a live site: the best match by far),
+so it is stored on D − 1; weeks end on the same weekday, found from the
+newest week. Positions are real ranks (`AvgImpressionPosition`; Bing's
+click position is −1, unknown). A day's position is its week's: the
+average over the week's queries weighted by impressions (pages' when a
+week has no queries), else the nearest week's. Bing's days are UTC.
+
+The same job (`SEOProStats_Search_Import`) imports it with the same
+lock, budget, history, undo and reimport. The first request of a run
+reads the three site-wide answers once; each day then takes its part. A
+day is final once its week is in (Bing gives a week some days after it
+ends; with no recent weeks, nine days after the week). After the days,
+pages with their queries come page by page (`PAIRS_BY_PAGE`): the 300
+pages with most clicks in the range, one request each, every week of the
+range at once; the range reaches 21 days further back
+(`PAIR_LAG_DAYS`), since a page's queries come later than its figures.
+The queue is kept in the state, so a run that runs out of time carries
+on in the next; each run is an import (undo deletes its rows by its
+days and id). `wp seoprostats bing status|import|imports|undo|reimport`
+mirrors `search-console`.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also
@@ -515,7 +558,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
 | `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`, or `SEARCH_LANDING` (18): visits from organic search by entry page, for the content report), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
-| `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Search Console above) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
+| `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Search Console and Bing Webmaster Tools above: Bing's pages, queries and pairs are weekly, on the week's last day, and its totals have no device or country) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
 | `changes` | change to the site, a marker on the timeline (schema v6; Changes below) | `id`, `ts`, `kind` (a code in `SEOProStats_Changes::KINDS`), `path_id` (0: site-wide), `object_type` (the post type, or `coupon`, `plugin`, `theme`, `core`, `option`), `object_id`, `old`, `new` (190 characters), `meta` (JSON), `source` (1 WordPress, 2 WP-CLI, 3 API, 4 cron, 5 feed, 6 note), `user_id` |
 | `snapshots` | stored version of a page | `path_id`, `post_id`, `ts`, title, description, H1, word count, text hash, compressed text |
 | `pages` | address that shows one item (schema v5) | `path_id` (primary key), `post_id`, `post_type`, `author_id`, `term_id`, `seen` (when last checked; the latest view wins); later `title`, `launched`, `removed`, `status` |
@@ -571,8 +614,8 @@ seoprostats prune --dry-run` counts them.
 | Speed measurements | 3 months | Daily percentiles kept |
 | Errors | 3 months | Groups kept 13 months |
 | Crawler requests | 3 months | Daily totals per crawler kept |
-| Search Console page and query pairs | 25 months | Search Console itself keeps 16 |
-| Daily summaries, Search Console totals, changes | forever | Small; the long-term record |
+| Search pages, queries and pairs (Google and Bing) | 25 months | Each engine itself keeps 16 |
+| Daily summaries, search totals, changes | forever | Small; the long-term record |
 | Page snapshots | last 10 per page | Enough for before and after |
 
 ### Demo data
@@ -615,9 +658,13 @@ clicks in their own way (`SEARCH_EVENTS`: one ranks lower after a large
 edit, one is searched less, one is chosen less after its SEO title
 changed, with those changes in the change log), and a few queries have a
 low CTR for their position (`SEARCH_LOW_CTR`), so each Opportunities card
-lists something. The same day always gets the same numbers; demo data
-made before search data, or before a change to it (`SEARCH_VERSION`),
-gets them on its next top-up.
+lists something. Bing days follow as the Bing import writes them
+(`bing_day()`): the site's clicks and impressions each day, and on each
+Thursday the week's pages, queries and pairs, from the same Google days
+at about an eighth of the size and a little lower down, through the
+newest week Bing would have given. The same day always gets the same
+numbers; demo data made before search or Bing data, or before a change
+to it (`SEARCH_VERSION`), gets them on its next top-up.
 Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
@@ -768,8 +815,15 @@ cached administrator answers never leak links to another viewer. Future
 shared read-only views must omit `edit_url`. All lookups run in reporting
 requests, never on visitor pages. Unknown demo paths have no editor link.
 
-Search (`SEOProStats_Search`) reads only the imported Search Console days
-(`gsc_*`, engine 1 for Google), never the visit tables. The range's days
+Search (`SEOProStats_Search`) reads only the imported search days
+(`gsc_*`, one engine at a time: `engine=google`, the default, or `bing`;
+`engines` in the answer lists those with data or connected), never the
+visit tables. Bing's pages and queries come by week (`WEEKLY`), so its
+range is widened at the start to the whole weeks its days fall in (cut
+instead where that would start before the first day with data; any seven
+days then hold one week, and a period and its comparison as many), a page's or query's
+points are by week (`grain` `week`, each point the week's last day,
+lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
 number of days, so days not imported yet never look like a drop. Totals
@@ -789,8 +843,8 @@ answer names them in `ignored`. The cache key adds the newest import and
 the last one finished or undone, so new days show at once. Pages rows
 and an exact page get the same addresses and editor links as Clicks.
 
-Opportunities (`SEOProStats_Opportunities`) read the same days, with the
-same cut, page filters, `ignored` and cache key, and say where search
+Opportunities (`SEOProStats_Opportunities`) read the same days of one
+engine, with the same cut, page filters, `ignored` and cache key, and say where search
 effort pays. The period is also cut to its newest 91 days (`MAX_DAYS`;
 the answer gives `days` and `cut`), so a year never reads every pair.
 Thresholds are constants scaled by the days read (`rules` in the answer).
@@ -875,8 +929,8 @@ and none growing with all the visits:
 Rows are every page with clicks or visits from search, ordered by
 `sort` (clicks, visits or conversions), then clicks, visits and
 impressions; with a comparison the rows shown get their figures then and
-the change. Search figures are Google's, visits any engine's, so the two
-differ.
+the change. Search figures are the chosen engine's (`engine`), visits
+any engine's, so the two differ.
 
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
@@ -1048,6 +1102,7 @@ Every chart has a table view for screen readers.
 | Integration | How | Stored in |
 |---|---|---|
 | Search Console | Opt-in: a service account's key, stored encrypted (Sign in with Google through our relay later, issue #50); hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
+| Bing Webmaster Tools | Opt-in: the owner's API key, stored encrypted; the same hourly job, each week once Bing gives it, 16-month history on connect; the site's clicks and impressions by day, pages and queries by week, then each top page's queries (Bing Webmaster Tools above) | `gsc_*` (engine 2), `imports` |
 | Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
 | Search engine updates | Opt-in: Google Search Status Dashboard's JSON history and the owner's other feeds, daily (Search engine updates above) | `changes` |
 | Backlinks | Referrers verified by fetching the referring page; optional provider (DataForSEO) with the owner's key | `links` |

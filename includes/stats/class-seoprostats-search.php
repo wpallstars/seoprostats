@@ -33,6 +33,24 @@ final class SEOProStats_Search {
     /** Daily points up to this many days, else monthly. */
     const DAILY_DAYS = 120;
 
+    /** Search engines by name (SEOProStats_Schema::ENGINE_*). */
+    const ENGINES = array(
+        'google' => SEOProStats_Schema::ENGINE_GOOGLE,
+        'bing'   => SEOProStats_Schema::ENGINE_BING,
+    );
+
+    /** The source (SEOProStats_Connections::SOURCES) each engine's data comes from. */
+    const ENGINE_SOURCES = array(
+        'google' => 'search-console',
+        'bing'   => 'bing',
+    );
+
+    /**
+     * Engines whose pages and queries come by week, stored on the week's
+     * last day (Bing); their charts of a page or query are by week.
+     */
+    const WEEKLY = array('bing');
+
     /** Device codes of gsc_totals, by name (SEOProStats_Schema::GSC_DEVICES). */
     const DEVICES = array(
         1 => 'desktop',
@@ -51,33 +69,39 @@ final class SEOProStats_Search {
      *
      * @param array<string,mixed> $req   From SEOProStats_Query::request().
      * @param string              $kind  One of KINDS.
-     * @param string              $page  Only this page (path; * for any text); '' for all.
-     * @param string              $query Only this query (* for any text); '' for all.
+     * @param string              $page   Only this page (path; * for any text); '' for all.
+     * @param string              $query  Only this query (* for any text); '' for all.
+     * @param string              $engine google or bing (ENGINES).
      * @return array<string,mixed>
      */
-    public static function report(array $req, $kind = 'queries', $page = '', $query = '') {
+    public static function report(array $req, $kind = 'queries', $page = '', $query = '', $engine = 'google') {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
-        $kind  = in_array($kind, self::KINDS, true) ? (string) $kind : 'queries';
-        $page  = trim((string) $page);
-        $query = SEOProStats_Dict::clean(trim((string) preg_replace('/\s+/u', ' ', (string) $query)));
-        $live  = SEOProStats_Schema::set() === 'live';
+        $kind   = in_array($kind, self::KINDS, true) ? (string) $kind : 'queries';
+        $page   = trim((string) $page);
+        $query  = SEOProStats_Dict::clean(trim((string) preg_replace('/\s+/u', ' ', (string) $query)));
+        $engine = self::engine_name($engine);
+        $live   = SEOProStats_Schema::set() === 'live';
 
-        $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'imports' => self::version()), static function () use ($req, $kind, $page, $query) {
-            $engine  = SEOProStats_Schema::ENGINE_GOOGLE;
-            $bounds  = self::bounds($engine);
+        $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'imports' => self::version()), static function () use ($req, $kind, $page, $query, $engine) {
+            $code    = self::ENGINES[$engine];
+            $bounds  = self::bounds($code);
             $range   = SEOProStats_Query::range($req);
             $ignored = array();
             $pages   = self::page_ids($req['filters'], $page, $ignored);
             $queries = $query === '' ? null : self::query_ids($query);
-            $now     = self::days($range, $bounds);
-            $grain   = $now && self::length($now) > self::DAILY_DAYS ? 'month' : 'day';
-            $scope   = self::scope($engine, $now, $pages, $queries);
+            $weekly  = in_array($engine, self::WEEKLY, true);
+            $now     = self::days($range, $bounds, $weekly);
+            $scope   = self::scope($code, $now, $pages, $queries);
+            $grain   = self::grain($engine, $now, $scope);
+            $anchor  = $grain === 'week' ? self::week_end($code, $bounds) : '';
             $totals  = self::totals($scope);
             $rows    = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
             $more    = count($rows) > (int) $req['limit'];
             $rows    = array_slice($rows, 0, (int) $req['limit']);
 
             $answer = array(
+                'engine'    => $engine,
+                'engines'   => self::engines(),
                 'range'     => $now ? self::range_out($now) : SEOProStats_Query::range_out($range),
                 'through'   => $bounds['to'],
                 'first'     => $bounds['from'],
@@ -88,27 +112,27 @@ final class SEOProStats_Search {
                 'ignored'   => array_values(array_unique($ignored)),
                 'totals'    => $totals,
                 'grain'     => $grain,
-                'points'    => $now ? self::series($scope, $now, $grain) : array(),
+                'points'    => $now ? self::series($scope, $now, $grain, $anchor) : array(),
                 'rows'      => $rows,
                 'more'      => $more,
             );
             $other = $now ? SEOProStats_Query::compare_range($now, $req['compare']) : null;
             if ($other) {
-                $then_days = self::days($other, array('from' => '', 'to' => ''));
-                $then      = self::scope($engine, $then_days, $pages, $queries);
+                $then_days = self::days($other, array('from' => '', 'to' => ''), $weekly);
+                $then      = self::scope($code, $then_days, $pages, $queries);
                 $before    = self::totals($then);
                 $answer['rows']    = self::with_compare($then, $kind, $answer['rows']);
                 $answer['compare'] = array(
                     'range'  => SEOProStats_Query::range_out($other),
                     'totals' => $before,
                     'change' => self::change($totals, $before),
-                    'points' => $then_days ? self::series($then, $then_days, $grain) : array(),
+                    'points' => $then_days ? self::series($then, $then_days, $grain, $anchor) : array(),
                 );
             }
             return $answer;
         });
 
-        $answer['connected'] = !$live || self::connected();
+        $answer['connected'] = !$live || self::connected($engine);
         // Editor links depend on the viewer, so they are added outside the shared cache.
         if ($answer['page_info'] !== null) {
             $answer['page_info'] = SEOProStats_Clicks::with_edit_url($answer['page_info']);
@@ -123,13 +147,74 @@ final class SEOProStats_Search {
     }
 
     /**
-     * Whether Search Console is connected (live data).
+     * Whether an engine's source is connected (live data): Search Console
+     * for Google, Bing Webmaster Tools for Bing.
      *
+     * @param string $engine google or bing.
      * @return bool
      */
-    public static function connected() {
+    public static function connected($engine = 'google') {
         require_once __DIR__ . '/class-seoprostats-connections.php';
-        return SEOProStats_Connections::get('search-console') !== null;
+        return SEOProStats_Connections::get(self::ENGINE_SOURCES[self::engine_name($engine)]) !== null;
+    }
+
+    /**
+     * An engine's name as the reports take it: google unless bing.
+     *
+     * @param string $engine Engine name.
+     * @return string
+     */
+    public static function engine_name($engine) {
+        return isset(self::ENGINES[(string) $engine]) ? (string) $engine : 'google';
+    }
+
+    /**
+     * The engines with search data, or whose source is connected (live
+     * data), Google first; at least Google.
+     *
+     * @return string[]
+     */
+    public static function engines() {
+        $live = SEOProStats_Schema::set() === 'live';
+        $out  = array();
+        foreach (self::ENGINES as $name => $code) {
+            if ($name === 'google' || self::bounds($code)['to'] !== '' || ($live && self::connected($name))) {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Points by day; by month past DAILY_DAYS; by week for a page or
+     * query of an engine whose pages and queries come by week.
+     *
+     * @param string                   $engine Engine name.
+     * @param array<string,mixed>|null $days   From days().
+     * @param array<string,mixed>|null $scope  From scope().
+     * @return string day, week or month.
+     */
+    public static function grain($engine, $days, $scope) {
+        if ($days && self::length($days) > self::DAILY_DAYS) {
+            return 'month';
+        }
+        return in_array($engine, self::WEEKLY, true) && $scope && $scope['table'] !== 'gsc_totals' ? 'week' : 'day';
+    }
+
+    /**
+     * The newest week's last day of an engine whose pages come by week
+     * (the newest day of its pages), so weekly points line up with the
+     * weeks; the newest day with data without pages.
+     *
+     * @param int                          $engine Engine.
+     * @param array{from:string,to:string} $bounds From bounds().
+     * @return string Y-m-d, or ''.
+     */
+    private static function week_end($engine, array $bounds) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, MAX of the primary key's (engine, day) prefix.
+        $day = (string) $wpdb->get_var($wpdb->prepare('SELECT MAX(day) FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_pages'), (int) $engine));
+        return $day !== '' ? $day : $bounds['to'];
     }
 
     /**
@@ -169,11 +254,20 @@ final class SEOProStats_Search {
      * the first), as a range SEOProStats_Query can compare: start and end
      * (the day after the last) in the site time zone.
      *
+     * An engine whose pages and queries come by week ($weekly) has its
+     * range widened at the start to whole weeks, the weeks the range's
+     * days fall in, so no chosen day with data is left out: any run of
+     * seven days holds one week's figures, so a period and the one it is
+     * compared with hold as many weeks, and a period ending on the newest
+     * week (as it does at `through`) holds whole weeks. Where widening would
+     * start before the first day with data (all time), it is cut instead.
+     *
      * @param array<string,mixed>      $range  From SEOProStats_Query::range() or compare_range().
      * @param array{from:string,to:string} $bounds From bounds(); '' for no cut.
+     * @param bool                     $weekly Make whole weeks.
      * @return array<string,mixed>|null Null when no day is left.
      */
-    public static function days(array $range, array $bounds) {
+    public static function days(array $range, array $bounds, $weekly = false) {
         $tz = wp_timezone();
         /** @var DateTimeImmutable $start */
         $start = $range['start'];
@@ -191,6 +285,16 @@ final class SEOProStats_Search {
         }
         $begin = new DateTimeImmutable($first, $tz);
         $end   = (new DateTimeImmutable($last, $tz))->modify('+1 day');
+        $count = (int) $begin->diff($end)->days;
+        if ($weekly && $count % 7) {
+            $wide = $end->modify('-' . ($count + 7 - $count % 7) . ' days');
+            if ($bounds['from'] === '' || $wide->format('Y-m-d') >= $bounds['from']) {
+                $begin = $wide;
+            } elseif ($count >= 7) {
+                $begin = $end->modify('-' . ($count - $count % 7) . ' days');
+            }
+            $first = $begin->format('Y-m-d');
+        }
         return array(
             'key'   => (string) $range['key'],
             'start' => $begin,
@@ -386,14 +490,18 @@ final class SEOProStats_Search {
     }
 
     /**
-     * Metrics per day or month of a period, every day or month present.
+     * Metrics per day, week or month of a period, every one present. A
+     * week's figures are on its last day (weeks end on the weekday of
+     * $anchor, the newest day with data); its point starts six days
+     * before, or at the period's start.
      *
-     * @param array<string,mixed>|null $scope From scope().
-     * @param array<string,mixed>      $days  From days().
-     * @param string                   $grain day or month.
+     * @param array<string,mixed>|null $scope  From scope().
+     * @param array<string,mixed>      $days   From days().
+     * @param string                   $grain  day, week or month.
+     * @param string                   $anchor The last day of a week (Y-m-d), for weeks.
      * @return array<int,array<string,mixed>>
      */
-    private static function series($scope, array $days, $grain) {
+    private static function series($scope, array $days, $grain, $anchor = '') {
         global $wpdb;
         $by = array();
         if ($scope !== null) {
@@ -407,6 +515,18 @@ final class SEOProStats_Search {
         $out = array();
         /** @var DateTimeImmutable $at */
         $at = $days['start'];
+        if ($grain === 'week') {
+            // The first week's last day in the period: the anchor's weekday.
+            $gap = $anchor !== '' ? (int) round(((new DateTimeImmutable($anchor, $at->getTimezone()))->getTimestamp() - $at->getTimestamp()) / DAY_IN_SECONDS) : 6;
+            $at  = $at->modify('+' . ((($gap % 7) + 7) % 7) . ' days');
+            for ($n = 0; $at < $days['end'] && $n < 1000; $at = $at->modify('+7 days'), $n++) {
+                $key   = $at->format('Y-m-d');
+                $row   = isset($by[$key]) ? $by[$key] : array('c' => 0, 'i' => 0, 'p' => 0);
+                $from  = max($days['start'], $at->modify('-6 days'));
+                $out[] = array('t' => $from->format('c')) + self::metrics($row['c'], $row['i'], $row['p']);
+            }
+            return $out;
+        }
         if ($grain === 'month') {
             $at = $at->modify('first day of this month');
         }
@@ -458,7 +578,8 @@ final class SEOProStats_Search {
         $pages   = $scope['pages'];
         $queries = $scope['queries'];
         if ($kind === 'countries' || $kind === 'devices') {
-            if ($pages !== null || $queries !== null) {
+            // The site only; Bing gives no countries or devices.
+            if ($pages !== null || $queries !== null || (int) $scope['engine'] !== SEOProStats_Schema::ENGINE_GOOGLE) {
                 return null;
             }
             $table = 'gsc_totals';

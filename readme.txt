@@ -15,7 +15,7 @@ Privacy-friendly site statistics in WordPress: visits, pages, sources and goals,
 
 SEO Pro Stats is what wpallstars plugins are made from. It has no features of its own: it holds the parts every plugin needs, so a new plugin starts with them working.
 
-* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages), Data (how long visits are kept, who can see the statistics) and Connections (outside data, such as Google Search Console).
+* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages), Data (how long visits are kept, who can see the statistics) and Connections (outside data, such as Google Search Console and Bing Webmaster Tools).
 * **A Read Me tab** that shows the plugin's README.md, banner included.
 * **Features as classes**, off by default, with settings, hooks, one-off imports from the plugins they replace and clean uninstall.
 * **Release and check scripts**: lint, smoke test, release build, preflight and Plugin Check.
@@ -71,9 +71,13 @@ Yes, once you connect it under Settings → Connections with a Google Cloud serv
 
 SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and average position against the previous period, a chart with the site's changes under it, and the search queries, pages, countries and devices. Choose a page to see its queries, or a query to see its pages. Scripts and AI agents read the same report through the REST API (search), wp seoprostats search, and on WordPress 6.9 and later the ability seoprostats/search. Demo data has made-up search data, so you can try it before connecting.
 
+= Can it show Bing too? =
+
+Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI).
+
 = What does Search → Opportunities show? =
 
-Where search work pays, from the same Search Console data. Striking distance lists a page's search queries at positions 4 to 20 with the clicks each could gain in the top three. Low CTR lists queries in the top 10 that searchers choose much less often than your site's own click-through rate at that position, where a clearer title and description may help. Losing clicks lists pages with at least a fifth fewer clicks than the earlier period, each with the likely cause (it ranks lower, it is searched for less, fewer searchers choose it, or it is no longer shown), the queries that lost most and what changed on the page. Missing from the page lists queries a page ranks for in the top 20 whose words the page does not have, or has only some of. Choose a row to open it in Rankings. Scripts and AI agents read it through the REST API (opportunities), wp seoprostats opportunities, and on WordPress 6.9 and later the ability seoprostats/opportunities.
+Where search work pays, from the same search data (Google's, or Bing's). Striking distance lists a page's search queries at positions 4 to 20 with the clicks each could gain in the top three. Low CTR lists queries in the top 10 that searchers choose much less often than your site's own click-through rate at that position, where a clearer title and description may help. Losing clicks lists pages with at least a fifth fewer clicks than the earlier period, each with the likely cause (it ranks lower, it is searched for less, fewer searchers choose it, or it is no longer shown), the queries that lost most and what changed on the page. Missing from the page lists queries a page ranks for in the top 20 whose words the page does not have, or has only some of. Choose a row to open it in Rankings. Scripts and AI agents read it through the REST API (opportunities), wp seoprostats opportunities, and on WordPress 6.9 and later the ability seoprostats/opportunities.
 
 = Does it show which search queries a post does not cover? =
 
@@ -93,7 +97,7 @@ Ask aidevops (https://aidevops.sh): open the plugin's repository, or your site, 
 
 = Does it contact other services? =
 
-Not unless you switch on Show search engine updates under Settings → Data, or connect Google Search Console under Settings → Connections (both off by default). Search engine updates: once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Search Console: it signs in to Google with your service account and asks for your property's search data. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
+Not unless you switch on Show search engine updates under Settings → Data, or connect Google Search Console or Bing Webmaster Tools under Settings → Connections (all off by default). Search engine updates: once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Search Console: it signs in to Google with your service account and asks for your property's search data. Bing Webmaster Tools: it asks Bing for your site's search data with your API key. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
 
 = When do versions reach WordPress.org? =
 
@@ -106,6 +110,8 @@ GitHub releases are the stable beta channel: each version comes out there first.
 **Other feeds** you add under Settings → Data → Other feeds are downloaded the same way, once a day each, and only while the setting is on; their own terms apply.
 
 **Google Search Console API** (searchconsole.googleapis.com) and **Google's sign-in service** (oauth2.googleapis.com), only after you connect Search Console under Settings → Connections with your own service account's key: the site signs a sign-in request with the key and sends it to Google for an access token, lists the properties the service account can read, and asks for the chosen property's clicks, impressions and positions by day, page, query, device and country. This happens when you connect, when you choose Import now, and from WP-Cron (hourly, more often while the history is imported); never on visitors' pages, and nothing about the site's visitors is sent. The user agent names only the plugin and its version. Disconnecting stops it. Google's terms: https://policies.google.com/terms; privacy policy: https://policies.google.com/privacy.
+
+**Bing Webmaster API** (ssl.bing.com), only after you connect Bing Webmaster Tools under Settings → Connections with your own API key: the site sends the key with each request, lists the key's verified sites, and asks for the chosen site's clicks and impressions by day, its top pages and search queries by week, and the search queries of its top pages (one request a page). This happens when you connect, when you choose Import now, and from WP-Cron (hourly at most, more often while the history is imported); never on visitors' pages, and nothing about the site's visitors is sent. The user agent names only the plugin and its version. Disconnecting stops it. Microsoft's terms: https://www.microsoft.com/servicesagreement; privacy statement: https://privacy.microsoft.com/privacystatement.
 
 == Screenshots ==
 

@@ -8,6 +8,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+import { __, sprintf } from '@wordpress/i18n';
 import type { Grain } from '@seoprostats/core';
 import { locale } from './boot';
 
@@ -43,9 +44,13 @@ export function axisLabel(iso: string, grain: Grain): string {
 	return df({ day: 'numeric', month: 'short' }).format(d);
 }
 
-/** Fuller label for tooltips and tables: Tue 16 Sep 2026. */
+/** Fuller label for tooltips and tables: Tue 16 Sep 2026; a week, Week from Tue 16 Sep 2026. */
 export function longLabel(iso: string, grain: Grain): string {
 	const d = wallClock(iso);
+	if (grain === 'week') {
+		/* translators: %s: the first day of a week, e.g. "Tue 16 Sep 2026". */
+		return sprintf(__('Week from %s', 'seoprostats'), longLabel(iso, 'day'));
+	}
 	if (grain === 'hour') {
 		return df({ weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }).format(d);
 	}

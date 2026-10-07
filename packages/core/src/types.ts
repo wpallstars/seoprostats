@@ -42,7 +42,8 @@ export type Dimension = (typeof DIMENSIONS)[number];
 export const OPERATORS = ['is', 'is_not', 'contains', 'matches'] as const;
 export type Operator = (typeof OPERATORS)[number];
 
-export type Grain = 'hour' | 'day' | 'month';
+/** A chart point's span; week only for search data that comes by week (Bing). */
+export type Grain = 'hour' | 'day' | 'week' | 'month';
 
 export interface Range {
 	key: string;
@@ -373,6 +374,21 @@ export type SearchKind = (typeof SEARCH_KINDS)[number];
 export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
+/**
+ * Search engines with imported data; the first is the default. Bing gives
+ * pages and queries by week (stored on each week's last day) and no
+ * countries or devices.
+ */
+export const SEARCH_ENGINES = ['google', 'bing'] as const;
+export type SearchEngine = (typeof SEARCH_ENGINES)[number];
+
+/** What every search answer says about its engine. */
+export interface SearchEngineAnswer {
+	engine: SearchEngine;
+	/** Engines with search data or connected; Google always. */
+	engines: SearchEngine[];
+}
+
 export interface SearchMetrics {
 	clicks: number;
 	impressions: number;
@@ -407,13 +423,13 @@ export interface SearchRow extends SearchMetrics {
 	compare?: SearchMetrics & { change: SearchChange };
 }
 
-export interface SearchAnswer extends Answer {
+export interface SearchAnswer extends Answer, SearchEngineAnswer {
 	/** The range cut at the newest day with search data. */
 	range: Range;
 	/** Newest and first day with search data (YYYY-MM-DD); '' with none. */
 	through: string;
 	first: string;
-	/** Whether Search Console is connected (demo data: always). */
+	/** Whether the engine's source is connected (demo data: always). */
 	connected: boolean;
 	kind: SearchKind;
 	page: string;
@@ -422,7 +438,8 @@ export interface SearchAnswer extends Answer {
 	/** Filter dimensions left out: only page filters apply to search data. */
 	ignored: string[];
 	totals: SearchMetrics;
-	grain: 'day' | 'month';
+	/** week: a page or query of an engine that gives them by week. */
+	grain: 'day' | 'week' | 'month';
 	points: SearchPoint[];
 	rows: SearchRow[];
 	more: boolean;
@@ -490,7 +507,7 @@ export interface OpportunityMissing extends OpportunityPage, SearchMetrics, Cove
 	query: string;
 }
 
-export interface OpportunitiesAnswer extends Answer {
+export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer {
 	kind: OpportunityKind;
 	/** The period read: cut at the newest search day and to its newest 91 days. */
 	range: Range;
@@ -589,7 +606,7 @@ export interface ContentRow extends ContentMetrics, OpportunityPage {
 	compare?: ContentMetrics & { change: ContentChange };
 }
 
-export interface ContentAnswer extends Answer {
+export interface ContentAnswer extends Answer, SearchEngineAnswer {
 	/** The range cut at the newest day with search data. */
 	range: Range;
 	through: string;

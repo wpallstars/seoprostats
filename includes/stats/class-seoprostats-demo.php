@@ -544,6 +544,7 @@ final class SEOProStats_Demo {
             if ((isset($state['search_v']) ? (int) $state['search_v'] : 1) < self::SEARCH_VERSION) {
                 $state['search_v'] = self::SEARCH_VERSION;
                 $state['search']   = '';
+                $state['bing']     = '';
                 update_option(self::OPTION, $state, false);
                 if (!$wrote) {
                     self::changes(isset($state['from']) ? (int) $state['from'] : time(), true);
@@ -774,10 +775,7 @@ final class SEOProStats_Demo {
                 return false;
             }
             if ($ids === null) {
-                $ids = array(
-                    'paths'   => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_unique(array_merge(array_column(self::SEARCH_QUERIES, 0), array_filter(array_column(self::SEARCH_QUERIES, 4))))),
-                    'queries' => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys(self::SEARCH_QUERIES)),
-                );
+                $ids = self::search_ids();
             }
             if (!self::search_day($day, $today, $ids)) {
                 return false;
@@ -786,6 +784,119 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             $day = $day->modify('+1 day');
         }
+
+        // Bing's days, through the end of its newest week given (it comes
+        // some days after the week, as from Bing); demo data made before
+        // Bing gets them here too.
+        $final = $today->modify('-' . (self::SEARCH_LAG + 6) . ' days');
+        $final = $final->modify('-' . (((int) $final->format('N') - self::BING_WEEK_END + 7) % 7) . ' days')->format('Y-m-d');
+        $made  = isset($state['bing']) ? (string) $state['bing'] : '';
+        $day   = $made !== '' && $made >= $first ? (new DateTimeImmutable($made, $tz))->modify('+1 day') : new DateTimeImmutable($first, $tz);
+        while ($day->format('Y-m-d') <= $final) {
+            if (!SEOProStats_Feature::more_time($start, $budget)) {
+                return false;
+            }
+            if ($ids === null) {
+                $ids = self::search_ids();
+            }
+            if (!self::bing_day($day, $today, $ids)) {
+                return false;
+            }
+            $state['bing'] = $day->format('Y-m-d');
+            update_option(self::OPTION, $state, false);
+            $day = $day->modify('+1 day');
+        }
+        return true;
+    }
+
+    /** The weekday Bing's demo weeks end on (ISO-8601: 4 is Thursday). */
+    const BING_WEEK_END = 4;
+
+    /**
+     * Dictionary IDs of the demo's search pages and queries.
+     *
+     * @return array{paths:array<string,int>,queries:array<string,int>}
+     */
+    private static function search_ids() {
+        return array(
+            'paths'   => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_unique(array_merge(array_column(self::SEARCH_QUERIES, 0), array_filter(array_column(self::SEARCH_QUERIES, 4))))),
+            'queries' => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys(self::SEARCH_QUERIES)),
+        );
+    }
+
+    /**
+     * One demo Bing day, as the Bing import writes it: the site's clicks
+     * and impressions (no device or country), and on the last day of a
+     * week, the week's pages, queries and pages with their queries. Bing
+     * is the demo's Google searches at about an eighth of the size, a
+     * little lower down.
+     *
+     * @param DateTimeImmutable                                       $day   The day (site time zone).
+     * @param DateTimeImmutable                                       $today Today.
+     * @param array{paths:array<string,int>,queries:array<string,int>} $ids   Dictionary IDs.
+     * @return bool Whether it was written.
+     */
+    private static function bing_day(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
+        global $wpdb;
+        $date = $day->format('Y-m-d');
+        // One row's keys and figures at Bing's size: clicks, impressions, pos_impr (+0.4 places).
+        $bing = static function (array $row, $n) {
+            $impr = (int) round($row[$n + 1] * 0.12);
+            if ($impr < 1) {
+                return null;
+            }
+            $position = $row[$n + 1] ? $row[$n + 2] / $row[$n + 1] : 0;
+            return array_merge(array_slice($row, 0, $n), array(min($impr, (int) round($row[$n] * 0.11)), $impr, (int) round(($position + 40) * $impr)));
+        };
+        $out  = array('totals' => array());
+        $site = array(0, '', 0, 0, 0);
+        foreach (self::search_rows($day, $today, $ids)['totals'] as $row) {
+            $site[2] += $row[2];
+            $site[3] += $row[3];
+            $site[4] += $row[4];
+        }
+        $row = $bing($site, 2);
+        if ($row !== null) {
+            $out['totals']["0\t"] = $row;
+        }
+        if ((int) $day->format('N') === self::BING_WEEK_END) {
+            $week = array('pages' => array(), 'queries' => array(), 'pairs' => array());
+            for ($n = 0; $n < 7; $n++) {
+                $rows = self::search_rows($day->modify("-$n days"), $today, $ids);
+                foreach ($week as $kind => $sums) {
+                    foreach ($rows[$kind] as $id => $r) {
+                        $keys = $kind === 'pairs' ? 2 : 1;
+                        if (!isset($week[$kind][$id])) {
+                            $week[$kind][$id] = array_merge(array_slice($r, 0, $keys), array(0, 0, 0));
+                        }
+                        for ($k = 0; $k < 3; $k++) {
+                            $week[$kind][$id][$keys + $k] += $r[$keys + $k];
+                        }
+                    }
+                }
+            }
+            foreach ($week as $kind => $sums) {
+                $out[$kind] = array();
+                foreach ($sums as $id => $r) {
+                    $scaled = $bing($r, $kind === 'pairs' ? 2 : 1);
+                    if ($scaled !== null) {
+                        $out[$kind][$id] = $scaled;
+                    }
+                }
+            }
+        }
+
+        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
+        foreach ($out as $kind => $rows) {
+            $table = SEOProStats_Schema::table(SEOProStats_Search_Import::TABLES[$kind]);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
+            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_BING, $date));
+            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_BING, $date, 0, $rows) === false) {
+                $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+                return false;
+            }
+        }
+        $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
         return true;
     }
 
@@ -803,6 +914,31 @@ final class SEOProStats_Demo {
      */
     private static function search_day(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
         global $wpdb;
+        $date = $day->format('Y-m-d');
+        $rows = self::search_rows($day, $today, $ids);
+        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
+        foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
+            $table = SEOProStats_Schema::table($name);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
+            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_GOOGLE, $date));
+            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_GOOGLE, $date, 0, $rows[$kind]) === false) {
+                $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+                return false;
+            }
+        }
+        $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+        return true;
+    }
+
+    /**
+     * One demo Google search day's rows, as search_day() writes them.
+     *
+     * @param DateTimeImmutable                                       $day   The day (site time zone).
+     * @param DateTimeImmutable                                       $today Today.
+     * @param array{paths:array<string,int>,queries:array<string,int>} $ids   Dictionary IDs.
+     * @return array<string,array<string,array<int,int|string>>> Kind => key => [keys…, clicks, impressions, pos_impr].
+     */
+    private static function search_rows(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
         $date  = $day->format('Y-m-d');
         $ago   = (int) $day->diff($today)->days;
         $scale = exp(-$ago / 420) * ((int) $day->format('N') >= 6 ? 0.7 : 1.0) * (1 + 0.08 * sin(2 * M_PI * ((int) $day->format('z') - 80) / 365));
@@ -882,19 +1018,7 @@ final class SEOProStats_Demo {
                 $add('totals', array($device, $country), min($clicks, $impr), $impr, (int) round($position * $impr));
             }
         }
-
-        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
-        foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
-            $table = SEOProStats_Schema::table($name);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
-            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_GOOGLE, $date));
-            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_GOOGLE, $date, 0, $rows[$kind]) === false) {
-                $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
-                return false;
-            }
-        }
-        $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
-        return true;
+        return $rows;
     }
 
     /**

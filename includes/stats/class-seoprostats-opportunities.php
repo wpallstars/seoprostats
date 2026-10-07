@@ -76,22 +76,24 @@ final class SEOProStats_Opportunities {
     /**
      * The opportunities report.
      *
-     * @param array<string,mixed> $req  From SEOProStats_Query::request().
-     * @param string              $kind One of KINDS.
+     * @param array<string,mixed> $req    From SEOProStats_Query::request().
+     * @param string              $kind   One of KINDS.
+     * @param string              $engine google or bing (SEOProStats_Search::ENGINES).
      * @return array<string,mixed>
      */
-    public static function report(array $req, $kind = 'striking') {
+    public static function report(array $req, $kind = 'striking', $engine = 'google') {
         require_once __DIR__ . '/class-seoprostats-search.php';
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-changes.php';
-        $kind = in_array($kind, self::KINDS, true) ? (string) $kind : 'striking';
-        $live = SEOProStats_Schema::set() === 'live';
+        $kind   = in_array($kind, self::KINDS, true) ? (string) $kind : 'striking';
+        $engine = SEOProStats_Search::engine_name($engine);
+        $live   = SEOProStats_Schema::set() === 'live';
 
-        $answer = SEOProStats_Query::cached('opportunities', $req + array('kind' => $kind, 'imports' => SEOProStats_Search::version()), static function () use ($req, $kind) {
-            return self::build($req, $kind);
+        $answer = SEOProStats_Query::cached('opportunities', $req + array('kind' => $kind, 'engine' => $engine, 'imports' => SEOProStats_Search::version()), static function () use ($req, $kind, $engine) {
+            return self::build($req, $kind, $engine);
         });
 
-        $answer['connected'] = !$live || SEOProStats_Search::connected();
+        $answer['connected'] = !$live || SEOProStats_Search::connected($engine);
         // Editor links and people's names depend on the viewer, so they are added outside the shared cache.
         $span = isset($answer['span']) ? $answer['span'] : null;
         unset($answer['span']);
@@ -111,22 +113,26 @@ final class SEOProStats_Opportunities {
      *
      * @param array<string,mixed> $req  From SEOProStats_Query::request().
      * @param string              $kind One of KINDS.
+     * @param string              $name Engine name.
      * @return array<string,mixed>
      */
-    private static function build(array $req, $kind) {
-        $engine  = SEOProStats_Schema::ENGINE_GOOGLE;
+    private static function build(array $req, $kind, $name) {
+        $engine  = SEOProStats_Search::ENGINES[$name];
         $bounds  = SEOProStats_Search::bounds($engine);
         $range   = SEOProStats_Query::range($req);
         $ignored = array();
         $pages   = SEOProStats_Search::page_ids($req['filters'], '', $ignored);
         // Without search days there is nothing to read (and nothing to cut).
-        $full    = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds) : null;
+        $weekly  = in_array($name, SEOProStats_Search::WEEKLY, true);
+        $full    = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds, $weekly) : null;
         $now     = $full ? self::cut($full) : null;
         $days    = $now ? SEOProStats_Search::length($now) : 0;
         $limit   = (int) $req['limit'];
         $offset  = (int) $req['offset'];
 
         $answer = array(
+            'engine'  => $name,
+            'engines' => SEOProStats_Search::engines(),
             'kind'    => $kind,
             'range'   => SEOProStats_Query::range_out($now ? $now : $range),
             'days'    => $days,
@@ -152,7 +158,7 @@ final class SEOProStats_Opportunities {
         if ($kind === 'decay') {
             // Always against an earlier period: the previous one unless a year ago is asked for.
             $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $req['compare'] === 'year' ? 'year' : 'prev');
-            $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => '')) : null;
+            $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
             if (!$then) {
                 return $answer;
             }

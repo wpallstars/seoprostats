@@ -1,12 +1,14 @@
 /**
- * Search, from Google Search Console's imported days, in three tabs.
+ * Search, from an engine's imported days (Google Search Console, or Bing
+ * Webmaster Tools once it has data), in three tabs; the engine switch
+ * sits beside them and stays across the tabs.
  *
  * Rankings: clicks, impressions, CTR and average position as tiles that
  * pick the chart's metric, with the changes on the timeline under it;
- * then the top search queries, pages, countries and devices. Choose a
- * page to see its queries, or a query to see its pages. Search days are
- * final only (about three days old), so the period stops at the newest
- * one.
+ * then the top search queries, pages, countries and devices (Google
+ * only). Choose a page to see its queries, or a query to see its pages;
+ * Bing's are by week. Search days are final only (some days old), so the
+ * period stops at the newest one.
  *
  * Opportunities (./Opportunities): where search effort pays; Content
  * (./Content): each page's search clicks with its visits from search and
@@ -16,7 +18,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useId, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import {
@@ -24,6 +26,7 @@ import {
 	SEARCH_METRICS,
 	SEARCH_REPORTS,
 	type Marker,
+	type SearchEngine,
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchReport,
@@ -38,7 +41,7 @@ import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
-import { SearchSetup as Setup, type SearchPick } from './components/SearchSetup';
+import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 import { Opportunities } from './Opportunities';
 import { Content } from './Content';
@@ -58,9 +61,9 @@ function metricName(metric: SearchMetricKey): string {
 	return names[metric];
 }
 
-function metricFoot(metric: SearchMetricKey): string {
+function metricFoot(metric: SearchMetricKey, engine: SearchEngine): string {
 	const feet: Record<SearchMetricKey, string> = {
-		clicks: __('Visits from Google Search', 'seoprostats'),
+		clicks: engine === 'bing' ? __('Visits from Bing', 'seoprostats') : __('Visits from Google Search', 'seoprostats'),
 		impressions: __('Times shown in results', 'seoprostats'),
 		ctr: __('Clicks per impression', 'seoprostats'),
 		position: __('Lower is better', 'seoprostats'),
@@ -86,21 +89,22 @@ function value(metric: SearchMetricKey, row: { impressions: number } & Record<Se
 	return formatMetric(row[metric], SEARCH_METRICS[metric].format, locale);
 }
 
-/** The title: the site, a page, a query, or both. */
-function title(page: string, query: string): string {
+/** The title: the site, a page, a query, or both, on an engine. */
+function title(page: string, query: string, engine: SearchEngine): string {
+	const name = engine === 'bing' ? __('Bing Search', 'seoprostats') : __('Google Search', 'seoprostats');
 	if (page && query) {
-		/* translators: 1: a search query, 2: a page path. */
-		return sprintf(__('Google Search: “%1$s” showing %2$s', 'seoprostats'), query, page);
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query, 3: a page path. */
+		return sprintf(__('%1$s: “%2$s” showing %3$s', 'seoprostats'), name, query, page);
 	}
 	if (page) {
-		/* translators: %s: a page path. */
-		return sprintf(__('Google Search: %s', 'seoprostats'), page);
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a page path. */
+		return sprintf(__('%1$s: %2$s', 'seoprostats'), name, page);
 	}
 	if (query) {
-		/* translators: %s: a search query. */
-		return sprintf(__('Google Search: “%s”', 'seoprostats'), query);
+		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query. */
+		return sprintf(__('%1$s: “%2$s”', 'seoprostats'), name, query);
 	}
-	return __('Google Search', 'seoprostats');
+	return name;
 }
 
 /** An × in a text box: empties it and applies at once. */
@@ -116,7 +120,14 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 export function Search(props: ViewProps) {
 	const { state, update } = props;
 	const report: SearchReport = state.report ?? 'rankings';
+	const engine: SearchEngine = state.engine ?? 'google';
 	const id = useId();
+	// The engines with data, as the last answer listed them (every report's answer does).
+	const [engines, setEngines] = useState<SearchEngine[]>(['google']);
+	const onEngines = useCallback((list: SearchEngine[]) => setEngines((was) => (was.join() === list.join() ? was : list)), []);
+	// Google is the default, so it is left out of the address; Bing has no countries or devices.
+	const chooseEngine = (next: SearchEngine) =>
+		update({ engine: next === 'google' ? undefined : next, tab: next === 'bing' && (state.tab === 'countries' || state.tab === 'devices') ? undefined : state.tab });
 	const names: Record<SearchReport, string> = {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
@@ -148,9 +159,12 @@ export function Search(props: ViewProps) {
 			tab: pick.query && !pick.page ? 'pages' : undefined,
 		});
 
+	const reportProps = { ...props, onEngines };
+
 	return (
 		<>
-			<div className="spst-tabs spst-subnav" role="tablist" aria-label={__('Search', 'seoprostats')}>
+			<div className="spst-subnav">
+			<div className="spst-tabs" role="tablist" aria-label={__('Search', 'seoprostats')}>
 				{SEARCH_REPORTS.map((t) => (
 					<button
 						key={t}
@@ -168,16 +182,19 @@ export function Search(props: ViewProps) {
 					</button>
 				))}
 			</div>
+			<EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />
+			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
-				{report === 'rankings' && <Rankings {...props} />}
-				{report === 'opportunities' && <Opportunities {...props} open={open} />}
-				{report === 'content' && <Content {...props} open={open} />}
+				{report === 'rankings' && <Rankings {...reportProps} />}
+				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
+				{report === 'content' && <Content {...reportProps} open={open} />}
 			</div>
 		</>
 	);
 }
 
-function Rankings({ state, update }: ViewProps) {
+function Rankings({ state, update, onEngines }: SearchReportProps) {
+	const engine: SearchEngine = state.engine ?? 'google';
 	const kind: SearchKind = state.tab ?? 'queries';
 	const metric: SearchMetricKey = state.chart ?? 'clicks';
 	const page = state.page ?? '';
@@ -189,13 +206,14 @@ function Rankings({ state, update }: ViewProps) {
 	useEffect(() => setTypedQuery(query), [query]);
 	const setKind = (tab: SearchKind) => update({ tab });
 	const id = useId();
-	// Countries and devices exist for the whole site only.
-	const kinds: SearchKind[] = page || query ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
+	// Countries and devices exist for the whole site only, and from Google only.
+	const kinds: SearchKind[] = page || query || engine === 'bing' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
 	const search = useSearch(state, shown, page, query);
 	const markers = useMarkers(state, page);
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
+	useReportEngines(answer, onEngines);
 	const rows = answer?.kind === shown ? answer.rows : [];
 	const top = Math.max(...rows.map((r) => r.clicks), 1);
 	const totals = answer?.totals;
@@ -250,15 +268,17 @@ function Rankings({ state, update }: ViewProps) {
 			<Card className="spst-summary">
 				<div className="spst-search__head">
 					<div>
-						<h2 className="spst-card__title">{title(page, query)}</h2>
+						<h2 className="spst-card__title">{title(page, query, engine)}</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
-									/* translators: %s: a day, e.g. "Sun 4 Oct 2026". */
-									__('Google Search Console, final days through %s', 'seoprostats'),
+									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
+									__('%1$s, final days through %2$s', 'seoprostats'),
+									sourceName(answer.engine ?? engine),
 									longLabel(answer.through, 'day')
 								)}
+								{answer.grain === 'week' && ` · ${__('by week', 'seoprostats')}`}
 							</p>
 						)}
 						{pageInfo && (pageInfo.url || pageInfo.edit_url) && (
@@ -348,7 +368,7 @@ function Rankings({ state, update }: ViewProps) {
 							<span className="spst-tile__label">{metricName(key)}</span>
 							<span className="spst-tile__value">{totals ? value(key, totals) : '–'}</span>
 							<span className="spst-tile__foot">
-								<span className="spst-muted">{metricFoot(key)}</span>
+								<span className="spst-muted">{metricFoot(key, engine)}</span>
 								{change && (
 									<Change
 										change={change[key]}
@@ -435,10 +455,15 @@ function Rankings({ state, update }: ViewProps) {
 					)}
 					{answer && rows.length > 0 && (
 						<p className="spst-note">
-							{__(
-								'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
-								'seoprostats'
-							)}
+							{engine === 'bing'
+								? __(
+										'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
+										'seoprostats'
+									)
+								: __(
+										'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
+										'seoprostats'
+									)}
 						</p>
 					)}
 				</CardBody>
