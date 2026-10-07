@@ -17,6 +17,7 @@ import {
 	CLICK_KINDS,
 	COMPARE_KEYS,
 	CONTENT_SORTS,
+	LINKS_KINDS,
 	QUEUE_FILTERS,
 	RANGE_KEYS,
 	SEARCH_ENGINES,
@@ -27,6 +28,7 @@ import {
 	type CompareKey,
 	type ContentSort,
 	type Dimension,
+	type LinksKind,
 	type MetricKey,
 	type QueueFilter,
 	type RangeKey,
@@ -83,11 +85,13 @@ export interface ViewState {
 	report?: SearchReport;
 	/** Search → Audit: only pages with this finding (all when left out). */
 	finding?: AuditFinding;
+	/** Search → Audit: the internal links list shown (orphans when left out). */
+	links?: LinksKind;
 	/** Search: the engine (Google when left out); kept across its reports. */
 	engine?: SearchEngine;
 	/** Search → Content: the order of the pages. */
 	sort?: ContentSort;
-	/** Search → Content: the goal counted; Search → Plan: the goal giving value (its ID); the first when left out. */
+	/** Search → Content and Audit (internal links): the goal counted; Search → Plan: the goal giving value (its ID); the first when left out. */
 	goal?: string;
 	/** Search → Plan: the items shown (open when left out). */
 	status?: QueueFilter;
@@ -104,7 +108,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -166,6 +170,9 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		if (report === 'audit') {
 			const finding = params.get('finding');
 			set('finding', finding !== null && (AUDIT_FINDINGS as readonly string[]).includes(finding) ? (finding as AuditFinding) : undefined);
+			const links = oneOf(LINKS_KINDS, params.get('links'), 'orphans');
+			set('links', links === 'orphans' ? undefined : links);
+			set('goal', text(params.get('goal')));
 		}
 		if (report === 'experiments') {
 			const change = params.get('change') ?? '';

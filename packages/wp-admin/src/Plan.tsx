@@ -26,7 +26,11 @@ import {
 	formatDecimal,
 	formatNumber,
 	formatPlaces,
+	AUDIT_FINDINGS,
+	LINKS_KINDS,
 	QUEUE_FILTERS,
+	type AuditFinding,
+	type LinksKind,
 	type QueueAction,
 	type QueueAnswer,
 	type QueueFilter,
@@ -42,6 +46,7 @@ import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
 import { findingName } from './Audit';
+import { linksName } from './Links';
 import { metricLabel, resultLabel } from './Experiments';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -59,14 +64,28 @@ export function kindName(kind: QueueKind): string {
 		decay: __('Losing clicks', 'seoprostats'),
 		overlap: __('Overlapping pages', 'seoprostats'),
 		audit: __('Content audit', 'seoprostats'),
+		links: __('Internal links', 'seoprostats'),
 	};
 	return names[kind];
 }
 
-/** An item's kind, with the finding for an audit item. */
+/** An audit item's finding, or null. */
+function auditFinding(item: QueueItem): AuditFinding | null {
+	return item.kind === 'audit' && item.finding && (AUDIT_FINDINGS as readonly string[]).includes(item.finding) ? (item.finding as AuditFinding) : null;
+}
+
+/** An internal links item's list, or null. */
+function linksList(item: QueueItem): LinksKind | null {
+	return item.kind === 'links' && item.finding && (LINKS_KINDS as readonly string[]).includes(item.finding) ? (item.finding as LinksKind) : null;
+}
+
+/** An item's kind, with the finding for an audit item and the list for an internal links one. */
 function itemKind(item: QueueItem): string {
-	return item.kind === 'audit' && item.finding
-		? sprintf(/* translators: 1: "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), findingName(item.finding))
+	const finding = auditFinding(item);
+	const list = linksList(item);
+	const detail = finding ? findingName(finding) : list ? linksName(list) : '';
+	return detail
+		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
 }
 
@@ -474,7 +493,9 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const { busy, act } = useAct({ item, state, goal, onError });
 	const [note, setNote] = useState(item.note);
 	const p = item.parts;
-	const kindEffort = (item.kind === 'audit' && item.finding ? answer.rules.audit_effort?.[item.finding] : undefined) ?? answer.rules.effort[item.kind];
+	const finding = auditFinding(item);
+	const list = linksList(item);
+	const kindEffort = (finding ? answer.rules.audit_effort?.[finding] : list ? answer.rules.links_effort?.[list] : undefined) ?? answer.rules.effort[item.kind];
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
@@ -512,7 +533,15 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 											__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what this finding puts at stake), scaled to 28 days.', 'seoprostats'),
 											`${number((f.share ?? 0) * 100)}%`
 										)
-									: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+									: item.kind === 'links'
+										? sprintf(
+												/* translators: 1: share, e.g. 20%. */
+												list === 'missing'
+													? __('Potential clicks: the impressions of the searches on the page that should link × the site’s CTR at this page’s position × %1$s, scaled to 28 days.', 'seoprostats')
+													: __('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what links in could add), scaled to 28 days.', 'seoprostats'),
+												`${number((f.share ?? 0) * 100)}%`
+											)
+										: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null

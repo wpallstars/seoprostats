@@ -866,8 +866,75 @@ export interface AuditAnswer extends Answer, SearchEngineAnswer {
 	more: boolean;
 }
 
-/** Kinds of decision queue item: each an opportunity kind, and audit findings. */
-export type QueueKind = OpportunityKind | 'audit';
+/** Internal links lists. */
+export const LINKS_KINDS = ['orphans', 'converting', 'missing'] as const;
+export type LinksKind = (typeof LINKS_KINDS)[number];
+
+/** An orphan page, or a converting page with few links in. */
+export interface LinksPageRow extends OpportunityPage, SearchMetrics {
+	/** Visits from search that started on the page, and their conversions of the goal (null without one). */
+	visits: number;
+	conversions: number | null;
+	/** Other pages whose text links to it, and up to five of them. */
+	links_in: number;
+	from: string[];
+}
+
+/** A search a page shows for whose page with most clicks it does not link to. */
+export interface LinksMissingQuery {
+	query: string;
+	clicks: number;
+	impressions: number;
+	position: number;
+	/** The page it should link to, for the search. */
+	to_clicks: number;
+	to_position: number;
+}
+
+/** A missing link: the page (its figures for the searches) and the page it should link to (its figures for them). */
+export interface LinksMissingRow extends OpportunityPage, SearchMetrics {
+	to: OpportunityPage & SearchMetrics;
+	/** Up to five searches, most impressions first, of query_count. */
+	queries: LinksMissingQuery[];
+	query_count: number;
+}
+
+export type LinksRow = LinksPageRow | LinksMissingRow;
+
+export interface LinksAnswer extends Answer, SearchEngineAnswer {
+	/** The period of the search figures: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	first: string;
+	connected: boolean;
+	ignored: string[];
+	kind: LinksKind;
+	rules: {
+		/** Pages linking in at most for "few". */
+		few_links: number;
+		min_conversions: number;
+		/** Impressions a page needs on a search for a missing link. */
+		min_impressions: number;
+		queries: number;
+		/** Pages a page's links are kept to, at most. */
+		max_links: number;
+	};
+	/** Published pages read by the audit, and how many of them had their links read. */
+	read: { pages: number; read: number; complete: boolean };
+	/** The goal counted; null without goals. */
+	goal: { id: string; name: string } | null;
+	goals: { id: string; name: string }[];
+	/** Rows per list (of every list, whichever is asked for). */
+	counts: Record<LinksKind, number>;
+	rows: LinksRow[];
+	total: number;
+	more: boolean;
+}
+
+/** Kinds of decision queue item: each an opportunity kind, audit findings and internal links. */
+export type QueueKind = OpportunityKind | 'audit' | 'links';
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -915,6 +982,18 @@ export interface QueueFigures {
 	share?: number;
 	facts?: AuditFacts;
 	same?: string[];
+	/** links: the list; orphans and converting: links in, the pages linking (up to five), visits and conversions. */
+	list?: LinksKind;
+	links_in?: number;
+	from?: string[];
+	visits?: number;
+	conversions?: number | null;
+	/** links, missing: the page that should link, its figures for the searches, and the searches. */
+	link_from?: { path_id: number; path: string; url: string };
+	from_impressions?: number;
+	from_position?: number;
+	queries?: LinksMissingQuery[];
+	query_count?: number;
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -926,8 +1005,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
-	/** audit: the finding (the item is one per page and finding); else null. */
-	finding: AuditFinding | null;
+	/** audit: the finding (the item is one per page and finding); links: the list; else null. */
+	finding: AuditFinding | LinksKind | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -977,6 +1056,9 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		effort: Record<QueueKind, number>;
 		/** Audit findings whose effort is not the audit kind's. */
 		audit_effort: Partial<Record<AuditFinding, number>>;
+		/** Internal links lists whose effort is not the links kind's, and each list's share of the expected clicks. */
+		links_effort: Partial<Record<LinksKind, number>>;
+		links_share: Record<LinksKind, number>;
 		confidence: Record<QueueKind, number>;
 		full_impressions: number;
 		missing_share: number;

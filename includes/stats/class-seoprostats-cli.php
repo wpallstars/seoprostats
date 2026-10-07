@@ -1213,6 +1213,134 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Internal links: orphan pages, converting pages with few links in, and
+     * links missing between pages that share a search.
+     *
+     * Links are read from the text of published pages with the content
+     * audit's facts (when a post is saved and by the daily cron; run
+     * `wp seoprostats audit run` to read more now). Orphans: no other
+     * page's text links to them. Converting: pages whose visits from search
+     * reach the goal 3 times or more with 2 or fewer pages linking in. The
+     * front page is in neither list (menus link to it). Missing: a page shows for a search but
+     * does not link to the page that gets most of its clicks.
+     *
+     * ## OPTIONS
+     *
+     * [--kind=<kind>]
+     * : orphans, converting or missing.
+     * ---
+     * default: orphans
+     * options:
+     *   - orphans
+     *   - converting
+     *   - missing
+     * ---
+     *
+     * [--goal=<goal>]
+     * : ID of the goal whose conversions are counted; the first goal when left out.
+     *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools), for the search figures.
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats.
+     *
+     * [--limit=<limit>]
+     * : Most rows (20 when left out).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats links
+     *     wp seoprostats links --kind=missing --limit=50
+     *     wp seoprostats links --kind=converting --data=demo
+     *     wp seoprostats links --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function links($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $kind   = isset($assoc['kind']) ? (string) $assoc['kind'] : 'orphans';
+        $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
+        $req    = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $kind, $goal) {
+            return SEOProStats_Links::report($req, $engine, $kind, $goal);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        /* translators: 1: pages whose links were read, 2: published pages read by the audit */
+        WP_CLI::log(sprintf(__('Links read on %1$d of %2$d pages.', 'seoprostats'), $answer['read']['read'], $answer['read']['pages']) . ($answer['goal'] ? ' ' . sprintf(/* translators: %s: goal name */ __('Goal: %s.', 'seoprostats'), $answer['goal']['name']) : ''));
+        WP_CLI::log(implode(', ', array_map(static function ($name, $n) {
+            return $name . ' ' . $n;
+        }, array_keys($answer['counts']), $answer['counts'])));
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No pages.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $line = array(
+                'path'        => $row['path'],
+                'impressions' => $row['impressions'],
+                'clicks'      => $row['clicks'],
+            );
+            if ($answer['kind'] === 'missing') {
+                $line += array(
+                    'link_to'  => $row['to']['path'],
+                    'searches' => implode(', ', array_column($row['queries'], 'query')),
+                );
+            } else {
+                $line += array(
+                    'visits'      => $row['visits'],
+                    'conversions' => $row['conversions'] === null ? '–' : $row['conversions'],
+                    'links_in'    => $row['links_in'],
+                    'linked_from' => implode(', ', $row['from']),
+                );
+            }
+            $rows[] = $line;
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * Query coverage of one page: the Google Search Console queries it
      * shows for, each with how far the page's own words cover it (title,
      * heading, text, partial or none), the words it lacks and whether it

@@ -5,7 +5,8 @@
  * that have a finding listed by their search impressions, so the pages
  * that matter most come first. Facts are read when a post is saved and
  * in daily batches; each finding also goes to Plan, weighed by search
- * and conversions.
+ * and conversions. Below it, internal links (./Links), read from the same
+ * text.
  *
  * Choosing a page opens it in Rankings.
  *
@@ -29,6 +30,7 @@ import {
 } from '@seoprostats/core';
 import { errorMessage, useAudit } from './api';
 import { locale } from './boot';
+import { Links } from './Links';
 import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
@@ -209,6 +211,8 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 					)}
 				</CardBody>
 			</Card>
+
+			<Links state={state} update={update} open={open} onEngines={onEngines} />
 		</>
 	);
 }

@@ -291,6 +291,30 @@ final class SEOProStats_Demo {
     );
 
     /**
+     * The demo pages' links to each other (SEOProStats_Links): path =>
+     * [path => link text]. The texts are the pages' titles, so the queries
+     * left out of PAGE_TEXT stay missing. Nothing links to the update post
+     * or the FAQ (orphans); the pricing page, which converts, has few
+     * links in; and pages that show for another page's search do
+     * not link to it: the features page to the front page, the rankings
+     * guide to the update post and the front page to the privacy post.
+     */
+    const PAGE_LINKS = array(
+        '/'                                   => array('/features/' => 'Features', '/pricing/' => 'Pricing', '/blog/core-web-vitals-explained/' => 'Core Web Vitals explained', '/blog/how-to-read-search-rankings/' => 'How to read search rankings', '/docs/' => 'Docs'),
+        '/blog/core-web-vitals-explained/'    => array('/blog/speed-up-wordpress/' => 'Speed up WordPress'),
+        '/blog/how-to-read-search-rankings/'  => array('/features/' => 'Features'),
+        '/blog/privacy-friendly-analytics/'   => array('/features/' => 'Features', '/pricing/' => 'Pricing'),
+        '/blog/speed-up-wordpress/'           => array('/blog/core-web-vitals-explained/' => 'Core Web Vitals explained'),
+        '/blog/what-changed-after-an-update/' => array('/blog/how-to-read-search-rankings/' => 'How to read search rankings'),
+        '/features/'                          => array('/docs/getting-started/' => 'Getting started', '/blog/privacy-friendly-analytics/' => 'Privacy-friendly analytics'),
+        '/pricing/'                           => array('/shop/pro-licence/' => 'Pro', '/' => 'SEO Pro Stats'),
+        '/docs/'                              => array('/docs/getting-started/' => 'Getting started'),
+        '/docs/getting-started/'              => array('/features/' => 'Features', '/docs/' => 'Docs'),
+        '/docs/faq/'                          => array('/docs/' => 'Docs'),
+        '/shop/pro-licence/'                  => array(),
+    );
+
+    /**
      * The demo pages' SEO fields and more of their HTML, for the content
      * audit (SEOProStats_Audit): path => [SEO title, description, HTML
      * added, noindex, canonical]. Their words are the pages' own, so the
@@ -835,6 +859,7 @@ final class SEOProStats_Demo {
         }
         $facts = array();
         $n     = 0;
+        $start = time();
         foreach (array_keys(self::PAGE_TEXT) as $path) {
             $text = self::text($path);
             $page = self::page($path);
@@ -847,7 +872,8 @@ final class SEOProStats_Demo {
             }
         }
         SEOProStats_Audit::write($facts);
-        SEOProStats_Audit::touch();
+        // Every demo page's links are read at once.
+        SEOProStats_Audit::touch($start);
     }
 
     /**
@@ -1242,10 +1268,15 @@ final class SEOProStats_Demo {
         foreach ($headings as $heading) {
             $html .= '<h2>' . esc_html($heading) . '</h2>';
         }
+        // Every page with text has its links (PHPStan checks the keys match).
+        $links = array();
+        foreach (self::PAGE_LINKS[$path] as $to => $label) {
+            $links[] = '<a href="' . esc_attr((string) $to) . '">' . esc_html((string) $label) . '</a>';
+        }
         return array(
             'source'         => 'demo',
             'title'          => $title,
-            'content'        => $html . '<p>' . esc_html($body) . '</p>',
+            'content'        => $html . '<p>' . esc_html($body) . '</p>' . ($links ? '<p>' . implode(' · ', $links) . '</p>' : ''),
             'excerpt'        => '',
             'plugin'         => $focus ? 'demo' : '',
             'seo_title'      => (string) $seo_title,
