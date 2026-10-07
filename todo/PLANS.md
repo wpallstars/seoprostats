@@ -76,8 +76,11 @@ long-term record.
 
 ## Phase 3: changes and causes (depends on 1)
 
-- [ ] Change log from WordPress hooks, snapshots and word diffs; SEO
-      plugin fields; plugin, theme and core updates.
+- [x] Change log from WordPress hooks: posts (status, address, title,
+      words, links), SEO plugin fields, products (prices, sales, stock,
+      coupons), plugin, theme and core updates, key settings; `markers`,
+      `changes`, `wp seoprostats changes` (GH#34).
+- [ ] Page snapshots and word diffs; page detail.
 - [ ] Annotations (UI, API, CLI); markers lane on every chart.
 - [ ] Search engine update markers.
 - [ ] Movers and anomalies with possible causes; page detail.

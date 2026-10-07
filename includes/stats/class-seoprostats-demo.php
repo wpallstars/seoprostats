@@ -8,7 +8,8 @@
  * the same code and queries as live ones. Traffic grows over the period,
  * with weekends, seasons, the odd spike, campaigns, paid visits, AI
  * answers, events with properties, purchases with revenue, and (for the
- * last three months, as kept by default) clicks and form submits. While it
+ * last three months, as kept by default) clicks and form submits, and
+ * changes for the markers (SEOProStats_Changes). While it
  * is shown, demo data is topped up to the present, so today and realtime
  * have visits too. Design: docs/architecture.md → Demo data.
  *
