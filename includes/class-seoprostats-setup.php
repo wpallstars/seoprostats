@@ -93,6 +93,7 @@ final class SEOProStats_Setup {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-collection.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-api.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-purchases.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
     }
 
     /**
@@ -107,6 +108,8 @@ final class SEOProStats_Setup {
         SEOProStats_API::init();
         // Shops' order hooks and the ThriveCart webhook route (hooks only).
         SEOProStats_Purchases::init();
+        // The change log: hooks on saving posts, products, plugins and settings only.
+        SEOProStats_Changes::init();
         if (!is_admin()) {
             // Prints the tracker on front-end pages.
             require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-tracker.php';

@@ -172,12 +172,20 @@ paths:
   /markers:
     get:
       operationId: getMarkers
-      summary: Changes to show on the timeline for a range.
-      description: Recording changes (posts, plugins, settings, search engine updates) comes in a later version; until then the list is empty.
+      summary: Changes to show on the timeline for a range, oldest first.
+      description: |
+        The change log's entries in the range (at most 1000), for marking
+        charts: posts and pages published, unpublished, moved, retitled and
+        edited; SEO titles, descriptions, robots and canonicals; prices,
+        sales, stock and coupons; plugins, themes and WordPress updated or
+        switched; and settings that change how search engines see the site.
+        `page` keeps that page's changes and the site-wide ones.
       parameters:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/changePage'
+        - $ref: '#/components/parameters/changeKinds'
         - $ref: '#/components/parameters/data'
       responses:
         '200':
@@ -192,6 +200,49 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /changes:
+    get:
+      operationId: getChanges
+      summary: The change log for a range, newest first, with paging.
+      description: The same entries as markers, newest first. Changes are site facts and are kept for good; no visitor data is involved.
+      parameters:
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/changePage'
+        - $ref: '#/components/parameters/changeKinds'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Changes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChangesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /goals:
     get:
@@ -691,6 +742,29 @@ components:
         type: string
         enum: [live, demo]
         default: live
+    changePage:
+      name: page
+      in: query
+      description: Only changes to this page (a path; `*` is any text), and the site-wide ones (plugins, themes, settings), which affect every page.
+      schema:
+        type: string
+        examples: [/pricing/]
+    changeKinds:
+      name: kinds
+      in: query
+      description: |
+        Only these kinds or groups of change, comma-separated. Groups:
+        content, seo, product, site. Kinds: published, unpublished,
+        address, title, content, links, external_links; seo_title,
+        meta_description, robots, canonical; out_of_stock, back_in_stock,
+        price_up, price_down, sale_started, sale_ended, coupon_published,
+        coupon_changed, coupon_removed; plugin_installed, plugin_updated,
+        plugin_activated, plugin_deactivated, plugin_deleted,
+        theme_switched, theme_updated, core_updated, search_visibility,
+        permalinks, site_address, front_page.
+      schema:
+        type: string
+        examples: [product, 'plugin_updated,core_updated']
     id:
       name: id
       in: path
@@ -971,22 +1045,66 @@ components:
           format: date-time
 
     Marker:
+      description: One change to the site (an entry of the change log).
       type: object
-      required: [t, kind, label]
+      required: [id, t, kind, group, label, title, path, old, new, object, meta, source, user]
       properties:
+        id:
+          type: integer
         t:
           type: string
           format: date-time
+          description: When it changed, in the site time zone.
         kind:
           type: string
+          description: What changed (the kinds parameter lists them).
+        group:
+          type: string
+          enum: [content, seo, product, site]
         label:
           type: string
-        path:
+          description: One line saying what changed, in the site's language.
+        title:
           type: string
+          description: The post, product, coupon, plugin, theme or setting, by name when it changed.
+        path:
+          type: [string, 'null']
+          description: The page it affects; null for site-wide changes.
+        old:
+          type: string
+          description: Value before (a path, title, word count, price, version or setting); empty when there was none.
+        new:
+          type: string
+          description: Value after.
+        object:
+          type: object
+          required: [type, id]
+          properties:
+            type:
+              type: string
+              description: The post type, or coupon, plugin, theme, core, option.
+            id:
+              type: integer
+        meta:
+          type: object
+          description: |
+            Details by kind: name; content: before, after, added, removed
+            (words); links: added, removed, changed (each to and text);
+            external_links: gained, lost (hosts); prices: currency, field
+            (regular, sale or price); plugins: file; coupons: fields
+            changed (old and new).
+          additionalProperties: true
+        source:
+          type: string
+          enum: [wordpress, cli, api, cron, feed, note]
+          description: Where the change was made.
+        user:
+          type: [string, 'null']
+          description: Who made it (display name), for people who may list users; else null.
 
     MarkersAnswer:
       type: object
-      required: [range, markers]
+      required: [range, markers, total]
       properties:
         range:
           $ref: '#/components/schemas/Range'
@@ -994,6 +1112,26 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Marker'
+        total:
+          type: integer
+          description: Changes in the range that match.
+
+    ChangesAnswer:
+      type: object
+      required: [range, changes, total, limit, offset]
+      properties:
+        range:
+          $ref: '#/components/schemas/Range'
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Marker'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
 
     GoalStep:
       type: object
