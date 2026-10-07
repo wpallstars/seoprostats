@@ -180,7 +180,8 @@ or agent has acted on are stored.
 | `missing` | Opportunities → missing from the page | searched words the page never uses: answer them | clicks | 2 |
 | `striking` | Opportunities → striking distance | ranks 4–20 with demand: improve the page and its links | position | 2 |
 | `decay` | Opportunities → losing clicks | lost clicks, with the cause: investigate, then update | clicks | 3 |
-| later kinds | overlap, audit findings, orphans, not indexed, refresh, targets | each feature below | | |
+| `overlap` | Opportunities → overlapping pages | pages share a query: make one the clear answer, or leave it | clicks (all its pages) | 3 |
+| later kinds | audit findings, orphans, not indexed, refresh, targets | each feature below | | |
 
 Each item names its page (and query where it has one), the numbers behind
 it and a sentence saying why.
@@ -194,7 +195,9 @@ score = potential clicks per 28 days × value × confidence ÷ effort
 - **Potential clicks** come from the opportunity (striking: potential
   clicks; low CTR: missed clicks; decay: clicks lost; missing: impressions
   × the site's expected CTR at its position × 0.3, as covering a query
-  earns part of it), scaled to 28 days.
+  earns part of it; overlap: the clicks the query would get with the best
+  of its pages' CTRs, so an overlap no page does better on is no item),
+  scaled to 28 days.
 - **Value** is how well visits from search to the page convert against
   the site: the page's conversion rate of the Content report's goal
   (smoothed toward the site's rate with 20 visits) ÷ the site's rate, from
@@ -202,12 +205,13 @@ score = potential clicks per 28 days × value × confidence ÷ effort
   than the site, or has no goal data, is worth 1. Without a goal every
   page is 1. The goal can be chosen (`goal`); the first is the default.
 - **Confidence** is the kind's own (decay 0.8, CTR 0.7, striking 0.6,
-  missing 0.5) times √(impressions per 28 days ÷ 1,000), that root at
+  missing 0.5, overlap 0.4) times √(impressions per 28 days ÷ 1,000), that root at
   most 1.
 - **Effort** is the kind's (above). A person can set an item's effort
   (1–5).
 - Pages with a running experiment are left out of new items, as a second
-  change would spoil the measurement.
+  change would spoil the measurement (an overlap item when any of its
+  pages has one).
 
 The answer gives each part, not only the score, so an agent can rank by
 its own rule.
@@ -262,6 +266,25 @@ position and share, and whether the page with most impressions changed
 between the halves of the period. Shown in Opportunities as a candidate
 to review, never as a fault: two pages for one query can be right (a
 guide and a product page). Queue kind `overlap`, effort 3, confidence 0.4.
+
+Built (GH#76):
+
+- The share is of the impressions of the query's pages read, and a query
+  needs `rules.min_impressions` in all. Rows are the leading page's with
+  the query's sums, up to five pages with clicks, impressions, position
+  and share, most impressions on pages other than the leading one first.
+- Halves: the period's first half (whole weeks for Bing, whose rows are
+  weekly) is read for the rows shown, by `query_day`; the second half is
+  the rest. `leaders` gives each half's leading page, `switched` whether
+  it changed; `halves` is null when the period is too short.
+- `potential`: the clicks the query would get if all its pages'
+  impressions had the best of their CTRs, less its clicks. The queue item
+  is on the leading page with every page in `figures.pages`; it is left
+  out while any of them has an experiment running, and done opens one on
+  all of them, measuring clicks.
+- REST and abilities `kind=overlap`; WP-CLI `wp seoprostats opportunities
+  overlap`. Demo data: queries with a second page, and one whose second
+  page has led for the last 40 days.
 
 ## 4. Content audit from WordPress
 

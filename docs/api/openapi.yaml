@@ -633,13 +633,16 @@ paths:
       description: |
         Made from the opportunities (`ctr`: low CTR; `missing`: a query
         whose words the page lacks; `striking`: positions 4–20; `decay`:
-        a page losing clicks) when the list is read. Each item's score is
-        potential clicks per 28 days × value × confidence ÷ effort, and
-        every part is given so an agent can rank by its own rule:
+        a page losing clicks; `overlap`: a query several pages share, on
+        its leading page, with every page in `figures.pages`) when the
+        list is read. Each item's score is potential clicks per 28 days ×
+        value × confidence ÷ effort, and every part is given so an agent
+        can rank by its own rule:
 
         - potential clicks: the opportunity's (missing: impressions × the
-          site's CTR at its position × `rules.missing_share`), scaled to
-          28 days;
+          site's CTR at its position × `rules.missing_share`; overlap: the
+          clicks with the best of its pages' CTRs, so overlaps where no
+          page does better are not items), scaled to 28 days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
@@ -1207,7 +1210,7 @@ paths:
   /opportunities:
     get:
       operationId: getOpportunities
-      summary: Where search effort pays — striking-distance queries, low-CTR queries, pages losing clicks or queries missing from their page.
+      summary: Where search effort pays — striking-distance queries, low-CTR queries, pages losing clicks, queries missing from their page or queries shared by pages.
       description: |
         From the same imported search days as `/search` (one `engine`),
         one `kind` of opportunity, best first:
@@ -1235,6 +1238,18 @@ paths:
           of (`partial`), as `/coverage` checks them; most impressions
           first. Only the `rules.pages` pages with most impressions are
           read, and only pages that are one post (or a demo page).
+        - `overlap`: a query for which two or more pages each get at
+          least `rules.min_share` of the impressions of its pages (with
+          `rules.min_impressions` or more in all), from the 2,000
+          page-query pairs with most impressions. A candidate to review,
+          not a fault: two pages can both be right for one search. The row
+          is the leading page's (most impressions), with the query's
+          figures over all its pages; `pages` lists up to `rules.pages`
+          with their figures and `share`; `leaders` is the leading page in
+          each half of the period (`halves`) and `switched` whether it
+          changed; `potential` is the clicks the query would have if all
+          its pages' impressions had the best of their CTRs. Most
+          impressions on pages other than the leading one first.
 
         Expected CTR is the site's own in the period: clicks ÷
         impressions by rounded position (1–20), made never to rise with
@@ -1251,7 +1266,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [striking, ctr, decay, missing]
+            enum: [striking, ctr, decay, missing, overlap]
             default: striking
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
@@ -2584,7 +2599,7 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay]
+              enum: [ctr, missing, striking, decay, overlap]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
@@ -2636,6 +2651,28 @@ components:
                     type: string
                 question:
                   type: boolean
+                switched:
+                  type: boolean
+                  description: overlap; whether the leading page changed between the halves of the period.
+                pages:
+                  type: array
+                  description: overlap; the pages sharing the query, most impressions first. Done measures them all.
+                  items:
+                    type: object
+                    required: [path_id, path, clicks, impressions, position, share]
+                    properties:
+                      path_id:
+                        type: integer
+                      path:
+                        type: string
+                      clicks:
+                        type: integer
+                      impressions:
+                        type: integer
+                      position:
+                        type: number
+                      share:
+                        type: number
             metric:
               type: string
               enum: [clicks, ctr, position]
@@ -3411,6 +3448,46 @@ components:
             query:
               type: string
 
+    OpportunityOverlap:
+      description: A query shared by pages, a candidate to review (overlap). The page fields are the leading page's; the figures are the query's over all its pages.
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [query, pages, page_count, leaders, switched, potential]
+          properties:
+            query:
+              type: string
+            pages:
+              type: array
+              description: Most impressions first.
+              items:
+                allOf:
+                  - $ref: '#/components/schemas/OpportunityPage'
+                  - $ref: '#/components/schemas/SearchMetrics'
+                  - type: object
+                    required: [share]
+                    properties:
+                      share:
+                        type: number
+                        description: Share of the query's impressions on its pages.
+            page_count:
+              type: integer
+              description: Pages with the share or more, including any not listed.
+            leaders:
+              type: array
+              description: Path of the page with most impressions in the first and in the second half; null when none.
+              minItems: 2
+              maxItems: 2
+              items:
+                type: [string, 'null']
+            switched:
+              type: boolean
+              description: Whether the leading page changed between the halves.
+            potential:
+              type: integer
+              description: Clicks it would have if all its pages' impressions had the best of their CTRs, less its clicks.
+
     CoverageAnswer:
       allOf:
         - $ref: '#/components/schemas/Answer'
@@ -3520,7 +3597,7 @@ components:
               $ref: '#/components/schemas/SearchEngines'
             kind:
               type: string
-              enum: [striking, ctr, decay, missing]
+              enum: [striking, ctr, decay, missing, overlap]
             range:
               $ref: '#/components/schemas/Range'
             days:
@@ -3550,17 +3627,24 @@ components:
                 position_from, position_to, target. ctr: min_impressions,
                 position_from, position_to, under. decay: min_lost,
                 min_share. missing: min_impressions, position_from,
-                position_to, pages.
+                position_to, pages. overlap: min_impressions, min_share,
+                pages.
               additionalProperties:
                 type: number
             rows:
               type: array
-              description: OpportunityPair rows (striking, ctr), OpportunityDecay rows (decay) or OpportunityMissing rows (missing).
+              description: OpportunityPair rows (striking, ctr), OpportunityDecay rows (decay), OpportunityMissing rows (missing) or OpportunityOverlap rows (overlap).
               items:
                 oneOf:
                   - $ref: '#/components/schemas/OpportunityPair'
                   - $ref: '#/components/schemas/OpportunityDecay'
                   - $ref: '#/components/schemas/OpportunityMissing'
+                  - $ref: '#/components/schemas/OpportunityOverlap'
+            halves:
+              type: [array, 'null']
+              description: overlap; the first and second half of the period (whole weeks for Bing), null when too short to halve.
+              items:
+                $ref: '#/components/schemas/Range'
             total:
               type: integer
               description: All opportunities of this kind.

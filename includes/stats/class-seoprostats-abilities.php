@@ -10,8 +10,8 @@
  * - seoprostats/search: Search Console clicks, impressions, CTR and
  *   position, with top queries, pages, countries or devices (read).
  * - seoprostats/opportunities: striking-distance and low-CTR queries,
- *   pages losing clicks with the likely cause, and queries missing from
- *   their page (read).
+ *   pages losing clicks with the likely cause, queries missing from
+ *   their page, and queries shared by several pages (read).
  * - seoprostats/coverage: one page's queries, each checked against the
  *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
@@ -265,7 +265,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/opportunities', array(
             'label'               => __('Search opportunities', 'seoprostats'),
-            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page) or missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page), missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer) or overlap (a query for which two or more pages each get at least 10% of the impressions, with each page\'s clicks, share and position and whether the page with most impressions changed between the halves of the period: a candidate to review, as two pages can both be right). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -276,7 +276,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'enum'        => SEOProStats_Opportunities::KINDS,
                         'default'     => 'striking',
-                        'description' => __('striking, ctr, decay or missing.', 'seoprostats'),
+                        'description' => __('striking, ctr, decay, missing or overlap.', 'seoprostats'),
                     ),
                     'engine'  => $engine,
                     'range'   => array(
@@ -516,7 +516,7 @@ final class SEOProStats_Abilities {
         );
         wp_register_ability('seoprostats/queue', array(
             'label'               => __('Decision queue', 'seoprostats'),
-            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it). Each item has a key, its page and query, why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
+            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need). Each item has a key, its page and query, why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',

@@ -55,6 +55,7 @@ export function kindName(kind: QueueKind): string {
 		missing: __('Missing from the page', 'seoprostats'),
 		striking: __('Striking distance', 'seoprostats'),
 		decay: __('Losing clicks', 'seoprostats'),
+		overlap: __('Overlapping pages', 'seoprostats'),
 	};
 	return names[kind];
 }
@@ -425,7 +426,7 @@ function Actions(props: ActProps) {
 			/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
 			__('Mark it done? An experiment starts now on %2$s and measures %1$s over the days before and after. Mark it done once the change is live.', 'seoprostats'),
 			metricLabel(item.metric),
-			item.path
+			item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path
 		);
 		// eslint-disable-next-line no-alert -- a plain confirmation, as WordPress uses.
 		if (window.confirm(question)) {
@@ -493,7 +494,9 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 									__('Potential clicks: impressions × the site’s CTR at its position × %1$s, scaled to 28 days.', 'seoprostats'),
 									`${number(answer.rules.missing_share * 100)}%`
 								)
-							: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+							: item.kind === 'overlap'
+								? __('Potential clicks: those the search would have if all its pages’ impressions had the best of their CTRs, scaled to 28 days.', 'seoprostats')
+								: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null

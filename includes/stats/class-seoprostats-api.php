@@ -311,7 +311,7 @@ final class SEOProStats_API {
             'args'     => $base + array(
                 'engine' => $engine,
                 'kind'   => array(
-                    'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position), decay (pages losing clicks, with the likely cause) or missing (top-20 queries whose words the page does not have).', 'seoprostats'),
+                    'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position), decay (pages losing clicks, with the likely cause), missing (top-20 queries whose words the page does not have) or overlap (queries shared by two or more pages, each with at least 10% of the impressions: candidates to review).', 'seoprostats'),
                     'type'        => 'string',
                     'enum'        => SEOProStats_Opportunities::KINDS,
                     'default'     => 'striking',
@@ -1288,8 +1288,9 @@ final class SEOProStats_API {
     }
 
     /**
-     * GET /opportunities: striking-distance queries, low-CTR queries or
-     * pages losing clicks with the likely cause.
+     * GET /opportunities: striking-distance queries, low-CTR queries,
+     * pages losing clicks with the likely cause, queries missing from their
+     * page, or queries shared by several pages.
      *
      * @param WP_REST_Request $request Request.
      * @return WP_REST_Response|WP_Error
