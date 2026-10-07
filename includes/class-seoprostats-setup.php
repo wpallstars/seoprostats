@@ -182,6 +182,9 @@ final class SEOProStats_Setup {
     public static function admin() {
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-dashboard.php';
         SEOProStats_Dashboard::init();
+        // Search queries in the post editor (hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-editor.php';
+        SEOProStats_Editor::init();
         // Settings → Connections (outside data sources; hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-connections-tab.php';
         SEOProStats_Connections_Tab::init();

@@ -54,6 +54,36 @@
 	color: var(--spst-subtle);
 }
 
+/* Query coverage: where a query's words are on the page (Opportunities, the editor panel). */
+.spst-coverage {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 6px;
+	font-size: 12px;
+}
+
+.spst-coverage__match {
+	font-weight: 600;
+}
+
+.spst-coverage__match.is-partial,
+.spst-coverage__match.is-none {
+	color: var(--spst-bad, #b32d2e);
+}
+
+.spst-coverage__missing {
+	color: var(--spst-muted, #50575e);
+}
+
+.spst-coverage__question {
+	padding: 0 6px;
+	border-radius: 2px;
+	background: var(--spst-accent-soft, #f0f6fc);
+	color: var(--spst-accent, #2271b1);
+	font-weight: 500;
+}
+
 .spst-spark {
 	display: block;
 	flex: none;

@@ -435,7 +435,7 @@ export interface SearchAnswer extends Answer {
 }
 
 /** Kinds of search opportunity. */
-export const OPPORTUNITY_KINDS = ['striking', 'ctr', 'decay'] as const;
+export const OPPORTUNITY_KINDS = ['striking', 'ctr', 'decay', 'missing'] as const;
 export type OpportunityKind = (typeof OPPORTUNITY_KINDS)[number];
 
 /** Likely cause of a page losing clicks. */
@@ -472,6 +472,24 @@ export interface OpportunityDecay extends OpportunityPage, SearchMetrics {
 	changes: Marker[];
 }
 
+/** How far a page's words cover a query, best first (coverage.ts). */
+export const COVERAGE_MATCHES = ['title', 'heading', 'text', 'partial', 'none'] as const;
+export type CoverageMatch = (typeof COVERAGE_MATCHES)[number];
+
+export interface CoverageResult {
+	match: CoverageMatch;
+	/** The query's words, in order, are on the page. */
+	phrase: boolean;
+	/** The query's words the page does not have. */
+	missing: string[];
+	question: boolean;
+}
+
+/** A page's query its words do not cover, or only partly. */
+export interface OpportunityMissing extends OpportunityPage, SearchMetrics, CoverageResult {
+	query: string;
+}
+
 export interface OpportunitiesAnswer extends Answer {
 	kind: OpportunityKind;
 	/** The period read: cut at the newest search day and to its newest 91 days. */
@@ -483,7 +501,7 @@ export interface OpportunitiesAnswer extends Answer {
 	connected: boolean;
 	ignored: string[];
 	rules: Record<string, number>;
-	rows: (OpportunityPair | OpportunityDecay)[];
+	rows: (OpportunityPair | OpportunityDecay | OpportunityMissing)[];
 	total: number;
 	more: boolean;
 	/** striking and ctr: the site's CTR by position (1–20). */
@@ -491,6 +509,58 @@ export interface OpportunitiesAnswer extends Answer {
 	/** decay: the earlier period, and search engine updates in either. */
 	compare?: { range: Range } | null;
 	updates?: Marker[];
+}
+
+/** A query of the coverage report. */
+export interface CoverageRow extends SearchMetrics, CoverageResult {
+	query: string;
+}
+
+/** A focus keyword set in an SEO plugin, with its search figures when it is a query of the page. */
+export interface CoverageFocus extends CoverageResult {
+	keyword: string;
+	/** rank-math, yoast, seopress, aioseo, demo, or another plugin's name. */
+	source: string;
+	searched: boolean;
+	clicks: number;
+	impressions: number;
+	position: number | null;
+}
+
+export interface CoverageAnswer extends Answer {
+	page: string;
+	post_id: number;
+	page_info: ClickPageInfo | null;
+	/** The period read: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	first: string;
+	connected: boolean;
+	/** What the page's words were read from; null when it is not one post. */
+	text: {
+		source: 'post' | 'demo';
+		words: number;
+		/** The SEO plugin read; '' for none. */
+		plugin: string;
+		seo_title: string;
+		description: string;
+	} | null;
+	focus: CoverageFocus[];
+	totals: {
+		queries: number;
+		impressions: number;
+		clicks: number;
+		/** Share of impressions on queries the page covers. */
+		covered: number;
+		/** Queries covered partly or not at all. */
+		missing: number;
+		questions: number;
+	};
+	/** Most impressions first, up to 200. */
+	rows: CoverageRow[];
+	more: boolean;
 }
 
 /** Orders of the content report, most first. */

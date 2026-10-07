@@ -247,6 +247,28 @@ final class SEOProStats_Demo {
         'how to read search rankings' => 0.35,
     );
 
+    /**
+     * What the demo pages say (query coverage, SEOProStats_Coverage):
+     * path => [title, headings, text, focus keywords]. Some queries in
+     * SEARCH_QUERIES are left out on purpose, so Missing from the page has
+     * rows: inp vs fid, reduce ttfb, slow admin, why rankings drop, gdpr
+     * consent, and the licence page's words.
+     */
+    const PAGE_TEXT = array(
+        '/'                                   => array('SEO Pro Stats', array('Private site statistics for WordPress', 'Traffic, rankings and conversions on one timeline'), 'See which pages bring visitors, which searches find them and what changed when numbers move. No cookies.', array('seo pro stats')),
+        '/blog/core-web-vitals-explained/'    => array('Core Web Vitals explained', array('What are Core Web Vitals?', 'Largest Contentful Paint', 'Cumulative Layout Shift'), 'Core Web Vitals measure how fast a page loads, how stable it is and how soon it responds. Here is what each one means and how to improve it.', array('core web vitals')),
+        '/blog/how-to-read-search-rankings/'  => array('How to read search rankings', array('Average position in Search Console', 'Clicks and impressions'), 'Search Console shows an average position for every query and page. This guide explains how to read rankings without being misled by averages.', array('search rankings', 'average position')),
+        '/blog/privacy-friendly-analytics/'   => array('Privacy-friendly analytics', array('Cookieless analytics for WordPress', 'What you can still measure'), 'Analytics without cookies or stored IP addresses still shows where visitors come from and what they read. GDPR friendly by design.', array('privacy friendly analytics')),
+        '/blog/speed-up-wordpress/'           => array('Speed up WordPress', array('Caching', 'Images', 'Fewer plugins'), 'Seven practical steps to speed up WordPress: page caching, smaller images, fewer plugins and a faster host.', array('speed up wordpress')),
+        '/blog/what-changed-after-an-update/' => array('What changed after an update', array('Reading the change log', 'Plugins, themes and settings'), 'When traffic moves after a plugin or theme update, the change log shows what changed and when, next to the chart.', array()),
+        '/features/'                          => array('Features', array('Site statistics plugin', 'Search Console in WordPress', 'Rankings and traffic together'), 'Analytics with rankings and traffic in one place: Search Console data inside WordPress, goals, funnels and a change log.', array('site statistics plugin')),
+        '/pricing/'                           => array('Pricing', array('Plans'), 'SEO Pro Stats pricing: one plan for one site, more for agencies.', array()),
+        '/docs/'                              => array('Docs', array('Getting started', 'FAQ'), 'SEO Pro Stats docs: install, connect Search Console and read the reports.', array()),
+        '/docs/getting-started/'              => array('Getting started', array('Install the plugin', 'Connect Search Console'), 'Connect Search Console with a service account key: create the service account, add it to the property and paste its key.', array('connect search console')),
+        '/docs/faq/'                          => array('FAQ', array('Can I get a refund?'), 'Questions people ask about SEO Pro Stats, such as refunds within 30 days.', array()),
+        '/shop/pro-licence/'                  => array('Pro', array('What you get'), 'One year of updates and support for one site.', array()),
+    );
+
     /** Search data made by this version of the demo; older demo search days are made again. */
     const SEARCH_VERSION = 2;
 
@@ -902,6 +924,36 @@ final class SEOProStats_Demo {
             'post_type' => $type,
             'author_id' => $author,
             'term_id'   => $term,
+        );
+    }
+
+    /**
+     * What a demo page says, as SEOProStats_Coverage::text_of_post() reads
+     * a live one; null for pages without text.
+     *
+     * @param string $path Page path.
+     * @return array<string,mixed>|null
+     */
+    public static function text($path) {
+        if (!isset(self::PAGE_TEXT[$path])) {
+            return null;
+        }
+        list($title, $headings, $body, $focus) = self::PAGE_TEXT[$path];
+        $html = '';
+        foreach ($headings as $heading) {
+            $html .= '<h2>' . esc_html($heading) . '</h2>';
+        }
+        return array(
+            'source'      => 'demo',
+            'title'       => $title,
+            'content'     => $html . '<p>' . esc_html($body) . '</p>',
+            'excerpt'     => '',
+            'plugin'      => $focus ? 'demo' : '',
+            'seo_title'   => '',
+            'description' => '',
+            'focus'       => array_map(static function ($keyword) {
+                return array('keyword' => $keyword, 'source' => 'demo');
+            }, $focus),
         );
     }
 
