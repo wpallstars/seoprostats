@@ -636,7 +636,11 @@ paths:
         a page losing clicks; `overlap`: a query several pages share, on
         its leading page, with every page in `figures.pages`) and the
         content audit (`audit`: one item per page and `finding`, from
-        `/audit`'s pages with most impressions) when the list is read.
+        `/audit`'s pages with most impressions) and internal links
+        (`links`: one item per page and list in `finding`, from `/links`:
+        an orphan, a converting page with few links in, or a missing link,
+        on the page it should go to with the page that should link in
+        `figures.link_from`) when the list is read.
         Each item's score is potential clicks per 28 days ×
         value × confidence ÷ effort, and every part is given so an agent
         can rank by its own rule:
@@ -646,14 +650,18 @@ paths:
           clicks with the best of its pages' CTRs, so overlaps where no
           page does better are not items; audit: the page's impressions ×
           the site's CTR at its position × the finding's share of them,
-          `figures.share`), scaled to 28 days;
+          `figures.share`; links: the page's impressions, or for a missing
+          link those of the searches on the page that should link, × the
+          site's CTR at the page's position × the list's share in
+          `rules.links_share`), scaled to 28 days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
         - confidence: the kind's own × √(impressions per 28 days ÷
           `rules.full_impressions`), the root at most 1;
         - effort: the kind's (`rules.effort`; an audit finding's in
-          `rules.audit_effort` when it differs) unless someone set another.
+          `rules.audit_effort` and a links list's in `rules.links_effort`
+          when it differs) unless someone set another.
 
         Only items someone acted on are stored. New items on a page with
         a running experiment are left out (`left_out`); dismissed items
@@ -1370,6 +1378,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AuditAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /links:
+    get:
+      operationId: getLinks
+      summary: Internal links — orphan pages, converting pages with few links in, and links missing between pages that share a search.
+      description: |
+        Links in the text of published pages to the site's own pages,
+        read with the content audit's facts (when a post is saved and by
+        the daily cron, never on visitor pages); menus and widgets are not
+        read. `read` says how many published pages had their links read.
+        Links to WordPress's folders, feeds and files are left out.
+
+        - `orphans`: published pages no other page links to (the front
+          page is left out), most search impressions first.
+        - `converting`: pages whose visits from search reached `goal`
+          `rules.min_conversions` times or more with `rules.few_links` or
+          fewer pages linking to them, most conversions first.
+        - `missing`: a page with `rules.min_impressions` or more
+          impressions on a search does not link to the search's page with
+          most clicks; one row per page and page it should link to, with
+          up to `rules.queries` searches, most impressions first. Read
+          from the 2,000 page and query pairs with most impressions, as
+          `/opportunities`.
+
+        Search figures come from the same imported days as `/search` (one
+        `engine`; cut as `/opportunities` is). `counts` gives every list's
+        rows whatever `kind` is asked for. Each row also becomes a
+        `/queue` item. Page filters apply; other filters are listed in
+        `ignored`.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: kind
+          in: query
+          description: Which list.
+          schema:
+            $ref: '#/components/schemas/LinksKind'
+        - name: goal
+          in: query
+          description: ID of the goal whose conversions are counted; the first goal when left out.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: One list of internal links.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LinksAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2675,16 +2757,17 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap, audit]
+              enum: [ctr, missing, striking, decay, overlap, audit, links]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
             finding:
-              description: audit; the finding (one item per page and finding). Null for other kinds.
+              description: audit, the finding (one item per page and finding); links, the list (one item per page and list). Null for other kinds.
               oneOf:
                 - $ref: '#/components/schemas/AuditFinding'
+                - $ref: '#/components/schemas/LinksKind'
                 - type: 'null'
             found:
               type: boolean
@@ -2758,7 +2841,7 @@ components:
                   $ref: '#/components/schemas/AuditFinding'
                 share:
                   type: number
-                  description: audit; the share of the page's expected clicks the finding puts at stake.
+                  description: audit and links; the share of the page's expected clicks the finding or list puts at stake.
                 facts:
                   $ref: '#/components/schemas/AuditFacts'
                 same:
@@ -2766,6 +2849,42 @@ components:
                   description: audit; the other pages with the same title or description.
                   items:
                     type: string
+                list:
+                  $ref: '#/components/schemas/LinksKind'
+                links_in:
+                  type: integer
+                  description: links, orphans and converting; other pages linking to the page.
+                from:
+                  type: array
+                  description: links, orphans and converting; pages linking to it (up to five).
+                  items:
+                    type: string
+                visits:
+                  type: integer
+                conversions:
+                  type: [integer, 'null']
+                link_from:
+                  type: object
+                  description: links, missing; the page that should link to this one.
+                  properties:
+                    path_id:
+                      type: integer
+                    path:
+                      type: string
+                    url:
+                      type: string
+                from_impressions:
+                  type: integer
+                  description: links, missing; the impressions of the searches on the page that should link.
+                from_position:
+                  type: number
+                queries:
+                  type: array
+                  description: links, missing; the searches, as LinksMissingRow's.
+                  items:
+                    type: object
+                query_count:
+                  type: integer
             metric:
               type: string
               enum: [clicks, impressions, ctr, position]
@@ -3915,6 +4034,160 @@ components:
               description: Most impressions first.
               items:
                 $ref: '#/components/schemas/AuditRow'
+            total:
+              type: integer
+            more:
+              type: boolean
+
+    LinksKind:
+      type: string
+      enum: [orphans, converting, missing]
+      default: orphans
+
+    LinksPageRow:
+      description: An orphan page, or a converting page with few links in.
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [visits, conversions, links_in, from]
+          properties:
+            visits:
+              type: integer
+              description: Visits from search that started on the page.
+            conversions:
+              type: [integer, 'null']
+              description: Those visits that reached the goal; null without goals.
+            links_in:
+              type: integer
+              description: Other pages whose text links to it.
+            from:
+              type: array
+              description: Pages linking to it (up to five).
+              items:
+                type: string
+
+    LinksMissingRow:
+      description: A page (its figures for the searches) that does not link to the page with most clicks for them (`to`, its figures for them).
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [to, queries, query_count]
+          properties:
+            to:
+              allOf:
+                - $ref: '#/components/schemas/OpportunityPage'
+                - $ref: '#/components/schemas/SearchMetrics'
+            queries:
+              type: array
+              description: Up to rules.queries searches, most impressions first.
+              items:
+                type: object
+                required: [query, clicks, impressions, position, to_clicks, to_position]
+                properties:
+                  query:
+                    type: string
+                  clicks:
+                    type: integer
+                  impressions:
+                    type: integer
+                  position:
+                    type: number
+                  to_clicks:
+                    type: integer
+                  to_position:
+                    type: number
+            query_count:
+              type: integer
+
+    LinksAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [engine, engines, range, days, cut, through, first, connected, ignored, kind, rules, read, goal, goals, counts, rows, total, more]
+          properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+              description: Days of search figures; 0 without search data.
+            cut:
+              type: boolean
+            through:
+              type: string
+            first:
+              type: string
+            connected:
+              type: boolean
+            ignored:
+              type: array
+              items:
+                type: string
+            kind:
+              $ref: '#/components/schemas/LinksKind'
+            rules:
+              type: object
+              required: [few_links, min_conversions, min_impressions, queries, max_links]
+              properties:
+                few_links:
+                  type: integer
+                  description: Pages linking in at most for a converting page to be listed.
+                min_conversions:
+                  type: integer
+                min_impressions:
+                  type: integer
+                  description: Impressions a page needs on a search for a missing link.
+                queries:
+                  type: integer
+                max_links:
+                  type: integer
+                  description: Pages a page's links are kept to, at most.
+            read:
+              type: object
+              required: [pages, read, complete]
+              properties:
+                pages:
+                  type: integer
+                  description: Published pages the content audit has read.
+                read:
+                  type: integer
+                  description: Those whose links were read.
+                complete:
+                  type: boolean
+            goal:
+              type: [object, 'null']
+              description: The goal counted; null without goals.
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+            goals:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+            counts:
+              type: object
+              description: Rows per list, whatever kind is asked for.
+              additionalProperties:
+                type: integer
+            rows:
+              type: array
+              description: LinksPageRow for orphans and converting, LinksMissingRow for missing.
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/LinksPageRow'
+                  - $ref: '#/components/schemas/LinksMissingRow'
             total:
               type: integer
             more:

@@ -528,7 +528,7 @@ final class SEOProStats_Queue {
                 return '“' . (string) $query['query'] . '”';
             }, (array) $row['queries']);
             $figures += array(
-                'from'             => array('path_id' => (int) $row['path_id'], 'path' => (string) $row['path'], 'url' => (string) $row['url']),
+                'link_from'        => array('path_id' => (int) $row['path_id'], 'path' => (string) $row['path'], 'url' => (string) $row['url']),
                 'from_impressions' => $impr,
                 'from_position'    => $row['position'],
                 'queries'          => array_values((array) $row['queries']),

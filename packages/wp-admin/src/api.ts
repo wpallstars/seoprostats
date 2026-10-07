@@ -29,6 +29,8 @@ import {
 	type Goal,
 	type GoalStep,
 	type GoalsAnswer,
+	type LinksAnswer,
+	type LinksKind,
 	type Marker,
 	type MarkersAnswer,
 	type OpportunitiesAnswer,
@@ -241,6 +243,18 @@ export function useAudit(scope: SearchScope, finding: AuditFinding | '', limit =
 	return useQuery({
 		queryKey: ['audit', args],
 		queryFn: () => get<AuditAnswer>('audit', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Internal links: orphan pages, converting pages with few links in, or missing links; conversions of a goal ('' for the first); the comparison does not apply. */
+export function useLinks(scope: SearchScope, kind: LinksKind, goal: string, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), kind, limit, offset, ...(goal ? { goal } : {}) }, data);
+	return useQuery({
+		queryKey: ['links', args],
+		queryFn: () => get<LinksAnswer>('links', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

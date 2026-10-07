@@ -135,8 +135,9 @@ long-term record.
 - [x] Content audit from WordPress: page facts on save and in cron,
       findings weighed by search and conversions; Search → Audit and plan
       items (GH#77, after GH#75).
-- [ ] Internal links: orphans, converting pages with few links in,
-      missing links to a query's page (GH#78, after GH#77).
+- [x] Internal links: orphans, converting pages with few links in,
+      missing links to a query's page; under Search → Audit and plan
+      items (GH#78, after GH#77).
 - [ ] Indexation: published pages and sitemap addresses without
       impressions (GH#79, after GH#77).
 - [ ] Refresh planner: update, leave, protect or merge pages losing

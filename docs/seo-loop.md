@@ -355,6 +355,46 @@ and pages that rank for a query whose intended page (a search target, or
 the page with most clicks for it) they do not link to. Queue kind
 `links`.
 
+Built (GH#78), schema v11:
+
+- `page_links`: `(from_path, to_path)` primary key, key `to_path`; the
+  first link's text (`DICT_LABEL` id) and how many links. `page_facts`
+  gains `links_in` (other pages linking in, key `links_in`), kept current
+  as links are written, so orphans and pages with few links in are read by
+  that key alone.
+- Reading: with the content audit's facts, from the same text, on save
+  and in its daily batch; a page's links are replaced each time it is
+  read. Links to WordPress's folders, feeds and files are left out, paths
+  get the permalinks' trailing slash, queries are kept only with plain
+  permalinks, and at most 300 pages per page. A page no longer published,
+  or at an old address (a changed slug or parent), loses its links. After
+  the update every page is read again (`state()['links']` holds when); the
+  report says how many were (`read`), and the first read on live data
+  reads a few pages at once.
+- Lists: `orphans` (no other page links in; the front page is left out,
+  as menus link to it), most impressions first; `converting` (visits from
+  search reached the goal 3 or more times, 2 or fewer pages link in), most
+  conversions first; `missing` (a page with at least max(10, days)
+  impressions on a search does not link to the search's page with most
+  clicks), one row per page pair with up to 5 searches, from the 2,000
+  pairs with most impressions. Menus and widgets are not read, so a page
+  linked only from a menu is an orphan; that is the point.
+- Queue kind `links` (code 7), one item per page and list (its key has the
+  list in place of a query; a missing link's item sits on the page to link
+  to, with the page that should link in `figures.link_from`): potential
+  clicks the page's impressions (missing: those of the searches on the
+  linking page) × the site's CTR at its position × 0.1 (missing 0.2),
+  confidence 0.4, effort 1 (converting 2); done measures clicks.
+- REST `GET /links` (`kind`, `goal`, `engine`, period, page filters,
+  `limit`, `offset`); WP-CLI `wp seoprostats links [--kind=<kind>]
+  [--goal=<id>]`; ability `seoprostats/links`. Dashboard: Search → Audit,
+  **Internal links** under the findings, with a list switch that counts
+  each list; Plan shows the items as "Internal links: <list>".
+- Demo data: `PAGE_LINKS` links the demo pages: the update post and the
+  FAQ are orphans, the pricing and licence pages convert with few links
+  in, and the features page, the rankings guide and the front page miss a
+  link to a page that gets their search's clicks.
+
 ## 6. Indexation
 
 Published pages (from `pages` and `page_facts`) with no impressions after

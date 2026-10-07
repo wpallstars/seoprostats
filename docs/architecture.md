@@ -354,7 +354,7 @@ with a page can start one.
 The decision queue (schema v9, `SEOProStats_Queue`; design:
 `docs/seo-loop.md` → Decision queue) ranks what Opportunities finds (low
 CTR, missing from the page, striking distance, losing clicks, overlapping
-pages) and the content audit's findings as one list:
+pages), the content audit's findings and internal links as one list:
 potential clicks per 28 days × value (the page's conversion rate of visits
 from search against the site's) × confidence ÷ effort, each part in the
 answer. Items are worked out when the list is read from the cached
@@ -381,6 +381,19 @@ impressions first; each finding is also a queue item (kind `audit`).
 `GET /audit`, `wp seoprostats audit` and the `seoprostats/audit` ability
 read it; `wp seoprostats audit run` reads a batch now. The dashboard has
 it under Search → Audit.
+
+Internal links (schema v11, `SEOProStats_Links`; design:
+`docs/seo-loop.md` → Internal links) are read with the audit's facts,
+from the same text: `page_links` holds one row per page and page it
+links to, replaced each time the page is read, and `page_facts.links_in`
+counts the other pages linking in, recounted for the pages whose links
+changed. Orphans and converting pages with few links in are read by the
+`links_in` key; missing links come from the `gsc_pairs` pairs with most
+impressions (as overlapping pages), checked against `page_links` by its
+primary key; conversions come from the Content report. Each row is also
+a queue item (kind `links`). `GET /links`, `wp seoprostats links` and
+the `seoprostats/links` ability read it; the dashboard shows it under
+Search → Audit, after the findings.
 
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
@@ -616,8 +629,9 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
 | `experiments` | a change's hypothesis, measured before and after against unchanged pages (schema v8; `docs/seo-loop.md`) | `id`, `created`, `user_id`, `name`, `start`, `days`, `review` (the after window's last day), `engine`, `metric` (1 clicks, 2 impressions, 3 CTR, 4 position, 5 visits, 6 conversions), `direction`, `threshold` (percent, or tenths of a place), `change_id`, `path_id` (0: several pages, in `meta`), `status` (1 running, 2 decided, 3 cancelled), `result` (1 keep, 2 revise, 3 undo, 4 inconclusive), `decided`, `meta` (pages, goal, hypothesis, note, the change row it wrote, the measurement decided on) |
-| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay, 5 overlap, 6 audit; an audit item's key has its finding in place of a query), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
-| `page_facts` | content audit facts of a published page (schema v10; `docs/seo-loop.md`) | `path_id` (primary key), `post_id`, `checked`, `modified`, `title_len`, `seo_title_len`, `desc_len`, `title_hash`, `desc_hash` (8-byte keys of the shown title and description; zeros for none), `h1`, `words`, `images`, `images_no_alt`, `noindex`, `canonical_away`, `flags` (the page's own findings as bits, `SEOProStats_Audit::FLAGS`) |
+| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay, 5 overlap, 6 audit, 7 links; an audit item's key has its finding in place of a query, a links item's its list), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
+| `page_facts` | content audit facts of a published page (schema v10; `docs/seo-loop.md`) | `path_id` (primary key), `post_id`, `checked`, `modified`, `title_len`, `seo_title_len`, `desc_len`, `title_hash`, `desc_hash` (8-byte keys of the shown title and description; zeros for none), `h1`, `words`, `images`, `images_no_alt`, `noindex`, `canonical_away`, `flags` (the page's own findings as bits, `SEOProStats_Audit::FLAGS`), `links_in` (other pages whose text links to it; schema v11) |
+| `page_links` | a link in a published page's text to another of the site's pages (schema v11; `docs/seo-loop.md`) | `from_path`, `to_path` (primary key), `text_id` (the first link's text, `DICT_LABEL`), `links` (how many links) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -641,7 +655,8 @@ one page's or query's search data, and `imports` `(source, status)`
 (schema v7); `experiments` has `(status, review)`, `path_id` and `start`
 (schema v8); `queue` has unique `ikey` and `(status, updated)` (schema
 v9); `page_facts` has `post_id`, `checked`, `flags`, `title_hash` and
-`desc_hash` (schema v10);
+`desc_hash` (schema v10), and `links_in`, and `page_links` `to_path`
+(schema v11);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -1037,7 +1052,8 @@ in the future meets the same length of the other period.
   [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
   `cancel`, `note`, `delete`), `queue` (`list`, `accept`, `done`,
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
-  [--finding=<finding>]`, `run [--limit=<n>]`), `pages`,
+  [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
+  [--goal=<id>]`, `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -1048,7 +1064,8 @@ in the future meets the same length of the other period.
   read reports and annotations as `seoprostats/*` abilities, so MCP
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
-  `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/coverage`,
+  `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/links`,
+  `seoprostats/coverage`,
   `seoprostats/content`, `seoprostats/experiments`,
   `seoprostats/experiment-record`, `seoprostats/queue` and
   `seoprostats/queue-update`.
