@@ -137,6 +137,7 @@ final class SEOProStats_Dashboard {
             array(__CLASS__, 'render')
         );
         $sections = array(
+            'search'     => __('Search', 'seoprostats'),
             'goals'      => __('Goals', 'seoprostats'),
             'funnels'    => __('Funnels', 'seoprostats'),
             'properties' => __('Properties', 'seoprostats'),

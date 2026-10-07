@@ -835,6 +835,24 @@ code.spst-meta {
 	min-width: 220px;
 }
 
+/* Search: title, period and source on the left, page and query boxes on the right. */
+.spst-search__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 16px 16px 0;
+}
+
+.spst-search__head .spst-period {
+	margin: 4px 0 0;
+}
+
+.spst-search__boxes .components-base-control {
+	min-width: 180px;
+}
+
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
 .spst-modal.components-modal__frame {
 	width: min(560px, calc(100vw - 32px));

@@ -25,6 +25,8 @@ import {
 	type MarkersAnswer,
 	type PropertiesAnswer,
 	type RealtimeAnswer,
+	type SearchAnswer,
+	type SearchKind,
 	type StatsAnswer,
 	type TimeseriesAnswer,
 	type ViewState,
@@ -155,6 +157,18 @@ export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 5
 	return useQuery({
 		queryKey: ['clicks', args],
 		queryFn: () => get<ClicksAnswer>('clicks', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Search (Search Console's days): totals, points and rows of one kind; optionally one page's or one query's. */
+export function useSearch(scope: Scope, kind: SearchKind, page: string, query: string, limit = 50) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs(scope), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	return useQuery({
+		queryKey: ['search', args],
+		queryFn: () => get<SearchAnswer>('search', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

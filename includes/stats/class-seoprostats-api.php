@@ -1,7 +1,7 @@
 <?php
 /**
  * The REST API (namespace seoprostats/v1): the reports stats, timeseries,
- * breakdown, realtime, markers, changes, goals, funnels, properties and clicks, each on
+ * breakdown, realtime, markers, changes, goals, funnels, properties, clicks and search, each on
  * live data or the demo data (data=demo); goals and funnels also add,
  * change and delete their definitions (administrators); demo (make, carry
  * on, remove) and view (the data set a person sees). Contract:
@@ -77,6 +77,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-goals.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-conversions.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-clicks.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search.php';
     }
 
     /**
@@ -259,6 +260,29 @@ final class SEOProStats_API {
                 ),
                 'page'   => array(
                     'description' => __('Only clicks on this page (a path such as /pricing/; * for any text).', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'limit'  => self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/search', $read + array(
+            'callback' => array(__CLASS__, 'search'),
+            'args'     => $base + array(
+                'kind'   => array(
+                    'description' => __('Rows: search queries, pages, countries or devices (countries and devices for the whole site only).', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Search::KINDS,
+                    'default'     => 'queries',
+                ),
+                'page'   => array(
+                    'description' => __('Only searches that showed this page (a path such as /pricing/; * for any text).', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'query'  => array(
+                    'description' => __('Only this search query (* for any text).', 'seoprostats'),
                     'type'        => 'string',
                     'default'     => '',
                 ),
@@ -722,6 +746,22 @@ final class SEOProStats_API {
         $page = (string) $request->get_param('page');
         return self::report($request, static function ($req) use ($kind, $page) {
             return SEOProStats_Clicks::report($req, $kind, $page);
+        });
+    }
+
+    /**
+     * GET /search: search clicks, impressions, CTR and position, with
+     * queries, pages, countries or devices; optionally of a page or query.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function search($request) {
+        $kind  = (string) $request->get_param('kind');
+        $page  = (string) $request->get_param('page');
+        $query = (string) $request->get_param('query');
+        return self::report($request, static function ($req) use ($kind, $page, $query) {
+            return SEOProStats_Search::report($req, $kind, $page, $query);
         });
     }
 

@@ -20,15 +20,19 @@ import {
 	type TimeseriesChart,
 	type TimeseriesConfig,
 } from '@seoprostats/charts';
-import { formatMetric, METRICS, type Marker, type MetricKey, type TimeseriesAnswer } from '@seoprostats/core';
+import { formatMetric, type ChartData, type Marker, type MetricFormat } from '@seoprostats/core';
 import { locale } from '../boot';
 import { changesByPoint, chartMarkers, chartSpans, groupColors } from '../changelog';
 import { axisLabel, longLabel } from '../dates';
-import { compareLabel, metricLabel } from '../labels';
+import { compareLabel } from '../labels';
 
-interface Props {
-	series: TimeseriesAnswer;
-	metric: MetricKey;
+interface Props<K extends string> {
+	/** Visits (timeseries) or search (the search report's points). */
+	series: ChartData<{ t: string } & Record<K, number>>;
+	metric: K;
+	/** The metric's name and format. */
+	label: string;
+	format: MetricFormat;
 	height?: number;
 	/** Changes in the range, for the markers lane; none: no lane. */
 	markers?: Marker[];
@@ -47,7 +51,7 @@ function themeColor(el: HTMLElement | null): string {
  * answer's time (today, this hour, this month). Times carry the site's
  * offset, so they compare as instants. Undefined when the range is over.
  */
-export function partialIndex(series: TimeseriesAnswer): number | undefined {
+export function partialIndex(series: ChartData): number | undefined {
 	const now = Date.parse(series.generated ?? '') || Date.now();
 	const points = series.points;
 	for (let i = points.length - 1; i >= 0; i--) {
@@ -64,18 +68,17 @@ export function partialIndex(series: TimeseriesAnswer): number | undefined {
 }
 
 /** A point's long label, marked "so far" while it is still being counted. */
-function pointLabel(t: string, grain: TimeseriesAnswer['grain'], partial: boolean): string {
+function pointLabel(t: string, grain: ChartData['grain'], partial: boolean): string {
 	const label = longLabel(t, grain);
 	/* translators: %s: a day, hour or month still in progress, e.g. "Tue 6 Oct 2026". */
 	return partial ? sprintf(__('%s (so far)', 'seoprostats'), label) : label;
 }
 
-export function MainChart({ series, metric, height = 260, markers, onMarker }: Props) {
+export function MainChart<K extends string>({ series, metric, label, format, height = 260, markers, onMarker }: Props<K>) {
 	const holder = useRef<HTMLDivElement>(null);
 	const laneHolder = useRef<HTMLDivElement>(null);
 	const chart = useRef<TimeseriesChart | null>(null);
 	const lane = useRef<MarkersLane | null>(null);
-	const spec = METRICS[metric];
 	const partial = useMemo(() => partialIndex(series), [series]);
 	const byPoint = useMemo(() => changesByPoint(series, markers ?? []), [series, markers]);
 	const pick = useRef(onMarker);
@@ -94,7 +97,7 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 		// Colours are filled in where the element's styles can be read.
 		const list: ChartSeries[] = [
 			{
-				label: metricLabel(metric),
+				label,
 				values: series.points.map((p) => p[metric]),
 				color: '',
 				fill: true,
@@ -116,9 +119,9 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 			labels: series.points.map((p) => axisLabel(p.t, grain)),
 			series: list,
 			height,
-			formatValue: (v: number) => formatMetric(v, spec.format, locale),
+			formatValue: (v: number) => formatMetric(v, format, locale),
 		};
-	}, [series, metric, height, spec.format, partial]);
+	}, [series, metric, label, height, format, partial]);
 
 	useEffect(() => {
 		const el = holder.current;
@@ -190,13 +193,13 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 			<div ref={holder} className="spst-chart__plot" aria-hidden="true" style={{ minHeight: height }} />
 			{markers !== undefined && <div ref={laneHolder} />}
 			<figcaption className="screen-reader-text">
-				{metricLabel(metric)}
+				{label}
 			</figcaption>
 			<table className="screen-reader-text">
 				<thead>
 					<tr>
 						<th scope="col">{__('Period', 'seoprostats')}</th>
-						<th scope="col">{metricLabel(metric)}</th>
+						<th scope="col">{label}</th>
 						{compare && <th scope="col">{compareLabel(compare.range.key === 'year' ? 'year' : 'prev')}</th>}
 						{markers !== undefined && <th scope="col">{__('Changes', 'seoprostats')}</th>}
 					</tr>
@@ -207,8 +210,8 @@ export function MainChart({ series, metric, height = 260, markers, onMarker }: P
 						return (
 							<tr key={p.t}>
 								<th scope="row">{pointLabel(p.t, series.grain, i === partial)}</th>
-								<td>{formatMetric(p[metric], spec.format, locale)}</td>
-								{compare && <td>{before ? formatMetric(before[metric], spec.format, locale) : '—'}</td>}
+								<td>{formatMetric(p[metric], format, locale)}</td>
+								{compare && <td>{before ? formatMetric(before[metric], format, locale) : '—'}</td>}
 								{markers !== undefined && <td>{(byPoint.get(i) ?? []).map((m) => m.label).join('; ')}</td>}
 							</tr>
 						);

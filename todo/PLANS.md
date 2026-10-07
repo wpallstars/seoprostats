@@ -93,8 +93,13 @@ long-term record.
       import of final days and the 16-month history, undo, retention;
       Settings → Connections, REST and WP-CLI (GH#43).
 - [ ] Search Console through an OAuth client the owner makes.
-- [ ] Rankings, content performance, striking distance, CTR gaps, decay,
-      likely causes for drops (position, demand, CTR).
+- [x] Rankings: a Search section with clicks, impressions, CTR and
+      position against the previous period, queries, pages, countries
+      and devices, page ↔ query drill-down; REST `search`, WP-CLI, the
+      `seoprostats/search` ability and demo search data (GH#48).
+- [ ] Opportunities: content performance, striking distance, CTR gaps,
+      decay, likely causes for drops (position, demand, CTR).
+- [ ] Bing Webmaster Tools as a second search engine.
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.
 
@@ -117,7 +122,8 @@ long-term record.
 - [ ] Import (generic events JSON/CSV, daily aggregates) and export;
       undo by import id.
 - [ ] Abilities for MCP clients (the reports; `seoprostats/markers` and
-      `seoprostats/annotate` came with GH#35); aidevops SEO loop recipes
+      `seoprostats/annotate` came with GH#35, `seoprostats/search` with
+      GH#48); aidevops SEO loop recipes
       in `docs/`.
 - [ ] Optional location database (DB-IP Lite) with our own reader.
 

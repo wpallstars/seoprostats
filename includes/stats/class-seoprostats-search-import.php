@@ -530,7 +530,7 @@ final class SEOProStats_Search_Import {
     }
 
     /**
-     * Insert one day's rows of a kind, in chunks.
+     * Insert one day's rows of a kind, in chunks (also the demo data's).
      *
      * @param string                          $table  Table.
      * @param string                          $kind   pages, queries, pairs or totals.
@@ -540,7 +540,7 @@ final class SEOProStats_Search_Import {
      * @param array<string,array<int,int|string>> $rows From rows().
      * @return int|false Rows inserted, or false when a query failed.
      */
-    private static function insert($table, $kind, $engine, $day, $import, array $rows) {
+    public static function insert($table, $kind, $engine, $day, $import, array $rows) {
         global $wpdb;
         $columns = array(
             'pages'   => array('path_id' => '%d'),

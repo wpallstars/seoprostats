@@ -93,3 +93,11 @@ export function formatChange(change: number | null | undefined, locale: string):
 	// A true minus sign reads better than a hyphen.
 	return text.replace('-', '\u2212');
 }
+
+/** A change in places as +1.2 or −0.4; null as an em dash. */
+export function formatPlaces(change: number | null | undefined, locale: string): string {
+	if (change === null || change === undefined || !Number.isFinite(change)) {
+		return '—';
+	}
+	return nf(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'exceptZero' }).format(change).replace('-', '\u2212');
+}

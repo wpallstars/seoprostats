@@ -356,6 +356,80 @@ export interface ClicksAnswer extends Answer {
 	};
 }
 
+/** What a chart draws: the range, grain and points (each with its start, t). */
+export interface ChartData<P extends { t: string } = { t: string }> {
+	range: Range;
+	grain: Grain;
+	points: P[];
+	compare?: { range: Range; points: P[] };
+	generated?: string;
+}
+
+/** Rows of the search report. */
+export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as const;
+export type SearchKind = (typeof SEARCH_KINDS)[number];
+
+export interface SearchMetrics {
+	clicks: number;
+	impressions: number;
+	/** clicks ÷ impressions. */
+	ctr: number;
+	/** Average position, weighted by impressions; 0 without impressions. Lower is better. */
+	position: number;
+}
+
+export type SearchMetricKey = keyof SearchMetrics;
+
+/** Relative change for clicks, impressions and CTR; position: now − then in places (lower is better). */
+export type SearchChange = Record<SearchMetricKey, number | null>;
+
+export interface SearchPoint extends SearchMetrics {
+	t: string;
+}
+
+export interface SearchRow extends SearchMetrics {
+	/** Query or page dictionary ID, country code (alpha-3) or device code. */
+	id: string;
+	/** The query, page path, country (alpha-2; '' unknown) or device. */
+	value: string;
+	label: string;
+	/** clicks ÷ all clicks. */
+	share: number;
+	/** Present only for pages rows. */
+	path?: string;
+	url?: string;
+	post_id?: number;
+	edit_url?: string | null;
+	compare?: SearchMetrics & { change: SearchChange };
+}
+
+export interface SearchAnswer extends Answer {
+	/** The range cut at the newest day with search data. */
+	range: Range;
+	/** Newest and first day with search data (YYYY-MM-DD); '' with none. */
+	through: string;
+	first: string;
+	/** Whether Search Console is connected (demo data: always). */
+	connected: boolean;
+	kind: SearchKind;
+	page: string;
+	query: string;
+	page_info: ClickPageInfo | null;
+	/** Filter dimensions left out: only page filters apply to search data. */
+	ignored: string[];
+	totals: SearchMetrics;
+	grain: 'day' | 'month';
+	points: SearchPoint[];
+	rows: SearchRow[];
+	more: boolean;
+	compare?: {
+		range: Range;
+		totals: SearchMetrics;
+		change: SearchChange;
+		points: SearchPoint[];
+	};
+}
+
 export interface ApiError {
 	code: string;
 	message: string;
