@@ -3,16 +3,44 @@
  * shared, and the back button works:
  * `#/overview?range=30d&compare=prev&metric=visits&f=country:is:US`.
  *
+ * One plain object (no WordPress, no React), so a stored view (a shared
+ * read-only dashboard, later) uses the same format and checks. It holds only
+ * what draws the view: never user IDs, nonces or settings.
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
 import { parseFilter, serializeFilter, type Filter } from './filters';
-import { COMPARE_KEYS, RANGE_KEYS, type CompareKey, type MetricKey, type RangeKey } from './types';
-import { CHART_METRICS } from './metrics';
+import {
+	CLICK_KINDS,
+	COMPARE_KEYS,
+	RANGE_KEYS,
+	SEARCH_KINDS,
+	type ClickKind,
+	type CompareKey,
+	type Dimension,
+	type MetricKey,
+	type RangeKey,
+	type SearchKind,
+	type SearchMetricKey,
+} from './types';
+import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
 export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'] as const;
 export type View = (typeof VIEWS)[number];
+
+/** Overview's cards (stable names) and their tabs; the first tab is the default. */
+export const VIEW_TABS = {
+	sources: ['channel', 'source', 'utm_campaign'],
+	pages: ['page', 'entry', 'exit', 'not_found'],
+	content: ['author', 'category', 'post_type'],
+	search: ['search', 'no_results'],
+	locations: ['country', 'language'],
+	devices: ['device', 'browser', 'os', 'login'],
+	events: ['event'],
+} as const satisfies Record<string, readonly Dimension[]>;
+export type ViewCard = keyof typeof VIEW_TABS;
 
 export interface ViewState {
 	view: View;
@@ -23,7 +51,30 @@ export interface ViewState {
 	compare: CompareKey;
 	metric: MetricKey;
 	filters: Filter[];
+	/*
+	 * Section choices, kept only for their section and left out when default.
+	 * Applied choices only: text still being typed is not part of the view.
+	 */
+	/** Clicks: the table shown. */
+	kind?: ClickKind;
+	/** Clicks and Search: only this page (a path; * for any text). */
+	page?: string;
+	/** Properties: the property whose values are listed. */
+	key?: string;
+	/** Properties: only properties sent with this event. */
+	event?: string;
+	/** Search: the table shown. */
+	tab?: SearchKind;
+	/** Search: the chart's metric. */
+	chart?: SearchMetricKey;
+	/** Search: only this search query (* for any text). */
+	query?: string;
+	/** Overview: each card's open tab. */
+	tabs?: Partial<Record<ViewCard, Dimension>>;
 }
+
+/** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
+const SECTION_VALUES = ['kind', 'tab', 'chart', 'key', 'event', 'page', 'query'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -37,6 +88,51 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 function oneOf<T extends string>(list: readonly T[], value: string | null, fallback: T): T {
 	return value !== null && (list as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+/**
+ * Pages, queries, properties and events are the site's own text, not a list:
+ * trimmed, no control characters, no longer than the stored names (2048).
+ */
+function text(value: string | null): string | undefined {
+	return value && value === value.trim() && value.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined;
+}
+
+/**
+ * Read the section's choices from the address into the state; anything
+ * unknown, invalid or default is left out. buildHash() writes through it
+ * too, so a written address and a stored view obey the same rules.
+ */
+function sectionParams(state: ViewState, params: URLSearchParams): void {
+	const set = <K extends (typeof SECTION_VALUES)[number]>(name: K, value: ViewState[K] | undefined): void => {
+		if (value) {
+			state[name] = value;
+		}
+	};
+	if (state.view === 'clicks') {
+		const kind = oneOf(CLICK_KINDS, params.get('kind'), 'elements');
+		set('kind', kind === 'elements' ? undefined : kind);
+		set('page', text(params.get('page')));
+	} else if (state.view === 'properties') {
+		set('key', text(params.get('key')));
+		set('event', text(params.get('event')));
+	} else if (state.view === 'search') {
+		const tab = oneOf(SEARCH_KINDS, params.get('tab'), 'queries');
+		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
+		set('tab', tab === 'queries' ? undefined : tab);
+		set('chart', chart === 'clicks' ? undefined : chart);
+		set('page', text(params.get('page')));
+		set('query', text(params.get('query')));
+	} else if (state.view === 'overview') {
+		for (const card of Object.keys(VIEW_TABS) as ViewCard[]) {
+			const allowed: readonly Dimension[] = VIEW_TABS[card];
+			const tab = oneOf(allowed, params.get(`tab.${card}`), allowed[0]!);
+			if (tab !== allowed[0]) {
+				state.tabs ??= {};
+				state.tabs[card] = tab;
+			}
+		}
+	}
 }
 
 /** Read a hash such as `#/overview?range=7d`; anything unknown takes the default. */
@@ -66,6 +162,7 @@ export function parseHash(hash: string): ViewState {
 			state.range = DEFAULT_STATE.range;
 		}
 	}
+	sectionParams(state, params);
 	return state;
 }
 
@@ -88,8 +185,45 @@ export function buildHash(state: ViewState): string {
 	for (const filter of state.filters) {
 		params.append('f', serializeFilter(filter));
 	}
+	// Only this section's valid, non-default choices (the reader's rules).
+	const choices = new URLSearchParams();
+	writeSection(state, choices);
+	const valid: ViewState = { ...DEFAULT_STATE, view: state.view };
+	sectionParams(valid, choices);
+	writeSection(valid, params);
 	const query = params.toString();
 	return `#/${state.view}${query ? `?${query}` : ''}`;
+}
+
+function writeSection(state: ViewState, params: URLSearchParams): void {
+	for (const name of SECTION_VALUES) {
+		const value = state[name];
+		if (value) {
+			params.set(name, value);
+		}
+	}
+	for (const card of Object.keys(VIEW_TABS) as ViewCard[]) {
+		const tab = state.tabs?.[card];
+		if (tab) {
+			params.set(`tab.${card}`, tab);
+		}
+	}
+}
+
+/**
+ * The state for showing another section: the period, comparison, metric
+ * and filters stay; the section's own choices are left behind.
+ */
+export function switchView(state: ViewState, view: View): ViewState {
+	if (view === state.view) {
+		return state;
+	}
+	const next: ViewState = { ...state, view };
+	for (const name of SECTION_VALUES) {
+		delete next[name];
+	}
+	delete next.tabs;
+	return next;
 }
 
 /** Query arguments for the API's range, compare and filters parameters. */

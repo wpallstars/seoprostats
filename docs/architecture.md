@@ -829,9 +829,33 @@ filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
 and events seen in the last 90 days are offered as they type.
 
-The page state lives in the URL hash (`#/pages?range=30d&compare=prev&f=…`),
-so every view can be bookmarked and shared with another admin, and the
-browser's back button works.
+The view state lives in the URL hash (`#/clicks?kind=dead&page=%2Fshop%2F`),
+so a bookmark, a reload, a copied address or the back button brings back
+the same view. It holds the section; the shared values (period and custom
+days, comparison, chart metric, filters); and the section's own choices:
+
+| Section | Address | Default (left out) |
+|---|---|---|
+| Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`: the card's open tab | each card's first tab |
+| Search | `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query` | queries, clicks, none |
+| Properties | `key` (the property listed), `event` | none |
+| Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
+
+Only applied choices count: text in a box is a draft until Apply or Enter.
+Changing section keeps the shared values and leaves the other section's
+choices behind (`switchView()`). Every value is checked against its list,
+or for pages, queries, properties and events, as trimmed text without
+control characters, at most 2048 characters; anything unknown or invalid
+takes the default, and defaults are left out, so older addresses keep
+working and addresses stay short.
+
+This is also the format of a shared read-only dashboard (Phase 6 of
+`todo/PLANS.md`): `ViewState` with the pure `parseHash()`, `buildHash()`
+and `switchView()` in `packages/core/src/state.ts`, free of WordPress and
+React, so the server can check a stored view with the same rules. It holds
+only what draws the view: no user IDs, nonces or settings. The Live/Demo
+switch is a per-user setting outside the address (a shared view always
+shows live data).
 
 Stack, and why:
 
