@@ -104,6 +104,25 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'description' => __('Paths of this site that forward to affiliate offers, one per line; * matches any characters. Links to them, and links marked rel="sponsored", send an Affiliate link event, which a goal can count.', 'seoprostats'),
                 'placeholder' => '/go/*',
             ),
+            'purchases'               => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'parent'      => self::KEY,
+                'label'       => __('Record purchases', 'seoprostats'),
+                'description' => __('Paid orders from WooCommerce, Easy Digital Downloads, FluentCart and ThriveCart send a Purchase event with the order\'s total in its currency, on the visit that placed it, once per order, which goals and funnels can count. Only orders placed on the site by a counted visitor; no order numbers or customer details are kept.', 'seoprostats'),
+            ),
+            'purchases_thrivecart'    => array(
+                'type'        => 'text',
+                'default'     => '',
+                'parent'      => self::KEY,
+                'label'       => __('ThriveCart secret word', 'seoprostats'),
+                'description' => sprintf(
+                    /* translators: %s: webhook address. */
+                    __('To record ThriveCart orders: paste the secret word from ThriveCart\'s Settings → API & Webhooks here, and add a webhook there with this address: %s. Links to ThriveCart checkouts then carry the page\'s random ID, so each order joins its visit.', 'seoprostats'),
+                    SEOProStats_Purchases::thrivecart_url()
+                ),
+                'placeholder' => '',
+            ),
             'tracking_file'           => array(
                 'type'        => 'bool',
                 'default'     => false,

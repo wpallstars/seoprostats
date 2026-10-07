@@ -10,7 +10,9 @@
  * Design: docs/architecture.md → Collection → Tracker.
  *
  * The page as loaded also sends what WordPress knew about it (data-ctx:
- * not found, site search, the item shown, logged in).
+ * not found, site search, the item shown, logged in). With ThriveCart
+ * connected, a clicked ThriveCart link gets the page load's ID as
+ * passthrough[spst], for the order webhook (SEOProStats_Purchases).
  *
  * It stores nothing in the browser: no cookies, localStorage or
  * sessionStorage. A random ID for each page load, kept in memory, joins a
@@ -41,6 +43,8 @@ interface Config {
 	c?: boolean;
 	/** The site's affiliate link paths; * matches any characters. */
 	a?: string[];
+	/** ThriveCart is connected: its checkout links carry the page load's ID, so its order webhook joins the visit. */
+	tc?: boolean;
 }
 
 type Scalar = string | number | boolean;
@@ -453,6 +457,12 @@ function clicked(e: MouseEvent): void {
 	const link = e.target.closest('a[href]');
 	let to = { to: '', flags: 0 };
 	if (link instanceof HTMLAnchorElement) {
+		if (cfg.tc && pageId && /(?:^|\.)thrivecart\.com$/i.test(link.hostname)) {
+			// Before the browser follows it: ThriveCart sends passthrough fields back with the order.
+			const url = new URL(link.href);
+			url.searchParams.set('passthrough[spst]', pageId);
+			link.href = url.href;
+		}
 		to = target(link.href);
 		if (/(?:^|\s)sponsored(?:\s|$)/i.test(link.rel) && !(to.flags & AFFILIATE)) {
 			to.flags |= AFFILIATE;

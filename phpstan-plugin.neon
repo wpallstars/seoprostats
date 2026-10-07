@@ -20,3 +20,12 @@ parameters:
 				- class.notFound
 				- function.notFound
 			path: includes/stats/class-seoprostats-cli.php
+		# Purchases: the shops' classes and functions (WooCommerce's WC_Order,
+		# Easy Digital Downloads' edd_*_order_meta()) have no stubs in the dev
+		# dependencies. Each call is guarded by function_exists() or an
+		# instanceof check, and runs only when the shop calls its hook.
+		-
+			identifiers:
+				- class.notFound
+				- function.notFound
+			path: includes/stats/class-seoprostats-purchases.php

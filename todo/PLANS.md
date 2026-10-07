@@ -65,9 +65,12 @@ long-term record.
       no results), views by author, category and post type (`pages`
       table filled by the minute job), logged-in visits; schema v5;
       REST, WP-CLI, demo data and Overview cards (issue #27).
-- [ ] Purchases: WooCommerce and Easy Digital Downloads orders as
-      revenue events, once per order (server side, on payment), in each
-      order's currency.
+- [x] Purchases: WooCommerce, Easy Digital Downloads, FluentCart and
+      ThriveCart orders as revenue events, once per order (server side, on
+      payment), in each order's currency, on the visit that checked out
+      (issue #30). Refunds and renewals later.
+- [ ] A/B testing of blocks: variants in the editor, results by test and
+      variant (issue #29).
 - [ ] Clicks by page with View and Edit links (issue #25).
 - [ ] Journeys (visitor per day timeline), Flow (Sankey), segments.
 
