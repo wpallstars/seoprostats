@@ -105,7 +105,7 @@ function seoprostats_shop_test_assert() {
     }
     // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- bounded disposable fixture tables only.
     $sessions = $wpdb->get_results($wpdb->prepare('SELECT id, pageviews, channel FROM %i LIMIT 10', SEOProStats_Schema::table('sessions')));
-    if (count($sessions) !== 1 || (int) $sessions[0]->pageviews !== 2 || $sessions[0]->channel !== 'email') {
+    if (count($sessions) !== 1 || (int) $sessions[0]->pageviews !== 2 || (int) $sessions[0]->channel !== SEOProStats_Channels::EMAIL) {
         WP_CLI::error('FAIL visit: expected one email campaign visit with two pageviews: ' . wp_json_encode($sessions));
     }
     // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- bounded disposable fixture tables only.
@@ -119,6 +119,9 @@ function seoprostats_shop_test_assert() {
         }
         if ($event->currency !== $expected[$event->source][2]) {
             WP_CLI::error('FAIL ' . $event->source . ' currency: ' . $event->currency);
+        }
+        if ((int) $event->revenue !== (int) ($expected[$event->source][1] / $expected[$event->source][0])) {
+            WP_CLI::error('FAIL ' . $event->source . ' order amount in cents: ' . $event->revenue);
         }
         if (!isset($actual[$event->source])) {
             $actual[$event->source] = array(0, 0);
