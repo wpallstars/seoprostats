@@ -34,7 +34,7 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Clicks {
 
     /** Kinds of report rows. */
-    const KINDS = array('elements', 'dead', 'links', 'downloads', 'forms');
+    const KINDS = array('elements', 'dead', 'links', 'downloads', 'forms', 'pages');
 
     /** Click flags, as the tracker sends them. */
     const DEAD      = 1;
@@ -53,7 +53,8 @@ final class SEOProStats_Clicks {
     public static function report(array $req, $kind = 'elements', $page = '') {
         $kind = in_array($kind, self::KINDS, true) ? (string) $kind : 'elements';
         $page = trim((string) $page);
-        return SEOProStats_Query::cached('clicks', $req + array('kind' => $kind, 'page' => $page), static function () use ($req, $kind, $page) {
+        // Version the answer shape so pre-upgrade cache entries cannot omit page_info.
+        $answer = SEOProStats_Query::cached('clicks-pages', $req + array('kind' => $kind, 'page' => $page), static function () use ($req, $kind, $page) {
             $range  = SEOProStats_Query::range($req);
             $now    = self::scope($range, $req['filters'], $page);
             $totals = self::totals($now);
@@ -61,6 +62,7 @@ final class SEOProStats_Clicks {
                 'range'  => SEOProStats_Query::range_out($range),
                 'kind'   => $kind,
                 'page'   => $page,
+                'page_info' => self::page_info($page),
                 'totals' => $totals,
                 'rows'   => self::rows($now, $kind, (int) $req['limit'], (int) $req['offset'], $totals),
             );
@@ -75,6 +77,51 @@ final class SEOProStats_Clicks {
             }
             return $answer;
         });
+        // Cached page identities are shared; edit permissions must be checked
+        // on every request, including cache hits and after a role changes.
+        if ($answer['page_info'] !== null) {
+            $answer['page_info'] = self::with_edit_url($answer['page_info']);
+        }
+        if ($kind === 'pages') {
+            foreach ($answer['rows'] as &$row) {
+                $row = self::with_edit_url($row);
+            }
+            unset($row);
+        }
+        return $answer;
+    }
+
+    /**
+     * Resolve an exact local path, never a pattern or an external address.
+     * Only called for the selected page and the bounded returned page rows.
+     *
+     * @param string $path Page path.
+     * @return array{path:string,url:string,post_id:int,edit_url:null}|null
+     */
+    private static function page_info($path) {
+        if ($path === '' || $path[0] !== '/' || strpos($path, '//') === 0 || strpos($path, '*') !== false || strpos($path, '\\') !== false) {
+            return null;
+        }
+        $home = wp_parse_url(home_url('/'));
+        if (!is_array($home) || !isset($home['scheme'], $home['host'])) {
+            return null;
+        }
+        // Paths include the installation directory already on subdirectory sites.
+        $url = esc_url_raw($home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '') . $path);
+        return array('path' => $path, 'url' => $url, 'post_id' => url_to_postid($url), 'edit_url' => null);
+    }
+
+    /**
+     * Add the current viewer's editor link, outside the shared report cache.
+     * Shared read-only interfaces must omit this field entirely.
+     *
+     * @param array<string,mixed> $info Page identity or page row.
+     * @return array<string,mixed>
+     */
+    private static function with_edit_url(array $info) {
+        $post_id = (int) $info['post_id'];
+        $info['edit_url'] = $post_id && current_user_can('edit_post', $post_id) ? (get_edit_post_link($post_id, 'raw') ?: null) : null;
+        return $info;
     }
 
     /**
@@ -168,6 +215,9 @@ final class SEOProStats_Clicks {
         if ($scope === null) {
             return array();
         }
+        if ($kind === 'pages') {
+            return self::page_rows($scope, $limit, $offset, $totals);
+        }
         $form  = $kind === 'forms';
         $links = in_array($kind, array('links', 'downloads'), true);
         $only  = '';
@@ -225,6 +275,37 @@ final class SEOProStats_Clicks {
                 'download'  => !$form && ($flags & self::DOWNLOAD) > 0,
                 'fields'    => $form ? (int) $row['fields'] : 0,
             );
+        }
+        return $out;
+    }
+
+    /**
+     * Page-level click and form totals, grouped only by the page's identity.
+     *
+     * @param array{sql:string,args:array<int,mixed>} $scope Scope.
+     * @param int $limit Rows returned.
+     * @param int $offset Rows skipped.
+     * @param array<string,int|float> $totals Report totals.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function page_rows(array $scope, $limit, $offset, array $totals) {
+        global $wpdb;
+        $args = array_merge(array(SEOProStats_Schema::CLICK, SEOProStats_Schema::CLICK, self::DEAD, SEOProStats_Schema::CLICK, SEOProStats_Schema::FORM), $scope['args'], array($limit, $offset));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- bounded report reads clicks by ts or path_ts and visits by primary key; scope contains only placeholders.
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT c.path_id, SUM(c.kind = %d) AS n, SUM(c.kind = %d AND c.flags & %d > 0) AS dead, SUM(c.kind = %d AND c.target_id <> 0) AS links, SUM(c.kind = %d) AS forms, COUNT(DISTINCT c.session_id) AS visits {$scope['sql']} GROUP BY c.path_id HAVING n > 0 ORDER BY n DESC, c.path_id LIMIT %d OFFSET %d", $args), ARRAY_A);
+        $text = SEOProStats_Query::texts(array_map('intval', array_column($rows, 'path_id')));
+        $out  = array();
+        foreach ($rows as $row) {
+            $path  = isset($text[(int) $row['path_id']]) ? $text[(int) $row['path_id']] : '';
+            $count = (int) $row['n'];
+            $dead  = (int) $row['dead'];
+            $out[] = array_merge(array(
+                'selector' => '', 'label' => '', 'target' => '',
+                'count' => $count, 'dead' => $dead, 'dead_rate' => $count ? round($dead / $count, 4) : 0,
+                'links' => (int) $row['links'], 'forms' => (int) $row['forms'], 'visits' => (int) $row['visits'],
+                'share' => $totals['clicks'] ? round($count / $totals['clicks'], 4) : 0,
+                'outbound' => false, 'affiliate' => false, 'download' => false, 'fields' => 0,
+            ), self::page_info($path) ?: array('path' => $path, 'url' => '', 'post_id' => 0, 'edit_url' => null));
         }
         return $out;
     }

@@ -622,7 +622,17 @@ kind: clicked elements (by selector and label, with their dead clicks),
 dead clicks only, link destinations, file links, or forms (by name,
 selector and destination, with their field count). A page filter also
 narrows the clicks to that page. They reach back as far as clicks are
-kept (3 months by default).
+kept (3 months by default). The `pages` kind groups by `clicks.path_id`,
+ordered by clicks, with dead clicks, dead-click rate, link clicks, forms
+sent and visits on each page; it uses the existing `ts` / `path_ts` keys.
+Choosing a page row narrows only Clicks; choosing it again clears the page.
+An exact page (not a `*` pattern) carries `page_info` with its local address
+and `url_to_postid()` identity. Only the returned page rows are resolved,
+inside the report cache. Editor addresses are added after the shared cache
+on every request, only with `current_user_can('edit_post', post_id)`, so
+cached administrator answers never leak links to another viewer. Future
+shared read-only views must omit `edit_url`. All lookups run in reporting
+requests, never on visitor pages. Unknown demo paths have no editor link.
 
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12

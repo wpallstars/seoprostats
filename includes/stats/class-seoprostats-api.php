@@ -252,7 +252,7 @@ final class SEOProStats_API {
             'callback' => array(__CLASS__, 'clicks'),
             'args'     => $base + array(
                 'kind'   => array(
-                    'description' => __('Rows: clicked elements, dead clicks only, link destinations, file links or forms sent.', 'seoprostats'),
+                    'description' => __('Rows: clicked elements, dead clicks only, link destinations, file links, forms sent or pages.', 'seoprostats'),
                     'type'        => 'string',
                     'enum'        => SEOProStats_Clicks::KINDS,
                     'default'     => 'elements',

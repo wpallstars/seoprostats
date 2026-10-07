@@ -11,7 +11,7 @@
 import { useId, useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClickTotals } from '@seoprostats/core';
+import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClickTotals, type ClickPageInfo } from '@seoprostats/core';
 import { errorMessage, useBreakdown, useClicks } from './api';
 import { locale } from './boot';
 import type { ViewProps } from './App';
@@ -28,6 +28,12 @@ interface Tile {
 }
 
 const tiles = (): Tile[] => [
+	{
+		kind: 'pages',
+		label: __('Pages', 'seoprostats'),
+		total: 'clicks',
+		foot: () => __('Where people click', 'seoprostats'),
+	},
 	{
 		kind: 'elements',
 		label: __('Clicks', 'seoprostats'),
@@ -55,7 +61,7 @@ const tiles = (): Tile[] => [
 				/* translators: 1: outbound link clicks, 2: affiliate link clicks. */
 				__('%1$s outbound · %2$s affiliate', 'seoprostats'),
 				formatNumber(t.outbound, locale),
-				formatNumber(t.affiliate, locale)
+				formatNumber(t.affiliate, locale),
 			),
 	},
 	{
@@ -83,7 +89,10 @@ function emptyText(kind: ClickKind): string {
 		case 'forms':
 			return __('No forms sent in this period.', 'seoprostats');
 		default:
-			return __('No clicks in this period. Clicks are counted when "Count clicks and form submits" is on (Settings → Tracking), and kept for the months set in Settings → Data.', 'seoprostats');
+			return __(
+				'No clicks in this period. Clicks are counted when "Count clicks and form submits" is on (Settings → Tracking), and kept for the months set in Settings → Data.',
+				'seoprostats',
+			);
 	}
 }
 
@@ -110,6 +119,32 @@ function Flags({ row }: { row: ClickRow }) {
 	return flags.length ? <span className="spst-meta">{flags.join(' · ')}</span> : null;
 }
 
+function PageLinks({ info }: { info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_url'> }) {
+	return (
+		<span className="spst-meta">
+			{info.url && (
+				<a
+					href={info.url}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={sprintf(/* translators: %s: page path. */ __('View %s (opens in a new tab)', 'seoprostats'), info.path)}
+				>
+					<span className="dashicons dashicons-external" aria-hidden="true" /> {__('View page', 'seoprostats')}
+				</a>
+			)}
+			{info.edit_url && (
+				<>
+					{' '}
+					·{' '}
+					<a href={info.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), info.path)}>
+						<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
+					</a>
+				</>
+			)}
+		</span>
+	);
+}
+
 export function Clicks({ state }: ViewProps) {
 	const [kind, setKind] = useState<ClickKind>('elements');
 	const [page, setPage] = useState('');
@@ -124,6 +159,7 @@ export function Clicks({ state }: ViewProps) {
 	const change = answer?.compare?.change;
 	const all = tiles();
 	const tile = all.find((t) => t.kind === kind) ?? all[0]!;
+	const pageInfo = answer?.page === page ? answer.page_info : null;
 
 	return (
 		<>
@@ -140,6 +176,7 @@ export function Clicks({ state }: ViewProps) {
 							{page ? sprintf(/* translators: %s: a page path. */ __('Clicks on %s', 'seoprostats'), page) : __('Clicks', 'seoprostats')}
 						</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+						{pageInfo && <PageLinks info={pageInfo} />}
 					</div>
 					<form
 						className="spst-properties__event"
@@ -158,9 +195,11 @@ export function Clicks({ state }: ViewProps) {
 							onChange={setTyped}
 						/>
 						<datalist id={list}>
-							{(pages.data?.rows ?? []).filter((r) => r.value !== '').map((r) => (
-								<option key={r.value} value={r.value} />
-							))}
+							{(pages.data?.rows ?? [])
+								.filter((r) => r.value !== '')
+								.map((r) => (
+									<option key={r.value} value={r.value} />
+								))}
 						</datalist>
 						<Button variant="secondary" type="submit">
 							{__('Apply', 'seoprostats')}
@@ -211,25 +250,73 @@ export function Clicks({ state }: ViewProps) {
 								<thead>
 									<tr>
 										<th scope="col">
-											{kind === 'links' || kind === 'downloads'
-												? __('Destination', 'seoprostats')
-												: kind === 'forms'
-													? __('Form', 'seoprostats')
-													: __('Element', 'seoprostats')}
+											{kind === 'pages'
+												? __('Page', 'seoprostats')
+												: kind === 'links' || kind === 'downloads'
+													? __('Destination', 'seoprostats')
+													: kind === 'forms'
+														? __('Form', 'seoprostats')
+														: __('Element', 'seoprostats')}
 										</th>
 										{kind === 'forms' && <th scope="col">{__('Sent to', 'seoprostats')}</th>}
-										{kind === 'forms' && <th scope="col" className="num">{__('Fields', 'seoprostats')}</th>}
-										<th scope="col" className="num">{kind === 'forms' ? __('Sent', 'seoprostats') : __('Clicks', 'seoprostats')}</th>
-										<th scope="col" className="num">{__('Visits', 'seoprostats')}</th>
-										{kind === 'elements' && <th scope="col" className="num">{__('Dead', 'seoprostats')}</th>}
+										{kind === 'forms' && (
+											<th scope="col" className="num">
+												{__('Fields', 'seoprostats')}
+											</th>
+										)}
+										<th scope="col" className="num">
+											{kind === 'forms' ? __('Sent', 'seoprostats') : __('Clicks', 'seoprostats')}
+										</th>
+										<th scope="col" className="num">
+											{__('Visits', 'seoprostats')}
+										</th>
+										{(kind === 'elements' || kind === 'pages') && (
+											<th scope="col" className="num">
+												{__('Dead', 'seoprostats')}
+											</th>
+										)}
+										{kind === 'pages' && (
+											<>
+												<th scope="col" className="num">
+													{__('Dead-click rate', 'seoprostats')}
+												</th>
+												<th scope="col" className="num">
+													{__('Link clicks', 'seoprostats')}
+												</th>
+												<th scope="col" className="num">
+													{__('Forms sent', 'seoprostats')}
+												</th>
+											</>
+										)}
 									</tr>
 								</thead>
 								<tbody>
 									{rows.map((row) => (
-										<tr key={`${row.selector}|${row.label}|${row.target}`}>
+										<tr key={row.path ?? `${row.selector}|${row.label}|${row.target}`} className={kind === 'pages' && page === row.path ? 'is-selected' : ''}>
 											<td className="spst-table__bar-cell">
 												<span className="spst-table__bar" style={{ width: `${(row.count / top) * 100}%` }} aria-hidden="true" />
-												{kind === 'links' || kind === 'downloads' ? (
+												{kind === 'pages' ? (
+													<>
+														<Button
+															variant="link"
+															aria-pressed={page === row.path}
+															onClick={() => {
+																const next = page === row.path ? '' : (row.path ?? '');
+																setPage(next);
+																setTyped(next);
+															}}
+														>
+															{row.path}
+														</Button>
+														<PageLinks
+															info={{
+																path: row.path ?? '',
+																url: row.url ?? '',
+																edit_url: row.edit_url,
+															}}
+														/>
+													</>
+												) : kind === 'links' || kind === 'downloads' ? (
 													<>
 														<span>{row.target}</span>
 														{row.label && <span className="spst-meta">{row.label}</span>}
@@ -243,10 +330,17 @@ export function Clicks({ state }: ViewProps) {
 											{kind === 'forms' && <td className="num">{formatNumber(row.fields, locale)}</td>}
 											<td className="num">{formatNumber(row.count, locale)}</td>
 											<td className="num">{formatNumber(row.visits, locale)}</td>
-											{kind === 'elements' && (
+											{(kind === 'elements' || kind === 'pages') && (
 												<td className="num" title={formatPercent(row.dead_rate, locale)}>
 													{row.dead ? formatNumber(row.dead, locale) : <span className="spst-muted">–</span>}
 												</td>
+											)}
+											{kind === 'pages' && (
+												<>
+													<td className="num">{formatPercent(row.dead_rate, locale)}</td>
+													<td className="num">{formatNumber(row.links ?? 0, locale)}</td>
+													<td className="num">{formatNumber(row.forms ?? 0, locale)}</td>
+												</>
 											)}
 										</tr>
 									))}
@@ -257,7 +351,10 @@ export function Clicks({ state }: ViewProps) {
 					{answer && (
 						<p className="spst-note">
 							{kind === 'dead'
-								? __('A dead click is one on something that looks clickable, after which nothing on the page changed for a second. Many on one element usually mean people expect it to do something.', 'seoprostats')
+								? __(
+										'A dead click is one on something that looks clickable, after which nothing on the page changed for a second. Many on one element usually mean people expect it to do something.',
+										'seoprostats',
+									)
 								: kind === 'forms'
 									? __('Forms are counted by name, destination and number of fields. What people type or choose is never collected.', 'seoprostats')
 									: __('Labels hide email addresses and long numbers. Add data-sps-mask to an element to leave out its text.', 'seoprostats')}
