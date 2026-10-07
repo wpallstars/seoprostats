@@ -16,6 +16,10 @@
  *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
  *   visits from search that landed on it and their conversions (read).
+ * - seoprostats/experiments: changes and what they were meant to do,
+ *   measured against unchanged pages, with a suggested result (read).
+ * - seoprostats/experiment-record: record, decide, note or cancel an
+ *   experiment (administrators).
  *
  * On older WordPress the hooks never run.
  *
@@ -473,6 +477,185 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        self::register_experiments($data, $engine);
+    }
+
+    /**
+     * The experiment abilities.
+     *
+     * @param array<string,mixed> $data   The data property.
+     * @param array<string,mixed> $engine The engine property.
+     */
+    private static function register_experiments(array $data, array $engine) {
+        wp_register_ability('seoprostats/experiments', array(
+            'label'               => __('Experiments', 'seoprostats'),
+            'description'         => __('Changes made to pages and what they were meant to do, each measured over equal windows before and after against comparable unchanged pages: the effect, the usual spread of unchanged pages, the search engine updates and other changes of the time, and a suggested result (keep, revise, undo or inconclusive). Due ones first. With id, one experiment.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'id'     => array(
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'description' => __('One experiment, by id.', 'seoprostats'),
+                    ),
+                    'status' => array(
+                        'type'        => 'string',
+                        'enum'        => array('', 'running', 'due', 'decided', 'cancelled'),
+                        'description' => __('Only experiments in this state; due means running with data through the review day.', 'seoprostats'),
+                    ),
+                    'page'   => array(
+                        'type'        => 'string',
+                        'description' => __('Only experiments on this page (a path such as /pricing/).', 'seoprostats'),
+                    ),
+                    'data'   => $data,
+                ),
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'experiments'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/experiment-record', array(
+            'label'               => __('Record or decide an experiment', 'seoprostats'),
+            'description'         => __('Record an experiment before its result is known (a change to a page and what it should do: the measure, the direction and the smallest change that counts), or decide one (keep, revise, undo or inconclusive, with a note), or cancel it. Starting from a change in the change log fills in its time and page.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'required'             => array('action'),
+                'properties'           => array(
+                    'action'     => array(
+                        'type'        => 'string',
+                        'enum'        => array('add', 'decide', 'note', 'cancel'),
+                        'description' => __('add a new experiment; decide, note or cancel one (with id).', 'seoprostats'),
+                    ),
+                    'id'         => array(
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'description' => __('For decide, note and cancel: the experiment.', 'seoprostats'),
+                    ),
+                    'name'       => array(
+                        'type'        => 'string',
+                        'maxLength'   => 190,
+                        'description' => __('For add: the change and what it should do, in one line.', 'seoprostats'),
+                    ),
+                    'change'     => array(
+                        'type'        => 'integer',
+                        'minimum'     => 0,
+                        'description' => __('For add: the change it measures (its id from seoprostats/markers); its time is the start and its page the page.', 'seoprostats'),
+                    ),
+                    'start'      => array(
+                        'type'        => 'string',
+                        'description' => __('For add without change: when the change was made, in the site time zone (2026-10-05 or 2026-10-05 14:30); without it, now.', 'seoprostats'),
+                    ),
+                    'page'       => array(
+                        'type'        => 'string',
+                        'description' => __('For add: its page (a path such as /pricing/), or several, comma-separated (up to 50).', 'seoprostats'),
+                    ),
+                    'days'       => array(
+                        'type'        => 'integer',
+                        'enum'        => SEOProStats_Experiments::WINDOWS,
+                        'description' => __('For add: days in each window, before and after (default 28).', 'seoprostats'),
+                    ),
+                    'engine'     => $engine,
+                    'metric'     => array(
+                        'type'        => 'string',
+                        'enum'        => array_values(SEOProStats_Experiments::METRICS),
+                        'description' => __('For add: what it should change (default clicks). Visits are visits from search landing on the pages; conversions need goal.', 'seoprostats'),
+                    ),
+                    'direction'  => array(
+                        'type'        => 'string',
+                        'enum'        => array_values(SEOProStats_Experiments::DIRECTIONS),
+                        'description' => __('For add: expected direction (default up; for position, up means a better place).', 'seoprostats'),
+                    ),
+                    'threshold'  => array(
+                        'type'        => 'number',
+                        'minimum'     => 0,
+                        'description' => __('For add: the smallest change that counts: percent (default 10), or places for position (default 1).', 'seoprostats'),
+                    ),
+                    'goal'       => array(
+                        'type'        => 'string',
+                        'description' => __('For add with metric conversions: the goal\'s id.', 'seoprostats'),
+                    ),
+                    'hypothesis' => array(
+                        'type'        => 'string',
+                        'maxLength'   => 2000,
+                        'description' => __('For add: the reasoning, in more words.', 'seoprostats'),
+                    ),
+                    'result'     => array(
+                        'type'        => 'string',
+                        'enum'        => array_values(SEOProStats_Experiments::RESULTS),
+                        'description' => __('For decide: the result.', 'seoprostats'),
+                    ),
+                    'note'       => array(
+                        'type'        => 'string',
+                        'maxLength'   => 2000,
+                        'description' => __('Why, or what was learnt.', 'seoprostats'),
+                    ),
+                    'data'       => $data,
+                ),
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'experiment_record'),
+            'permission_callback' => array('SEOProStats_API', 'can_manage'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => false,
+                    'destructive' => false,
+                    'idempotent'  => false,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/experiments.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function experiments($input = null) {
+        $input = is_array($input) ? $input : array();
+        return SEOProStats_API::on_data(self::data($input), static function () use ($input) {
+            if (!empty($input['id'])) {
+                return SEOProStats_Experiments::get((int) $input['id']);
+            }
+            return SEOProStats_Experiments::list_experiments(array(
+                'status' => isset($input['status']) ? (string) $input['status'] : '',
+                'page'   => isset($input['page']) ? (string) $input['page'] : '',
+            ));
+        });
+    }
+
+    /**
+     * seoprostats/experiment-record.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function experiment_record($input = null) {
+        $input  = is_array($input) ? $input : array();
+        $action = isset($input['action']) ? (string) $input['action'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($input, $action) {
+            if ($action === 'add') {
+                return SEOProStats_Experiments::add($input);
+            }
+            if (empty($input['id'])) {
+                return new WP_Error('seoprostats_experiment', __('Give the experiment\'s id (seoprostats/experiments lists them).', 'seoprostats'), array('status' => 400));
+            }
+            return SEOProStats_Experiments::update((int) $input['id'], $input);
+        });
     }
 
     /**
