@@ -9,6 +9,7 @@
     --spst-accent: var(--spst-share-accent);
     --wp-admin-theme-color: var(--spst-share-accent);
     --spst-background: #fff;
+    --spst-grid: rgba(127, 127, 127, 0.18);
     color-scheme: light;
     background: var(--spst-background);
     min-height: 100vh;
