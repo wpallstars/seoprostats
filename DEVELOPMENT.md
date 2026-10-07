@@ -91,8 +91,18 @@ Every pull request and every push to `main` runs these in GitHub Actions
 | Release build | `scripts/preflight-release.sh --offline` | Versions, headers, `readme.txt`, presets (where the plugin has them) and the contents of both zips. |
 | Plugin Check | `scripts/plugin-check.sh` | The WordPress.org review tool, on both zips. |
 | Smoke test | `scripts/smoke-test.sh --wp 6.2 --php 7.4` and `scripts/smoke-test.sh` | Installs the GitHub zip on a site with 10,000 posts, loads the site and admin screens with default settings and with every feature on, runs cron, uninstalls. Lists each page's queries. Fails on any PHP message, a failed page, a full table scan or large sort in the plugin's own queries, or leftover options, cron events or tables (`{prefix}_*`). |
+| Shop test (when present) | `scripts/shop-test.sh` and `scripts/shop-test.sh --php 7.4 --wp 6.2` | Paid orders through WooCommerce's Store API, EDD, FluentCart and simulated ThriveCart webhooks on a disposable Docker site. Checks counts, amounts, currencies, visit joins, duplicates, exclusions, doctor and PHP messages. Run whenever purchases code or supported shops change and before the next release. |
 
 `scripts/lint.sh` with no arguments runs the first seven.
+
+The shop test defaults to PHP 8.2 and latest WordPress and shop versions.
+`--ref REF` builds that Git ref; `--zip FILE` tests an existing GitHub build;
+`--keep-log FILE` preserves the debug log even on failure. Pin shops with
+`--shop-versions woocommerce=11.1.2,easy-digital-downloads=3.7.1.1,fluent-cart=1.7.0`.
+It prints installed versions and skips only shops whose declared PHP or
+WordPress minimum exceeds the test site's version; failed downloads or
+activation still fail. No real payment gateways or ThriveCart account are
+contacted. The test fixture is development-only and never ships.
 
 The scripts work out which plugin they are in from its main file
 (`scripts/lib/plugin.sh`): the PHP file at the top of the repository with a
