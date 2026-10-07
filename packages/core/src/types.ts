@@ -371,7 +371,7 @@ export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as cons
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content', 'experiments'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'content', 'plan', 'experiments'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 /**
@@ -760,6 +760,121 @@ export interface ExperimentInput {
 	threshold?: number;
 	goal?: string;
 	hypothesis?: string;
+}
+
+/** Kinds of decision queue item: each an opportunity kind. */
+export type QueueKind = OpportunityKind;
+
+/** An item's state: new (worked out now) or as someone left it. */
+export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
+export type QueueStatus = (typeof QUEUE_STATUSES)[number];
+
+/** States a list can ask for; open (the default) is new and accepted. */
+export const QUEUE_FILTERS = ['open', 'new', 'accepted', 'done', 'dismissed', 'all'] as const;
+export type QueueFilter = (typeof QUEUE_FILTERS)[number];
+
+export type QueueAction = 'accept' | 'done' | 'dismiss' | 'restore' | 'effort' | 'note';
+
+/** score = clicks × value × confidence ÷ effort. */
+export interface QueueParts {
+	/** Potential clicks per 28 days. */
+	clicks: number;
+	/** How well the page's visits from search convert against the site; 1 without goal data. */
+	value: number;
+	/** 0–1: the kind's own, weighed by impressions. */
+	confidence: number;
+	/** 1 (least) to 5. */
+	effort: number;
+}
+
+/** The numbers behind an item; which are there depends on its kind. */
+export interface QueueFigures {
+	clicks: number;
+	impressions: number;
+	ctr?: number;
+	position: number | null;
+	expected_ctr?: number;
+	potential?: number;
+	then_clicks?: number;
+	then_position?: number;
+	lost?: number;
+	cause?: DecayCause;
+	match?: CoverageMatch;
+	missing?: string[];
+	question?: boolean;
+}
+
+export interface QueueItem extends OpportunityPage {
+	/** 16 hex characters: kind, engine, page and query. */
+	key: string;
+	kind: QueueKind;
+	engine: SearchEngine;
+	status: QueueStatus;
+	/** Whether the opportunity is still found in this period (else as it was when acted on). */
+	found: boolean;
+	query: string | null;
+	/** Why it is listed, in the site's language. */
+	why: string;
+	/** What to do, in the site's language. */
+	todo: string;
+	figures: QueueFigures;
+	/** The measure of the experiment done opens. */
+	metric: ExperimentMetric;
+	parts: QueueParts;
+	score: number;
+	note: string;
+	updated: string | null;
+	user: string | null;
+	effort_set: boolean;
+	experiment_id: number | null;
+	/** Done: the experiment it opened and its result. */
+	experiment: {
+		id: number;
+		name: string;
+		status: ExperimentStatus;
+		result: ExperimentResult | null;
+		due: boolean;
+		review: string;
+		metric: ExperimentMetric;
+		state: 'running' | 'ready' | null;
+		effect: number | null;
+		unit: 'ratio' | 'places' | null;
+		suggested: ExperimentResult | null;
+		summary: string | null;
+	} | null;
+}
+
+export interface QueueAnswer extends Answer, SearchEngineAnswer {
+	/** The period read: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	connected: boolean;
+	ignored: string[];
+	/** The goal giving value; null without goals. */
+	goal: { id: string; name: string } | null;
+	goals: { id: string; name: string }[];
+	/** The site's conversion rate of visits from search; null without a goal or visits. */
+	site_rate: number | null;
+	rules: {
+		scale_days: number;
+		effort: Record<QueueKind, number>;
+		confidence: Record<QueueKind, number>;
+		full_impressions: number;
+		missing_share: number;
+		smooth_visits: number;
+		max_value: number;
+		hide_days: number;
+		per_kind: number;
+	};
+	/** New items left out because their page has a running experiment. */
+	left_out: number;
+	status: QueueFilter;
+	counts: Record<QueueStatus, number>;
+	items: QueueItem[];
+	total: number;
+	more: boolean;
 }
 
 export interface ApiError {

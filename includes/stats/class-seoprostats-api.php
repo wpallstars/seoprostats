@@ -85,6 +85,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-content.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-experiments.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-queue.php';
     }
 
     /**
@@ -355,6 +356,7 @@ final class SEOProStats_API {
             ),
         ));
         self::experiment_routes($read, $manage, $data);
+        self::queue_routes($read, $manage, $base, $engine);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
@@ -517,6 +519,82 @@ final class SEOProStats_API {
                 'permission_callback' => $manage,
                 'callback'            => array(__CLASS__, 'experiment_delete'),
                 'args'                => $data,
+            ),
+        ));
+    }
+
+    /**
+     * Register the decision queue routes: read with view_seoprostats; act
+     * on an item with manage_options. Both take the period the list is
+     * made from (range, from, to, page filters), the engine and the goal.
+     *
+     * @param array<string,mixed> $read   Read route base.
+     * @param callable            $manage Write permission callback.
+     * @param array<string,mixed> $base   Report arguments.
+     * @param array<string,mixed> $engine The engine argument.
+     */
+    private static function queue_routes(array $read, $manage, array $base, array $engine) {
+        $ns   = SEOProStats_Collection::REST_NAMESPACE;
+        $list = array_diff_key($base, array('compare' => true)) + array(
+            'engine' => $engine,
+            'goal'   => array(
+                'description' => __('ID of the goal whose conversions give a page its value; the first goal when left out.', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+        );
+        $list['range'] = array('default' => '90d') + $list['range'];
+        register_rest_route($ns, '/queue', $read + array(
+            'callback' => array(__CLASS__, 'queue'),
+            'args'     => $list + array(
+                'status' => array(
+                    'description' => __('Items in this state: open (new and accepted), new, accepted, done, dismissed (in the last 90 days) or all.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Queue::FILTERS,
+                    'default'     => 'open',
+                ),
+                'limit'  => array('maximum' => SEOProStats_Queue::MAX_LIMIT, 'default' => SEOProStats_Queue::LIMIT) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/queue/(?P<key>[0-9a-fA-F]{16})', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => $manage,
+            'callback'            => array(__CLASS__, 'queue_update'),
+            'args'                => $list + array(
+                'action'    => array(
+                    'description' => __('accept, done (opens an experiment on the page with the kind\'s measure), dismiss (hidden for 90 days), restore (forget what was done with it), effort or note.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Queue::ACTIONS,
+                    'required'    => true,
+                ),
+                'effort'    => array(
+                    'description' => __('For effort: 1 (least) to 5.', 'seoprostats'),
+                    'type'        => 'integer',
+                    'minimum'     => 1,
+                    'maximum'     => SEOProStats_Queue::MAX_EFFORT,
+                ),
+                'note'      => array(
+                    'description' => __('A note (up to 190 characters).', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'name'      => array(
+                    'description' => __('For done: the experiment\'s name; without it, one made from the item.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'days'      => array(
+                    'description' => __('For done: days in each window of the experiment.', 'seoprostats'),
+                    'type'        => 'integer',
+                    'enum'        => SEOProStats_Experiments::WINDOWS,
+                    'default'     => SEOProStats_Experiments::DAYS,
+                ),
+                'threshold' => array(
+                    'description' => __('For done: the smallest change that counts: percent (default 10), or places for position (default 1).', 'seoprostats'),
+                    'type'        => 'number',
+                    'minimum'     => 0,
+                ),
             ),
         ));
     }
@@ -1349,6 +1427,38 @@ final class SEOProStats_API {
                 return new WP_Error('seoprostats_not_found', __('There is no such experiment.', 'seoprostats'), array('status' => 404));
             }
             return array('deleted' => true, 'id' => $id);
+        });
+    }
+
+    /**
+     * GET /queue: the decision queue, best first, with each item's why and
+     * score parts.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function queue($request) {
+        $engine = (string) $request->get_param('engine');
+        $status = (string) $request->get_param('status');
+        $goal   = (string) $request->get_param('goal');
+        return self::report($request, static function ($req) use ($engine, $status, $goal) {
+            return SEOProStats_Queue::report($req, $engine, $status, $goal);
+        });
+    }
+
+    /**
+     * POST /queue/{key}: accept, done, dismiss, restore, effort or note.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function queue_update($request) {
+        $key    = (string) $request->get_param('key');
+        $engine = (string) $request->get_param('engine');
+        $goal   = (string) $request->get_param('goal');
+        $input  = (array) $request->get_params();
+        return self::report($request, static function ($req) use ($key, $input, $engine, $goal) {
+            return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
         });
     }
 

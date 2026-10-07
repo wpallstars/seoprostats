@@ -32,6 +32,10 @@ import {
 	type OpportunitiesAnswer,
 	type OpportunityKind,
 	type PropertiesAnswer,
+	type QueueAction,
+	type QueueAnswer,
+	type QueueFilter,
+	type QueueItem,
 	type RealtimeAnswer,
 	type SearchAnswer,
 	type SearchKind,
@@ -282,9 +286,10 @@ export function useExperiments() {
 	});
 }
 
-/** After an experiment is added, decided or deleted: the list, and the markers and change log (its start). */
+/** After an experiment is added, decided or deleted: the list, the plan (its pages, done items' results), and the markers and change log (its start). */
 function refreshExperiments(): void {
 	void queryClient.invalidateQueries({ queryKey: ['experiments'] });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
 	refreshChanges();
 }
 
@@ -309,6 +314,39 @@ export async function updateExperiment(
 export async function deleteExperiment(data: DataSet, id: number): Promise<void> {
 	await apiFetch({ path: addQueryArgs(`${NAMESPACE}/experiments/${id}`, { data }), method: 'DELETE' });
 	refreshExperiments();
+}
+
+/** The decision queue's period and choices: page filters apply; the comparison does not. */
+function queueArgs(scope: SearchScope, goal: string): Args {
+	return { ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), ...(goal ? { goal } : {}) };
+}
+
+/** The decision queue: items in a state (open: new and accepted), best first. */
+export function useQueue(scope: SearchScope, status: QueueFilter, goal: string, limit = 50, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...queueArgs(scope, goal), status, limit, offset }, data);
+	return useQuery({
+		queryKey: ['queue', args],
+		queryFn: () => get<QueueAnswer>('queue', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Act on a queue item (administrators); done opens an experiment, so experiments and markers are asked again too. */
+export async function updateQueueItem(
+	data: DataSet,
+	scope: SearchScope,
+	goal: string,
+	key: string,
+	change: { action: QueueAction; effort?: number; note?: string }
+): Promise<QueueItem> {
+	const saved = await send<QueueItem>(`queue/${key}`, 'POST', { ...queueArgs(scope, goal), ...change, data });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
+	if (change.action === 'done') {
+		refreshExperiments();
+	}
+	return saved;
 }
 
 /** After a note is added or deleted, the markers and the change log are asked again. */

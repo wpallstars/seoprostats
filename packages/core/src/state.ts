@@ -16,6 +16,7 @@ import {
 	CLICK_KINDS,
 	COMPARE_KEYS,
 	CONTENT_SORTS,
+	QUEUE_FILTERS,
 	RANGE_KEYS,
 	SEARCH_ENGINES,
 	SEARCH_KINDS,
@@ -25,6 +26,7 @@ import {
 	type ContentSort,
 	type Dimension,
 	type MetricKey,
+	type QueueFilter,
 	type RangeKey,
 	type SearchEngine,
 	type SearchKind,
@@ -81,8 +83,10 @@ export interface ViewState {
 	engine?: SearchEngine;
 	/** Search → Content: the order of the pages. */
 	sort?: ContentSort;
-	/** Search → Content: the goal counted (its ID); the first when left out. */
+	/** Search → Content: the goal counted; Search → Plan: the goal giving value (its ID); the first when left out. */
 	goal?: string;
+	/** Search → Plan: the items shown (open when left out). */
+	status?: QueueFilter;
 	/** Search: the table shown. */
 	tab?: SearchKind;
 	/** Search: the chart's metric. */
@@ -96,7 +100,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -148,6 +152,11 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		if (report === 'content') {
 			const sort = oneOf(CONTENT_SORTS, params.get('sort'), 'clicks');
 			set('sort', sort === 'clicks' ? undefined : sort);
+			set('goal', text(params.get('goal')));
+		}
+		if (report === 'plan') {
+			const status = oneOf(QUEUE_FILTERS, params.get('status'), 'open');
+			set('status', status === 'open' ? undefined : status);
 			set('goal', text(params.get('goal')));
 		}
 		if (report === 'experiments') {
