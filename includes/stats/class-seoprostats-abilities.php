@@ -14,6 +14,8 @@
  *   their page, and queries shared by several pages (read).
  * - seoprostats/audit: published pages with findings from their content
  *   and SEO plugin fields, weighed by search impressions (read).
+ * - seoprostats/links: orphan pages, converting pages with few links in,
+ *   and links missing between pages that share a search (read).
  * - seoprostats/coverage: one page's queries, each checked against the
  *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
@@ -399,6 +401,84 @@ final class SEOProStats_Abilities {
                 ),
             ),
             'execute_callback'    => array(__CLASS__, 'audit'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/links', array(
+            'label'               => __('Internal links', 'seoprostats'),
+            'description'         => __('Links between the site\'s own pages, read from the text of published pages, in three lists. orphans: pages no other page links to (the front page is left out), most search impressions first. converting: pages whose visits from search reach the goal 3 times or more with 2 or fewer pages linking to them, most conversions first: link to them from related pages. missing: a page shows for a search but does not link to the page that gets most of its clicks, with the searches and both pages\' figures, most impressions first: add the link. Rows name the pages linking in (up to 5); counts give each list\'s size and read how many pages\' links were read so far. Links are read with the content audit when a post is saved and by a daily batch.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'kind'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Links::KINDS,
+                        'default'     => 'orphans',
+                        'description' => __('Which list.', 'seoprostats'),
+                    ),
+                    'goal'   => array(
+                        'type'        => 'string',
+                        'default'     => '',
+                        'description' => __('ID of the goal whose conversions are counted; the first goal when empty.', 'seoprostats'),
+                    ),
+                    'engine' => $engine,
+                    'range'  => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period of the search figures and conversions, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'   => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'     => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'limit'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Links::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'offset' => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'   => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'connected' => array('type' => 'boolean'),
+                    'kind'      => array('type' => 'string'),
+                    'goal'      => array('type' => array('object', 'null')),
+                    'rules'     => array('type' => 'object'),
+                    'read'      => array('type' => 'object'),
+                    'counts'    => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'links'),
             'permission_callback' => array('SEOProStats_API', 'can_read'),
             'meta'                => array(
                 'show_in_rest' => true,
@@ -989,6 +1069,26 @@ final class SEOProStats_Abilities {
         $engine  = isset($input['engine']) ? (string) $input['engine'] : 'google';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $finding, $engine) {
             return SEOProStats_Audit::report((array) $req, $engine, $finding);
+        });
+    }
+
+    /**
+     * seoprostats/links.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function links($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $kind   = isset($input['kind']) ? (string) $input['kind'] : 'orphans';
+        $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $goal, $engine) {
+            return SEOProStats_Links::report((array) $req, $engine, $kind, $goal);
         });
     }
 

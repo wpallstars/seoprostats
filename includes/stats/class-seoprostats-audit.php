@@ -13,6 +13,8 @@
  * more than STALE_DAYS ago, by the posts table's primary key from where
  * the last run stopped; every page is read again after the SEO plugin is
  * switched. A post's row goes when it is deleted or no longer published.
+ * The links in the same text are written with the facts
+ * (SEOProStats_Links): page_links, and page_facts.links_in.
  *
  * Findings: title or description missing or long, the same title or
  * description as another page (by the hash keys), no H1 or several, a
@@ -42,7 +44,7 @@ if (!defined('ABSPATH')) {
 
 final class SEOProStats_Audit {
 
-    /** Progress, per data set (autoload off): cursor (post ID), plugin, since (read all again from), version (facts written), last (cron run). */
+    /** Progress, per data set (autoload off): cursor (post ID), plugin, since (read all again from), version (facts written), last (cron run), links (links read from). */
     const OPTION = 'seoprostats_audit';
 
     /** Posts read per cron run at most, and its seconds. */
@@ -196,6 +198,12 @@ final class SEOProStats_Audit {
             $state['since']  = time();
             $state['cursor'] = 0;
         }
+        if (!$state['links']) {
+            // Links came with an update: every page is read again for them.
+            $state['links']  = time();
+            $state['since']  = $state['links'];
+            $state['cursor'] = 0;
+        }
         $types = self::post_types();
         $old   = max((int) $state['since'], time() - self::STALE_DAYS * DAY_IN_SECONDS);
         $stop  = !$types;
@@ -294,11 +302,13 @@ final class SEOProStats_Audit {
         if (!$facts) {
             return 0;
         }
+        require_once __DIR__ . '/class-seoprostats-links.php';
         $ids   = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($facts));
         $table = SEOProStats_Schema::table('page_facts');
         $now   = time();
         $args  = array();
         $keep  = array();
+        $links = array();
         $n     = 0;
         foreach ($facts as $path => $f) {
             $path_id = isset($ids[SEOProStats_Dict::clean((string) $path)]) ? (int) $ids[SEOProStats_Dict::clean((string) $path)] : 0;
@@ -306,6 +316,7 @@ final class SEOProStats_Audit {
                 continue;
             }
             $keep[(int) $f['post_id']][] = $path_id;
+            $links[$path_id]             = isset($f['links']) ? (array) $f['links'] : array();
             array_push($args, $path_id, (int) $f['post_id'], $now, (int) $f['modified'], (int) $f['title_len'], (int) $f['seo_title_len'], (int) $f['desc_len'], (string) $f['title_hash'], (string) $f['desc_hash'], (int) $f['h1'], (int) $f['words'], (int) $f['images'], (int) $f['images_no_alt'], (int) $f['noindex'], (int) $f['canonical_away'], (int) $f['flags']);
             ++$n;
         }
@@ -321,20 +332,31 @@ final class SEOProStats_Audit {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $groups holds only placeholder groups and $update fixed column names.
         $wpdb->query($wpdb->prepare("INSERT INTO %i (path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, title_hash, desc_hash, h1, words, images, images_no_alt, noindex, canonical_away, flags) VALUES $groups ON DUPLICATE KEY UPDATE $update", array_merge(array($table), $args)));
 
-        // A post's rows at its old addresses go (a changed slug or parent).
+        // A post's rows at its old addresses go (a changed slug or parent), with their links.
+        $gone = array();
         foreach ($keep as $post_id => $paths) {
             if (!$post_id) {
                 continue;
             }
             $holders = implode(', ', array_fill(0, count($paths), '%d'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its post_id key; $holders holds only placeholders.
-            $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE post_id = %d AND path_id NOT IN ($holders)", array_merge(array($table, (int) $post_id), $paths)));
+            $args    = array_merge(array($table, (int) $post_id), $paths);
+            // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its post_id key; $holders holds only placeholders.
+            $old = array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i WHERE post_id = %d AND path_id NOT IN ($holders)", $args)));
+            if ($old) {
+                $gone = array_merge($gone, $old);
+                $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE post_id = %d AND path_id NOT IN ($holders)", $args));
+            }
+            // phpcs:enable
         }
+
+        // The pages' links, and the pages linking to the pages they link to (and to them: new rows).
+        $changed = SEOProStats_Links::replace($links, $gone);
+        SEOProStats_Links::recount(array_merge($changed, array_keys($links)));
         return $n;
     }
 
     /**
-     * Forget posts' facts.
+     * Forget posts' facts and their links.
      *
      * @param int[] $post_ids Posts.
      * @return int Rows deleted.
@@ -345,9 +367,17 @@ final class SEOProStats_Audit {
         if (!$post_ids) {
             return 0;
         }
+        require_once __DIR__ . '/class-seoprostats-links.php';
         $holders = implode(', ', array_fill(0, count($post_ids), '%d'));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its post_id key; $holders holds only placeholders.
-        return (int) $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE post_id IN ($holders)", array_merge(array(SEOProStats_Schema::table('page_facts')), $post_ids)));
+        $args    = array_merge(array(SEOProStats_Schema::table('page_facts')), $post_ids);
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its post_id key; $holders holds only placeholders.
+        $paths = array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i WHERE post_id IN ($holders)", $args)));
+        $gone  = (int) $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE post_id IN ($holders)", $args));
+        // phpcs:enable
+        if ($paths) {
+            SEOProStats_Links::recount(SEOProStats_Links::replace(array(), $paths));
+        }
+        return $gone;
     }
 
     /**
@@ -377,13 +407,15 @@ final class SEOProStats_Audit {
 
     /**
      * A page's facts from its text (SEOProStats_Coverage::text_of_post(),
-     * or SEOProStats_Demo::text()), with the flags of its own findings.
+     * or SEOProStats_Demo::text()), with the flags of its own findings and
+     * its links to the site's pages (SEOProStats_Links::parse()).
      *
      * @param array<string,mixed> $text Text.
      * @param string              $path The page's path.
-     * @return array<string,int|string>
+     * @return array<string,mixed>
      */
     public static function facts(array $text, $path) {
+        require_once __DIR__ . '/class-seoprostats-links.php';
         $html = (string) preg_replace('/\[\/?[a-zA-Z][^\[\]]*\]/', ' ', isset($text['content']) ? (string) $text['content'] : '');
         if (strlen($html) > SEOProStats_Coverage::MAX_TEXT) {
             $html = function_exists('mb_strcut') ? mb_strcut($html, 0, SEOProStats_Coverage::MAX_TEXT, 'UTF-8') : substr($html, 0, SEOProStats_Coverage::MAX_TEXT);
@@ -446,6 +478,7 @@ final class SEOProStats_Audit {
             'noindex'        => $noindex ? 1 : 0,
             'canonical_away' => $away ? 1 : 0,
             'flags'          => $flags,
+            'links'          => SEOProStats_Links::parse($html),
         );
     }
 
@@ -493,10 +526,7 @@ final class SEOProStats_Audit {
      */
     public static function report(array $req, $engine = 'google', $finding = '') {
         self::load();
-        if (SEOProStats_Schema::set() === 'live' && !self::state()['last']) {
-            // Not read yet (the daily cron has not run since the update): a first few pages now.
-            self::batch(self::CHUNK, 5);
-        }
+        self::first_read();
         $finding = (string) $finding;
         if ($finding !== '' && !in_array($finding, self::FINDINGS, true)) {
             /* translators: %s: list of findings */
@@ -886,9 +916,25 @@ final class SEOProStats_Audit {
     }
 
     /**
+     * Pages not read yet on live data (the daily cron has not run since
+     * the update, or links came since): a first few pages now, for the
+     * audit and internal links reports.
+     */
+    public static function first_read() {
+        if (SEOProStats_Schema::set() !== 'live') {
+            return;
+        }
+        $state = self::state();
+        if (!$state['last'] || !$state['links']) {
+            self::load();
+            self::batch(self::CHUNK, 5);
+        }
+    }
+
+    /**
      * Progress of the current data set.
      *
-     * @return array{cursor:int,plugin:string,since:int,version:int,last:int}
+     * @return array{cursor:int,plugin:string,since:int,version:int,last:int,links:int}
      */
     public static function state() {
         $state = get_option(SEOProStats_Schema::option(self::OPTION), array());
@@ -899,15 +945,22 @@ final class SEOProStats_Audit {
             'since'   => isset($state['since']) ? (int) $state['since'] : 0,
             'version' => isset($state['version']) ? (int) $state['version'] : 0,
             'last'    => isset($state['last']) ? (int) $state['last'] : 0,
+            'links'   => isset($state['links']) ? (int) $state['links'] : 0,
         );
     }
 
     /**
      * Note that facts were written, so cached reports are made again.
+     *
+     * @param int $links_from When every page's links were read from (the
+     *                        demo, written at once); 0 to leave it.
      */
-    public static function touch() {
+    public static function touch($links_from = 0) {
         $state            = self::state();
         $state['version'] = time();
+        if ($links_from && !$state['links']) {
+            $state['links'] = (int) $links_from;
+        }
         update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
     }
 

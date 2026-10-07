@@ -149,6 +149,7 @@ final class SEOProStats_Links {
         if (!$ids) {
             return array();
         }
+        require_once __DIR__ . '/class-seoprostats-dict.php';
         $table   = SEOProStats_Schema::table('page_links');
         $changed = array();
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key (from_path); $holders and $groups hold only placeholders.
@@ -240,7 +241,16 @@ final class SEOProStats_Links {
         SEOProStats_Audit::first_read();
         $engine = SEOProStats_Search::engine_name($engine);
         $live   = SEOProStats_Schema::set() === 'live';
-        $all    = SEOProStats_Query::cached('links', array_diff_key($req, array('limit' => true, 'offset' => true)) + array('engine' => $engine, 'goal' => (string) $goal, 'imports' => SEOProStats_Search::version(), 'facts' => SEOProStats_Audit::state()['version']), static function () use ($req, $engine, $goal) {
+        $key    = array(
+            'engine'   => $engine,
+            'goal'     => (string) $goal,
+            'goals'    => SEOProStats_Goals::goals(),
+            'imports'  => SEOProStats_Search::version(),
+            'landings' => SEOProStats_Rollup::landings_from(),
+            'facts'    => SEOProStats_Audit::state()['version'],
+        );
+        // Every list is made once and paged from the cache.
+        $all    = SEOProStats_Query::cached('links', array_diff_key($req, array('limit' => true, 'offset' => true)) + $key, static function () use ($req, $engine, $goal) {
             return self::build($req, $engine, (string) $goal);
         });
         $limit  = max(1, min(self::MAX_LIMIT, isset($req['limit']) ? (int) $req['limit'] : self::LIMIT));
@@ -315,7 +325,8 @@ final class SEOProStats_Links {
         $answer['goals'] = $value['goals'];
         $facts           = self::few($pages);
         $sums            = $now ? SEOProStats_Opportunities::sums('gsc_pages', $engine, $now, $pages) : array();
-        $front           = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array(SEOProStats_Changes::path(home_url('/'))));
+        // Demo pages' paths are the site's own from its root.
+        $front           = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array(SEOProStats_Schema::set() === 'demo' ? '/' : SEOProStats_Changes::path(home_url('/'))));
         $front           = $front ? (int) $front[0] : 0;
         $zero            = array('c' => 0, 'i' => 0, 'p' => 0);
 
@@ -621,6 +632,9 @@ final class SEOProStats_Links {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-changes.php';
         require_once __DIR__ . '/class-seoprostats-opportunities.php';
+        require_once __DIR__ . '/class-seoprostats-goals.php';
+        require_once __DIR__ . '/class-seoprostats-conversions.php';
+        require_once __DIR__ . '/class-seoprostats-rollup.php';
         require_once __DIR__ . '/class-seoprostats-content.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
     }

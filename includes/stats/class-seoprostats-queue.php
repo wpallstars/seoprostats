@@ -12,7 +12,10 @@
  *   MISSING_SHARE; overlap: the clicks the query's pages would have with
  *   the best of their CTRs, so items where no page does better are left
  *   out; audit: the page's expected clicks at its position × the
- *   finding's share, SEOProStats_Audit::SHARE), scaled to 28 days;
+ *   finding's share, SEOProStats_Audit::SHARE; links: the page's
+ *   expected clicks at its position × LINKS_SHARE, for a missing link the
+ *   impressions of the searches on the page that should link), scaled to
+ *   28 days;
  * - value: how well visits from search to the page convert against the
  *   site (the Content report's goal), smoothed toward the site's rate
  *   with SMOOTH visits; at least 1 (a page with no goal data is 1) and at
@@ -23,6 +26,9 @@
  *
  * Audit items are one per page and finding (the key's query is the
  * finding), on the pages with most impressions (SEOProStats_Audit).
+ * Links items (SEOProStats_Links) are one per page and list: orphan,
+ * converting, or missing (on the page the link should go to; the key's
+ * query names the page that should link).
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -58,6 +64,7 @@ final class SEOProStats_Queue {
         4 => 'decay',
         5 => 'overlap',
         6 => 'audit',
+        7 => 'links',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -75,17 +82,21 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1);
     const MAX_EFFORT = 5;
 
-    /** Effort of audit findings other than the audit kind's. */
+    /** Effort of audit findings and links lists other than their kind's. */
     const AUDIT_EFFORT = array('thin' => 3);
+    const LINKS_EFFORT = array('converting' => 2);
 
     /** The kind's own confidence, before the impressions are weighed. */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4);
 
     /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks');
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks');
+
+    /** Share of a page's expected clicks links put at stake, by links list. */
+    const LINKS_SHARE = array('missing' => 0.2, 'orphans' => 0.1, 'converting' => 0.1);
 
     /** Audit findings measured otherwise than the audit kind's. */
     const AUDIT_METRIC = array(
@@ -198,6 +209,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-dict.php';
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
+        require_once __DIR__ . '/class-seoprostats-links.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -208,6 +220,12 @@ final class SEOProStats_Queue {
         // Audit findings on the pages with most impressions.
         $audit = SEOProStats_Audit::report($ask, $engine);
         $audit = is_wp_error($audit) ? array() : $audit['rows'];
+        // Internal links: each list's first rows (one cached report).
+        $links = array();
+        foreach (SEOProStats_Links::KINDS as $list) {
+            $answer       = SEOProStats_Links::report($ask, $engine, $list, $goal);
+            $links[$list] = is_wp_error($answer) ? array() : $answer['rows'];
+        }
         $head  = $found['striking'];
         $days  = (int) $head['days'];
         $curve = isset($head['curve']['ctr']) && is_array($head['curve']['ctr']) ? $head['curve']['ctr'] : SEOProStats_Opportunities::DEFAULT_CURVE;
@@ -236,6 +254,14 @@ final class SEOProStats_Queue {
                     }
                 }
             }
+            foreach ($links as $list => $rows) {
+                foreach ($rows as $row) {
+                    $item = self::links_item($engine, $row, (string) $list, $days, $curve, $value);
+                    if ($item && !isset($items[$item['key']])) {
+                        $items[$item['key']] = $item;
+                    }
+                }
+            }
         }
 
         return array(
@@ -255,6 +281,8 @@ final class SEOProStats_Queue {
                     'scale_days'       => self::SCALE_DAYS,
                     'effort'           => self::EFFORT,
                     'audit_effort'     => self::AUDIT_EFFORT,
+                    'links_effort'     => self::LINKS_EFFORT,
+                    'links_share'      => self::LINKS_SHARE,
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
                     'missing_share'    => self::MISSING_SHARE,
@@ -455,6 +483,108 @@ final class SEOProStats_Queue {
     }
 
     /**
+     * One item from an internal links row (SEOProStats_Links): an orphan
+     * page, a converting page with few links in, or a missing link (on the
+     * page it should go to). Potential clicks: the page's impressions (a
+     * missing link: those of the searches on the page that should link) ×
+     * the site's expected CTR at the page's position × LINKS_SHARE. Null
+     * without potential clicks.
+     *
+     * @param string              $engine Engine name.
+     * @param array<string,mixed> $row    Links row.
+     * @param string              $list   orphans, converting or missing.
+     * @param int                 $days   Days of the period.
+     * @param array<int,float>    $curve  Expected CTR by position.
+     * @param array<string,mixed> $value  From values().
+     * @return array<string,mixed>|null
+     */
+    private static function links_item($engine, array $row, $list, $days, array $curve, array $value) {
+        $missing = $list === 'missing';
+        $page    = $missing ? (array) $row['to'] : $row;
+        $impr    = (int) $row['impressions'];
+        if ($impr < 1 || (int) $page['impressions'] < 1 || !isset(self::LINKS_SHARE[$list])) {
+            return null;
+        }
+        $scale  = self::SCALE_DAYS / max(1, (int) $days);
+        $place  = max(1, min(20, (int) round((float) $page['position'])));
+        $clicks = $impr * (float) $curve[$place] * self::LINKS_SHARE[$list];
+        if ($clicks * $scale < 1) {
+            return null;
+        }
+        $figures = array(
+            'list'         => $list,
+            'clicks'       => (int) $page['clicks'],
+            'impressions'  => (int) $page['impressions'],
+            'ctr'          => $page['ctr'],
+            'position'     => $page['position'],
+            'expected_ctr' => round((float) $curve[$place], 4),
+            'share'        => self::LINKS_SHARE[$list],
+        );
+        $num = static function ($n) {
+            return number_format_i18n((int) $n);
+        };
+        if ($missing) {
+            $searches = array_map(static function ($query) {
+                return '“' . (string) $query['query'] . '”';
+            }, (array) $row['queries']);
+            $figures += array(
+                'from'             => array('path_id' => (int) $row['path_id'], 'path' => (string) $row['path'], 'url' => (string) $row['url']),
+                'from_impressions' => $impr,
+                'from_position'    => $row['position'],
+                'queries'          => array_values((array) $row['queries']),
+                'query_count'      => (int) $row['query_count'],
+            );
+            /* translators: 1: page path that should link, 2: impressions, 3: searches, 4: page path it should link to */
+            $why  = sprintf(__('%1$s shows for searches this page gets most clicks for (%2$s impressions: %3$s), but does not link to %4$s.', 'seoprostats'), (string) $row['path'], $num($impr), implode(', ', $searches), (string) $page['path']);
+            /* translators: 1: page path it should link to, 2: page path that should link */
+            $todo = sprintf(__('Link to %1$s from %2$s, in the words of the searches.', 'seoprostats'), (string) $page['path'], (string) $row['path']);
+        } else {
+            $figures += array(
+                'links_in'    => (int) $row['links_in'],
+                'from'        => array_values((array) $row['from']),
+                'visits'      => (int) $row['visits'],
+                'conversions' => $row['conversions'],
+            );
+            if ($list === 'orphans') {
+                /* translators: 1: impressions, 2: average position */
+                $why  = sprintf(__('No other page links to it, though it has %1$s impressions at position %2$s.', 'seoprostats'), $num($impr), number_format_i18n((float) $page['position'], 1));
+                $todo = __('Link to it from related pages, in the words of its searches.', 'seoprostats');
+            } else {
+                $links = (int) $row['links_in'];
+                /* translators: 1: conversions, 2: number of pages linking to it */
+                $why  = sprintf(_n('Its visits from search reached the goal %1$s times, but only %2$s page links to it.', 'Its visits from search reached the goal %1$s times, but only %2$s pages link to it.', $links, 'seoprostats'), $num($row['conversions']), $num($links));
+                $todo = __('Link to it from more related pages.', 'seoprostats');
+            }
+        }
+        $parts = array(
+            'clicks'     => round($clicks * $scale, 1),
+            'value'      => round(self::worth((int) $page['path_id'], $value), 2),
+            'confidence' => round(self::CONFIDENCE['links'] * min(1.0, sqrt($impr * $scale / self::FULL_IMPRESSIONS)), 2),
+            'effort'     => self::effort_of('links', $list),
+        );
+        return array(
+            'key'      => self::key('links', $engine, (string) $page['path'], $missing ? 'missing ' . (string) $row['path'] : $list),
+            'kind'     => 'links',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => (int) $page['path_id'],
+            'path'     => (string) $page['path'],
+            'url'      => (string) $page['url'],
+            'post_id'  => (int) $page['post_id'],
+            'edit_url' => isset($page['edit_url']) ? $page['edit_url'] : null,
+            'query'    => null,
+            'finding'  => $list,
+            'why'      => $why,
+            'todo'     => $todo,
+            'figures'  => $figures,
+            'metric'   => self::METRIC['links'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
      * A page's value: how well its visits from search convert against the
      * site's, smoothed, 1 to MAX_VALUE (1 without a goal).
      *
@@ -473,15 +603,18 @@ final class SEOProStats_Queue {
     }
 
     /**
-     * The effort of an item's kind (and audit finding).
+     * The effort of an item's kind (and audit finding or links list).
      *
      * @param string      $kind    Kind name.
-     * @param string|null $finding Audit finding.
+     * @param string|null $finding Audit finding, or links list.
      * @return int
      */
     private static function effort_of($kind, $finding = null) {
         if ($kind === 'audit' && $finding !== null && isset(self::AUDIT_EFFORT[$finding])) {
             return self::AUDIT_EFFORT[$finding];
+        }
+        if ($kind === 'links' && $finding !== null && isset(self::LINKS_EFFORT[$finding])) {
+            return self::LINKS_EFFORT[$finding];
         }
         return self::EFFORT[$kind];
     }
@@ -866,6 +999,10 @@ final class SEOProStats_Queue {
         if ($item['kind'] === 'audit') {
             /* translators: %s: page path */
             return sprintf(__('Fixing the content audit\'s finding lifts %s', 'seoprostats'), $page);
+        }
+        if ($item['kind'] === 'links') {
+            /* translators: %s: page path */
+            return sprintf(__('Internal links lift clicks on %s', 'seoprostats'), $page);
         }
         /* translators: %s: page path */
         return sprintf(__('Updating %s wins back its clicks', 'seoprostats'), $page);

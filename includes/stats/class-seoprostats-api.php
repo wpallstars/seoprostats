@@ -87,6 +87,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-experiments.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-queue.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
     }
 
     /**
@@ -333,6 +334,25 @@ final class SEOProStats_API {
                 ),
                 'limit'   => array('maximum' => SEOProStats_Audit::MAX_LIMIT, 'default' => SEOProStats_Audit::LIMIT) + self::args(true)['limit'],
                 'offset'  => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/links', $read + array(
+            'callback' => array(__CLASS__, 'links'),
+            'args'     => $base + array(
+                'engine' => $engine,
+                'kind'   => array(
+                    'description' => __('Internal links: orphans (published pages no other page links to), converting (pages that convert from search with few pages linking to them) or missing (a page showing for a search does not link to the page that gets its clicks).', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Links::KINDS,
+                    'default'     => 'orphans',
+                ),
+                'goal'   => array(
+                    'description' => __('ID of the goal whose conversions are counted; the first goal when left out.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'limit'  => array('maximum' => SEOProStats_Links::MAX_LIMIT, 'default' => SEOProStats_Links::LIMIT) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
             ),
         ));
         register_rest_route($ns, '/coverage', $read + array(
@@ -1330,6 +1350,22 @@ final class SEOProStats_API {
         $finding = (string) $request->get_param('finding');
         return self::report($request, static function ($req) use ($engine, $finding) {
             return SEOProStats_Audit::report($req, $engine, $finding);
+        });
+    }
+
+    /**
+     * GET /links: orphan pages, converting pages with few links in, or
+     * links missing between pages that share a search.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function links($request) {
+        $engine = (string) $request->get_param('engine');
+        $kind   = (string) $request->get_param('kind');
+        $goal   = (string) $request->get_param('goal');
+        return self::report($request, static function ($req) use ($engine, $kind, $goal) {
+            return SEOProStats_Links::report($req, $engine, $kind, $goal);
         });
     }
 
