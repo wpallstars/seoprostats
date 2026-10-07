@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, clicks, process, rollup, prune, doctor, demo and
+ * goals, funnels, properties, clicks, changes, process, rollup, prune, doctor, demo and
  * purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
@@ -670,6 +670,109 @@ final class SEOProStats_CLI {
             'forms'     => array('label', 'selector', 'target', 'fields', 'count', 'visits'),
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields[$answer['kind']]);
+    }
+
+    /**
+     * The change log: posts published, unpublished and edited, SEO fields,
+     * prices, stock and coupons, plugins, themes, WordPress and settings,
+     * newest first.
+     *
+     * ## OPTIONS
+     *
+     * [--page=<path>]
+     * : Only changes to this page (* for any text), and the site-wide ones.
+     *
+     * [--kind=<kinds>]
+     * : Only these kinds or groups (content, seo, product, site), comma-separated.
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 50
+     * ---
+     *
+     * [--offset=<offset>]
+     * : Rows to skip.
+     * ---
+     * default: 0
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats changes
+     *     wp seoprostats changes --page=/pricing/ --range=90d
+     *     wp seoprostats changes --kind=product,plugin_updated --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function changes($args, $assoc) {
+        unset($args);
+        $req    = $this->request($assoc + array('range' => '30d'));
+        $opts   = array(
+            'page'   => isset($assoc['page']) ? (string) $assoc['page'] : '',
+            'kinds'  => isset($assoc['kind']) ? (string) $assoc['kind'] : '',
+            'limit'  => isset($assoc['limit']) ? (int) $assoc['limit'] : 50,
+            'offset' => isset($assoc['offset']) ? (int) $assoc['offset'] : 0,
+        );
+        $answer = $this->on_data($assoc, static function () use ($req, $opts) {
+            return SEOProStats_Changes::list_changes($req, $opts);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        $this->range_line($answer['range']);
+        if (!$answer['changes']) {
+            WP_CLI::line(__('No changes in this range.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['changes'] as $change) {
+            $rows[] = array(
+                't'      => $change['t'],
+                'kind'   => $change['kind'],
+                'path'   => (string) $change['path'],
+                'label'  => $change['label'],
+                'source' => $change['source'],
+                'user'   => (string) $change['user'],
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array('t', 'kind', 'path', 'label', 'source', 'user'));
+        if ($answer['total'] > count($rows) + $opts['offset']) {
+            /* translators: 1: changes shown, 2: changes in the range */
+            WP_CLI::log(sprintf(__('%1$d of %2$d changes; see more with --offset.', 'seoprostats'), count($rows), $answer['total']));
+        }
     }
 
     /**

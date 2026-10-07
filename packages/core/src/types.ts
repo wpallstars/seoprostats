@@ -137,16 +137,47 @@ export interface RealtimeAnswer {
 	generated: string;
 }
 
+/** Groups of changes in the change log. */
+export type ChangeGroup = 'content' | 'seo' | 'product' | 'site';
+
+/** Where a change was made. */
+export type ChangeSource = 'wordpress' | 'cli' | 'api' | 'cron' | 'feed' | 'note';
+
+/** One change to the site (an entry of the change log), as a chart marker. */
 export interface Marker {
+	id: number;
+	/** When it changed (ISO, site time zone). */
 	t: string;
+	/** What changed: published, price_down, plugin_updated… */
 	kind: string;
+	group: ChangeGroup;
+	/** One line saying what changed, in the site's language. */
 	label: string;
-	path?: string;
+	/** The post, product, plugin, theme or setting, by name. */
+	title: string;
+	/** The page it affects; null for site-wide changes. */
+	path: string | null;
+	old: string;
+	new: string;
+	object: { type: string; id: number };
+	meta: Record<string, unknown>;
+	source: ChangeSource;
+	/** Who made it, for people who may list users. */
+	user: string | null;
 }
 
 export interface MarkersAnswer {
 	range: Range;
 	markers: Marker[];
+	total: number;
+}
+
+export interface ChangesAnswer {
+	range: Range;
+	changes: Marker[];
+	total: number;
+	limit: number;
+	offset: number;
 }
 
 /** What a goal or funnel step matches: a page viewed or an event sent. */

@@ -253,6 +253,40 @@ Lines written this way carry `s: 1` (the collector never sets it): one
 without a user agent of its own (ThriveCart's) is not taken for a bot.
 Refunds and renewals are not recorded yet.
 
+### Changes
+
+`SEOProStats_Changes` keeps the change log (`changes`, schema v6): what
+changed on the site, when, and on which page, for chart markers and to
+explain why traffic, rankings or sales moved. Rows are written by WordPress
+hooks inside the requests that make the change (saving a post, product,
+coupon or setting; installing or updating), never on a visitor's page
+view, and are kept for good. Changes are site facts: no visitor data is
+involved, and the user is only kept for people who can edit posts (a
+customer whose order sold the last item is not named).
+
+| Group | Kinds | Hooks |
+|---|---|---|
+| content | `published`, `unpublished` (draft, private, pending, trash, deleted), `address` (old and new path), `title`, `content` (words added and removed, word count before and after), `links` (internal links added, removed, or with new anchor text), `external_links` (hosts gained and lost) | `pre_post_update` keeps the published address; `transition_post_status` (also scheduled posts going live); `post_updated` (before and after); `before_delete_post`. Links from `post_content` (`<a href>`; internal: no host or one of the collector's hosts) |
+| seo | `seo_title`, `meta_description`, `robots`, `canonical` | Post meta of Yoast SEO, Rank Math, SEOPress and The SEO Framework (`SEOProStats_Changes::SEO_META`), before and after |
+| product | `out_of_stock`, `back_in_stock`, `price_up`, `price_down` (regular, sale or active price, with the currency), `sale_started`, `sale_ended`, `coupon_published`, `coupon_changed`, `coupon_removed` | `woocommerce_before_product_object_save` and its variation hook (stored values from `get_data()`, new from `get_changes()`; a sale scheduled for later starts when WooCommerce's cron sets the price); `woocommerce_before_coupon_object_save` and coupon status; Easy Digital Downloads `edd_price` meta |
+| site | `plugin_installed`, `plugin_updated`, `plugin_activated`, `plugin_deactivated`, `plugin_deleted`, `theme_switched`, `theme_updated`, `core_updated`, `search_visibility` (`blog_public`), `permalinks`, `site_address` (`home`, `siteurl`), `front_page` | `upgrader_pre_install` keeps the version before; `upgrader_process_complete`; `activated_plugin`, `deactivated_plugin`, `delete_plugin`/`deleted_plugin`; `switch_theme`; `_core_updated_successfully`; `update_option_{name}` |
+
+Changes only reach the page they affect (`path_id`, the post's permalink
+path as the processor stores page paths); site-wide ones have 0. Imports
+(`WP_IMPORTING`), autosaves, revisions, media and non-public post types are
+skipped, as are new meta on a post published in the same request. A
+change is written once per request; one post's changes in one save share
+a time. The `seoprostats_record_change` filter can change or drop one.
+Kind codes never change meaning: 60 and up are kept for search engine
+updates (feeds) and 80 and up for notes (annotations).
+
+`GET /markers` answers the range's changes oldest first (at most 1,000) and
+`GET /changes` newest first with paging; both take `page` (that page's
+changes and the site-wide ones) and `kinds` (names or groups). Each
+answer row carries a `label` made when read, in the site's language.
+`wp seoprostats changes` lists them. FluentCart prices are kept in its own
+tables without a save hook for products, so they are not recorded yet.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also
@@ -319,7 +353,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | day × page / query / page and query / device and country | `clicks`, `impressions`, `pos_impr` (position × impressions, for weighted averages) |
-| `changes` | marker on the timeline | `id`, `ts`, `kind`, `path_id`, `object_type`, `object_id`, `old`, `new`, `meta` (JSON), `source`, `user_id` |
+| `changes` | change to the site, a marker on the timeline (schema v6; Changes below) | `id`, `ts`, `kind` (a code in `SEOProStats_Changes::KINDS`), `path_id` (0: site-wide), `object_type` (the post type, or `coupon`, `plugin`, `theme`, `core`, `option`), `object_id`, `old`, `new` (190 characters), `meta` (JSON), `source` (1 WordPress, 2 WP-CLI, 3 API, 4 cron, 5 feed, 6 note), `user_id` |
 | `snapshots` | stored version of a page | `path_id`, `post_id`, `ts`, title, description, H1, word count, text hash, compressed text |
 | `pages` | address that shows one item (schema v5) | `path_id` (primary key), `post_id`, `post_type`, `author_id`, `term_id`, `seen` (when last checked; the latest view wins); later `title`, `launched`, `removed`, `status` |
 | `links` | backlink | source URL and host, target page, anchor, rel, first and last seen, lost, authority, how found |
@@ -342,7 +376,8 @@ and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
 `clicks` has `ts` and `(path_id, ts)` for one page's clicks (schema v4);
 `pageviews` has `(search_id, ts)` for search filters, and `pages` a key
 on each of `post_type`, `author_id` and `term_id` for content filters
-(schema v5);
+(schema v5); `changes` has `ts`, `(path_id, ts)` and `(kind, ts)` (schema
+v6);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -397,7 +432,10 @@ in three currencies, pages not found (old addresses and typos), site
 searches (some finding nothing), logged-in visits, authors, categories
 and post types for its pages (`SEOProStats_Demo::CONTENT`, with names of
 its own, as the IDs are not the site's), and for its last three months
-clicks (some dead, some on affiliate links) and form submits. Making it is done in slices of up to ten seconds per
+clicks (some dead, some on affiliate links) and form submits, and changes
+for the markers (posts published and edited, a price drop and a sale,
+stock running out, plugin and WordPress updates, a theme switch;
+`SEOProStats_Demo::CHANGES`). Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
 making the same visits. While someone looks at it, demo data is topped
@@ -508,14 +546,14 @@ in the future meets the same length of the other period.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`; planned: `pages`,
+  `changes`, `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`; planned: `pages`,
   `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
-  `backlinks`, `changes`, `anomalies`, `health`, `annotations`, `segments`,
+  `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
-  `pages`, `search`, `changes`,
+  `changes [--page=<path>] [--kind=<kinds>]`, `pages`, `search`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`); reports and definitions take
   `--data=demo`.
@@ -597,7 +635,7 @@ Every chart has a table view for screen readers.
 | Integration | How | Stored in |
 |---|---|---|
 | Search Console | Service-account key (or an OAuth client the owner makes); daily job for the day three days back, 16-month backfill on connect; pages, queries and pairs by impressions | `gsc_*` |
-| Changes | WordPress hooks: post publish, update, unpublish, title, slug, content (word diff from snapshots), SEO title, description and robots of the common SEO plugins, plugin and theme updates and switches, core updates, key settings (`blog_public`, permalinks) | `changes`, `snapshots` |
+| Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
 | Search engine updates | Google Search Status Dashboard incidents feed, daily | `changes` |
 | Backlinks | Referrers verified by fetching the referring page; optional provider (DataForSEO) with the owner's key | `links` |
 | Mentions and spikes | Referral spike check every 3 hours (≥ 3× the 14-day daily average and ≥ 50 visits); search of the platform behind the referrer (Hacker News, Reddit, Bluesky, YouTube) | `changes` |

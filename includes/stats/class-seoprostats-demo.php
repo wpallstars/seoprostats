@@ -8,7 +8,8 @@
  * the same code and queries as live ones. Traffic grows over the period,
  * with weekends, seasons, the odd spike, campaigns, paid visits, AI
  * answers, events with properties, purchases with revenue, and (for the
- * last three months, as kept by default) clicks and form submits. While it
+ * last three months, as kept by default) clicks and form submits, and
+ * changes for the markers (SEOProStats_Changes). While it
  * is shown, demo data is topped up to the present, so today and realtime
  * have visits too. Design: docs/architecture.md → Demo data.
  *
@@ -266,6 +267,40 @@ final class SEOProStats_Demo {
         ),
     );
 
+    /**
+     * Changes of the demo data (SEOProStats_Changes), for the markers:
+     * days back from today, hour, kind code, path, object type, old, new,
+     * details. Repeating ones (updates, edits) come from change_rows().
+     */
+    const CHANGES = array(
+        array(2, 9, 23, '/shop/pro-licence/', 'product', '99', '79', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'regular')),
+        array(6, 16, 4, '/blog/how-to-read-search-rankings/', 'post', 'How to read search rankings', 'How to read your search rankings in 2026', array('name' => 'How to read your search rankings in 2026')),
+        array(11, 11, 20, '/shop/pro-licence/', 'product', 'instock', 'outofstock', array('name' => 'Pro licence', 'currency' => 'USD')),
+        array(9, 8, 21, '/shop/pro-licence/', 'product', 'outofstock', 'instock', array('name' => 'Pro licence', 'currency' => 'USD')),
+        array(17, 14, 6, '/blog/core-web-vitals-explained/', 'post', '4', '7', array('name' => 'Core Web Vitals explained', 'added' => array(array('to' => '/blog/speed-up-wordpress/', 'text' => 'speed up WordPress'), array('to' => '/pricing/', 'text' => 'see the plans'), array('to' => '/docs/getting-started/', 'text' => 'getting started')), 'removed' => array(), 'changed' => array())),
+        array(24, 10, 11, '/pricing/', 'page', '', 'Plans for every site, with a 30-day refund.', array('name' => 'Pricing', 'field' => '_yoast_wpseo_metadesc')),
+        array(38, 15, 24, '/shop/pro-licence/', 'product', '99', '69', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'sale', 'regular' => '99')),
+        array(31, 9, 25, '/shop/pro-licence/', 'product', '69', '99', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'sale', 'regular' => '99')),
+        array(45, 13, 1, '/blog/what-changed-after-an-update/', 'post', 'draft', 'publish', array('name' => 'What changed after an update')),
+        array(74, 12, 26, '', 'coupon', '', 'SPRING20', array('name' => 'SPRING20', 'status' => 'publish')),
+        array(60, 12, 28, '', 'coupon', '', 'SPRING20', array('name' => 'SPRING20', 'status' => 'trash')),
+        array(88, 10, 3, '/docs/getting-started/', 'page', '/docs/start/', '/docs/getting-started/', array('name' => 'Getting started')),
+        array(120, 17, 45, '', 'theme', 'Twenty Twenty-Four', 'Twenty Twenty-Five', array('name' => 'Twenty Twenty-Five', 'version' => '1.2')),
+        array(150, 11, 1, '/blog/privacy-friendly-analytics/', 'post', 'draft', 'publish', array('name' => 'Privacy-friendly analytics')),
+        array(170, 10, 22, '/shop/pro-licence/', 'product', '89', '99', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'regular')),
+        array(200, 16, 42, '', 'plugin', '', '2.4.0', array('name' => 'Cache Enabler', 'file' => 'cache-enabler/cache-enabler.php')),
+        array(240, 9, 1, '/blog/speed-up-wordpress/', 'post', 'draft', 'publish', array('name' => 'Speed up WordPress')),
+        array(300, 14, 1, '/blog/core-web-vitals-explained/', 'post', 'draft', 'publish', array('name' => 'Core Web Vitals explained')),
+        array(330, 10, 1, '/blog/how-to-read-search-rankings/', 'post', 'draft', 'publish', array('name' => 'How to read search rankings')),
+    );
+
+    /** Plugins updated now and then in the demo data: name, file, first version. */
+    const DEMO_PLUGINS = array(
+        array('WooCommerce', 'woocommerce/woocommerce.php', array(8, 9)),
+        array('Yoast SEO', 'wordpress-seo/wp-seo.php', array(22, 1)),
+        array('Contact Form 7', 'contact-form-7/wp-contact-form-7.php', array(5, 9)),
+    );
+
     /** @var array<int,array<string,mixed>> Recent visitors of this run, to come back the same day. */
     private static $recent = array();
 
@@ -352,13 +387,15 @@ final class SEOProStats_Demo {
         }
         self::examples();
         $from = (new DateTimeImmutable('today', wp_timezone()))->modify("-$days days")->getTimestamp();
+        self::changes($from);
         update_option(self::OPTION, array(
-            'status' => 'making',
-            'days'   => $days,
-            'from'   => $from,
-            'upto'   => $from,
-            'end'    => time(),
-            'made'   => 0,
+            'status'  => 'making',
+            'days'    => $days,
+            'from'    => $from,
+            'upto'    => $from,
+            'end'     => time(),
+            'made'    => 0,
+            'changes' => 1,
         ), false);
         return true;
     }
@@ -401,6 +438,13 @@ final class SEOProStats_Demo {
             if ($none) {
                 self::examples();
             }
+            // Demo data made before the change log gets its changes once.
+            $state = self::state();
+            if (empty($state['changes'])) {
+                $state['changes'] = 1;
+                update_option(self::OPTION, $state, false);
+                self::changes(isset($state['from']) ? (int) $state['from'] : time());
+            }
         }
         $state = self::state();
         if (!self::ready() || (isset($state['upto']) && (int) $state['upto'] > time() - self::FRESH) || !self::lock()) {
@@ -439,6 +483,86 @@ final class SEOProStats_Demo {
         self::run(static function () {
             SEOProStats_Goals::replace(self::GOALS, self::FUNNELS);
         });
+    }
+
+    /**
+     * Give the demo data its changes (the markers) over its period, on the
+     * demo tables. Once per demo data: start(), or refresh() for demo data
+     * made before the change log.
+     *
+     * @param int $from Start of the period.
+     */
+    private static function changes($from) {
+        require_once __DIR__ . '/class-seoprostats-changes.php';
+        self::run(static function () use ($from) {
+            if (!SEOProStats_Schema::maybe_upgrade()) {
+                return;
+            }
+            foreach (self::change_rows((int) $from, time()) as $row) {
+                SEOProStats_Changes::write($row);
+            }
+        });
+    }
+
+    /**
+     * The demo changes between two times: CHANGES, plus plugin updates
+     * every 16 days, a WordPress update every 63 days and a post edited
+     * every 13 days.
+     *
+     * @param int $from Start.
+     * @param int $to   End.
+     * @return array<int,array<string,mixed>> Rows for SEOProStats_Changes::write().
+     */
+    private static function change_rows($from, $to) {
+        $today = new DateTimeImmutable('today', wp_timezone());
+        $rows  = array();
+        $add   = static function ($days, $hour, $kind, $path, $type, $old, $new, array $meta) use (&$rows, $today, $from, $to) {
+            $ts = $today->modify('-' . (int) $days . ' days')->setTime((int) $hour, ($kind * 7) % 60)->getTimestamp();
+            if ($ts >= $from && $ts <= $to) {
+                $rows[] = array(
+                    'ts'          => $ts,
+                    'kind'        => (int) $kind,
+                    'path'        => (string) $path,
+                    'object_type' => (string) $type,
+                    'object_id'   => $path !== '' && self::page($path) ? self::page($path)['post_id'] : 0,
+                    'old'         => (string) $old,
+                    'new'         => (string) $new,
+                    'meta'        => $meta,
+                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : 1,
+                    'user_id'     => 0,
+                );
+            }
+        };
+        foreach (self::CHANGES as $change) {
+            $add($change[0], $change[1], $change[2], $change[3], $change[4], $change[5], $change[6], $change[7]);
+        }
+        $span = (int) ceil(max(0, $to - $from) / DAY_IN_SECONDS);
+        $n    = 0;
+        for ($days = $span; $days >= 1; $days -= 16, $n++) {
+            list($name, $file, $first) = self::DEMO_PLUGINS[$n % count(self::DEMO_PLUGINS)];
+            $minor = $first[1] + intdiv($n, count(self::DEMO_PLUGINS));
+            $add($days, 3, 41, '', 'plugin', $first[0] . '.' . $minor . '.0', $first[0] . '.' . ($minor + 1) . '.0', array('name' => $name, 'file' => $file));
+        }
+        $n = 0;
+        for ($days = $span - 20; $days >= 1; $days -= 63, $n++) {
+            $add($days, 4, 47, '', 'core', '6.' . (5 + $n), '6.' . (6 + $n), array('name' => 'WordPress'));
+        }
+        $posts = array_values(array_filter(array_keys(self::CONTENT), static function ($path) {
+            return strpos($path, '/blog/') === 0;
+        }));
+        $n     = 0;
+        for ($days = $span - 5; $days >= 1; $days -= 13, $n++) {
+            $path   = $posts[$n % count($posts)];
+            $before = 900 + ($n * 37) % 600;
+            $added  = 40 + ($n * 53) % 260;
+            $gone   = 10 + ($n * 29) % 90;
+            $name   = ucfirst(str_replace(array('blog/', '-'), array('', ' '), trim($path, '/')));
+            $add($days, 11, 5, $path, 'post', (string) $before, (string) ($before + $added - $gone), array('name' => $name, 'before' => $before, 'after' => $before + $added - $gone, 'added' => $added, 'removed' => $gone));
+        }
+        usort($rows, static function ($x, $y) {
+            return $x['ts'] - $y['ts'];
+        });
+        return $rows;
     }
 
     /**

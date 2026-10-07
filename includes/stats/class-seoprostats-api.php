@@ -1,7 +1,7 @@
 <?php
 /**
  * The REST API (namespace seoprostats/v1): the reports stats, timeseries,
- * breakdown, realtime, markers, goals, funnels, properties and clicks, each on
+ * breakdown, realtime, markers, changes, goals, funnels, properties and clicks, each on
  * live data or the demo data (data=demo); goals and funnels also add,
  * change and delete their definitions (administrators); demo (make, carry
  * on, remove) and view (the data set a person sees). Contract:
@@ -144,9 +144,28 @@ final class SEOProStats_API {
             'callback' => array(__CLASS__, 'realtime'),
             'args'     => array('data' => $base['data']),
         ));
+        $changes = array(
+            'page'  => array(
+                'description' => __('Only changes to this page (a path such as /pricing/; * for any text), and the site-wide ones (plugins, themes, settings).', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+            'kinds' => array(
+                'description' => __('Only these kinds or groups of change (content, seo, product, site), comma-separated.', 'seoprostats'),
+                'type'        => 'string',
+                'default'     => '',
+            ),
+        );
         register_rest_route($ns, '/markers', $read + array(
             'callback' => array(__CLASS__, 'markers'),
-            'args'     => $base,
+            'args'     => $base + $changes,
+        ));
+        register_rest_route($ns, '/changes', $read + array(
+            'callback' => array(__CLASS__, 'changes'),
+            'args'     => $base + $changes + array(
+                'limit'  => array('maximum' => SEOProStats_Changes::MAX_LIMIT, 'default' => 50) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
         ));
 
         $manage = array(__CLASS__, 'can_manage');
@@ -372,21 +391,52 @@ final class SEOProStats_API {
     }
 
     /**
-     * GET /markers: changes on the timeline. Recording changes comes with
-     * Phase 3; until then the list is empty.
+     * GET /markers: the changes in the range, oldest first, for the
+     * timeline (at most SEOProStats_Changes::MAX_LIMIT).
      *
      * @param WP_REST_Request $request Request.
      * @return WP_REST_Response|WP_Error
      */
     public static function markers($request) {
-        $req = SEOProStats_Query::request((array) $request->get_params());
-        if (is_wp_error($req)) {
-            return $req;
-        }
-        return rest_ensure_response(array(
-            'range'   => SEOProStats_Query::range_out(SEOProStats_Query::range($req)),
-            'markers' => array(),
-        ));
+        $args = array(
+            'page'  => (string) $request->get_param('page'),
+            'kinds' => (string) $request->get_param('kinds'),
+            'limit' => SEOProStats_Changes::MAX_LIMIT,
+            'order' => 'asc',
+        );
+        return self::report($request, static function ($req) use ($args) {
+            $answer = SEOProStats_Changes::list_changes($req, $args);
+            if (is_wp_error($answer)) {
+                return $answer;
+            }
+            return array(
+                'range'   => $answer['range'],
+                'markers' => $answer['changes'],
+                'total'   => $answer['total'],
+            );
+        });
+    }
+
+    /**
+     * GET /changes: the change log for the range, newest first, with paging.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function changes($request) {
+        $args = array(
+            'page'   => (string) $request->get_param('page'),
+            'kinds'  => (string) $request->get_param('kinds'),
+            'limit'  => (int) $request->get_param('limit'),
+            'offset' => (int) $request->get_param('offset'),
+        );
+        return self::report($request, static function ($req) use ($args) {
+            $answer = SEOProStats_Changes::list_changes($req, $args);
+            if (is_wp_error($answer)) {
+                return $answer;
+            }
+            return $answer + array('limit' => $args['limit'], 'offset' => $args['offset']);
+        });
     }
 
     /**

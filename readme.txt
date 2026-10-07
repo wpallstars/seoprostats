@@ -55,6 +55,10 @@ Yes, unless you switch it off under Settings → Tracking. Clicks shows what peo
 
 Yes. The Overview lists the addresses people reached that were not found, what they searched the site for and the searches that found nothing, and views by author, category and post type. Under Settings → Tracking you can leave search words out; searches are then counted without them. Email addresses and long numbers in searches are always hidden.
 
+= Does it show what changed on the site? =
+
+Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. Scripts and AI agents read it through the REST API (markers, changes) and wp seoprostats changes, so traffic and sales can be set against what changed.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

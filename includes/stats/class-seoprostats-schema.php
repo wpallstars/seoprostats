@@ -30,8 +30,9 @@ final class SEOProStats_Schema {
      * v4: clicks (clicks and form submits).
      * v5: pageviews.search_id and key search_ts, sessions.login, pages
      *     (what each address shows); daily rows for logged-in visits.
+     * v6: changes (the change log: markers on the timeline).
      */
-    const VERSION = 5;
+    const VERSION = 6;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -84,7 +85,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes');
     }
 
     /**
@@ -400,6 +401,29 @@ final class SEOProStats_Schema {
   KEY post_type (post_type),
   KEY author_id (author_id),
   KEY term_id (term_id)
+) $charset;",
+
+            // The change log (SEOProStats_Changes): one row per change to
+            // the site, kept for good. kind and source: codes in
+            // SEOProStats_Changes::KINDS and ::SOURCES. path_id: the page
+            // it affects (0: the whole site). object_type: the post type,
+            // or coupon, plugin, theme, core, option. meta: JSON details.
+            'changes' => "CREATE TABLE {$t['changes']} (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  ts int unsigned NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  object_type varchar(20) NOT NULL DEFAULT '',
+  object_id bigint unsigned NOT NULL DEFAULT 0,
+  old varchar(190) NOT NULL DEFAULT '',
+  new varchar(190) NOT NULL DEFAULT '',
+  meta text NOT NULL,
+  source tinyint unsigned NOT NULL DEFAULT 1,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  KEY ts (ts),
+  KEY path_ts (path_id,ts),
+  KEY kind_ts (kind,ts)
 ) $charset;",
         );
     }
