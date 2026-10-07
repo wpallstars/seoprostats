@@ -331,7 +331,7 @@ final class SEOProStats_API {
                     'enum'        => array_merge(array(''), SEOProStats_Audit::FINDINGS),
                     'default'     => '',
                 ),
-                'limit'   => self::args(true)['limit'],
+                'limit'   => array('maximum' => SEOProStats_Audit::MAX_LIMIT, 'default' => SEOProStats_Audit::LIMIT) + self::args(true)['limit'],
                 'offset'  => self::args(true)['offset'],
             ),
         ));

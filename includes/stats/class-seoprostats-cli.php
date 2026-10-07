@@ -1133,10 +1133,7 @@ final class SEOProStats_CLI {
      * : Page filters, as for stats.
      *
      * [--limit=<limit>]
-     * : Most rows (list), or most posts read (run).
-     * ---
-     * default: 20
-     * ---
+     * : Most rows (list; 20 when left out), or most posts read (run; a daily batch, 200, when left out).
      *
      * [--data=<data>]
      * : live or demo (list).

@@ -31,7 +31,7 @@ inconclusive result stays inconclusive.
 | 1 | Experiments | #73 | `gsc_pages`, `daily` (search landings), goal hits, `changes` | `experiments`; change kind 81 | the timeline, the queue |
 | 2 | Decision queue | #75 | Opportunities, Content, `experiments` | `queue` | experiments |
 | 3 | Overlapping pages | #76 | `gsc_pairs` | nothing | Opportunities, the queue |
-| 4 | Content audit | #77 | posts, SEO plugin fields, `gsc_pages` | `page_facts` | the queue |
+| 4 | Content audit | #77 | posts, SEO plugin fields, `gsc_pages` | `page_facts` | Search → Audit, the queue |
 | 5 | Internal links | #78 | `post_content`, `page_facts` | `page_links` | the audit, the queue |
 | 6 | Indexation | #79 | `pages`, `page_facts`, `gsc_pages`, the site's sitemap list | nothing | the queue |
 | 7 | Refresh planner | #80 | losing clicks, `page_facts`, conversions | nothing | the queue |
@@ -181,7 +181,8 @@ or agent has acted on are stored.
 | `striking` | Opportunities → striking distance | ranks 4–20 with demand: improve the page and its links | position | 2 |
 | `decay` | Opportunities → losing clicks | lost clicks, with the cause: investigate, then update | clicks | 3 |
 | `overlap` | Opportunities → overlapping pages | pages share a query: make one the clear answer, or leave it | clicks (all its pages) | 3 |
-| later kinds | audit findings, orphans, not indexed, refresh, targets | each feature below | | |
+| `audit` | Audit (one item per page and finding) | what the content audit found: fix it | impressions (noindex, canonical), CTR (title, description), else clicks | 1 (thin 3) |
+| later kinds | orphans, not indexed, refresh, targets | each feature below | | |
 
 Each item names its page (and query where it has one), the numbers behind
 it and a sentence saying why.
@@ -196,8 +197,10 @@ score = potential clicks per 28 days × value × confidence ÷ effort
   clicks; low CTR: missed clicks; decay: clicks lost; missing: impressions
   × the site's expected CTR at its position × 0.3, as covering a query
   earns part of it; overlap: the clicks the query would get with the best
-  of its pages' CTRs, so an overlap no page does better on is no item),
-  scaled to 28 days.
+  of its pages' CTRs, so an overlap no page does better on is no item;
+  audit: the page's impressions × the site's expected CTR at its position
+  × the finding's share, from 1 for noindex and canonical to 0.02 for
+  several H1s or images without alt text), scaled to 28 days.
 - **Value** is how well visits from search to the page convert against
   the site: the page's conversion rate of the Content report's goal
   (smoothed toward the site's rate with 20 visits) ÷ the site's rate, from
@@ -205,7 +208,7 @@ score = potential clicks per 28 days × value × confidence ÷ effort
   than the site, or has no goal data, is worth 1. Without a goal every
   page is 1. The goal can be chosen (`goal`); the first is the default.
 - **Confidence** is the kind's own (decay 0.8, CTR 0.7, striking 0.6,
-  missing 0.5, overlap 0.4) times √(impressions per 28 days ÷ 1,000), that root at
+  missing 0.5, audit 0.5, overlap 0.4) times √(impressions per 28 days ÷ 1,000), that root at
   most 1.
 - **Effort** is the kind's (above). A person can set an item's effort
   (1–5).
@@ -290,7 +293,7 @@ Built (GH#76):
 
 Facts read from each published post and its SEO plugin's fields, never on
 visitor pages: when a post is saved, and in daily cron batches of 200 for
-the rest (and after an SEO plugin is switched). `page_facts` (schema v9),
+the rest (and after an SEO plugin is switched). `page_facts` (schema v10),
 one row per page (`path_id` primary key): post, checked time, title and
 SEO title length, description length, hashes of the SEO title and
 description (keys, for duplicates), H1 count, words, images and images
@@ -303,11 +306,49 @@ page's search and conversions, so the ones that matter come first.
 Demo data: `PAGE_TEXT` gains the facts. Retention: the row goes when the
 post does.
 
+Built (GH#77), schema v10:
+
+- `page_facts`: `path_id` primary key; keys `post_id`, `checked`,
+  `title_hash`, `desc_hash` and `flags` (the page's own findings as bits,
+  so the report reads only pages with one). Thin needs search figures, so
+  the flag is `short` (under 300 words) and the report adds "impressions
+  but no clicks".
+- Reading: `save_post`, `deleted_post` and changes to the SEO plugins'
+  meta keys mark a post (not while importing); it is read once at the end of that
+  request (`shutdown`), when every field is saved. The daily cron reads at
+  most 200 posts in 20 seconds, by the posts table's primary key from
+  where it stopped: posts with no facts, changed since, or read more than
+  30 days ago; all again after the SEO plugin changes. A post no longer
+  published loses its row.
+- Facts: the title shown (the SEO plugin's title, else the post title;
+  a title made only of the plugin's variables counts as the post's), the
+  description (the SEO plugin's, else the excerpt), H1s in the text,
+  words, images and those without alt text, noindex and a canonical
+  address on another page (Rank Math, Yoast SEO, SEOPress, All in One SEO).
+- Findings and thresholds: title over 60 characters, description over
+  160, thin under 300 words with at least max(10, days) impressions and no
+  clicks; noindex and canonical only on pages with impressions. Duplicates
+  come from the hash keys (groups of two or more, up to five pages named).
+  Pages are listed most impressions first.
+- Queue kind `audit`, one item per page and finding (key: kind, engine,
+  page and finding), confidence 0.5, effort 1 (thin 3); done measures
+  impressions for noindex and canonical, CTR for title and description,
+  clicks otherwise.
+- REST `GET /audit` (`finding`, `engine`, period, page filters, `limit`,
+  `offset`); WP-CLI `wp seoprostats audit [list|run]` (`run` reads a
+  batch now); ability `seoprostats/audit`. Dashboard: Search → **Audit**,
+  with a finding filter that counts pages per finding; Plan shows the
+  items as "Content audit: <finding>".
+- Demo data: `PAGE_SEO` gives demo pages SEO titles, descriptions and
+  extra markup: a missing and a long description, a long and a shared
+  title, a shared description, an H1 in the text, an image without alt
+  text, noindex and a canonical address elsewhere.
+
 ## 5. Internal links
 
 Links between the site's own posts, read from `post_content` when a post is
 saved (the change log already parses them) and in the audit's cron batch:
-`page_links` (schema v9), `(from_path, to_path)` primary key with the
+`page_links` (a later schema), `(from_path, to_path)` primary key with the
 anchor text's dictionary id and a count, key `to_path`. Reports: pages with
 no contextual links in (orphans), pages that convert with few links in,
 and pages that rank for a query whose intended page (a search target, or

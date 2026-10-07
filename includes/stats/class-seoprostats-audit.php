@@ -908,6 +908,13 @@ final class SEOProStats_Audit {
     }
 
     /**
+     * Delete the current data set's progress (demo removal, uninstall).
+     */
+    public static function reset() {
+        delete_option(SEOProStats_Schema::option(self::OPTION));
+    }
+
+    /**
      * The 8-byte key of a title or description, as 16 hex digits: its
      * words in lower case. NONE for no text.
      *

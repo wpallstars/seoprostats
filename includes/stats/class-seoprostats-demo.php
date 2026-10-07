@@ -622,9 +622,11 @@ final class SEOProStats_Demo {
      */
     public static function remove() {
         require_once __DIR__ . '/class-seoprostats-goals.php';
+        require_once __DIR__ . '/class-seoprostats-audit.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
             SEOProStats_Goals::forget();
+            SEOProStats_Audit::reset();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
@@ -1234,7 +1236,8 @@ final class SEOProStats_Demo {
             return null;
         }
         list($title, $headings, $body, $focus) = self::PAGE_TEXT[$path];
-        list($seo_title, $description, $more, $noindex, $canonical) = isset(self::PAGE_SEO[$path]) ? self::PAGE_SEO[$path] : array('', '', '', false, '');
+        // Every page with text has its SEO fields (PHPStan checks the keys match).
+        list($seo_title, $description, $more, $noindex, $canonical) = self::PAGE_SEO[$path];
         $html = (string) $more;
         foreach ($headings as $heading) {
             $html .= '<h2>' . esc_html($heading) . '</h2>';
