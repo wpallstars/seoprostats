@@ -28,8 +28,10 @@ final class SEOProStats_Schema {
      * v2: daily.scroll (sum of the deepest scroll % of a page's views).
      * v3: props keys owner_ts and key_ts replace ts and key_value.
      * v4: clicks (clicks and form submits).
+     * v5: pageviews.search_id and key search_ts, sessions.login, pages
+     *     (what each address shows); daily rows for logged-in visits.
      */
-    const VERSION = 4;
+    const VERSION = 5;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -52,6 +54,12 @@ final class SEOProStats_Schema {
     const DICT_SELECTOR = 12;
     const DICT_LABEL    = 13;
     const DICT_TARGET   = 14;
+    const DICT_SEARCH   = 15;
+
+    /** Flags of a pageview: the page was not found; a site search; the search found nothing. */
+    const PAGE_NOT_FOUND  = 1;
+    const PAGE_SEARCH     = 2;
+    const PAGE_NO_RESULTS = 4;
 
     /** Kinds of rows in the clicks table. */
     const CLICK = 1;
@@ -76,7 +84,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages');
     }
 
     /**
@@ -155,6 +163,7 @@ final class SEOProStats_Schema {
     public static function install() {
         global $wpdb;
 
+        $before = (int) get_option(self::option(self::OPTION), 0);
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta(array_values(self::definitions()));
 
@@ -166,6 +175,9 @@ final class SEOProStats_Schema {
             }
         }
         self::drop_old_keys();
+        if ($before > 0 && $before < 5) {
+            self::add_login_days();
+        }
         // Live: autoloaded like the settings version, as maybe_upgrade()
         // reads it on every admin request. Demo: read only when shown.
         update_option(self::option(self::OPTION), self::VERSION, self::$set === 'live');
@@ -187,6 +199,18 @@ final class SEOProStats_Schema {
                 }
             }
         }
+    }
+
+    /**
+     * v5: days summarised before visits recorded logging in get their
+     * logged-in row: every visit of theirs counts as not logged in, so the
+     * row is the site's row.
+     */
+    private static function add_login_days() {
+        global $wpdb;
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- upgrading our own table, once.
+        $wpdb->query($wpdb->prepare('INSERT IGNORE INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT day, %d, 0, visitors, visits, pageviews, bounces, engaged_ms, events FROM %i WHERE dim = 0', self::table('daily'), SEOProStats_Rollup::DIMS['login'], self::table('daily')));
     }
 
     /**
@@ -263,13 +287,16 @@ final class SEOProStats_Schema {
   screen smallint unsigned NOT NULL DEFAULT 0,
   source tinyint unsigned NOT NULL DEFAULT 0,
   import_id int unsigned NOT NULL DEFAULT 0,
+  login tinyint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY skey (skey),
   KEY started (started),
   KEY day_visitor (day,visitor)
 ) $charset;",
 
-            // One row per page load or SPA navigation.
+            // One row per page load or SPA navigation. flags: PAGE_*
+            // constants. search_id: the site search's words (0: none, or
+            // not recorded).
             'pageviews' => "CREATE TABLE {$t['pageviews']} (
   id bigint unsigned NOT NULL AUTO_INCREMENT,
   pkey binary(8) NOT NULL,
@@ -280,10 +307,12 @@ final class SEOProStats_Schema {
   engaged_ms int unsigned NOT NULL DEFAULT 0,
   scroll tinyint unsigned NOT NULL DEFAULT 0,
   flags tinyint unsigned NOT NULL DEFAULT 0,
+  search_id int unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (id),
   UNIQUE KEY pkey (pkey),
   UNIQUE KEY session_seq (session_id,seq),
   KEY path_ts (path_id,ts),
+  KEY search_ts (search_id,ts),
   KEY ts (ts)
 ) $charset;",
 
@@ -354,6 +383,23 @@ final class SEOProStats_Schema {
   PRIMARY KEY  (id),
   KEY path_ts (path_id,ts),
   KEY ts (ts)
+) $charset;",
+
+            // What an address shows, when it is one post, page or other
+            // single item: written by the processor from WordPress (the
+            // latest view wins), read by reports for authors, categories
+            // and post types. Names are looked up when a report is made.
+            'pages' => "CREATE TABLE {$t['pages']} (
+  path_id int unsigned NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  post_type varchar(20) NOT NULL DEFAULT '',
+  author_id bigint unsigned NOT NULL DEFAULT 0,
+  term_id bigint unsigned NOT NULL DEFAULT 0,
+  seen int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (path_id),
+  KEY post_type (post_type),
+  KEY author_id (author_id),
+  KEY term_id (term_id)
 ) $charset;",
         );
     }

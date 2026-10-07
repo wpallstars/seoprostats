@@ -33,6 +33,8 @@ final class SEOProStats_Rollup {
     /**
      * Dimension codes in the daily table, for SEOProStats_Query::DIMENSIONS.
      * Stored in every row: never change or reuse one. 0 is the site.
+     * Dimensions without a code (not found, site search, content) are read
+     * from the fact tables only.
      */
     const DIMS = array(
         'channel'      => 1,
@@ -51,6 +53,7 @@ final class SEOProStats_Rollup {
         'exit'         => 14,
         'page'         => 15,
         'event'        => 16,
+        'login'        => 17,
     );
 
     /** Seconds per run. */
@@ -194,6 +197,9 @@ final class SEOProStats_Rollup {
 
         if ($ok && $site > 0) {
             foreach (SEOProStats_Query::DIMENSIONS as $name => $dimension) {
+                if (!isset(self::DIMS[$name])) {
+                    continue;
+                }
                 list($level, $column, $kind) = $dimension;
                 $dim                         = self::DIMS[$name];
                 if ($level === 'session') {

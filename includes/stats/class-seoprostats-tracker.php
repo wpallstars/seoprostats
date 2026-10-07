@@ -7,8 +7,9 @@
  *
  * A tiny stub in the head queues seoprostats('Name', {...}) calls made
  * before the tracker runs. Costs no query: the endpoint and settings come
- * from autoloaded options (SEOProStats_Statistics). Design: docs/architecture.md →
- * Collection → Tracker.
+ * from autoloaded options (SEOProStats_Statistics), and the page's context
+ * (not found, site search, the item shown, logged in) from the request's
+ * own query. Design: docs/architecture.md → Collection → Tracker.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -151,6 +152,44 @@ final class SEOProStats_Tracker {
     }
 
     /**
+     * What WordPress knows about this page, printed in the data-ctx
+     * attribute and sent with its pageview. Only from what the request has
+     * already loaded (no query): the processor looks up the rest.
+     *
+     * - n: 1 when the page was not found (404)
+     * - q: 1 for a site search (its first page of results)
+     * - s: the search words, unless Settings → Tracking leaves them out
+     * - r: the search's number of results
+     * - i: the post, page or other single item shown
+     * - l: 1 when the visitor is logged in
+     *
+     * @return array<string,int|string>
+     */
+    public static function context() {
+        global $wp_query;
+        $out = array();
+        if (is_404()) {
+            $out['n'] = 1;
+        } elseif (is_search() && !is_paged()) {
+            $out['q'] = 1;
+            $words    = trim((string) get_search_query(false));
+            if ($words !== '' && SEOProStats_Statistics::search_terms()) {
+                $out['s'] = function_exists('mb_substr') ? mb_substr($words, 0, 100, 'UTF-8') : substr($words, 0, 100);
+            }
+            $out['r'] = $wp_query instanceof WP_Query ? (int) $wp_query->found_posts : 0;
+        } elseif (is_singular()) {
+            $id = (int) get_queried_object_id();
+            if ($id > 0) {
+                $out['i'] = $id;
+            }
+        }
+        if (is_user_logged_in()) {
+            $out['l'] = 1;
+        }
+        return $out;
+    }
+
+    /**
      * wp_head: the stub, so seoprostats() can be called before the tracker runs.
      */
     public static function print_stub() {
@@ -185,6 +224,10 @@ final class SEOProStats_Tracker {
         $props = apply_filters('seoprostats_page_props', array());
         if (is_array($props) && $props) {
             $attributes['data-props'] = wp_json_encode($props, JSON_UNESCAPED_SLASHES);
+        }
+        $context = self::context();
+        if ($context) {
+            $attributes['data-ctx'] = wp_json_encode($context, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
 
         /**

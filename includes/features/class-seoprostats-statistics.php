@@ -88,6 +88,13 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Count clicks and form submits', 'seoprostats'),
                 'description' => __('What people click (links, buttons, images), clicks that do nothing, and forms sent. Never what is typed or chosen in a form; emails and long numbers in labels are hidden. Add data-sps-mask to an element to leave out its text.', 'seoprostats'),
             ),
+            'tracking_search'         => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'parent'      => self::KEY,
+                'label'       => __('Record site search words', 'seoprostats'),
+                'description' => __('What people search for on the site, to show what they look for and what it does not have. Emails and long numbers are hidden. Off: searches and searches with no results are still counted, without their words.', 'seoprostats'),
+            ),
             'tracking_affiliate'      => array(
                 'type'        => 'lines',
                 'default'     => "/go/*\n/recommends/*",
@@ -412,6 +419,15 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function autocapture() {
         return (bool) SEOProStats_Settings::get('tracking_clicks');
+    }
+
+    /**
+     * Whether the words of site searches are recorded.
+     *
+     * @return bool
+     */
+    public static function search_terms() {
+        return (bool) SEOProStats_Settings::get('tracking_search');
     }
 
     /**

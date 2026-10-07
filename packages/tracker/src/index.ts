@@ -9,6 +9,9 @@
  * mask emails and long numbers, and data-sps-mask hides them.
  * Design: docs/architecture.md → Collection → Tracker.
  *
+ * The page as loaded also sends what WordPress knew about it (data-ctx:
+ * not found, site search, the item shown, logged in).
+ *
  * It stores nothing in the browser: no cookies, localStorage or
  * sessionStorage. A random ID for each page load, kept in memory, joins a
  * pageview to its engagement and events; visits are made on the server.
@@ -120,6 +123,8 @@ function attr(name: string): unknown {
 const cfg: Config = { u: '', ...(attr('data-cfg') as Partial<Config> | null) };
 /** data-props: properties of the page as loaded, sent with its first pageview only. */
 const pageProps = attr('data-props');
+/** data-ctx: what WordPress knew about the page as loaded (SEOProStats_Tracker::context()), sent with its pageview only. */
+const pageContext = attr('data-ctx');
 
 const queued = (win.seoprostats && win.seoprostats.q) || [];
 const allowed = PAGE_QUERY.concat((cfg.q || []).map((key) => String(key).toLowerCase()));
@@ -265,8 +270,8 @@ function engagement(): void {
 	push({ t: 'eng', p: pageId, s: ms, sc: scroll });
 }
 
-/** A new page: its pageview, and fresh engagement counters. */
-function startPage(referrer: string, props?: unknown): void {
+/** A new page: its pageview, and fresh engagement counters. The page as loaded also sends its properties and context. */
+function startPage(referrer: string, props?: unknown, context?: unknown): void {
 	pageId = newId();
 	pageKey = pagePath();
 	pageHref = bare(loc.href);
@@ -281,6 +286,9 @@ function startPage(referrer: string, props?: unknown): void {
 	const clean = cleanProps(props);
 	if (clean) {
 		hit.d = clean;
+	}
+	if (context && typeof context === 'object') {
+		hit.x = context;
 	}
 	push(hit);
 }
@@ -503,7 +511,8 @@ function submitted(e: Event): void {
 }
 
 function begin(): void {
-	startPage(bare(doc.referrer), pageProps);
+	startPage(bare(doc.referrer), pageProps, pageContext);
+	const loadedKey = pageKey;
 	for (const args of queued) {
 		api(args[0] as string, args[1] as EventOptions | undefined);
 	}
@@ -535,10 +544,10 @@ function begin(): void {
 		}
 	});
 	win.addEventListener('pagehide', away);
-	// Back or forward from the browser's page cache: a new pageview.
+	// Back or forward from the browser's page cache: a new pageview of the same document.
 	win.addEventListener('pageshow', (e) => {
 		if (e.persisted) {
-			startPage(bare(doc.referrer));
+			startPage(bare(doc.referrer), undefined, pagePath() === loadedKey ? pageContext : undefined);
 		}
 	});
 	win.addEventListener(

@@ -75,9 +75,16 @@ export function dimensionLabel(key: Dimension): string {
 		browser: __('Browser', 'seoprostats'),
 		os: __('Operating system', 'seoprostats'),
 		language: __('Language', 'seoprostats'),
+		login: __('Logged in', 'seoprostats'),
 		entry: __('Entry page', 'seoprostats'),
 		exit: __('Exit page', 'seoprostats'),
 		page: __('Page', 'seoprostats'),
+		not_found: __('Page not found', 'seoprostats'),
+		search: __('Site search', 'seoprostats'),
+		no_results: __('Search with no results', 'seoprostats'),
+		author: __('Author', 'seoprostats'),
+		category: __('Category', 'seoprostats'),
+		post_type: __('Post type', 'seoprostats'),
 		event: __('Event', 'seoprostats'),
 	};
 	return labels[key];
@@ -147,6 +154,13 @@ export function valueLabel(dimension: Dimension, value: string, apiLabel?: strin
 			unknown: __('Unknown', 'seoprostats'),
 		};
 		return devices[value] ?? apiLabel ?? value;
+	}
+	if (dimension === 'login') {
+		const logins: Record<string, string> = {
+			logged_in: __('Logged in', 'seoprostats'),
+			logged_out: __('Not logged in', 'seoprostats'),
+		};
+		return logins[value] ?? apiLabel ?? value;
 	}
 	return apiLabel || value;
 }

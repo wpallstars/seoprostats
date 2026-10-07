@@ -40,9 +40,16 @@ export const DIMENSIONS = [
 	'browser',
 	'os',
 	'language',
+	'login',
 	'entry',
 	'exit',
 	'page',
+	'not_found',
+	'search',
+	'no_results',
+	'author',
+	'category',
+	'post_type',
 	'event',
 ] as const;
 export type Dimension = (typeof DIMENSIONS)[number];

@@ -49,6 +49,10 @@ Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events th
 
 Yes, unless you switch it off under Settings → Tracking. Clicks shows what people click on the site or one page, clicks that did nothing (dead clicks), links followed, including affiliate links, files and the forms sent. It never records what anyone types or chooses in a form, hides email addresses and long numbers, and leaves out the text of anything marked with data-sps-mask. Clicks are kept 3 months.
 
+= Does it show broken links and site searches? =
+
+Yes. The Overview lists the addresses people reached that were not found, what they searched the site for and the searches that found nothing, and views by author, category and post type. Under Settings → Tracking you can leave search words out; searches are then counted without them. Email addresses and long numbers in searches are always hidden.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

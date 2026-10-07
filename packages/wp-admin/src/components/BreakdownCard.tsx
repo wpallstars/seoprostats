@@ -28,11 +28,42 @@ interface Props {
 	wide?: boolean;
 }
 
-const PAGE_DIMENSIONS: Dimension[] = ['page', 'entry', 'exit'];
+const PAGE_DIMENSIONS: Dimension[] = ['page', 'entry', 'exit', 'not_found'];
 
-/** What a row counts: pageviews for top pages, events for events, otherwise visits. */
+/** Dimensions of pageviews: their rows count views (searches, for site search). */
+const VIEW_DIMENSIONS: Dimension[] = ['page', 'not_found', 'search', 'no_results', 'author', 'category', 'post_type'];
+
+/** Dimensions whose values are IDs: a row filters by its name, which the API also takes, so the filter reads well. */
+const NAMED_DIMENSIONS: Dimension[] = ['author', 'category'];
+
+/** What a row counts: pageviews for pages and content, events for events, otherwise visits. */
 function countOf(dimension: Dimension): 'pageviews' | 'events' | 'visits' {
-	return dimension === 'page' ? 'pageviews' : dimension === 'event' ? 'events' : 'visits';
+	return VIEW_DIMENSIONS.includes(dimension) ? 'pageviews' : dimension === 'event' ? 'events' : 'visits';
+}
+
+/** What an empty list says. */
+function emptyText(dimension: Dimension): string {
+	switch (dimension) {
+		case 'event':
+			return __('No events in this period. Outbound links, file downloads and your own events show here.', 'seoprostats');
+		case 'not_found':
+			return __('No visits to pages that were not found in this period.', 'seoprostats');
+		case 'search':
+			return __('No site searches in this period.', 'seoprostats');
+		case 'no_results':
+			return __('Every site search in this period found something.', 'seoprostats');
+		case 'author':
+		case 'category':
+		case 'post_type':
+			return __('No views of posts or pages in this period.', 'seoprostats');
+		default:
+			return __('Nothing in this period.', 'seoprostats');
+	}
+}
+
+/** The value a row filters by. */
+function filterValue(dimension: Dimension, row: { value: string; label: string }): string {
+	return NAMED_DIMENSIONS.includes(dimension) && row.value !== '0' && row.label ? row.label : row.value;
 }
 
 function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewState; update: Props['update'] }) {
@@ -61,13 +92,7 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 		);
 	}
 	if (!answer.rows.length) {
-		return (
-			<p className="spst-empty">
-				{isEvent
-					? __('No events in this period. Outbound links, file downloads and your own events show here.', 'seoprostats')
-					: __('Nothing in this period.', 'seoprostats')}
-			</p>
-		);
+		return <p className="spst-empty">{emptyText(dimension)}</p>;
 	}
 	const countRow = (r: (typeof answer.rows)[number]) => (metric === 'visits' ? r.visits : r[metric] ?? 0);
 	const top = Math.max(...answer.rows.map(countRow), 1);
@@ -86,7 +111,8 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 					// Events: the share of visits with the event (its conversion rate).
 					const share = byPageviews ? '' : formatPercent(isEvent ? row.conversion_rate ?? row.share : row.share, locale);
 					// A second click on a row that is already a filter takes it out.
-					const active = hasFilterValue(state.filters, dimension, row.value);
+					const value = filterValue(dimension, row);
+					const active = hasFilterValue(state.filters, dimension, value);
 					return (
 						<li key={row.value} className="spst-row">
 							<button
@@ -98,7 +124,7 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 										? sprintf(/* translators: %s: a value such as a country or page. */ __('Remove the filter for %s', 'seoprostats'), label)
 										: sprintf(/* translators: %s: a value such as a country or page. */ __('Show only visits with %s', 'seoprostats'), label)
 								}
-								onClick={() => update({ filters: toggleFilterValue(state.filters, dimension, row.value) })}
+								onClick={() => update({ filters: toggleFilterValue(state.filters, dimension, value) })}
 							>
 								<span className="spst-row__bar" style={{ width: `${(count / top) * 100}%` }} aria-hidden="true" />
 								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>{label}</span>
