@@ -132,8 +132,9 @@ long-term record.
       an experiment (GH#75, after GH#73).
 - [x] Overlapping pages: queries shared by several pages, as candidates to
       review (GH#76, after GH#75).
-- [ ] Content audit from WordPress: page facts on save and in cron,
-      findings weighed by search and conversions (GH#77, after GH#75).
+- [x] Content audit from WordPress: page facts on save and in cron,
+      findings weighed by search and conversions; Search → Audit and plan
+      items (GH#77, after GH#75).
 - [ ] Internal links: orphans, converting pages with few links in,
       missing links to a query's page (GH#78, after GH#77).
 - [ ] Indexation: published pages and sitemap addresses without
