@@ -990,11 +990,7 @@ final class SEOProStats_Experiments {
             /* translators: %s: the measure, such as Clicks */
             return sprintf(__('%s could not be compared: there is no data before the change.', 'seoprostats'), $label);
         }
-        // Position: places climbed (+ is a better place), as the dashboard shows it.
-        $size = (int) $metric === 4
-            /* translators: %s: places climbed, such as +1.5 */
-            ? sprintf(__('%s places (+ is a better place)', 'seoprostats'), sprintf('%+.1f', 0 - $effect))
-            : sprintf('%+.1f%%', $effect * 100);
+        $size = (int) $metric === 4 ? self::places_text($effect) : sprintf('%+.1f%%', $effect * 100);
         $note = $enough ? '' : ' ' . __('There is too little data to judge.', 'seoprostats');
         if (!$compared) {
             /* translators: 1: the measure, 2: the change, such as +12.0% */
@@ -1006,6 +1002,26 @@ final class SEOProStats_Experiments {
         }
         /* translators: 1: the measure, 2: the change, such as +12.0%, 3: number of pages */
         return sprintf(_n('%1$s changed by %2$s against %3$d comparable unchanged page, within their usual spread: no clear effect.', '%1$s changed by %2$s against %3$d comparable unchanged pages, within their usual spread: no clear effect.', $pages, 'seoprostats'), $label, $size, $pages) . $note;
+    }
+
+    /**
+     * A position effect in words, as places up (better) or down (worse);
+     * the API's number is the change in position, where lower is better.
+     *
+     * @param float $effect Change in places (negative: better).
+     * @return string
+     */
+    public static function places_text($effect) {
+        $places = number_format_i18n(abs((float) $effect), 1);
+        if ((float) $effect < 0) {
+            /* translators: %s: places, such as 1.5 */
+            return sprintf(__('%s places up', 'seoprostats'), $places);
+        }
+        if ((float) $effect > 0) {
+            /* translators: %s: places, such as 1.5 */
+            return sprintf(__('%s places down', 'seoprostats'), $places);
+        }
+        return __('no places', 'seoprostats');
     }
 
     /**

@@ -1751,7 +1751,8 @@ final class SEOProStats_CLI {
     }
 
     /**
-     * An effect as text: places for position, else percent.
+     * An effect as text: places up or down for position (the JSON keeps
+     * the change in position, lower is better), else percent.
      *
      * @param string     $metric Metric name.
      * @param float|null $effect Effect.
@@ -1761,7 +1762,7 @@ final class SEOProStats_CLI {
         if ($effect === null) {
             return '–';
         }
-        return $metric === 'position' ? sprintf('%+.1f', $effect) : sprintf('%+.1f%%', $effect * 100);
+        return $metric === 'position' ? SEOProStats_Experiments::places_text($effect) : sprintf('%+.1f%%', $effect * 100);
     }
 
     /**
