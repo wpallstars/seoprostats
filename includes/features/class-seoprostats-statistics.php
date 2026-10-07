@@ -48,13 +48,48 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function settings() {
         return array(
-            'share_agency' => array('type' => 'text', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Agency name', 'seoprostats')),
-            'share_website' => array('type' => 'url', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Agency website', 'seoprostats')),
-            'share_byline' => array('type' => 'text', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Report byline', 'seoprostats')),
-            'share_agency_logo' => array('type' => 'media', 'default' => 0, 'tab' => 'shared-reports', 'label' => __('Agency logo', 'seoprostats')),
-            'share_accent' => array('type' => 'text', 'default' => '#2271b1', 'tab' => 'shared-reports', 'label' => __('Report accent (hex colour)', 'seoprostats')),
-            'share_mode' => array('type' => 'select', 'default' => 'system', 'tab' => 'shared-reports', 'label' => __('Report appearance', 'seoprostats'), 'options' => array('system' => __('System', 'seoprostats'), 'light' => __('Light', 'seoprostats'), 'dark' => __('Dark', 'seoprostats'))),
-            'share_credit' => array('type' => 'bool', 'default' => true, 'tab' => 'shared-reports', 'label' => __('Show Statistics by SEO Pro Stats', 'seoprostats')),
+            // Shared reports: defaults for new reports (SEOProStats_Shares::defaults()).
+            // Only switches and panels have controls on a card, so the fields
+            // sit in the panels of the Agency branding and Report colours cards.
+            'share_brand'             => array(
+                'type'        => 'bool',
+                'default'     => false,
+                'tab'         => 'shared-reports',
+                'label'       => __('Agency branding', 'seoprostats'),
+                'description' => __('Put your agency\'s logo, name, website and a byline at the foot of new shared reports. Off: reports carry only the site\'s own name and logo.', 'seoprostats'),
+            ),
+            'share_agency'            => array('type' => 'text', 'default' => '', 'parent' => 'share_brand', 'label' => __('Agency name', 'seoprostats')),
+            'share_website'           => array('type' => 'url', 'default' => '', 'parent' => 'share_brand', 'label' => __('Agency website', 'seoprostats'), 'placeholder' => 'https://'),
+            'share_byline'            => array('type' => 'text', 'default' => '', 'parent' => 'share_brand', 'label' => __('Byline', 'seoprostats'), 'description' => __('Words before the agency\'s name, such as “Prepared by”.', 'seoprostats')),
+            'share_agency_logo'       => array('type' => 'media', 'default' => 0, 'parent' => 'share_brand', 'label' => __('Agency logo', 'seoprostats'), 'description' => __('A PNG, JPEG, WebP or GIF picture from this site\'s Media Library.', 'seoprostats')),
+            'share_accent'            => array(
+                'type'        => 'text',
+                'default'     => '#2271b1',
+                'tab'         => 'shared-reports',
+                // The colour picker is drawn in the panel (SEOProStats_Share_Settings).
+                'panel'       => true,
+                'label'       => __('Report colours', 'seoprostats'),
+                'description' => __('The colour of the report\'s chart, links and buttons, and whether it opens light or dark.', 'seoprostats'),
+            ),
+            'share_mode'              => array(
+                'type'        => 'select',
+                'default'     => 'system',
+                'parent'      => 'share_accent',
+                'label'       => __('Light or dark', 'seoprostats'),
+                'description' => __('How the report opens. Readers can switch between light and dark on the report.', 'seoprostats'),
+                'options'     => array(
+                    'system' => __('Follow the reader\'s device', 'seoprostats'),
+                    'light'  => __('Light', 'seoprostats'),
+                    'dark'   => __('Dark', 'seoprostats'),
+                ),
+            ),
+            'share_credit'            => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'tab'         => 'shared-reports',
+                'label'       => __('Show “Statistics logged by SEO Pro Stats for WordPress”', 'seoprostats'),
+                'description' => __('A short line at the foot of new shared reports.', 'seoprostats'),
+            ),
             self::KEY                 => array(
                 'type'        => 'bool',
                 'default'     => true,

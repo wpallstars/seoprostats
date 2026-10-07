@@ -255,11 +255,20 @@ final class SEOProStats_Shares {
         return $out;
     }
 
-    /** @return array Branding defaults from the shared reports settings tab. */
+    /**
+     * Branding defaults from the shared reports settings tab. With Agency
+     * branding off, the agency fields stay empty whatever is stored.
+     *
+     * @return array
+     */
     public static function defaults() {
-        $out = array();
+        $brand = (bool) SEOProStats_Settings::get('share_brand');
+        $out   = array();
         foreach (array('agency', 'website', 'byline', 'agency_logo', 'accent', 'mode', 'credit') as $key) {
             $out[$key] = SEOProStats_Settings::get('share_' . $key);
+        }
+        if (!$brand) {
+            $out = array_merge($out, array('agency' => '', 'website' => '', 'byline' => '', 'agency_logo' => 0));
         }
         return $out;
     }

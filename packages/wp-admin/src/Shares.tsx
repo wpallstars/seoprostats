@@ -95,8 +95,8 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
         {(['title', 'agency', 'website', 'byline'] as const).map((key) => <TextControl key={key} label={key} value={branding[key]} onChange={(value) => setBranding({ ...branding, [key]: value })} />)}
         {(['logo', 'agency_logo'] as const).map((key) => <TextControl key={key} type="number" min={0} label={`${key} (Media Library ID)`} value={String(branding[key])} onChange={(value) => setBranding({ ...branding, [key]: Number(value) })} />)}
         <TextControl label={__('Accent colour (hex)', 'seoprostats')} value={branding.accent} onChange={(accent) => setBranding({ ...branding, accent })} />
-        <SelectControl label={__('Appearance', 'seoprostats')} value={branding.mode} options={['system', 'light', 'dark'].map((value) => ({ label: value, value }))} onChange={(mode) => setBranding({ ...branding, mode: mode as ShareBranding['mode'] })} />
-        <CheckboxControl label={__('Show Statistics by SEO Pro Stats', 'seoprostats')} checked={branding.credit} onChange={(credit) => setBranding({ ...branding, credit })} />
+        <SelectControl label={__('Light or dark', 'seoprostats')} value={branding.mode} options={[{ label: __('Follow the reader\'s device', 'seoprostats'), value: 'system' }, { label: __('Light', 'seoprostats'), value: 'light' }, { label: __('Dark', 'seoprostats'), value: 'dark' }]} onChange={(mode) => setBranding({ ...branding, mode: mode as ShareBranding['mode'] })} />
+        <CheckboxControl label={__('Show “Statistics logged by SEO Pro Stats for WordPress”', 'seoprostats')} checked={branding.credit} onChange={(credit) => setBranding({ ...branding, credit })} />
         <Button variant="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? __('Saving…', 'seoprostats') : __('Save report', 'seoprostats')}</Button>
     </Modal>;
 }

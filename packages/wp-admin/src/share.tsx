@@ -68,7 +68,7 @@ function Report({ share }: { share: Opened }) {
         {!!share.locked_filters.length && <p>{__('Locked filters:', 'seoprostats')} {share.locked_filters.map((f) => `${f.dimension} ${f.op} ${f.values.join(', ')}`).join('; ')}</p>}
         <FilterBar filters={state.filters} update={update} />
         <div key={dark ? 'dark' : 'light'}>{state.view === 'goals' ? <Goals {...props} /> : state.view === 'clicks' ? <Clicks {...props} /> : <Overview {...props} />}</div>
-        <footer className="spst-share-brand">{share.agency_logo_url && <img src={share.agency_logo_url} alt="" />}<p>{share.branding.byline} {share.branding.website ? <a href={share.branding.website} rel="noopener">{share.branding.agency}</a> : share.branding.agency}</p>{share.branding.credit && <p>{__('Statistics by SEO Pro Stats', 'seoprostats')}</p>}</footer>
+        <footer className="spst-share-brand">{share.agency_logo_url && <img src={share.agency_logo_url} alt="" />}<p>{share.branding.byline} {share.branding.website ? <a href={share.branding.website} rel="noopener">{share.branding.agency}</a> : share.branding.agency}</p>{share.branding.credit && <p>{__('Statistics logged by SEO Pro Stats for WordPress', 'seoprostats')}</p>}</footer>
     </div>;
 }
 

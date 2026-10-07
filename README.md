@@ -73,7 +73,7 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ### Shared reports
 
-Administrators can choose **Share** beside the period controls in Overview,
+Administrators can choose **Share** after the period controls in Overview,
 Goals or Clicks, or open **Shared reports** in the menu. Save one or more
 views in the order the reader should see them, an optional note, password
 and expiry. Starting filters can be locked on every report; readers may
@@ -96,12 +96,18 @@ site-wide. Chart markers contain only the change kind, time and allowed
 page, never names of users, configuration values or private notes; visit
 filters such as a campaign or country omit the changes lane.
 
-Set agency branding defaults under **Settings → Shared reports**, then
-override them per report: title, local Media Library logo IDs, agency name,
-website, byline, accent, appearance and optional plugin credit. Otherwise
-the header uses the site's logo, Site Icon and site name. Light, dark and
-system appearances include a toggle; accents that fail AA text contrast
-fall back to a readable colour. **Print / Save as PDF** uses the browser's
+Set defaults for new reports under **Settings → Shared reports**: **Agency
+branding** (agency name, website, byline and a Media Library logo, at the
+foot of the report), **Report colours** (an accent picked from the site's
+theme, Site Editor or Customizer colours, or any other, and whether the
+report opens light, dark or following the reader's device) and the
+"Statistics logged by SEO Pro Stats for WordPress" credit. Each report can
+override them: title, local Media Library logo IDs, agency name, website,
+byline, accent, appearance and credit. Otherwise the header uses the
+site's logo, Site Icon and site name. Readers can switch between light and
+dark; accents that fail AA text contrast fall back to a readable colour.
+**Share** sits after the period controls; with demo data it shows but
+cannot be pressed, as only live statistics are shared. **Print / Save as PDF** uses the browser's
 print dialog with a clean branded report.
 
 Scripts manage shares through `/shares` (administrators) or
