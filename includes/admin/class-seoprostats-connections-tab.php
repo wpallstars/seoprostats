@@ -27,6 +27,19 @@ final class SEOProStats_Connections_Tab {
     const JS_FILE = 'admin/js/seoprostats-connections.js';
 
     /**
+     * Google's pages for the setup steps, as Google's own documentation
+     * links them (the Search Console API's page is its API library page).
+     */
+    const LINKS = array(
+        'project'   => 'https://console.cloud.google.com/projectcreate',
+        'api'       => 'https://console.cloud.google.com/apis/library/searchconsole.googleapis.com',
+        'accounts'  => 'https://console.cloud.google.com/iam-admin/serviceaccounts',
+        'keys_help' => 'https://docs.cloud.google.com/iam/docs/creating-managing-service-account-keys',
+        'users'     => 'https://search.google.com/search-console/users',
+        'user_help' => 'https://support.google.com/webmasters/answer/7687615',
+    );
+
+    /**
      * Register the tab and its script (admin requests only).
      */
     public static function init() {
@@ -72,7 +85,7 @@ final class SEOProStats_Connections_Tab {
         $version = file_exists(SEOPROSTATS_DIR . self::JS_FILE) ? (string) filemtime(SEOPROSTATS_DIR . self::JS_FILE) : SEOPROSTATS_VERSION;
         wp_enqueue_script('seoprostats-connections', SEOPROSTATS_URL . self::JS_FILE, array('seoprostats-admin', 'wp-api-fetch', 'wp-i18n', 'wp-a11y'), $version, true);
         wp_set_script_translations('seoprostats-connections', 'seoprostats');
-        wp_add_inline_style('seoprostats-admin', '.spst-connection{padding:16px 20px;min-width:0}.spst-connection h3{margin:0 0 4px;font-size:14px}.spst-connection__steps{margin:8px 0 12px 1.5em}.spst-connection__steps li{margin-bottom:4px}.spst-connection textarea{width:100%;font-family:monospace;font-size:12px}.spst-connection .form-table th{width:180px;padding-block:8px}.spst-connection .form-table td{padding-block:8px}.spst-connection__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.spst-connection__message:empty{display:none}.spst-connection code{overflow-wrap:anywhere}.spst-connection__scroll{margin-top:12px;overflow-x:auto}.spst-connection details{margin-top:12px}');
+        wp_add_inline_style('seoprostats-admin', '.spst-connection{padding:16px 20px;min-width:0}.spst-connection h3{margin:0 0 4px;font-size:14px}.spst-connection__steps{margin:8px 0 12px 1.5em}.spst-connection__steps li{margin-bottom:8px;max-width:72em}.spst-connection textarea{width:100%;font-family:monospace;font-size:12px}.spst-connection .form-table th{width:180px;padding-block:8px}.spst-connection .form-table td{padding-block:8px}.spst-connection__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.spst-connection__message:empty{display:none}.spst-connection code{overflow-wrap:anywhere}.spst-connection__scroll{margin-top:12px;overflow-x:auto}.spst-connection details{margin-top:12px}');
     }
 
     /**
@@ -138,12 +151,22 @@ final class SEOProStats_Connections_Tab {
         unset($source);
         ?>
         <p class="spst-setting__desc"><?php esc_html_e('Clicks, impressions and average position for each page and search query, by day, so search and visits sit on one timeline. On connecting, the 16 months Search Console keeps are imported; after that each day is added once Search Console marks it final, about three days later.', 'seoprostats'); ?></p>
+        <p><?php esc_html_e('Set it up once, signed in to Google with the account that owns this site in Search Console. Each link opens in a new tab.', 'seoprostats'); ?></p>
         <ol class="spst-connection__steps">
-            <li><?php esc_html_e('In the Google Cloud console, choose or make a project and turn on the Google Search Console API for it.', 'seoprostats'); ?></li>
-            <li><?php esc_html_e('Under IAM & Admin → Service accounts, make a service account (it needs no roles), then open it → Keys → Add key → Create new key → JSON. Your browser downloads the key file.', 'seoprostats'); ?></li>
-            <li><?php esc_html_e('In Search Console, open this site\'s property → Settings → Users and permissions → Add user, and add the service account\'s address (it ends in iam.gserviceaccount.com) with Restricted permission.', 'seoprostats'); ?></li>
-            <li><?php esc_html_e('Open the key file in a text editor, copy all of it, paste it below and connect.', 'seoprostats'); ?></li>
+            <?php
+            foreach (self::steps() as $step) {
+                printf(
+                    '<li><strong>%1$s</strong> %2$s</li>',
+                    esc_html($step[0]),
+                    wp_kses($step[1], array(
+                        'a'    => array('href' => true, 'target' => true, 'rel' => true),
+                        'span' => array('class' => true),
+                    ))
+                );
+            }
+            ?>
         </ol>
+        <p class="description"><?php esc_html_e('If Google says key creation is turned off by an organisation policy, make the project outside your organisation (Location: No organization), or ask its administrator to allow keys for that project.', 'seoprostats'); ?></p>
         <p>
             <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('Service account key (JSON)', 'seoprostats'); ?></strong></label>
             <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="6" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="{&quot;type&quot;: &quot;service_account&quot;, …}"></textarea>
@@ -157,6 +180,57 @@ final class SEOProStats_Connections_Tab {
             <button type="button" class="button button-primary" data-spst-action="connect"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
         </div>
         <?php
+    }
+
+    /**
+     * The setup steps: a title and the step, with its links (HTML made
+     * here; translations hold only plain text and %s for the links).
+     *
+     * @return array<int,array{0:string,1:string}>
+     */
+    private static function steps() {
+        $link = static function ($key, $text) {
+            return sprintf(
+                '<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s<span class="screen-reader-text"> %3$s</span></a>',
+                esc_url(self::LINKS[$key]),
+                esc_html($text),
+                esc_html__('(opens in a new tab)', 'seoprostats')
+            );
+        };
+        $text = static function ($format, ...$links) {
+            return vsprintf(esc_html($format), $links);
+        };
+        return array(
+            array(
+                __('Make a Google Cloud project.', 'seoprostats'),
+                /* translators: %s: link "Create a project" */
+                $text(__('%s, give it any name (such as Site statistics) and choose Create. A project you already have works too.', 'seoprostats'), $link('project', __('Create a project', 'seoprostats'))),
+            ),
+            array(
+                __('Turn on the Search Console API.', 'seoprostats'),
+                /* translators: %s: link "Open the Google Search Console API" */
+                $text(__('%s, check that your project is chosen at the top of the page, and choose Enable.', 'seoprostats'), $link('api', __('Open the Google Search Console API', 'seoprostats'))),
+            ),
+            array(
+                __('Make a service account.', 'seoprostats'),
+                /* translators: %s: link "Open Service accounts" */
+                $text(__('%s → Create service account. Give it a name (such as seo-pro-stats), choose Create and continue, then Done: it needs no roles or access, so skip those two steps. Copy its email address, which ends in iam.gserviceaccount.com.', 'seoprostats'), $link('accounts', __('Open Service accounts', 'seoprostats'))),
+            ),
+            array(
+                __('Download its key.', 'seoprostats'),
+                /* translators: %s: link "About keys" */
+                $text(__('In the list of service accounts, choose its email address → Keys → Add key → Create new key → JSON → Create. Your browser downloads a .json file; keep it private (%s).', 'seoprostats'), $link('keys_help', __('About keys', 'seoprostats'))),
+            ),
+            array(
+                __('Let it read this site in Search Console.', 'seoprostats'),
+                /* translators: 1: link "Open Users and permissions", 2: link "Help" */
+                $text(__('%1$s, choose this site\'s property at the top left, then Add user. Paste the service account\'s email address, choose Restricted permission (it only reads) and Add (%2$s).', 'seoprostats'), $link('users', __('Open Users and permissions', 'seoprostats')), $link('user_help', __('Help', 'seoprostats'))),
+            ),
+            array(
+                __('Connect.', 'seoprostats'),
+                $text(__('Open the downloaded key file in a text editor, copy all of it, paste it below and choose Connect. The key is stored encrypted, so you can delete the file; if you ever need it again, make a new key.', 'seoprostats')),
+            ),
+        );
     }
 
     /**

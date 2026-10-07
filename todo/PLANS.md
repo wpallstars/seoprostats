@@ -71,7 +71,7 @@ long-term record.
       (issue #30). Refunds and renewals later.
 - [ ] A/B testing of blocks: variants in the editor, results by test and
       variant (issue #29).
-- [ ] Clicks by page with View and Edit links (issue #25).
+- [x] Clicks by page with View and Edit links (issue #25).
 - [ ] Journeys (visitor per day timeline), Flow (Sankey), segments.
 
 ## Phase 3: changes and causes (depends on 1)
@@ -92,7 +92,11 @@ long-term record.
 - [x] Search Console connection (service account, key stored encrypted),
       import of final days and the 16-month history, undo, retention;
       Settings → Connections, REST and WP-CLI (GH#43).
-- [ ] Search Console through an OAuth client the owner makes.
+- [ ] Search Console by Sign in with Google, through a stateless relay
+      we host (Cloudflare Worker) and a verified Google app; waits on the
+      owner's domain, Cloudflare and Google setup (issue #50). An OAuth
+      client each owner makes was dropped: as much Google Cloud work as the
+      service account, plus an "unverified app" warning.
 - [x] Rankings: a Search section with clicks, impressions, CTR and
       position against the previous period, queries, pages, countries
       and devices, page ↔ query drill-down; REST `search`, WP-CLI, the
