@@ -97,6 +97,7 @@ cleanup() {
 wp_cli() {
 	docker run --rm --name "$NAME-cli" --label "$LABEL" --network "$NAME" \
 		-v "$NAME-wp:/var/www/html" -v "$TMP_DIR:/zips:ro" --user 33:33 \
+		-e DEMO_POST_PATH="$POST_PATH" \
 		wordpress:cli-php8.3 php -d memory_limit=1G /usr/local/bin/wp "$@"
 	return $?
 }
@@ -165,7 +166,7 @@ seed_site() {
 		# altering browser authentication. The filter exists only in this site.
 		# shellcheck disable=SC2016 # PHP variables, not shell variables.
 		POST_ID="$(wp_cli eval '
-			$path = $args[0];
+			$path = getenv("DEMO_POST_PATH");
 			$text = SEOProStats_Demo::text($path);
 			if (!$text) { WP_CLI::error("No demo page text for " . $path); }
 			$id = wp_insert_post(array("post_type" => "post", "post_status" => "publish", "post_name" => basename($path), "post_title" => $text["title"], "post_content" => $text["content"]), true);
@@ -174,7 +175,7 @@ seed_site() {
 			wp_mkdir_p(WPMU_PLUGIN_DIR);
 			$code = "<?php\nadd_filter(\"seoprostats_focus_keywords\", function (\$focus, \$id) { return get_post_meta(\$id, \"seoprostats_demo_focus\", true) ?: \$focus; }, 10, 2);\n";
 			if (false === file_put_contents(WPMU_PLUGIN_DIR . "/demo-focus.php", $code)) { WP_CLI::error("Could not write demo focus filter"); }
-			echo $id;' "$POST_PATH")"
+			echo $id;')"
 	fi
 	return 0
 }
