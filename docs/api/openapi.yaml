@@ -37,6 +37,159 @@ security:
   - cookieNonce: []
 
 paths:
+  /shares:
+    get:
+      operationId: listShares
+      summary: Administrator-only shared reports and branding defaults; never hashes or full links.
+      responses:
+        '200':
+          description: Shares (at most 50), with id, created, expires, last_opened, opens, revoked and protected; defaults holds the branding for new shares.
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: createShare
+      summary: Create a private read-only report (manage_options).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareInput'
+      responses:
+        '200':
+          description: Saved share and its url, shown once. Only the token hash is stored.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /shares/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+    post:
+      operationId: updateShare
+      summary: Update a share (manage_options); omitted password keeps it, empty clears it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShareInput'
+      responses:
+        '200': {description: Saved share, without hashes or full link.}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    delete:
+      operationId: revokeShare
+      summary: Revoke access (manage_options); the record remains in the owner list.
+      responses:
+        '200': {description: 'revoked: true'}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /shares/{id}/renew:
+    post:
+      operationId: renewShare
+      summary: Rotate the secret and reactivate the share (manage_options); expiry stays.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200': {description: New url, shown once. Old links and grants stop working.}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /share/{token}:
+    post:
+      operationId: openShare
+      security: []
+      summary: Unlock a private report; no WordPress cookie or nonce needed.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+        - name: X-Seoprostats-Unlock
+          in: header
+          schema: {type: string}
+          description: An unexpired grant can reopen the report without its password.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                password: {type: string, maxLength: 256, default: ''}
+      responses:
+        '200':
+          description: Public share fields, views, branding, home/site_name/logo_url/agency_logo_url and a one-hour signed unlock grant. Keep the grant in sessionStorage only. No password or bearer hashes, owner IDs or user information. Private/no-store, noindex/nofollow, no-referrer headers.
+        '403':
+          description: Uniform unavailable response for unknown, revoked, expired, password-protected or throttled shares (five unlock attempts per minute per secret).
+
+  /share/{token}/{section}/{report}:
+    get:
+      operationId: getSharedReport
+      security: []
+      summary: Read an allowed live report with server-enforced locks; never editors or demo data.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: {type: string, pattern: '^[a-f0-9]{32}$'}
+        - name: section
+          in: path
+          required: true
+          schema: {type: string, enum: [overview, goals, clicks]}
+        - name: report
+          in: path
+          required: true
+          schema: {type: string, enum: [stats, timeseries, breakdown, markers, realtime, goals, clicks]}
+          description: Overview allows stats/timeseries/breakdown/markers/realtime; Goals allows goals; Clicks allows clicks. The section must be saved in this share.
+        - name: X-Seoprostats-Unlock
+          in: header
+          schema: {type: string}
+          description: Required for a password-protected share; grants do not authorize other API routes.
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: dimension
+          in: query
+          schema: {type: string}
+        - name: kind
+          in: query
+          schema: {type: string, enum: [elements, dead, links, downloads, forms, pages]}
+        - name: page
+          in: query
+          schema: {type: string, maxLength: 2048}
+        - name: grain
+          in: query
+          schema: {type: string, enum: [auto, hour, day, month]}
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100}
+        - name: offset
+          in: query
+          schema: {type: integer, minimum: 0, maximum: 1000}
+      responses:
+        '200':
+          description: Existing report shape, with edit_url always null. Sensitive breakdowns may be empty; realtime omitted for locked shares. Markers carry only kind/time/page, never users or settings, and are omitted for visit-level locks. Uses existing report cache but sends private/no-store headers.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Report unavailable, section excluded, grant invalid, date boundary violated or quota exceeded (120 report reads per minute per secret).
   /stats:
     get:
       operationId: getStats
@@ -1352,6 +1505,60 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    ShareInput:
+      type: object
+      description: Administrator share fields. Creation needs views; updates merge omitted fields with the current share. Secrets never appear in list/update responses.
+      properties:
+        name: {type: string, maxLength: 190}
+        note: {type: string, maxLength: 2000}
+        password: {type: string, maxLength: 256}
+        views:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            description: Saved ViewState; valid section choices are normalized as the dashboard address reader normalizes them.
+            required: [view]
+            properties:
+              view: {type: string, enum: [overview, goals, clicks]}
+              range: {type: string, default: '30d'}
+              from: {type: string, format: date}
+              to: {type: string, format: date}
+              compare: {type: string, enum: [none, prev, year], default: prev}
+              metric: {type: string, default: visitors}
+              filters: {type: array, maxItems: 20, items: {type: object}}
+              tabs: {type: object}
+              kind: {type: string, enum: [elements, dead, links, downloads, forms, pages]}
+              page: {type: string, maxLength: 2048}
+        locked_filters:
+          type: array
+          maxItems: 20
+          items:
+            oneOf:
+              - {type: string}
+              - type: object
+                required: [dimension, values]
+                properties:
+                  dimension: {type: string}
+                  op: {type: string, enum: [is, is_not, contains, matches]}
+                  values: {type: array, maxItems: 100, items: {type: string, maxLength: 2048}}
+        max_days: {type: integer, minimum: 0, maximum: 3650, description: 'Only the last N days, including comparison; 0 means any period.'}
+        expires: {type: integer, minimum: 0, description: 'Future Unix timestamp, or 0 for no expiry.'}
+        hide_realtime: {type: boolean}
+        hide_sensitive: {type: boolean}
+        branding:
+          type: object
+          properties:
+            title: {type: string}
+            logo: {type: integer, minimum: 0, description: Local raster Media Library attachment ID.}
+            agency: {type: string}
+            agency_logo: {type: integer, minimum: 0}
+            website: {type: string, description: HTTP or HTTPS link, never fetched.}
+            byline: {type: string}
+            accent: {type: string, description: Hex colour; unreadable text accents fall back in each appearance.}
+            mode: {type: string, enum: [light, dark, system]}
+            credit: {type: boolean}
     Dimension:
       type: string
       enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type, event]

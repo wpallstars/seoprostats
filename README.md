@@ -71,6 +71,44 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ## Where to find it
 
+### Shared reports
+
+Administrators can choose **Share** beside the period controls in Overview,
+Goals or Clicks, or open **Shared reports** in the menu. Save one or more
+views in the order the reader should see them, an optional note, password
+and expiry. Starting filters can be locked on every report; readers may
+add filters, change period and comparison, and switch tabs but cannot
+remove the server's locks. An optional last-N-days limit also covers the
+comparison period.
+
+Copy the private link when it is first shown: only its hash is stored.
+If lost, **Make a new link** gives another and invalidates the old one.
+**Revoke** stops access immediately. Anyone with an unprotected link can
+read its reports, so use a password when appropriate and keep links private.
+Password unlocks last an hour in the tab's session storage, not a cookie.
+
+The reader sees a standalone report, without wp-admin, the theme or a
+tracker. It is not indexed and cannot be cached publicly. Reports use live
+data only, never demo data, editors, settings or user information. Hide
+search terms and referrer addresses when sharing outside the business.
+Realtime is omitted for locked shares because its existing report is
+site-wide. Chart markers contain only the change kind, time and allowed
+page, never names of users, configuration values or private notes; visit
+filters such as a campaign or country omit the changes lane.
+
+Set agency branding defaults under **Settings → Shared reports**, then
+override them per report: title, local Media Library logo IDs, agency name,
+website, byline, accent, appearance and optional plugin credit. Otherwise
+the header uses the site's logo, Site Icon and site name. Light, dark and
+system appearances include a toggle; accents that fail AA text contrast
+fall back to a readable colour. **Print / Save as PDF** uses the browser's
+print dialog with a clean branded report.
+
+Scripts manage shares through `/shares` (administrators) or
+`wp seoprostats share list|create|revoke|renew --user=<administrator>`.
+Public reports have separate read-only `/share/{token}/{section}/{report}`
+routes; their credentials cannot authorize the ordinary report API.
+
 **SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick (the day, hour or month still being counted is dotted), where visits came from, what they viewed (with the addresses that were not found, to find broken links), views by author, category and post type, what people searched the site for and which searches found nothing, where and on what (and whether logged in), and their events with the share of visits that had each. Choose a period and comparison at the top; choose any row to show only those visits, and choose it again (or use the bar above the chart) to remove the filter. Tabs at the top, also in the menu, open the other sections:
 
 - **Search**: Google Search Console's clicks, impressions, click-through rate (CTR) and average position for the period, against the previous one, with a chart of the one you pick (and the changes lane under it), then the search queries, pages, countries and devices, sorted by clicks. Choose a page to list the queries it showed for, or a query to list the pages it showed; choose it again to go back. The period stops at the newest day Search Console has made final (about three days ago), and the comparison has as many days, so days not imported yet never look like a drop. A lower position is better. Until Search Console is connected, it links to Settings → Connections; demo data has made-up search data to try it with. These are under **Rankings**; **Opportunities**, beside it, says where search work pays:

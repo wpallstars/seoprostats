@@ -632,6 +632,52 @@ widget follows the same choice and says when it shows demo data.
 
 ## Reports
 
+### Shared reports
+
+`SEOProStats_Shares` keeps up to 50 shares in `seoprostats_shares`, autoload
+off. Each has at most 10 ordered saved `ViewState` objects, name, note,
+locked filters, last-N-days boundary, expiry, visibility switches, branding
+and open counters. The first allow list is Overview, Goals and Clicks.
+PHP validates against the report engine's range/filter rules and the UI's
+section choices; core `shareView()` canonicalizes with the hash reader.
+Tokens have 128 random bits; only SHA-256 hashes are stored and matched
+with `hash_equals`. Creation and renewal return the link once. Passwords
+use WordPress hashing. Renewal rotates the secret; revocation stops access.
+Security-sensitive option mutations use a connection-owned site lock and
+re-read state under it, so opening cannot undo a concurrent revocation.
+
+The public shell at `/?seoprostats_share=…` runs before theme rendering.
+The hook checks only for that query argument on normal pages, with no
+plugin query, option write or remote call. It prints only the share entry's
+local dependencies, never theme head/footer hooks or the tracker. It sends
+noindex/nofollow, no-referrer and private/no-store headers, including on
+failed public API answers, and is never registered in a sitemap.
+
+Owner `/shares` routes and `wp seoprostats share` need `manage_options`.
+Public `/share/{token}` unlocks with an optional password and returns a
+one-hour HMAC grant bound to the current bearer hash and password hash.
+It is kept in `sessionStorage` only. Public fetches omit cookies and never
+carry an admin nonce. Unknown, expired, revoked and wrong-password links
+fail with the same public message. Per-secret quotas allow five unlock
+attempts and 120 report requests per minute, using atomic object-cache
+counters or serialized transient windows; no visitor identity is stored.
+
+Public GET routes are separate from ordinary reports and map a section to
+an explicit report allow list. They reconstruct live requests from safe
+query inputs, AND locked filters with viewer filters, enforce the date
+boundary on both current and comparison ranges, bound paging and strip
+editor URLs after the shared report cache. Realtime is suppressed for
+locked shares; sensitive breakdowns and realtime referrers can be hidden.
+The markers lane is a minimal projection without user identities, old/new
+values, private notes or metadata. Page locks filter its rows; visitor
+locks omit it because changes have no campaign/country attribution.
+
+Branding uses same-host raster Media Library attachments, with no remote
+fetches. Defaults are settings; each share stores its overrides. The shell
+reuses the dashboard sections and their accessible tables with separate
+colour variables, AA-checked accents and print styles. Uninstall removes
+the share option and quota transients with the existing prefix cleanup.
+
 ### Metric definitions
 
 | Metric | Definition |

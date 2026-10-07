@@ -107,6 +107,8 @@ final class SEOProStats_Setup {
         });
         SEOProStats_Collection::init();
         SEOProStats_API::init();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-share-page.php';
+        SEOProStats_Share_Page::init();
         // Shops' order hooks and the ThriveCart webhook route (hooks only).
         SEOProStats_Purchases::init();
         // The change log: hooks on saving posts, products, plugins and settings only.
@@ -153,6 +155,10 @@ final class SEOProStats_Setup {
      */
     public static function settings_tabs() {
         return array(
+            'shared-reports' => array(
+                'label' => __('Shared reports', 'seoprostats'),
+                'description' => __('Default branding for new private reports. Each report can override it.', 'seoprostats'),
+            ),
             'tracking' => array(
                 'label'       => __('Tracking', 'seoprostats'),
                 'description' => __('What is collected, from which pages and domains.', 'seoprostats'),

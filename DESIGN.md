@@ -129,6 +129,17 @@ Sections 9-10 are aidevops-specific extensions (unknown sections are preserved p
 
 The palette is WordPress's own admin greys with one accent, the admin colour scheme's (`--wp-admin-theme-color`), so the screens look like part of wp-admin. Variables live in `packages/wp-admin/src/common.css` (`--spst-*`).
 
+Shared reports use the same section components in a standalone shell
+(`packages/wp-admin/src/share.css`), without the theme or wp-admin menu.
+Header: site logo and title linked home; footer: optional agency logo,
+byline, link and plugin credit. Branding media is local, raster only.
+The shell follows light/dark/system independently of site theme palettes,
+with an explicit toggle. Text and chart accents must meet 4.5:1 against
+the active surface; otherwise use the shell's readable fallback. Components
+read mode variables, not fixed mode colours. Controls wrap at 390 px and
+tables scroll inside cards; print hides interactive controls while keeping
+the report, locked-filter description and branding.
+
 - **Primary (`#2271b1`)**: the admin colour scheme's accent (`--spst-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's.
 - **Secondary (`#50575e`)**: muted text, axis labels, captions (`--spst-muted`).
 - **Tertiary (`#007017`)**: a change for the better (`--spst-good`).

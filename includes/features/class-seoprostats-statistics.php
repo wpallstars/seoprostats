@@ -48,6 +48,13 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function settings() {
         return array(
+            'share_agency' => array('type' => 'text', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Agency name', 'seoprostats')),
+            'share_website' => array('type' => 'url', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Agency website', 'seoprostats')),
+            'share_byline' => array('type' => 'text', 'default' => '', 'tab' => 'shared-reports', 'label' => __('Report byline', 'seoprostats')),
+            'share_agency_logo' => array('type' => 'media', 'default' => 0, 'tab' => 'shared-reports', 'label' => __('Agency logo', 'seoprostats')),
+            'share_accent' => array('type' => 'text', 'default' => '#2271b1', 'tab' => 'shared-reports', 'label' => __('Report accent (hex colour)', 'seoprostats')),
+            'share_mode' => array('type' => 'select', 'default' => 'system', 'tab' => 'shared-reports', 'label' => __('Report appearance', 'seoprostats'), 'options' => array('system' => __('System', 'seoprostats'), 'light' => __('Light', 'seoprostats'), 'dark' => __('Dark', 'seoprostats'))),
+            'share_credit' => array('type' => 'bool', 'default' => true, 'tab' => 'shared-reports', 'label' => __('Show Statistics by SEO Pro Stats', 'seoprostats')),
             self::KEY                 => array(
                 'type'        => 'bool',
                 'default'     => true,
