@@ -113,7 +113,7 @@ parse_args() {
 	done
 	local pins=()
 	IFS=',' read -r -a pins <<<"$SHOP_VERSIONS"
-	for pin in "${pins[@]}"; do
+	for pin in ${pins[@]+"${pins[@]}"}; do
 		[[ "$pin" =~ ^(woocommerce|easy-digital-downloads|fluent-cart)=[0-9]+(\.[0-9]+)*$ ]] || die "invalid shop pin: $pin"
 	done
 	return 0
@@ -161,7 +161,7 @@ install_shops() {
 	IFS=',' read -r -a pins <<<"$SHOP_VERSIONS"
 	for shop in woocommerce easy-digital-downloads fluent-cart; do
 		version=latest
-		for pin in "${pins[@]}"; do
+		for pin in ${pins[@]+"${pins[@]}"}; do
 			[[ "${pin%%=*}" != "$shop" ]] || version="${pin#*=}"
 		done
 		# Download without activation first: check the actual installed headers,
@@ -232,7 +232,7 @@ woo() {
 
 shop_requests() {
 	local shop order
-	for shop in "${SHOPS[@]}"; do
+	for shop in ${SHOPS[@]+"${SHOPS[@]}"}; do
 		case "$shop" in
 		woocommerce) woo ;;
 		easy-digital-downloads)
