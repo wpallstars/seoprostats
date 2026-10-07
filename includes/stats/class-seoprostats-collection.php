@@ -42,6 +42,9 @@ final class SEOProStats_Collection {
     /** Daily cron hook: search engine updates (only while that setting is on). */
     const DAILY_HOOK = 'seoprostats_daily';
 
+    /** Cron hook: search data imports (SEOProStats_Search_Import; only while a source is connected). */
+    const IMPORT_HOOK = 'seoprostats_search_import';
+
     /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
     const PROCESS_OPTION = 'seoprostats_processor';
 
@@ -58,6 +61,7 @@ final class SEOProStats_Collection {
         add_action(self::CRON_HOOK, array(__CLASS__, 'refresh'));
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process'));
         add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
+        add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
         add_filter('cron_schedules', array(__CLASS__, 'cron_schedules')); // phpcs:ignore WordPress.WP.CronInterval -- one minute on purpose: hits wait in the buffer until it runs, and an idle run is one file check.
         add_action('rest_api_init', array(__CLASS__, 'register_route'));
         add_action('admin_init', array(__CLASS__, 'schedule'));
@@ -128,6 +132,16 @@ final class SEOProStats_Collection {
     public static function daily() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         SEOProStats_Search_Updates::run();
+    }
+
+    /**
+     * Cron: search data imports from connected sources (the classes load
+     * only here, in WP-CLI and on the Connections tab and routes).
+     */
+    public static function search_import() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        SEOProStats_Search_Import::cron();
     }
 
     /**

@@ -163,7 +163,7 @@ final class SEOProStats_Setup {
             ),
             'data'     => array(
                 'label'       => __('Data', 'seoprostats'),
-                'description' => __('How long visits are kept, search engine updates on the charts, and who can see the statistics.', 'seoprostats'),
+                'description' => __('How long visits and search data are kept, search engine updates on the charts, and who can see the statistics.', 'seoprostats'),
             ),
         );
     }
@@ -176,6 +176,9 @@ final class SEOProStats_Setup {
     public static function admin() {
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-dashboard.php';
         SEOProStats_Dashboard::init();
+        // Settings → Connections (outside data sources; hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-connections-tab.php';
+        SEOProStats_Connections_Tab::init();
         self::page_cache();
     }
 

@@ -1082,9 +1082,10 @@ final class SEOProStats_CLI {
 
     /**
      * Delete visits, pageviews and events past their retention now (75
-     * and 120 months by default; SEO Pro Stats → Settings → Data). Daily
-     * summaries are kept, and nothing newer than the last summarised day
-     * goes.
+     * and 120 months by default; SEO Pro Stats → Settings → Data), and
+     * imported search data by page and query past its own (25 months).
+     * Daily summaries and search totals are kept, and no visit newer than
+     * the last summarised day goes.
      *
      * ## OPTIONS
      *
@@ -1101,15 +1102,18 @@ final class SEOProStats_CLI {
     public function prune($args, $assoc) {
         $this->need_tables();
         $months = SEOProStats_Rollup::retention();
-        /* translators: 1: months visits are kept, 2: months events are kept (0: forever) */
-        WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months (0: forever; SEO Pro Stats → Settings → Data).', 'seoprostats'), $months['visits'], $months['events']));
-        if (SEOProStats_Rollup::through() === '') {
-            WP_CLI::success(__('Nothing to delete: no day is summarised yet.', 'seoprostats'));
-            return;
+        /* translators: 1: months visits are kept, 2: months events are kept, 3: months search data by page and query is kept (0: forever) */
+        WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months, search data %3$d months (0: forever; SEO Pro Stats → Settings → Data).', 'seoprostats'), $months['visits'], $months['events'], $months['search']));
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        // Visits and events go only once their days are summarised; search data by its own retention.
+        $summarised = SEOProStats_Rollup::through() !== '';
+        if (!$summarised) {
+            WP_CLI::log(__('No day is summarised yet, so no visits or events are deleted.', 'seoprostats'));
         }
         if (!empty($assoc['dry-run'])) {
             $items = array();
-            foreach (SEOProStats_Rollup::prune_counts() as $table => $rows) {
+            foreach (($summarised ? SEOProStats_Rollup::prune_counts() : array()) + SEOProStats_Search_Import::prune_counts() as $table => $rows) {
                 $items[] = array('table' => $table, 'rows' => $rows);
             }
             if ($items) {
@@ -1119,10 +1123,15 @@ final class SEOProStats_CLI {
             return;
         }
         $deleted = 0;
-        do {
+        while ($summarised) {
             $done     = SEOProStats_Rollup::prune(microtime(true));
             $deleted += $done['deleted'];
-        } while (!$done['done']);
+            if ($done['done']) {
+                break;
+            }
+        }
+        delete_option(SEOProStats_Search_Import::PRUNED_OPTION);
+        $deleted += SEOProStats_Search_Import::prune(microtime(true));
         /* translators: %d: number of rows */
         WP_CLI::success(sprintf(_n('%d row deleted.', '%d rows deleted.', $deleted, 'seoprostats'), $deleted));
     }
@@ -1205,6 +1214,284 @@ final class SEOProStats_CLI {
             /* translators: %d: number of sources */
             WP_CLI::warning(sprintf(_n('%d source failed; the daily job asks again tomorrow.', '%d sources failed; the daily job asks again tomorrow.', count($failed), 'seoprostats'), count($failed)));
         }
+    }
+
+    /**
+     * Connect an outside data source, or change its property.
+     *
+     * Search Console: make a service account in Google Cloud, give it a
+     * JSON key, and add its address as a user of the Search Console
+     * property (Settings → Users and permissions; Restricted is enough).
+     * The key is stored encrypted; the import of the 16 months Search
+     * Console keeps starts in cron straight after.
+     *
+     * ## OPTIONS
+     *
+     * <source>
+     * : The source.
+     * ---
+     * options:
+     *   - search-console
+     * ---
+     *
+     * [--key-file=<file>]
+     * : The service account's JSON key file; - reads it from standard
+     * input. Without it, the saved key is kept (to change the property).
+     *
+     * [--property=<property>]
+     * : The property to import (https://example.com/ or
+     * sc-domain:example.com). Without it, the one for this site.
+     *
+     * [--format=<format>]
+     * : table or json.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats connect search-console --key-file=service-account.json
+     *     wp seoprostats connect search-console --property=sc-domain:example.com
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function connect($args, $assoc) {
+        $this->load_connections();
+        $key = '';
+        if (isset($assoc['key-file'])) {
+            $file = (string) $assoc['key-file'];
+            if ($file === '-') {
+                $key = (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the key piped in.
+            } elseif (is_readable($file)) {
+                $key = (string) file_get_contents($file); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
+            } else {
+                /* translators: %s: file name */
+                WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
+            }
+        }
+        $status = SEOProStats_Connections::connect($args[0], array(
+            'key'      => $key,
+            'property' => isset($assoc['property']) ? (string) $assoc['property'] : '',
+        ));
+        if (is_wp_error($status)) {
+            $data = $status->get_error_data();
+            if (is_array($data) && !empty($data['account'])) {
+                /* translators: %s: service account address */
+                WP_CLI::log(sprintf(__('Service account: %s', 'seoprostats'), $data['account']));
+            }
+            if (is_array($data) && !empty($data['properties'])) {
+                WP_CLI::log(__('Properties it can read:', 'seoprostats'));
+                foreach ($data['properties'] as $property) {
+                    WP_CLI::log('  ' . $property);
+                }
+            }
+            WP_CLI::error($status->get_error_message());
+            return;
+        }
+        $this->connection_status($status, $assoc);
+        if ($this->format($assoc) !== 'json') {
+            /* translators: %s: source name */
+            WP_CLI::success(sprintf(__('%s is connected. The import runs in cron; wp seoprostats search-console import runs it now.', 'seoprostats'), $status['name']));
+        }
+    }
+
+    /**
+     * Disconnect an outside data source: forget its credentials. Its
+     * imported data stays unless --delete-data is given.
+     *
+     * ## OPTIONS
+     *
+     * <source>
+     * : The source.
+     * ---
+     * options:
+     *   - search-console
+     * ---
+     *
+     * [--delete-data]
+     * : Also delete the data imported from it.
+     *
+     * [--yes]
+     * : Do not ask before deleting data.
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats disconnect search-console
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function disconnect($args, $assoc) {
+        $this->load_connections();
+        $delete = !empty($assoc['delete-data']);
+        if ($delete) {
+            WP_CLI::confirm(__('Delete the search data imported from it?', 'seoprostats'), $assoc);
+        }
+        $status = SEOProStats_Connections::disconnect($args[0], $delete);
+        if (is_wp_error($status)) {
+            WP_CLI::error($status->get_error_message());
+            return;
+        }
+        /* translators: 1: source name, 2: number of rows */
+        WP_CLI::success($delete ? sprintf(__('%1$s is disconnected; %2$d rows deleted.', 'seoprostats'), $status['name'], $status['deleted']) : sprintf(__('%s is disconnected; its imported data stays.', 'seoprostats'), $status['name']));
+    }
+
+    /**
+     * Search Console imports: show the status, import now, list imports,
+     * undo one, or import days again.
+     *
+     * The job imports each day once Search Console marks it final (about
+     * three days later), and on connecting the 16 months it keeps, newest
+     * first, a minute apart in cron. `import` does the same now, until it
+     * is done.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : status, import, imports (the last 20), undo (one import, by --id)
+     * or reimport (--from and --to).
+     * ---
+     * options:
+     *   - status
+     *   - import
+     *   - imports
+     *   - undo
+     *   - reimport
+     * ---
+     *
+     * [--id=<id>]
+     * : The import to undo.
+     *
+     * [--from=<day>]
+     * : First day to import again (Y-m-d).
+     *
+     * [--to=<day>]
+     * : Last day to import again (Y-m-d).
+     *
+     * [--format=<format>]
+     * : table or json.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats search-console status
+     *     wp seoprostats search-console import
+     *     wp seoprostats search-console undo --id=12
+     *     wp seoprostats search-console reimport --from=2026-09-01 --to=2026-09-07
+     *
+     * @subcommand search-console
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function search_console($args, $assoc) {
+        $this->load_connections();
+        $this->need_tables();
+        $source = 'search-console';
+        $action = $args[0];
+        if ($action === 'imports') {
+            $rows = SEOProStats_Search_Import::imports($source, 20);
+            if ($this->format($assoc) === 'json') {
+                WP_CLI::line((string) wp_json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                return;
+            }
+            if (!$rows) {
+                WP_CLI::log(__('No imports yet.', 'seoprostats'));
+                return;
+            }
+            WP_CLI\Utils\format_items('table', $rows, array('id', 'status', 'from', 'to', 'days', 'rows', 'error'));
+            return;
+        }
+        if ($action === 'undo') {
+            if (empty($assoc['id'])) {
+                WP_CLI::error(__('Give the import with --id (wp seoprostats search-console imports lists them).', 'seoprostats'));
+            }
+            $deleted = SEOProStats_Search_Import::undo((int) $assoc['id']);
+            if (is_wp_error($deleted)) {
+                WP_CLI::error($deleted->get_error_message());
+                return;
+            }
+            /* translators: 1: import ID, 2: number of rows */
+            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. wp seoprostats search-console reimport brings its days back.', 'seoprostats'), (int) $assoc['id'], $deleted));
+            return;
+        }
+        if (!SEOProStats_Connections::get($source)) {
+            WP_CLI::error(__('Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+        }
+        if ($action === 'reimport') {
+            $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
+            $to   = isset($assoc['to']) ? (string) $assoc['to'] : $from;
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
+                WP_CLI::error(__('Give the days with --from and --to (Y-m-d).', 'seoprostats'));
+            }
+            $result = SEOProStats_Search_Import::reimport($source, $from, $to);
+            if (is_wp_error($result)) {
+                WP_CLI::error($result->get_error_message());
+                return;
+            }
+            /* translators: 1: days, 2: rows, 3: import ID */
+            WP_CLI::success(sprintf(__('%1$d days imported again: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
+            return;
+        }
+        if ($action === 'import') {
+            $check = true;
+            do {
+                $result = SEOProStats_Search_Import::run($source, SEOProStats_Search_Import::BUDGET, $check);
+                if (is_wp_error($result)) {
+                    WP_CLI::error($result->get_error_message());
+                    return;
+                }
+                $check = false;
+                if ($result['days']) {
+                    /* translators: 1: days, 2: rows, 3: import ID */
+                    WP_CLI::log(sprintf(__('%1$d days imported: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
+                }
+            } while (!$result['done']);
+        }
+        $this->connection_status(SEOProStats_Connections::status($source), $assoc);
+    }
+
+    /**
+     * Print a connection's status.
+     *
+     * @param array<string,mixed>  $status SEOProStats_Connections::status().
+     * @param array<string,string> $assoc  Options.
+     */
+    private function connection_status(array $status, $assoc) {
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($status, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        if (empty($status['connected'])) {
+            /* translators: %s: source name */
+            WP_CLI::log(sprintf(__('%s is not connected.', 'seoprostats'), $status['name']));
+            return;
+        }
+        $imported = $status['imported'];
+        $rows     = array(
+            array('field' => 'account', 'value' => $status['account']),
+            array('field' => 'property', 'value' => $status['property']),
+            array('field' => 'imported', 'value' => $imported['from'] !== '' ? $imported['from'] . ' – ' . $imported['to'] : 'nothing yet'),
+            array('field' => 'history', 'value' => $imported['complete'] ? 'complete' : sprintf('%d of %d days', $imported['days'], $imported['of'])),
+            array('field' => 'final through', 'value' => $status['final_through'] !== '' ? $status['final_through'] : 'not asked yet'),
+            array('field' => 'last run', 'value' => $status['last_run'] ? human_time_diff($status['last_run']) . ' ago' : 'never'),
+            array('field' => 'next run', 'value' => $status['next_run'] ? 'in ' . human_time_diff($status['next_run']) : 'not scheduled'),
+        );
+        if ($status['error'] !== '') {
+            $rows[] = array('field' => 'last error', 'value' => $status['error'] . ' (' . human_time_diff($status['error_at']) . ' ago)');
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('field', 'value'));
+    }
+
+    /**
+     * Load the connection classes.
+     */
+    private function load_connections() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
     }
 
     /**
@@ -1298,6 +1585,23 @@ final class SEOProStats_CLI {
             $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
             $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
             $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        foreach (SEOProStats_Connections::statuses() as $source) {
+            if (empty($source['connected'])) {
+                $add(strtolower($source['name']), true, 'not connected (SEO Pro Stats → Settings → Connections)');
+                continue;
+            }
+            $imported = $source['imported'];
+            $detail   = $source['property'] . ': ' . ($imported['from'] !== '' ? 'imported ' . $imported['from'] . ' to ' . $imported['to'] : 'nothing imported yet') . ($imported['complete'] ? '' : sprintf('; history %d of %d days', $imported['days'], $imported['of']));
+            $ok       = $source['error'] === '' && $source['next_run'];
+            if ($source['error'] !== '') {
+                $detail .= '; last error ' . human_time_diff($source['error_at']) . ' ago: ' . $source['error'];
+            } elseif (!$source['next_run']) {
+                $detail .= '; the import job is not scheduled (reconnect, or open the Connections tab)';
+            }
+            $add(strtolower($source['name']), (bool) $ok, $detail, 'warn');
         }
         if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
             $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');

@@ -31,8 +31,10 @@ final class SEOProStats_Schema {
      * v5: pageviews.search_id and key search_ts, sessions.login, pages
      *     (what each address shows); daily rows for logged-in visits.
      * v6: changes (the change log: markers on the timeline).
+     * v7: gsc_pages, gsc_queries, gsc_pairs, gsc_totals (search data from
+     *     Search Console and later Bing), imports (each import run).
      */
-    const VERSION = 6;
+    const VERSION = 7;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -56,6 +58,18 @@ final class SEOProStats_Schema {
     const DICT_LABEL    = 13;
     const DICT_TARGET   = 14;
     const DICT_SEARCH   = 15;
+    const DICT_QUERY    = 16;
+
+    /** Search engines of the gsc_* rows. */
+    const ENGINE_GOOGLE = 1;
+    const ENGINE_BING   = 2;
+
+    /** Device of gsc_totals rows (as SEOProStats_UA's device codes; 0 other). */
+    const GSC_DEVICES = array(
+        'DESKTOP' => 1,
+        'MOBILE'  => 2,
+        'TABLET'  => 3,
+    );
 
     /** Flags of a pageview: the page was not found; a site search; the search found nothing. */
     const PAGE_NOT_FOUND  = 1;
@@ -85,7 +99,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports');
     }
 
     /**
@@ -424,6 +438,81 @@ final class SEOProStats_Schema {
   KEY ts (ts),
   KEY path_ts (path_id,ts),
   KEY kind_ts (kind,ts)
+) $charset;",
+
+            // Search data (SEOProStats_Search_Import): one row per search
+            // engine (ENGINE_*), day (the engine's own, Pacific time for
+            // Google) and page, query, page and query, or device and
+            // country. pos_impr: average position × impressions × 100, so
+            // SUM(pos_impr) / SUM(impressions) / 100 is the weighted
+            // average. import_id: the imports row that wrote it.
+            'gsc_pages' => "CREATE TABLE {$t['gsc_pages']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  path_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,path_id),
+  KEY path_day (path_id,day)
+) $charset;",
+
+            'gsc_queries' => "CREATE TABLE {$t['gsc_queries']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  query_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,query_id),
+  KEY query_day (query_id,day)
+) $charset;",
+
+            'gsc_pairs' => "CREATE TABLE {$t['gsc_pairs']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  path_id int unsigned NOT NULL,
+  query_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,path_id,query_id),
+  KEY path_day (path_id,day,query_id),
+  KEY query_day (query_id,day,path_id)
+) $charset;",
+
+            // country: the engine's code as given (Google: ISO 3166-1
+            // alpha-3, lower case; '' unknown). device: GSC_DEVICES.
+            'gsc_totals' => "CREATE TABLE {$t['gsc_totals']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  device tinyint unsigned NOT NULL,
+  country char(3) NOT NULL DEFAULT '',
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,device,country)
+) $charset;",
+
+            // One row per import run of an outside source, so it can be
+            // undone. status: 1 running, 2 done, 3 failed, 4 undone. days:
+            // the days it covers (day_from to day_to, both included).
+            'imports' => "CREATE TABLE {$t['imports']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  source varchar(20) NOT NULL,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  started int unsigned NOT NULL,
+  finished int unsigned NOT NULL DEFAULT 0,
+  day_from date NOT NULL,
+  day_to date NOT NULL,
+  rows_added int unsigned NOT NULL DEFAULT 0,
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  KEY source_status (source,status)
 ) $charset;",
         );
     }
