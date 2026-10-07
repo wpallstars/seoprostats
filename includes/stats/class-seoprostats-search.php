@@ -92,6 +92,7 @@ final class SEOProStats_Search {
             $now     = self::days($range, $bounds);
             $scope   = self::scope($code, $now, $pages, $queries);
             $grain   = self::grain($engine, $now, $scope);
+            $anchor  = $grain === 'week' ? self::week_end($code, $bounds) : '';
             $totals  = self::totals($scope);
             $rows    = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
             $more    = count($rows) > (int) $req['limit'];
@@ -110,7 +111,7 @@ final class SEOProStats_Search {
                 'ignored'   => array_values(array_unique($ignored)),
                 'totals'    => $totals,
                 'grain'     => $grain,
-                'points'    => $now ? self::series($scope, $now, $grain, $bounds['to']) : array(),
+                'points'    => $now ? self::series($scope, $now, $grain, $anchor) : array(),
                 'rows'      => $rows,
                 'more'      => $more,
             );
@@ -124,7 +125,7 @@ final class SEOProStats_Search {
                     'range'  => SEOProStats_Query::range_out($other),
                     'totals' => $before,
                     'change' => self::change($totals, $before),
-                    'points' => $then_days ? self::series($then, $then_days, $grain, $bounds['to']) : array(),
+                    'points' => $then_days ? self::series($then, $then_days, $grain, $anchor) : array(),
                 );
             }
             return $answer;
@@ -197,6 +198,22 @@ final class SEOProStats_Search {
             return 'month';
         }
         return in_array($engine, self::WEEKLY, true) && $scope && $scope['table'] !== 'gsc_totals' ? 'week' : 'day';
+    }
+
+    /**
+     * The newest week's last day of an engine whose pages come by week
+     * (the newest day of its pages), so weekly points line up with the
+     * weeks; the newest day with data without pages.
+     *
+     * @param int                          $engine Engine.
+     * @param array{from:string,to:string} $bounds From bounds().
+     * @return string Y-m-d, or ''.
+     */
+    private static function week_end($engine, array $bounds) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, MAX of the primary key's (engine, day) prefix.
+        $day = (string) $wpdb->get_var($wpdb->prepare('SELECT MAX(day) FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_pages'), (int) $engine));
+        return $day !== '' ? $day : $bounds['to'];
     }
 
     /**

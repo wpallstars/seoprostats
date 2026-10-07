@@ -1,6 +1,6 @@
 /**
- * Search → Content: which pages earn their search traffic. Per page,
- * Google Search Console's clicks, position and CTR, with the visits from
+ * Search → Content: which pages earn their search traffic. Per page, the
+ * chosen engine's clicks, position and CTR, with the visits from
  * search that started on the page (bounce rate, time) and how many of them
  * reached a goal. A page that ranks but whose visits leave needs better
  * content or a clearer next step; one that converts but gets few clicks is
@@ -27,15 +27,15 @@ import {
 	type ContentMetrics,
 	type ContentRow,
 	type ContentSort,
+	type SearchEngine,
 } from '@seoprostats/core';
 import { errorMessage, useContent } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
-import type { ViewProps } from './App';
 import { PageCell } from './Opportunities';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
-import { SearchSetup, type SearchPick } from './components/SearchSetup';
+import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 
 const PER_PAGE = 25;
@@ -44,20 +44,22 @@ const number = (value: number) => formatNumber(value, locale, false);
 const percent = (value: number) => formatPercent(value, locale);
 const place = (row: { impressions: number; position: number }) => (row.impressions ? formatDecimal(row.position, locale) : '–');
 
-interface ContentProps extends ViewProps {
+type ContentProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
-}
+};
 
-export function Content({ state, update, open }: ContentProps) {
+export function Content({ state, update, open, onEngines }: ContentProps) {
 	const sort: ContentSort = state.sort ?? 'clicks';
 	const goal = state.goal ?? '';
-	// Back to the first rows when the period, filters, order or goal change.
-	const scope = JSON.stringify([apiArgs(state), sort, goal]);
+	const engine: SearchEngine = state.engine ?? 'google';
+	// Back to the first rows when the period, filters, engine, order or goal change.
+	const scope = JSON.stringify([apiArgs(state), engine, sort, goal]);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
 	const query = useContent(state, sort, goal, PER_PAGE, offset);
 	const answer = query.data;
+	useReportEngines(answer, onEngines);
 	const rows = answer?.rows ?? [];
 	const counted = answer?.goal ?? null;
 
@@ -94,8 +96,9 @@ export function Content({ state, update, open }: ContentProps) {
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
-									/* translators: %s: a day, e.g. "Sun 4 Oct 2026". */
-									__('Google Search Console, final days through %s, with the visits from search of the same days', 'seoprostats'),
+									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
+									__('%1$s, final days through %2$s, with the visits from search of the same days', 'seoprostats'),
+									sourceName(engine),
 									longLabel(answer.through, 'day')
 								)}
 							</p>
@@ -113,7 +116,7 @@ export function Content({ state, update, open }: ContentProps) {
 						</div>
 					)}
 				</div>
-				<Tiles answer={answer} />
+				<Tiles answer={answer} engine={engine} />
 			</Card>
 
 			<Card className="spst-card is-wide spst-section" size="small">
@@ -133,10 +136,15 @@ export function Content({ state, update, open }: ContentProps) {
 					{answer && answer.through && (
 						<div className="spst-note">
 							<p>
-								{__(
-									'Clicks and position are Google’s; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
-									'seoprostats'
-								)}
+								{engine === 'bing'
+									? __(
+											'Clicks and position are Bing’s, from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+											'seoprostats'
+										)
+									: __(
+											'Clicks and position are Google’s; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+											'seoprostats'
+										)}
 							</p>
 							{answer.goals.length === 0 && (
 								<p>
@@ -171,7 +179,7 @@ export function Content({ state, update, open }: ContentProps) {
 }
 
 /** The totals: search clicks, visits from search, their bounce rate, conversions. */
-function Tiles({ answer }: { answer: ContentAnswer | undefined }) {
+function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: SearchEngine }) {
 	const totals = answer?.totals;
 	const then = answer?.compare?.totals;
 	const change = answer?.compare?.change;
@@ -189,7 +197,7 @@ function Tiles({ answer }: { answer: ContentAnswer | undefined }) {
 		<div className="spst-tiles" role="group" aria-label={__('Totals', 'seoprostats')}>
 			{tile(
 				__('Clicks', 'seoprostats'),
-				__('From Google Search', 'seoprostats'),
+				engine === 'bing' ? __('From Bing', 'seoprostats') : __('From Google Search', 'seoprostats'),
 				totals ? number(totals.clicks) : '',
 				change && <Change change={change.clicks} better={SEARCH_METRICS.clicks.better} previous={then ? number(then.clicks) : undefined} />
 			)}

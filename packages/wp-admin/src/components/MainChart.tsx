@@ -43,13 +43,20 @@ interface Props<K extends string> {
 
 /**
  * The days some points cover (site time zone, as the points' times carry
- * it): a month's run to its last day, but not past the answer's day.
+ * it): a month's run to its last day, but not past the answer's day; a
+ * week's to the day before the next point (or six days on).
  */
 function pointDays(series: ChartData, indexes: number[]): { from: string; to: string } {
 	const first = Math.min(...indexes);
 	const last = Math.max(...indexes);
 	const from = (series.points[first]?.t ?? '').slice(0, 10);
 	let to = (series.points[last]?.t ?? '').slice(0, 10);
+	if (series.grain === 'week' && to) {
+		const next = (series.points[last + 1]?.t ?? '').slice(0, 10);
+		const end = new Date(`${next || to}T00:00:00Z`);
+		end.setUTCDate(end.getUTCDate() + (next ? -1 : 6));
+		to = end.toISOString().slice(0, 10);
+	}
 	if (series.grain === 'month' && to) {
 		const [y, m] = to.split('-').map(Number);
 		to = new Date(Date.UTC(y ?? 1970, m ?? 1, 0)).toISOString().slice(0, 10);

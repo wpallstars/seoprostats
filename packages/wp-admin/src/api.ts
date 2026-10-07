@@ -166,10 +166,18 @@ export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 5
 	});
 }
 
-/** Search (Search Console's days): totals, points and rows of one kind; optionally one page's or one query's. */
-export function useSearch(scope: Scope, kind: SearchKind, page: string, query: string, limit = 50) {
+/** A search report's scope: the engine too (Google when left out). */
+type SearchScope = Scope & Pick<ViewState, 'engine'>;
+
+/** The engine argument: Google is the default, so it is left out. */
+function engineArg(scope: SearchScope): Args {
+	return scope.engine && scope.engine !== 'google' ? { engine: scope.engine } : {};
+}
+
+/** Search (an engine's imported days): totals, points and rows of one kind; optionally one page's or one query's. */
+export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
 	return useQuery({
 		queryKey: ['search', args],
 		queryFn: () => get<SearchAnswer>('search', args),
@@ -179,9 +187,9 @@ export function useSearch(scope: Scope, kind: SearchKind, page: string, query: s
 }
 
 /** Search opportunities of one kind (decay always against an earlier period: the previous one unless a year ago is chosen). */
-export function useOpportunities(scope: Scope, kind: OpportunityKind, limit = 10, offset = 0) {
+export function useOpportunities(scope: SearchScope, kind: OpportunityKind, limit = 10, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs({ ...scope, compare: scope.compare === 'year' ? 'year' : 'prev' }), kind, limit, offset }, data);
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: scope.compare === 'year' ? 'year' : 'prev' }), ...engineArg(scope), kind, limit, offset }, data);
 	return useQuery({
 		queryKey: ['opportunities', args],
 		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
@@ -191,9 +199,9 @@ export function useOpportunities(scope: Scope, kind: OpportunityKind, limit = 10
 }
 
 /** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first). */
-export function useContent(scope: Scope, sort: ContentSort, goal: string, limit = 25, offset = 0) {
+export function useContent(scope: SearchScope, sort: ContentSort, goal: string, limit = 25, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
 	return useQuery({
 		queryKey: ['content', args],
 		queryFn: () => get<ContentAnswer>('content', args),

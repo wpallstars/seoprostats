@@ -1,7 +1,7 @@
 <?php
 /**
- * Settings → Connections: connect outside data sources (Search Console
- * first), see how far each import is, import now, undo an import, and
+ * Settings → Connections: connect outside data sources (Search Console,
+ * Bing Webmaster Tools), see how far each import is, import now, undo an import, and
  * disconnect. The screen is drawn here from each source's status; its
  * buttons call the REST routes (SEOProStats_API, /connections) through
  * admin/js/seoprostats-connections.js. Credentials are never printed.
@@ -37,6 +37,8 @@ final class SEOProStats_Connections_Tab {
         'keys_help' => 'https://docs.cloud.google.com/iam/docs/creating-managing-service-account-keys',
         'users'     => 'https://search.google.com/search-console/users',
         'user_help' => 'https://support.google.com/webmasters/answer/7687615',
+        'bing'      => 'https://www.bing.com/webmasters/',
+        'bing_api'  => 'https://www.bing.com/webmasters/help/webmaster-api-5f3c5e1e',
     );
 
     /**
@@ -142,13 +144,16 @@ final class SEOProStats_Connections_Tab {
     }
 
     /**
-     * The form to connect Search Console.
+     * The form to connect a source.
      *
      * @param string $source Source key.
      * @param string $id     Card id.
      */
     private static function render_connect($source, $id) {
-        unset($source);
+        if ($source === 'bing') {
+            self::render_connect_bing($id);
+            return;
+        }
         ?>
         <p class="spst-setting__desc"><?php esc_html_e('Clicks, impressions and average position for each page and search query, by day, so search and visits sit on one timeline. On connecting, the 16 months Search Console keeps are imported; after that each day is added once Search Console marks it final, about three days later.', 'seoprostats'); ?></p>
         <p><?php esc_html_e('Set it up once, signed in to Google with the account that owns this site in Search Console. Each link opens in a new tab.', 'seoprostats'); ?></p>
@@ -183,6 +188,83 @@ final class SEOProStats_Connections_Tab {
     }
 
     /**
+     * The form to connect Bing Webmaster Tools.
+     *
+     * @param string $id Card id.
+     */
+    private static function render_connect_bing($id) {
+        ?>
+        <p class="spst-setting__desc"><?php esc_html_e('Bing\'s clicks and impressions by day, and its top pages and search queries by week with their average position, next to Google\'s. On connecting, the 16 months Bing keeps are imported; after that each week is added once Bing has it, about a week later.', 'seoprostats'); ?></p>
+        <ol class="spst-connection__steps">
+            <?php
+            foreach (self::bing_steps() as $step) {
+                printf(
+                    '<li><strong>%1$s</strong> %2$s</li>',
+                    esc_html($step[0]),
+                    wp_kses($step[1], array(
+                        'a'    => array('href' => true, 'target' => true, 'rel' => true),
+                        'span' => array('class' => true),
+                    ))
+                );
+            }
+            ?>
+        </ol>
+        <p>
+            <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('API key', 'seoprostats'); ?></strong></label><br>
+            <input type="password" class="regular-text" id="<?php echo esc_attr($id . '-key'); ?>" data-spst-field="key" autocomplete="off" spellcheck="false">
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php esc_html_e('Site', 'seoprostats'); ?></strong></label><br>
+            <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
+            <span class="description"><?php esc_html_e('Leave empty to use this site.', 'seoprostats'); ?></span>
+        </p>
+        <div class="spst-connection__actions">
+            <button type="button" class="button button-primary" data-spst-action="connect"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
+        </div>
+        <?php
+    }
+
+    /**
+     * A link that opens in a new tab.
+     *
+     * @param string $key  LINKS key.
+     * @param string $text Link text.
+     * @return string HTML.
+     */
+    private static function link($key, $text) {
+        return sprintf(
+            '<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s<span class="screen-reader-text"> %3$s</span></a>',
+            esc_url(self::LINKS[$key]),
+            esc_html($text),
+            esc_html__('(opens in a new tab)', 'seoprostats')
+        );
+    }
+
+    /**
+     * Bing's setup steps, as steps().
+     *
+     * @return array<int,array{0:string,1:string}>
+     */
+    private static function bing_steps() {
+        return array(
+            array(
+                __('Add this site to Bing Webmaster Tools.', 'seoprostats'),
+                /* translators: %s: link "Open Bing Webmaster Tools" */
+                vsprintf(esc_html__('%s and sign in. If the site is not there yet, add it; importing it from Google Search Console verifies it at once.', 'seoprostats'), array(self::link('bing', __('Open Bing Webmaster Tools', 'seoprostats')))),
+            ),
+            array(
+                __('Copy the API key.', 'seoprostats'),
+                /* translators: %s: link "Help" */
+                vsprintf(esc_html__('Choose Settings (the gear at the top right) → API access → API key, generate one if there is none, and copy it (%s).', 'seoprostats'), array(self::link('bing_api', __('Help', 'seoprostats')))),
+            ),
+            array(
+                __('Connect.', 'seoprostats'),
+                esc_html__('Paste the key below and choose Connect. It is stored encrypted. One key reads every site of the account.', 'seoprostats'),
+            ),
+        );
+    }
+
+    /**
      * The setup steps: a title and the step, with its links (HTML made
      * here; translations hold only plain text and %s for the links).
      *
@@ -190,12 +272,7 @@ final class SEOProStats_Connections_Tab {
      */
     private static function steps() {
         $link = static function ($key, $text) {
-            return sprintf(
-                '<a href="%1$s" target="_blank" rel="noopener noreferrer">%2$s<span class="screen-reader-text"> %3$s</span></a>',
-                esc_url(self::LINKS[$key]),
-                esc_html($text),
-                esc_html__('(opens in a new tab)', 'seoprostats')
-            );
+            return self::link($key, $text);
         };
         $text = static function ($format, ...$links) {
             return vsprintf(esc_html($format), $links);
@@ -257,11 +334,19 @@ final class SEOProStats_Connections_Tab {
         } else {
             $range = __('Nothing yet: the first import starts within a minute or two.', 'seoprostats');
         }
+        $bing = (string) $status['source'] === 'bing';
         if ($imported['complete']) {
-            $history = __('All of Search Console\'s history is in.', 'seoprostats');
+            /* translators: %s: source name */
+            $history = sprintf(__('All of %s\'s history is in.', 'seoprostats'), (string) $status['name']);
         } else {
             /* translators: 1: days imported, 2: days in all */
             $history = sprintf(__('%1$d of %2$d days, newest first; it carries on in the background a minute apart.', 'seoprostats'), $imported['days'], $imported['of']);
+        }
+        if (!empty($status['pages_left'])) {
+            /* translators: %d: number of pages */
+            $history .= ' ' . sprintf(_n('The search queries of %d page are still to import.', 'The search queries of %d pages are still to import.', (int) $status['pages_left'], 'seoprostats'), (int) $status['pages_left']);
+        } elseif ($status['pages_left'] === null) {
+            $history .= ' ' . __('The search queries of each page come next.', 'seoprostats');
         }
         ?>
         <?php if ((string) $status['error'] !== '') : ?>
@@ -276,12 +361,14 @@ final class SEOProStats_Connections_Tab {
         <?php endif; ?>
         <table class="form-table" role="presentation">
             <tbody>
+                <?php if ((string) $status['account'] !== '') : ?>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Service account', 'seoprostats'); ?></th>
+                        <td><code><?php echo esc_html((string) $status['account']); ?></code></td>
+                    </tr>
+                <?php endif; ?>
                 <tr>
-                    <th scope="row"><?php esc_html_e('Service account', 'seoprostats'); ?></th>
-                    <td><code><?php echo esc_html((string) $status['account']); ?></code></td>
-                </tr>
-                <tr>
-                    <th scope="row"><?php esc_html_e('Property', 'seoprostats'); ?></th>
+                    <th scope="row"><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></th>
                     <td><code><?php echo esc_html((string) $status['property']); ?></code></td>
                 </tr>
                 <tr>
@@ -345,15 +432,20 @@ final class SEOProStats_Connections_Tab {
         <?php endif; ?>
 
         <details>
-            <summary><?php esc_html_e('Change the property or key', 'seoprostats'); ?></summary>
+            <summary><?php $bing ? esc_html_e('Change the site or key', 'seoprostats') : esc_html_e('Change the property or key', 'seoprostats'); ?></summary>
             <p>
-                <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
+                <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
                 <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" value="<?php echo esc_attr((string) $status['property']); ?>">
-                <span class="description"><?php esc_html_e('Another property starts the import again from the beginning.', 'seoprostats'); ?></span>
+                <span class="description"><?php $bing ? esc_html_e('Another site starts the import again from the beginning.', 'seoprostats') : esc_html_e('Another property starts the import again from the beginning.', 'seoprostats'); ?></span>
             </p>
             <p>
-                <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('New service account key (JSON)', 'seoprostats'); ?></strong></label>
-                <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
+                <?php if ($bing) : ?>
+                    <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('New API key', 'seoprostats'); ?></strong></label><br>
+                    <input type="password" class="regular-text" id="<?php echo esc_attr($id . '-key'); ?>" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>">
+                <?php else : ?>
+                    <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('New service account key (JSON)', 'seoprostats'); ?></strong></label>
+                    <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
+                <?php endif; ?>
             </p>
             <div class="spst-connection__actions">
                 <button type="button" class="button" data-spst-action="connect"><?php esc_html_e('Save', 'seoprostats'); ?></button>
