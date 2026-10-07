@@ -100,9 +100,11 @@ The shop test defaults to PHP 8.2 and latest WordPress and shop versions.
 `--keep-log FILE` preserves the debug log even on failure. Pin shops with
 `--shop-versions woocommerce=11.1.2,easy-digital-downloads=3.7.1.1,fluent-cart=1.7.0`.
 It prints installed versions and skips only shops whose declared PHP or
-WordPress minimum exceeds the test site's version; failed downloads or
-activation still fail. No real payment gateways or ThriveCart account are
-contacted. The test fixture is development-only and never ships.
+WordPress minimum exceeds the test site's version, or whose downloaded
+code requires an unavailable core API (FluentCart's `register_block_template`
+on older WordPress). Failed downloads or activation still fail. Needs
+Docker, curl, jq and unzip. No real payment gateways or ThriveCart account
+are contacted. The test fixture is development-only and never ships.
 
 The scripts work out which plugin they are in from its main file
 (`scripts/lib/plugin.sh`): the PHP file at the top of the repository with a

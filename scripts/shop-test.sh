@@ -4,7 +4,7 @@
 #        [--zip FILE] [--keep-log FILE] [--shop-versions SLUG=VERSION,...]
 # Defaults: PHP 8.2, latest WordPress and shops, zip built from HEAD.
 # Incompatible shops are skipped explicitly; download/activation errors fail.
-# Needs Docker, curl, jq and internet access. Never contacts a payment gateway.
+# Needs Docker, curl, jq, unzip and internet. Never contacts a payment gateway.
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Marcus Quinn
 # Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
