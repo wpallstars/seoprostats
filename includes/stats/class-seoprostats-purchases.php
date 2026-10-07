@@ -39,6 +39,9 @@ final class SEOProStats_Purchases {
     /** Event name. */
     const EVENT = 'Purchase';
 
+    /** Positive refund amounts are subtracted by revenue reports. */
+    const REFUND = 'Refund';
+
     /** Order meta: the checkout visit (visitor hash, time, user agent, country, host, path). */
     const META_VISIT = '_seoprostats_visit';
 
@@ -56,6 +59,9 @@ final class SEOProStats_Purchases {
 
     /** @var array<string,bool> Orders recorded in this request. */
     private static $done = array();
+
+    /** @var array<string,mixed> Last successfully buffered event's private receipt. */
+    private static $receipt = array();
 
     /**
      * Register hooks. Each only runs when its shop calls it.
@@ -80,14 +86,17 @@ final class SEOProStats_Purchases {
         add_action('woocommerce_payment_complete', array(__CLASS__, 'woo_paid'), 10, 1);
         add_action('woocommerce_order_status_processing', array(__CLASS__, 'woo_paid'), 10, 1);
         add_action('woocommerce_order_status_completed', array(__CLASS__, 'woo_paid'), 10, 1);
+        add_action('woocommerce_order_refunded', array(__CLASS__, 'woo_refunded'), 10, 2);
 
         // Easy Digital Downloads 3: checkout; paid.
         add_action('edd_built_order', array(__CLASS__, 'edd_checkout'), 10, 1);
         add_action('edd_complete_purchase', array(__CLASS__, 'edd_paid'), 10, 1);
+        add_action('edd_refund_order', array(__CLASS__, 'edd_refunded'), 10, 2);
 
         // FluentCart: checkout; paid.
         add_action('fluent_cart/order_created', array(__CLASS__, 'fluentcart_checkout'), 10, 1);
         add_action('fluent_cart/order_paid', array(__CLASS__, 'fluentcart_paid'), 10, 1);
+        add_action('fluent_cart/order_refunded', array(__CLASS__, 'fluentcart_refunded'), 10, 1);
     }
 
     /**
@@ -203,19 +212,23 @@ final class SEOProStats_Purchases {
      * @param string              $currency ISO 4217 code.
      * @param string              $source   woocommerce, edd, fluentcart or thrivecart.
      * @param int                 $items    Number of items.
+     * @param string              $event    Purchase or Refund.
      * @return bool Whether it was written.
      */
-    public static function record(array $visit, $amount, $currency, $source, $items) {
+    public static function record(array $visit, $amount, $currency, $source, $items, $event = self::EVENT) {
         $currency = strtoupper(trim((string) $currency));
         if (!is_numeric($amount) || (float) $amount <= 0 || !preg_match('/^[A-Z]{3}$/', $currency)) {
             return false; // Free orders are not purchases.
         }
         $hit = array(
             't'  => 'e',
-            'n'  => self::EVENT,
+            'n'  => $event,
             'rv' => array('a' => round((float) $amount, 2), 'c' => $currency),
             'd'  => array('source' => (string) $source, 'items' => max(0, (int) $items)),
         );
+        if ($event === self::REFUND && isset($visit['d']) && is_array($visit['d'])) {
+            $hit['d'] = $visit['d']; // The purchase's properties, including filter-added ones.
+        }
         if (!empty($visit['p']) && preg_match('/^[0-9a-f]{16}$/', (string) $visit['p'])) {
             $hit['p'] = (string) $visit['p']; // Takes its page load's path.
         } elseif (!empty($visit['u']) && is_string($visit['u'])) {
@@ -229,7 +242,9 @@ final class SEOProStats_Purchases {
          * @param array<string,mixed>|false $hit    Event hit (SEOProStats_Processor lists the fields).
          * @param string                    $source woocommerce, edd, fluentcart or thrivecart.
          */
-        $hit = apply_filters('seoprostats_purchase', $hit, (string) $source);
+        if ($event === self::EVENT) {
+            $hit = apply_filters('seoprostats_purchase', $hit, (string) $source);
+        }
         if (!is_array($hit)) {
             return false;
         }
@@ -252,7 +267,33 @@ final class SEOProStats_Purchases {
         if (!is_dir($dir)) {
             SEOProStats_Collection::write_config();
         }
-        return SEOProStats_Collector::append($dir, $json . "\n");
+        if (!SEOProStats_Collector::append($dir, $json . "\n")) {
+            return false;
+        }
+        // Only the original daily hash, time, path and recorded properties:
+        // no customer details or cross-day identity in the private receipt.
+        self::$receipt = array('v' => $visit['v'], 'ts' => $visit['ts'], 'c' => $currency, 'd' => isset($hit['d']) ? $hit['d'] : array());
+        foreach (array('p', 'u') as $key) {
+            if (isset($hit[$key])) {
+                self::$receipt[$key] = $hit[$key];
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Refund a recorded purchase. Legacy integer marks cannot be attributed.
+     *
+     * @param mixed  $mark     Purchase receipt.
+     * @param float  $amount   Positive refund in main units.
+     * @param string $currency Currency, checked against the purchase.
+     * @param string $source   Shop name.
+     * @return bool
+     */
+    private static function refund($mark, $amount, $currency, $source) {
+        $visit = self::visit_from($mark);
+        return $visit && isset($visit['c']) && $visit['c'] === strtoupper($currency)
+            && self::record($visit, $amount, $currency, $source, 0, self::REFUND);
     }
 
     // ------------------------------------------------------------------
@@ -286,11 +327,33 @@ final class SEOProStats_Purchases {
         if (!$visit) {
             return;
         }
+        if (!self::record($visit, (float) $order->get_total(), (string) $order->get_currency(), 'woocommerce', count($order->get_items()))) {
+            return;
+        }
         self::$done['woo' . $order->get_id()] = true;
-        self::record($visit, (float) $order->get_total(), (string) $order->get_currency(), 'woocommerce', count($order->get_items()));
         $order->delete_meta_data(self::META_VISIT);
-        $order->update_meta_data(self::META_DONE, time());
+        $order->update_meta_data(self::META_DONE, wp_json_encode(self::$receipt));
         $order->save_meta_data();
+    }
+
+    /**
+     * WooCommerce stores each partial refund as its own order object.
+     *
+     * @param int $order_id  Original order.
+     * @param int $refund_id Refund order.
+     */
+    public static function woo_refunded($order_id, $refund_id) {
+        $order  = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        $refund = function_exists('wc_get_order') ? wc_get_order($refund_id) : null;
+        $key    = 'woo-refund' . (int) $refund_id;
+        if (!self::enabled() || !$order instanceof WC_Order || !$refund instanceof WC_Order_Refund || (int) $refund->get_parent_id() !== (int) $order_id || isset(self::$done[$key]) || $refund->get_meta(self::META_DONE)) {
+            return;
+        }
+        if (self::refund($order->get_meta(self::META_DONE), (float) $refund->get_amount(), (string) $order->get_currency(), 'woocommerce')) {
+            self::$done[$key] = true;
+            $refund->update_meta_data(self::META_DONE, time());
+            $refund->save_meta_data();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -326,11 +389,34 @@ final class SEOProStats_Purchases {
         if (!is_object($order) || !$visit || !isset($order->total, $order->currency) || (isset($order->type) && $order->type !== 'sale')) {
             return;
         }
-        self::$done['edd' . $order_id] = true;
         $items = method_exists($order, 'get_items') ? count((array) $order->get_items()) : 0;
-        self::record($visit, (float) $order->total, (string) $order->currency, 'edd', $items);
+        if (!self::record($visit, (float) $order->total, (string) $order->currency, 'edd', $items)) {
+            return;
+        }
+        self::$done['edd' . $order_id] = true;
         edd_delete_order_meta($order_id, self::META_VISIT);
-        edd_update_order_meta($order_id, self::META_DONE, time());
+        edd_update_order_meta($order_id, self::META_DONE, wp_json_encode(self::$receipt));
+    }
+
+    /**
+     * EDD 3's edd_refund_order action supplies the new refund order ID.
+     *
+     * @param int $order_id  Original order.
+     * @param int $refund_id Refund order (negative total).
+     */
+    public static function edd_refunded($order_id, $refund_id) {
+        if (!self::enabled() || !function_exists('edd_get_order')) {
+            return;
+        }
+        $refund = edd_get_order((int) $refund_id);
+        $key    = 'edd-refund' . (int) $refund_id;
+        if (!is_object($refund) || !isset($refund->parent, $refund->type, $refund->total, $refund->currency) || (int) $refund->parent !== (int) $order_id || $refund->type !== 'refund' || isset(self::$done[$key]) || edd_get_order_meta((int) $refund_id, self::META_DONE, true)) {
+            return;
+        }
+        if (self::refund(edd_get_order_meta((int) $order_id, self::META_DONE, true), abs((float) $refund->total), (string) $refund->currency, 'edd')) {
+            self::$done[$key] = true;
+            edd_update_order_meta((int) $refund_id, self::META_DONE, time());
+        }
     }
 
     // ------------------------------------------------------------------
@@ -413,12 +499,39 @@ final class SEOProStats_Purchases {
         if (!$visit || !isset($fields['total_amount'], $fields['currency']) || !is_numeric($fields['total_amount'])) {
             return;
         }
-        self::$done[$key] = true;
         $items = isset($fields['order_items']) && is_array($fields['order_items']) ? count($fields['order_items']) : 0;
         // FluentCart keeps amounts in cents.
-        self::record($visit, ((float) $fields['total_amount']) / 100, (string) $fields['currency'], 'fluentcart', $items);
+        if (!self::record($visit, ((float) $fields['total_amount']) / 100, (string) $fields['currency'], 'fluentcart', $items)) {
+            return;
+        }
+        self::$done[$key] = true;
         self::fluentcart_set_meta($order, self::META_VISIT, '');
-        self::fluentcart_set_meta($order, self::META_DONE, time());
+        self::fluentcart_set_meta($order, self::META_DONE, wp_json_encode(self::$receipt));
+    }
+
+    /**
+     * FluentCart 1.7: refunded_amount is cents; transaction is the refund.
+     *
+     * @param array<string,mixed> $data Event payload.
+     */
+    public static function fluentcart_refunded($data) {
+        $order  = self::fluentcart_order($data);
+        $fields = self::fluentcart_fields($order);
+        $tx     = isset($data['transaction']) ? self::fluentcart_fields($data['transaction']) : array();
+        if (!self::enabled() || !$order || empty($tx['id']) || !isset($fields['currency'], $data['refunded_amount']) || !is_numeric($data['refunded_amount'])) {
+            return;
+        }
+        $mark = self::visit_from(self::fluentcart_meta($order, self::META_DONE));
+        $id   = (string) $tx['id'];
+        $key  = 'fluentcart-refund' . $id;
+        if (!$mark || isset(self::$done[$key]) || !empty($mark['refunds'][$id])) {
+            return;
+        }
+        if (self::refund($mark, ((float) $data['refunded_amount']) / 100, (string) $fields['currency'], 'fluentcart')) {
+            self::$done[$key] = true;
+            $mark['refunds'][$id] = true;
+            self::fluentcart_set_meta($order, self::META_DONE, wp_json_encode($mark));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -471,6 +584,9 @@ final class SEOProStats_Purchases {
             'purchases'   => $request->get_param('purchases'),
             'passthrough' => $request->get_param('passthrough'),
             'flat'        => $request->get_param('passthrough[' . self::PASSTHROUGH . ']'),
+            'refund'      => $request->get_param('refund'),
+            'webhook_id'  => $request->get_param('webhook_id'),
+            'event_id'    => $request->get_param('event_id'),
         ));
         return new WP_REST_Response(array('ok' => true, 'result' => $result), 200);
     }
@@ -482,7 +598,7 @@ final class SEOProStats_Purchases {
      * @return string recorded, ignored, test, duplicate, not-joined or failed.
      */
     public static function thrivecart_order(array $data) {
-        if ($data['event'] !== 'order.success') {
+        if (!self::enabled() || !in_array($data['event'], array('order.success', 'order.refund'), true)) {
             return 'ignored';
         }
         /**
@@ -494,6 +610,9 @@ final class SEOProStats_Purchases {
             return 'test';
         }
         $order_id = preg_replace('/[^\w.-]/', '', $data['order_id']);
+        if ($data['event'] === 'order.refund') {
+            return self::thrivecart_refund($order_id, $data);
+        }
         $total    = is_array($data['order']) && isset($data['order']['total']) ? $data['order']['total'] : null;
         if ($order_id === '' || !is_numeric($total)) {
             return 'failed';
@@ -516,10 +635,46 @@ final class SEOProStats_Purchases {
             update_option(self::STATE_OPTION, $state, false);
             return 'not-joined';
         }
-        update_option(self::STATE_OPTION, $state, false);
         $items = is_array($data['purchases']) ? count($data['purchases']) : 1;
         // ThriveCart sends amounts in cents.
-        return self::record($visit, ((float) $total) / 100, $data['currency'], 'thrivecart', $items) ? 'recorded' : 'failed';
+        if (!self::record($visit, ((float) $total) / 100, $data['currency'], 'thrivecart', $items)) {
+            return 'failed';
+        }
+        $state['receipts'][$order_id] = self::$receipt;
+        $state['receipts'] = array_intersect_key($state['receipts'], array_fill_keys($state['thrivecart'], true));
+        update_option(self::STATE_OPTION, $state, false);
+        return 'recorded';
+    }
+
+    /**
+     * Refund a known ThriveCart order. Delivery IDs are not product IDs.
+     *
+     * @param string              $order_id Order identity, kept only in bounded private state.
+     * @param array<string,mixed> $data     Webhook payload.
+     * @return string
+     */
+    private static function thrivecart_refund($order_id, array $data) {
+        $state = get_option(self::STATE_OPTION, array());
+        if (!is_array($state) || !isset($state['receipts'][$order_id])) {
+            return 'ignored';
+        }
+        $mark   = $state['receipts'][$order_id];
+        $amount = isset($data['refund']['amount']) ? $data['refund']['amount'] : null;
+        $id     = !empty($data['webhook_id']) ? $data['webhook_id'] : (isset($data['event_id']) ? $data['event_id'] : '');
+        if (!is_scalar($id) || (string) $id === '' || !is_numeric($amount) || (float) $amount <= 0) {
+            return 'failed'; // Do not mistake refund.id (the product) for a refund transaction.
+        }
+        $key = hash('sha256', (string) $id);
+        if (!empty($mark['refunds'][$key])) {
+            return 'duplicate';
+        }
+        if (!self::refund($mark, ((float) $amount) / 100, $data['currency'], 'thrivecart')) {
+            return 'failed';
+        }
+        $mark['refunds'][$key] = true;
+        $state['receipts'][$order_id] = $mark;
+        update_option(self::STATE_OPTION, $state, false);
+        return 'recorded';
     }
 
     /**
