@@ -773,8 +773,9 @@ Search (`SEOProStats_Search`) reads only the imported search days
 (`gsc_*`, one engine at a time: `engine=google`, the default, or `bing`;
 `engines` in the answer lists those with data or connected), never the
 visit tables. Bing's pages and queries come by week (`WEEKLY`), so its
-range is cut at the start to whole weeks (any seven days then hold one
-week, and a period and its comparison as many), a page's or query's
+range is widened at the start to the whole weeks its days fall in (cut
+instead where that would start before the first day with data; any seven
+days then hold one week, and a period and its comparison as many), a page's or query's
 points are by week (`grain` `week`, each point the week's last day,
 lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days

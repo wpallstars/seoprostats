@@ -255,14 +255,16 @@ final class SEOProStats_Search {
      * (the day after the last) in the site time zone.
      *
      * An engine whose pages and queries come by week ($weekly) has its
-     * range cut at the start to whole weeks (a week or more): any run of
+     * range widened at the start to whole weeks, the weeks the range's
+     * days fall in, so no chosen day with data is left out: any run of
      * seven days holds one week's figures, so a period and the one it is
      * compared with hold as many weeks, and a period ending on the newest
-     * week (as it does at `through`) holds whole weeks.
+     * week (as it does at `through`) holds whole weeks. Where widening would
+     * start before the first day with data (all time), it is cut instead.
      *
      * @param array<string,mixed>      $range  From SEOProStats_Query::range() or compare_range().
      * @param array{from:string,to:string} $bounds From bounds(); '' for no cut.
-     * @param bool                     $weekly Cut to whole weeks.
+     * @param bool                     $weekly Make whole weeks.
      * @return array<string,mixed>|null Null when no day is left.
      */
     public static function days(array $range, array $bounds, $weekly = false) {
@@ -284,8 +286,13 @@ final class SEOProStats_Search {
         $begin = new DateTimeImmutable($first, $tz);
         $end   = (new DateTimeImmutable($last, $tz))->modify('+1 day');
         $count = (int) $begin->diff($end)->days;
-        if ($weekly && $count >= 7 && $count % 7) {
-            $begin = $end->modify('-' . ($count - $count % 7) . ' days');
+        if ($weekly && $count % 7) {
+            $wide = $end->modify('-' . ($count + 7 - $count % 7) . ' days');
+            if ($bounds['from'] === '' || $wide->format('Y-m-d') >= $bounds['from']) {
+                $begin = $wide;
+            } elseif ($count >= 7) {
+                $begin = $end->modify('-' . ($count - $count % 7) . ' days');
+            }
             $first = $begin->format('Y-m-d');
         }
         return array(

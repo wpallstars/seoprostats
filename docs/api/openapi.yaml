@@ -649,7 +649,8 @@ paths:
         empty.
 
         Bing gives its pages and queries by week, and no countries or
-        devices: the period is cut at its start to whole weeks, a page's
+        devices: the period is widened at its start to the whole weeks its
+        days fall in (cut instead before the first day with data), a page's
         or query's points are by week (`grain` `week`), and a day's
         position is its week's.
 
@@ -1285,7 +1286,7 @@ components:
       description: |
         Search engine: google (Search Console) or bing (Bing Webmaster
         Tools). Bing gives no devices or countries, and its pages and
-        queries by week: the period is cut at its start to whole weeks,
+        queries by week: the period is widened at its start to whole weeks,
         and a page's or query's points are by week.
       schema:
         type: string
