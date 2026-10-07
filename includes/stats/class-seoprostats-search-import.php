@@ -150,7 +150,7 @@ final class SEOProStats_Search_Import {
      * @param string $source Source key.
      * @param int    $budget Seconds (0: no limit, for WP-CLI).
      * @param bool   $check  Ask for new final days even if asked recently.
-     * @return array{days:int,rows:int,import:int,done:bool}|WP_Error
+     * @return array{days:int,rows:int,import:int,done:bool,pages?:int}|WP_Error pages: pages whose queries came page by page (Bing).
      */
     public static function run($source, $budget, $check = false) {
         if (!self::lock()) {
@@ -169,7 +169,7 @@ final class SEOProStats_Search_Import {
      * @param string $source Source key.
      * @param int    $budget Seconds (0: no limit).
      * @param bool   $check  Ask for new final days even if asked recently.
-     * @return array{days:int,rows:int,import:int,done:bool}|WP_Error
+     * @return array{days:int,rows:int,import:int,done:bool,pages?:int}|WP_Error
      */
     private static function run_days($source, $budget, $check) {
         $start = microtime(true);
@@ -316,14 +316,14 @@ final class SEOProStats_Search_Import {
                 return self::failed($source, $urls);
             }
             // One address per page: Bing may list a page with and without www.
-            $queue = array();
+            $by_path = array();
             foreach ($urls as $url) {
-                $path = self::path($url);
-                if ($path !== '' && !isset($queue[$path])) {
-                    $queue[$path] = $url;
+                $path = self::path((string) $url);
+                if ($path !== '' && !isset($by_path[$path])) {
+                    $by_path[$path] = (string) $url;
                 }
             }
-            $queue = array_values($queue);
+            $queue = array_values($by_path);
             SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
         }
         $import = 0;
@@ -352,7 +352,7 @@ final class SEOProStats_Search_Import {
                 return self::failed($source, $added);
             }
             $rows += $added;
-            $days  = array_values(array_unique(array_merge($days, array_keys($data))));
+            $days  = array_values(array_unique(array_merge($days, array_map('strval', array_keys($data)))));
             $pages++;
             array_shift($queue);
             SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
@@ -409,8 +409,10 @@ final class SEOProStats_Search_Import {
             $ok    = $added !== false;
             $written += (int) $added;
         }
-        $wpdb->query($ok ? 'COMMIT' : 'ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
-        if (!$ok) {
+        if ($ok) {
+            $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+        } else {
+            $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
             /* translators: %s: page path */
             return new WP_Error('seoprostats_import_write', sprintf(__('The search queries of %s could not be saved in the database.', 'seoprostats'), $path));
         }

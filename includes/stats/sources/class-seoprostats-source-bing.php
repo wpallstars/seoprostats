@@ -207,10 +207,11 @@ final class SEOProStats_Source_Bing {
         if (is_wp_error($data)) {
             return $data;
         }
-        if (!$data['totals']) {
+        $days = array_map('strval', array_keys($data['totals']));
+        if (!$days) {
             return '';
         }
-        $last  = (string) max(array_keys($data['totals']));
+        $last  = max($days);
         $ends  = array_keys($data['ends']);
         $newest = $ends ? (string) max($ends) : '';
         if ($newest !== '' && $newest >= self::shift($last, -13)) {
