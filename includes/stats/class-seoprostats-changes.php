@@ -317,8 +317,25 @@ final class SEOProStats_Changes {
     public static function before_post($post_id) {
         $post = get_post((int) $post_id);
         if ($post instanceof WP_Post && $post->post_status === 'publish' && self::is_public($post)) {
-            self::$before[(int) $post->ID] = self::post_path($post);
+            self::$before[(int) $post->ID] = self::post_path(self::untrashed($post));
         }
+    }
+
+    /**
+     * A post with the slug it had before the bin: WordPress adds
+     * "__trashed" to it before saving the post to the bin.
+     *
+     * @param WP_Post $post Post.
+     * @return WP_Post
+     */
+    private static function untrashed(WP_Post $post) {
+        if (substr($post->post_name, -9) !== '__trashed') {
+            return $post;
+        }
+        $desired         = get_post_meta($post->ID, '_wp_desired_post_slug', true);
+        $copy            = clone $post;
+        $copy->post_name = is_string($desired) && $desired !== '' ? $desired : substr($post->post_name, 0, -9);
+        return $copy;
     }
 
     /**
@@ -1263,7 +1280,8 @@ final class SEOProStats_Changes {
         $meta = is_array($meta) ? $meta : array();
         $user = null;
         $uid  = (int) $row['user_id'];
-        if ($uid && current_user_can('list_users')) {
+        // WP-CLI already reads the whole database; elsewhere only people who may list users see names.
+        if ($uid && ((defined('WP_CLI') && WP_CLI) || current_user_can('list_users'))) {
             if (!array_key_exists($uid, $users)) {
                 $data        = get_userdata($uid);
                 $users[$uid] = $data ? (string) $data->display_name : null;
