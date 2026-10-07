@@ -4,34 +4,13 @@
  * Scoped to .spst-wrap. Uses core admin tokens so the screen follows the
  * active admin colour scheme; core buttons, notices and plugin cards keep
  * their native styles. Logical properties keep RTL working without a
- * separate stylesheet.
+ * separate stylesheet. The colour tokens, header and main area are in
+ * seoprostats-header.css, which loads first.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  */
-
-.spst-wrap {
-	--spst-accent: var(--wp-admin-theme-color, #2271b1);
-	--spst-accent-dark: var(--wp-admin-theme-color-darker-10, #135e96);
-	--spst-text: #1d2327;
-	--spst-muted: #646970;
-	--spst-border: #dcdcde;
-	--spst-surface: #fff;
-	--spst-subtle: #f6f7f7;
-	--spst-success: #008a20;
-	--spst-error: #d63638;
-	--spst-radius: 8px;
-	--spst-shadow: 0 1px 2px rgb(0 0 0 / 4%);
-	--spst-focus: 0 0 0 2px var(--spst-surface), 0 0 0 4px var(--spst-accent);
-
-	margin-block-start: 0;
-	margin-inline: -20px 0;
-	color: var(--spst-text);
-
-	/* Start below the Screen Options / Notices tabs, so they never narrow the header. */
-	clear: both;
-}
 
 .spst-wrap *,
 .spst-wrap *::before,
@@ -39,132 +18,7 @@
 	box-sizing: border-box;
 }
 
-/* Header ------------------------------------------------------------- */
-
-.spst-header {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 12px 24px;
-	padding: 14px 24px;
-	background: var(--spst-surface);
-	border-block-end: 1px solid var(--spst-border);
-}
-
-.spst-header__brand {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-}
-
-.spst-header__logo {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	font-size: 20px;
-	color: #fff;
-	background: var(--spst-accent);
-	border-radius: 6px;
-}
-
-.spst-wrap .spst-header__title {
-	margin: 0;
-	padding: 0;
-	font-size: 20px;
-	font-weight: 600;
-	line-height: 1.3;
-}
-
-.spst-header__actions {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: center;
-	gap: 8px;
-	margin-inline-start: auto;
-}
-
-.spst-wrap .spst-header__support {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-}
-
-/* line-height: 1 stops the icon taking the button's taller line height,
-   which draws the glyph below the middle of its box. */
-.spst-wrap .spst-header__support .dashicons {
-	width: 18px;
-	height: 18px;
-	font-size: 18px;
-	line-height: 1;
-}
-
-/* Search ------------------------------------------------------------- */
-
-/* Stretch, so the field always matches the button's height, whatever
-   size the admin colour scheme or WordPress version gives buttons. */
-.spst-search {
-	display: flex;
-	align-items: stretch;
-	gap: 6px;
-}
-
-.spst-search__field {
-	position: relative;
-	display: flex;
-	align-items: stretch;
-}
-
-.spst-wrap .spst-search__icon {
-	position: absolute;
-	inset-block: 0;
-	inset-inline-start: 9px;
-	margin-block: auto;
-	color: var(--spst-muted);
-	pointer-events: none;
-}
-
-.spst-wrap .spst-search__input {
-	width: 260px;
-	max-width: 100%;
-	height: auto;
-	min-height: 30px;
-	margin: 0;
-	padding-block: 0;
-	padding-inline: 34px 10px;
-	font-size: 14px;
-	line-height: normal;
-	color: var(--spst-text);
-	background: var(--spst-surface);
-
-	/* Border and corners stay core's, so they match core buttons in each version. */
-	box-shadow: none;
-	transition: border-color 0.1s ease-in-out, box-shadow 0.1s ease-in-out;
-}
-
-.spst-wrap .spst-search__input::placeholder {
-	color: var(--spst-muted);
-	opacity: 1;
-}
-
-.spst-wrap .spst-search__input:hover {
-	border-color: var(--spst-accent);
-}
-
-.spst-wrap .spst-search__input:focus {
-	border-color: var(--spst-accent);
-	box-shadow: 0 0 0 1px var(--spst-accent);
-	outline: 2px solid transparent;
-}
-
-.spst-wrap .spst-search__field:focus-within .spst-search__icon {
-	color: var(--spst-accent);
-}
-
-.spst-wrap .spst-search__button {
-	margin: 0;
-}
+/* Search results ----------------------------------------------------- */
 
 .spst-wrap .spst-search__group {
 	margin: 24px 0 8px;
@@ -233,18 +87,7 @@
 	border-block-end-color: var(--spst-accent);
 }
 
-/* Main --------------------------------------------------------------- */
-
-.spst-wrap > .notice,
-.spst-wrap > div.updated,
-.spst-wrap > div.error {
-	margin: 16px 24px 0;
-}
-
-.spst-main {
-	max-width: 1200px;
-	padding: 24px;
-}
+/* Sections ----------------------------------------------------------- */
 
 .spst-section {
 	max-width: 860px;
@@ -293,25 +136,6 @@
 
 .spst-empty p {
 	margin: 0;
-}
-
-.spst-badge {
-	display: inline-block;
-	padding: 2px 8px;
-	font-size: 11px;
-	font-weight: 500;
-	line-height: 1.6;
-	color: var(--spst-muted);
-	vertical-align: middle;
-	background: var(--spst-subtle);
-	border: 1px solid var(--spst-border);
-	border-radius: 999px;
-}
-
-.spst-badge--success {
-	color: #00450c;
-	background: #edfaef;
-	border-color: #b8e6bf;
 }
 
 /* Setting cards ------------------------------------------------------ */
@@ -819,41 +643,8 @@
 /* Responsive --------------------------------------------------------- */
 
 @media screen and (max-width: 782px) {
-	.spst-wrap {
-		margin-inline-start: -10px;
-	}
-
-	.spst-header,
-	.spst-main {
-		padding-inline: 12px;
-	}
-
 	.spst-nav {
 		flex-wrap: nowrap;
-	}
-
-	/* Brand and website link on the first row, search across the second. */
-	.spst-search {
-		order: 1;
-		flex: 1 1 100%;
-		min-width: 0;
-	}
-
-	.spst-search__field {
-		flex: 1 1 0;
-		min-width: 0;
-	}
-
-	.spst-wrap .spst-search__input {
-		flex: 1 1 0;
-		width: auto;
-		min-width: 0;
-		min-height: 40px;
-		font-size: 16px;
-	}
-
-	.spst-search .button {
-		flex-shrink: 0;
 	}
 
 	.spst-setting__header {

@@ -164,14 +164,15 @@ final class SEOProStats_Dashboard {
     }
 
     /**
-     * The screen: a heading, then the app.
+     * The screen: the settings screen's header (name, version, feature
+     * search and links), then the app.
      */
     public static function render() {
         ?>
         <div class="wrap spst-wrap">
-            <h1 class="wp-heading-inline"><?php esc_html_e('SEO Pro Stats', 'seoprostats'); ?></h1>
+            <?php SEOProStats_Admin_Manager::render_header(); ?>
             <hr class="wp-header-end">
-            <div id="spst-dashboard">
+            <div id="spst-dashboard" class="spst-main">
                 <p class="spst-loading"><?php esc_html_e('Loading statistics…', 'seoprostats'); ?></p>
                 <noscript><p><?php esc_html_e('The statistics need JavaScript. They are also available through the REST API and WP-CLI (wp seoprostats stats).', 'seoprostats'); ?></p></noscript>
             </div>
@@ -207,6 +208,9 @@ final class SEOProStats_Dashboard {
      */
     public static function enqueue($hook) {
         if ($hook === self::HOOK) {
+            SEOProStats_Admin_Manager::enqueue_header();
+            // The app keeps its own width (dashboard.css), not the settings screen's.
+            wp_add_inline_style('seoprostats-header', '#spst-dashboard.spst-main{max-width:none}');
             self::enqueue_entry('dashboard');
         } elseif ($hook === 'index.php' && current_user_can(SEOProStats_API::CAP)) {
             self::enqueue_entry('widget');

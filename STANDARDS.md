@@ -113,7 +113,14 @@ How changes are made and checked: `DEVELOPMENT.md`. Releases: `RELEASING.md`.
 - The settings screen's header links come from `{Prefix}_Setup::header_links()`:
   `source` (the GitHub repository, **Source code**), `support` (its issues,
   **Support**) and `donate` (**Buy me a coffee**); leave one out for no
-  button. Keep the labels short so the buttons fit on one row.
+  button. Keep the labels short so the buttons fit on one row. The
+  plugin's own admin screens show the same header:
+  `{Prefix}_Admin_Manager::enqueue_header()` and `render_header()`.
+- Tabs in one group of the settings screen (between two dividers) switch
+  without a reload: the screen draws the group at once. A tab added with
+  `{prefix}_admin_tabs` joins in with `'preload' => true` once its script
+  works with its panel hidden and its markup is cheap to draw; otherwise it
+  stays a page of its own.
 - Update `README.md` (feature section, hooks, changelog), `changelog.txt`
   (the user-facing changelog entry) and `readme.txt` in the same change.
   `readme.txt` must stay under 10 KB for WordPress.org: one short line per
@@ -184,7 +191,7 @@ adds docs as it grows.
     there with the plugin's case, then comes back with
     `scripts/sync-core.sh`. Only the plugin's own files (`{Prefix}_Setup`,
     features, `phpstan-plugin.neon`, `scripts/preflight-plugin.sh`,
-    `AGENTS.md`, `docs/`) take changes for this plugin alone.
+    `AGENTS.md`, `LAUNCH.md`, `docs/`) take changes for this plugin alone.
   - Steps that need the owner's accounts or make secrets (SonarCloud,
     Codacy, `SYNC_PAT`: `DEVELOPMENT.md` → Services setup) are listed for
     the owner, not done by an agent.
@@ -354,6 +361,12 @@ It replaces Git Updater.
 - Tokens for private repositories come only from `wp-config.php`
   (`WPALLSTARS_GITHUB_TOKEN`) or the filter, go only to api.github.com and
   are never stored.
+- Release answers are cached for 12 hours (an hour after a failed request).
+  "Check again" on the Updates screen, or a core update check starting without
+  the `update_plugins` site transient, asks GitHub again, at most once a minute.
+  Clearing that transient with `wp transient delete update_plugins --network`
+  also refreshes GitHub releases on the next check; ordinary admin pages and
+  cron checks keep using the cache.
 
 ## Releases
 
