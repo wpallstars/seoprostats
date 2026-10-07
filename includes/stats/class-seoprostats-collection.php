@@ -126,12 +126,14 @@ final class SEOProStats_Collection {
     }
 
     /**
-     * Daily cron: search engine updates (the class loads only here and in
-     * WP-CLI).
+     * Daily cron: search engine updates, and the content audit's next
+     * batch of pages (the classes load only here and in WP-CLI).
      */
     public static function daily() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         SEOProStats_Search_Updates::run();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
+        SEOProStats_Audit::batch();
     }
 
     /**

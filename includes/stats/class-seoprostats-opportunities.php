@@ -641,7 +641,7 @@ final class SEOProStats_Opportunities {
      * @param int[]|null          $pages  Path ids, or null for every page.
      * @return array<string,array{c:int,i:int,p:int}> "path_id" or "path_id:query_id" => sums.
      */
-    private static function sums($table, $engine, array $days, $pages) {
+    public static function sums($table, $engine, array $days, $pages) {
         global $wpdb;
         $on = self::where($engine, $days, $pages);
         $by = $table === 'gsc_pairs' ? 'path_id, query_id' : 'path_id';

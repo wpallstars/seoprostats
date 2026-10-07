@@ -35,8 +35,9 @@ final class SEOProStats_Schema {
      *     Search Console and later Bing), imports (each import run).
      * v8: experiments (a change's hypothesis, measured before and after).
      * v9: queue (decision queue items someone accepted, did or dismissed).
+     * v10: page_facts (the content audit's facts about each published page).
      */
-    const VERSION = 9;
+    const VERSION = 10;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -101,7 +102,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts');
     }
 
     /**
@@ -571,6 +572,37 @@ final class SEOProStats_Schema {
   PRIMARY KEY  (id),
   UNIQUE KEY ikey (ikey),
   KEY status_updated (status,updated)
+) $charset;",
+
+            // Content audit facts (SEOProStats_Audit): one row per
+            // published page, read from WordPress when a post is saved and
+            // by the daily cron. Times are Unix seconds; lengths are
+            // characters. title_hash, desc_hash: 8-byte keys of the shown
+            // title and description (zeros for none). flags: the page's
+            // own findings, SEOProStats_Audit::FLAGS.
+            'page_facts' => "CREATE TABLE {$t['page_facts']} (
+  path_id int unsigned NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  checked int unsigned NOT NULL,
+  modified int unsigned NOT NULL DEFAULT 0,
+  title_len smallint unsigned NOT NULL DEFAULT 0,
+  seo_title_len smallint unsigned NOT NULL DEFAULT 0,
+  desc_len smallint unsigned NOT NULL DEFAULT 0,
+  title_hash binary(8) NOT NULL,
+  desc_hash binary(8) NOT NULL,
+  h1 tinyint unsigned NOT NULL DEFAULT 0,
+  words int unsigned NOT NULL DEFAULT 0,
+  images smallint unsigned NOT NULL DEFAULT 0,
+  images_no_alt smallint unsigned NOT NULL DEFAULT 0,
+  noindex tinyint unsigned NOT NULL DEFAULT 0,
+  canonical_away tinyint unsigned NOT NULL DEFAULT 0,
+  flags smallint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (path_id),
+  KEY post_id (post_id),
+  KEY checked (checked),
+  KEY flags (flags),
+  KEY title_hash (title_hash),
+  KEY desc_hash (desc_hash)
 ) $charset;",
         );
     }
