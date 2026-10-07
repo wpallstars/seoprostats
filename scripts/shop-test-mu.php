@@ -21,6 +21,15 @@ add_action('doing_it_wrong_run', static function ($function, $message) {
     }
 }, 10, 2);
 
+// EDD's admin installer has not run on a fresh CLI-only installation. Build
+// its tables at activation, before the next request tries to schedule logs.
+add_action('activated_plugin', static function ($plugin) {
+    if (strpos($plugin, 'easy-digital-downloads/') === 0 && function_exists('edd_install_component_database_tables')) {
+        edd_install_component_database_tables();
+        edd_run_install();
+    }
+});
+
 /** Configure shops using their own APIs, without creating purchase events. */
 function seoprostats_shop_test_setup() {
     SEOProStats_Settings::set('purchases_thrivecart', 'shop-test-only');
@@ -40,8 +49,6 @@ function seoprostats_shop_test_setup() {
         update_option('seoprostats_shop_test_product', $product->save(), false);
     }
     if (function_exists('edd_build_order')) {
-        edd_install_component_database_tables();
-        edd_run_install();
         edd_update_option('currency', 'EUR');
         edd_update_option('enable_taxes', false);
         $product = wp_insert_post(array('post_type' => 'download', 'post_status' => 'publish', 'post_title' => 'Shop test download'));
@@ -79,9 +86,12 @@ add_action('template_redirect', static function () {
         wp_send_json(array('order_id' => $id));
     }
     if ($action === 'fluentcart') {
+        $customer = \FluentCart\App\Models\Customer::create(array(
+            'email' => 'shop@example.com', 'first_name' => 'Shop', 'last_name' => 'Test',
+        ));
         $order = \FluentCart\App\Models\Order::create(array(
             'status' => 'processing', 'payment_status' => 'pending', 'type' => 'payment',
-            'currency' => 'GBP', 'subtotal' => 2500, 'total_amount' => 2500,
+            'currency' => 'GBP', 'subtotal' => 2500, 'total_amount' => 2500, 'customer_id' => $customer->id,
         ));
         (new \FluentCart\App\Events\Order\OrderCreated($order))->dispatch();
         $order->payment_status = 'paid';
