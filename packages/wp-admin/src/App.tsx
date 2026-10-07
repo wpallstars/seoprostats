@@ -1,7 +1,8 @@
 /**
  * The SEO Pro Stats screen: the period and comparison, the Live/Demo
  * switch and filters (shared by every section), then the section the URL
- * hash names. The section tabs above it are the server's (useNavCurrent).
+ * hash names. The tab bar above it is the server's: its tabs are marked by
+ * useNavCurrent, and the controls go on its right (#spst-dashboard-controls).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -9,6 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Notice } from '@wordpress/components';
+import { createPortal } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { buildHash, switchView, type View, type ViewState } from '@seoprostats/core';
 import { useDemo } from './api';
@@ -101,18 +103,23 @@ export function App() {
 		section = <Changes {...props} />;
 	}
 
+	// Share, the live count, the Live/Demo switch, then the period and
+	// comparison: on the right of the tab bar when the screen has its slot.
+	const controls = (
+		<>
+			{boot.canManage && data === 'live' && ['overview', 'goals', 'clicks'].includes(state.view) && <Button variant="secondary" onClick={() => setSharing(true)}>{__('Share', 'seoprostats')}</Button>}
+			{!waiting && <Realtime />}
+			<DemoSwitch />
+			{!waiting && <Controls state={state} update={update} />}
+		</>
+	);
+	const slot = document.getElementById('spst-dashboard-controls');
+
 	return (
 		<div className="spst-app">
 			{sharing && <ShareEditor state={state} close={() => setSharing(false)} saved={(share) => setLink(share.url ?? '')} />}
 			{link && <Notice status="success" onRemove={() => setLink('')}><p>{__('Copy this private link now; it is shown only once.', 'seoprostats')}</p><input aria-label="Private link" readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></Notice>}
-			<div className="spst-toolbar">
-				{!waiting && <Controls state={state} update={update} />}
-				<div className="spst-toolbar__end">
-					{boot.canManage && data === 'live' && ['overview', 'goals', 'clicks'].includes(state.view) && <Button variant="secondary" onClick={() => setSharing(true)}>{__('Share', 'seoprostats')}</Button>}
-					{!waiting && <Realtime />}
-					<DemoSwitch />
-				</div>
-			</div>
+			{slot ? createPortal(controls, slot) : <div className="spst-toolbar">{controls}</div>}
 
 			<DemoNotice />
 

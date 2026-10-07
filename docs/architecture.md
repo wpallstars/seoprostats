@@ -1060,7 +1060,8 @@ Funnels, Properties, Clicks and Changes, as the settings screen's tabs
 under the header (drawn by the server, `SEOProStats_Dashboard::render()`)
 and as submenu items: links to the hash, which the app marks current and
 whose tabs keep the period and filters. The period, comparison, Live/Demo switch and filters
-are shared by every section. Search has three tabs. Rankings shows clicks,
+are shared by every section; all but the filters sit on the tab bar's
+right (the app renders them into `#spst-dashboard-controls`). Search has three tabs. Rankings shows clicks,
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,
 pages, countries and devices; choosing a page shows its queries and
