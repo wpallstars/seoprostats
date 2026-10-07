@@ -1,6 +1,6 @@
 /**
  * Search → Opportunities: where search effort pays, from the chosen
- * engine's imported days (Search Console or Bing), in four cards.
+ * engine's imported days (Search Console or Bing), in five cards.
  *
  * - Striking distance: a page's query at position 4–20; the clicks it
  *   could gain in the top three.
@@ -11,6 +11,9 @@
  *   the page.
  * - Missing from the page: a page's query in the top 20 whose words the
  *   page does not have, or has only some of; questions are marked.
+ * - Overlapping pages: a query two or more pages each get a tenth or more
+ *   of the impressions for, with each page's share; a candidate to
+ *   review, marked when the leading page changed between the halves.
  *
  * Choosing a row opens it in Rankings. The period is cut at the newest
  * search day and to its newest 91 days.
@@ -34,6 +37,7 @@ import {
 	type OpportunityDecay,
 	type OpportunityKind,
 	type OpportunityMissing,
+	type OpportunityOverlap,
 	type OpportunityPage,
 	type OpportunityPair,
 } from '@seoprostats/core';
@@ -90,6 +94,7 @@ export function Opportunities({ state, open, onEngines }: OpportunitiesProps) {
 				<KindCard state={state} kind="ctr" open={open} />
 				<KindCard state={state} kind="decay" open={open} />
 				<KindCard state={state} kind="missing" open={open} />
+				<KindCard state={state} kind="overlap" open={open} />
 			</div>
 		</>
 	);
@@ -101,6 +106,7 @@ function kindTitle(kind: OpportunityKind): string {
 		ctr: __('Low CTR', 'seoprostats'),
 		decay: __('Losing clicks', 'seoprostats'),
 		missing: __('Missing from the page', 'seoprostats'),
+		overlap: __('Overlapping pages', 'seoprostats'),
 	};
 	return titles[kind];
 }
@@ -146,6 +152,17 @@ function kindIntro(answer: OpportunitiesAnswer): string {
 			number(rules.pages ?? 50)
 		);
 	}
+	if (answer.kind === 'overlap') {
+		return sprintf(
+			/* translators: 1: share, e.g. 10%, 2: minimum impressions. */
+			__(
+				'Queries for which two or more pages each get at least %1$s of the impressions (%2$s or more in all). Candidates to review, not faults: a guide and a product page can both be right. If the pages answer the same need, make one the clear answer and link to it from the others. Switched means the page with most impressions changed between the halves of the period.',
+				'seoprostats'
+			),
+			percent(rules.min_share ?? 0.1),
+			number(rules.min_impressions ?? 0)
+		);
+	}
 	return sprintf(
 		/* translators: 1: share of clicks lost, e.g. 20%, 2: minimum clicks lost. */
 		__(
@@ -175,6 +192,8 @@ function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: Oppo
 				<DecayTable rows={rows as OpportunityDecay[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
 			) : kind === 'missing' ? (
 				<MissingTable rows={rows as OpportunityMissing[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
+			) : kind === 'overlap' ? (
+				<OverlapTable rows={rows as OpportunityOverlap[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
 			) : (
 				<PairTable kind={kind} rows={rows as OpportunityPair[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
 			);
@@ -207,7 +226,9 @@ function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: Oppo
 									? __('No page lost clicks this way in this period.', 'seoprostats')
 									: kind === 'missing'
 										? __('The pages read have the words of every query they show for.', 'seoprostats')
-										: __('Nothing of this kind in this period.', 'seoprostats')}
+										: kind === 'overlap'
+											? __('No query is shared by pages this way in this period.', 'seoprostats')
+											: __('Nothing of this kind in this period.', 'seoprostats')}
 						</p>
 					</div>
 				)}
@@ -278,14 +299,14 @@ function Notes({ answer }: { answer: OpportunitiesAnswer }) {
 	);
 }
 
-/** A page: its path (opens Rankings) and View and Edit links; also Content's. */
-export function PageCell({ row, query, open }: { row: OpportunityPage; query: string; open: OpportunitiesProps['open'] }) {
+/** A page: its path (opens Rankings) and View and Edit links, then any extra figures; also Content's. */
+export function PageCell({ row, query, open, extra }: { row: OpportunityPage; query: string; open: OpportunitiesProps['open']; extra?: ReactNode }) {
 	return (
 		<>
 			<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: row.path, query })}>
 				{query || row.path}
 			</button>
-			{(query || row.url || row.edit_url) && (
+			{(query || row.url || row.edit_url || extra) && (
 				<span className="spst-meta">
 					{query && row.path}
 					{query && (row.url || row.edit_url) && ' · '}
@@ -305,6 +326,12 @@ export function PageCell({ row, query, open }: { row: OpportunityPage; query: st
 							<a href={row.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), row.path)}>
 								<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
 							</a>
+						</>
+					)}
+					{extra && (
+						<>
+							{(query || row.url || row.edit_url) && ' · '}
+							{extra}
 						</>
 					)}
 				</span>
@@ -408,6 +435,107 @@ function MissingTable({ rows, open, refreshing, label }: MissingTableProps) {
 							<td className="num">{place(row.position)}</td>
 							<td className="num">{number(row.impressions)}</td>
 							<td className="num">{number(row.clicks)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</TableScroll>
+	);
+}
+
+interface OverlapTableProps {
+	rows: OpportunityOverlap[];
+	open: OpportunitiesProps['open'];
+	refreshing: boolean;
+	label: string;
+}
+
+function OverlapTable({ rows, open, refreshing, label }: OverlapTableProps) {
+	return (
+		<TableScroll label={label}>
+			<table className={`widefat striped spst-table spst-decay spst-overlap${refreshing ? ' is-refreshing' : ''}`}>
+				<thead>
+					<tr>
+						<th scope="col">{__('Query', 'seoprostats')}</th>
+						<th scope="col" className="spst-overlap__pages">
+							{__('Pages, by share of impressions', 'seoprostats')}
+						</th>
+						<th scope="col" className="num">
+							{__('Impressions', 'seoprostats')}
+						</th>
+						<th scope="col" className="num">
+							{__('Clicks', 'seoprostats')}
+						</th>
+						<th scope="col">{__('Leading page', 'seoprostats')}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr key={row.query}>
+							<td>
+								<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: '', query: row.query })}>
+									{row.query}
+								</button>
+								{row.potential > 0 && (
+									<span className="spst-meta">
+										{sprintf(
+											/* translators: %s: number of clicks. */
+											__('+%s clicks with the best of their CTRs', 'seoprostats'),
+											number(row.potential)
+										)}
+									</span>
+								)}
+							</td>
+							<td>
+								<ul className="spst-decay__list">
+									{row.pages.map((page) => (
+										<li key={page.path_id}>
+											<PageCell
+												row={page}
+												query=""
+												open={(pick) => open({ ...pick, query: row.query })}
+												extra={sprintf(
+													/* translators: 1: share of the query's impressions, 2: average position, 3: clicks. */
+													__('%1$s of impressions · position %2$s · %3$s clicks', 'seoprostats'),
+													percent(page.share),
+													place(page.position),
+													number(page.clicks)
+												)}
+											/>
+										</li>
+									))}
+									{row.page_count > row.pages.length && (
+										<li className="spst-muted">
+											{sprintf(
+												/* translators: %s: number of pages. */
+												_n('and %s more page', 'and %s more pages', row.page_count - row.pages.length, 'seoprostats'),
+												number(row.page_count - row.pages.length)
+											)}
+										</li>
+									)}
+								</ul>
+							</td>
+							<td className="num">{number(row.impressions)}</td>
+							<td className="num">{number(row.clicks)}</td>
+							<td>
+								{row.switched ? (
+									<>
+										<strong className="spst-cause is-position">{__('Switched', 'seoprostats')}</strong>
+										<span className="spst-meta">
+											{sprintf(
+												/* translators: 1: page path in the first half of the period, 2: page path in the second half. */
+												__('%1$s, then %2$s', 'seoprostats'),
+												row.leaders[0] ?? '–',
+												row.leaders[1] ?? '–'
+											)}
+										</span>
+									</>
+								) : row.leaders[0] || row.leaders[1] ? (
+									<span className="spst-muted">{__('The same in both halves', 'seoprostats')}</span>
+								) : (
+									<span className="spst-muted">–</span>
+								)}
+							</td>
 						</tr>
 					))}
 				</tbody>

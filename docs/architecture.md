@@ -353,14 +353,16 @@ with a page can start one.
 
 The decision queue (schema v9, `SEOProStats_Queue`; design:
 `docs/seo-loop.md` → Decision queue) ranks what Opportunities finds (low
-CTR, missing from the page, striking distance, losing clicks) as one list:
+CTR, missing from the page, striking distance, losing clicks, overlapping
+pages) as one list:
 potential clicks per 28 days × value (the page's conversion rate of visits
 from search against the site's) × confidence ÷ effort, each part in the
 answer. Items are worked out when the list is read from the cached
 reports; only those someone accepted, did, dismissed or gave an effort
 or note are stored in `queue`. New items on a page with a running
-experiment are left out; done opens an experiment on the item's page with
-the kind's measure. `GET /queue`, `wp seoprostats queue` and the
+experiment are left out (an overlap item when any of its pages has one);
+done opens an experiment on the item's page (an overlap's: all its pages)
+with the kind's measure. `GET /queue`, `wp seoprostats queue` and the
 `seoprostats/queue` ability read it; `POST /queue/{key}`, the queue
 actions of the command and `seoprostats/queue-update` (`manage_options`)
 act on an item. The dashboard has it under Search → Plan.
@@ -599,7 +601,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
 | `experiments` | a change's hypothesis, measured before and after against unchanged pages (schema v8; `docs/seo-loop.md`) | `id`, `created`, `user_id`, `name`, `start`, `days`, `review` (the after window's last day), `engine`, `metric` (1 clicks, 2 impressions, 3 CTR, 4 position, 5 visits, 6 conversions), `direction`, `threshold` (percent, or tenths of a place), `change_id`, `path_id` (0: several pages, in `meta`), `status` (1 running, 2 decided, 3 cancelled), `result` (1 keep, 2 revise, 3 undo, 4 inconclusive), `decided`, `meta` (pages, goal, hypothesis, note, the change row it wrote, the measurement decided on) |
-| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
+| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay, 5 overlap), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -694,8 +696,9 @@ Search Console leaves out rare ones. In the last weeks a few pages lose
 clicks in their own way (`SEARCH_EVENTS`: one ranks lower after a large
 edit, one is searched less, one is chosen less after its SEO title
 changed, with those changes in the change log), and a few queries have a
-low CTR for their position (`SEARCH_LOW_CTR`), so each Opportunities card
-lists something. Bing days follow as the Bing import writes them
+low CTR for their position (`SEARCH_LOW_CTR`), and a few queries have a
+second page (one where the second page has led for the last 40 days), so
+each Opportunities card lists something. Bing days follow as the Bing import writes them
 (`bing_day()`): the site's clicks and impressions each day, and on each
 Thursday the week's pages, queries and pairs, from the same Google days
 at about an eighth of the size and a little lower down, through the
@@ -916,6 +919,20 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
   coverage checks them (below); most impressions first. Only the 50 pages
   with most impressions among them are read (`MISSING_PAGES`, `rules.
   pages`), each once.
+- **Overlapping pages** (`overlap`): queries for which two or more pages
+  each get at least 10% of the impressions of its pages read
+  (`OVERLAP_SHARE`, `rules.min_share`), from the same grouped read of
+  `gsc_pairs` (the 2,000 pairs with most impressions; pairs too small to
+  hold that share of the smallest query listed are left out in SQL). A
+  candidate to review, never a fault. The row is the leading page's, with
+  the query's sums; up to five pages (`OVERLAP_PAGES`) with their figures
+  and share; most impressions on pages other than the leading one first.
+  For the rows shown, one more read of `gsc_pairs` by `query_day` gives
+  each page's impressions in the first half of the period (whole weeks
+  for Bing; `halves`), the second half being the rest, so `leaders` and
+  `switched` say whether the leading page changed. `potential` is the
+  clicks the query would get if all its pages' impressions had the best
+  of their CTRs.
 
 Query coverage (`SEOProStats_Coverage`) checks a page's search queries
 against the page's own words. A query's terms are its words, lower case
@@ -1083,8 +1100,9 @@ right (the app renders them into `#spst-dashboard-controls`). Search has three t
 impressions, CTR and average position as tiles that pick the chart's
 metric (the Overview's chart, with the markers lane), then queries,
 pages, countries and devices; choosing a page shows its queries and
-choosing a query its pages. Opportunities has four cards (striking
-distance, low CTR, losing clicks, missing from the page), ten rows a page; choosing a row opens
+choosing a query its pages. Opportunities has five cards (striking
+distance, low CTR, losing clicks, missing from the page, overlapping
+pages), ten rows a page; choosing a row opens
 it in Rankings with its page and query. Losing clicks is always against
 an earlier period (the previous one unless the same period last year is
 chosen). Content shows search clicks, visits from search, their bounce

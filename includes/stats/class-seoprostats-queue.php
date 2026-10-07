@@ -9,7 +9,9 @@
  * - potential clicks: the opportunity's (striking: clicks it could gain
  *   in the top three; low CTR: clicks missed; decay: clicks lost;
  *   missing: impressions × the site's expected CTR at its position ×
- *   MISSING_SHARE), scaled to 28 days;
+ *   MISSING_SHARE; overlap: the clicks the query's pages would have with
+ *   the best of their CTRs, so items where no page does better are left
+ *   out), scaled to 28 days;
  * - value: how well visits from search to the page convert against the
  *   site (the Content report's goal), smoothed toward the site's rate
  *   with SMOOTH visits; at least 1 (a page with no goal data is 1) and at
@@ -50,6 +52,7 @@ final class SEOProStats_Queue {
         2 => 'missing',
         3 => 'striking',
         4 => 'decay',
+        5 => 'overlap',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -67,14 +70,14 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3);
     const MAX_EFFORT = 5;
 
     /** The kind's own confidence, before the impressions are weighed. */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4);
 
     /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks');
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks');
 
     /** Potential clicks are given per this many days. */
     const SCALE_DAYS = 28;
@@ -178,7 +181,7 @@ final class SEOProStats_Queue {
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
         $found = array();
-        foreach (array('striking', 'ctr', 'decay', 'missing') as $kind) {
+        foreach (SEOProStats_Opportunities::KINDS as $kind) {
             $found[$kind] = SEOProStats_Opportunities::report($ask, $kind, $engine);
         }
         $head  = $found['striking'];
@@ -191,6 +194,10 @@ final class SEOProStats_Queue {
         if ($days > 0) {
             foreach ($found as $kind => $answer) {
                 foreach ($answer['rows'] as $row) {
+                    if ($kind === 'overlap' && (int) $row['potential'] < 1) {
+                        // No page's CTR is better than the others': nothing to win by choosing one.
+                        continue;
+                    }
                     $item = self::item($kind, $engine, $row, $days, $curve, $value);
                     if (!isset($items[$item['key']])) {
                         $items[$item['key']] = $item;
@@ -292,7 +299,21 @@ final class SEOProStats_Queue {
                 'ctr'         => $row['ctr'],
                 'position'    => $row['position'],
             );
-            if ($kind === 'missing') {
+            if ($kind === 'overlap') {
+                $figures['potential'] = (int) $row['potential'];
+                $figures['switched']  = (bool) $row['switched'];
+                $figures['pages']     = array_map(static function ($page) {
+                    return array(
+                        'path_id'     => (int) $page['path_id'],
+                        'path'        => (string) $page['path'],
+                        'clicks'      => (int) $page['clicks'],
+                        'impressions' => (int) $page['impressions'],
+                        'position'    => $page['position'],
+                        'share'       => $page['share'],
+                    );
+                }, (array) $row['pages']);
+                $clicks = (int) $row['potential'];
+            } elseif ($kind === 'missing') {
                 $place                   = max(1, min(20, (int) round((float) $row['position'])));
                 $figures['expected_ctr'] = round((float) $curve[$place], 4);
                 $figures['match']        = (string) $row['match'];
@@ -374,7 +395,7 @@ final class SEOProStats_Queue {
                 // Back after HIDE_DAYS days, as new.
                 $item['status'] = 'new';
             }
-            if ($item['status'] === 'new' && isset($running[$item['path_id']])) {
+            if ($item['status'] === 'new' && array_intersect_key($running, array_flip(self::page_ids($item)))) {
                 ++$left_out;
                 continue;
             }
@@ -602,7 +623,7 @@ final class SEOProStats_Queue {
             }
             $opened = SEOProStats_Experiments::add(array(
                 'name'       => isset($input['name']) && trim((string) $input['name']) !== '' ? (string) $input['name'] : self::experiment_name($item),
-                'page'       => $item['path'],
+                'pages'      => self::paths($item),
                 'engine'     => $item['engine'],
                 'metric'     => $item['metric'],
                 'direction'  => 'up',
@@ -712,6 +733,10 @@ final class SEOProStats_Queue {
             /* translators: 1: page path, 2: search query */
             return sprintf(__('A better page and links lift %1$s for “%2$s”', 'seoprostats'), $page, $query);
         }
+        if ($item['kind'] === 'overlap') {
+            /* translators: %s: search query */
+            return sprintf(__('One clear page for “%s” lifts its clicks', 'seoprostats'), $query);
+        }
         /* translators: %s: page path */
         return sprintf(__('Updating %s wins back its clicks', 'seoprostats'), $page);
     }
@@ -754,6 +779,19 @@ final class SEOProStats_Queue {
             /* translators: 1: average position, 2: impressions, 3: clicks it could gain */
             return sprintf(__('Ranks %1$s with %2$s impressions: in the top three it could gain about %3$s clicks.', 'seoprostats'), $pos($figures['position']), $num($figures['impressions']), $num($figures['potential']));
         }
+        if ($kind === 'overlap') {
+            $parts = array();
+            foreach ((array) $figures['pages'] as $page) {
+                /* translators: 1: page path, 2: share of the query's impressions, 3: average position */
+                $parts[] = sprintf(__('%1$s (%2$s, position %3$s)', 'seoprostats'), $page['path'], $pct($page['share']), $pos($page['position']));
+            }
+            /* translators: 1: number of pages, 2: the pages with their shares and positions, 3: clicks it could gain */
+            $text = sprintf(__('%1$d pages share this search: %2$s. With the best of their CTRs it would have about %3$s more clicks.', 'seoprostats'), count($parts), implode('; ', $parts), $num($figures['potential']));
+            if (!empty($figures['switched'])) {
+                $text .= ' ' . __('The page with most impressions changed between the halves of the period.', 'seoprostats');
+            }
+            return $text;
+        }
         /* translators: 1: clicks lost, 2: the likely cause in a sentence */
         return sprintf(__('Lost %1$s clicks against the period before. %2$s', 'seoprostats'), $num($figures['lost']), isset($row['why']) ? (string) $row['why'] : '');
     }
@@ -774,6 +812,9 @@ final class SEOProStats_Queue {
         if ($kind === 'striking') {
             return __('Improve the page for this search and link to it from related pages.', 'seoprostats');
         }
+        if ($kind === 'overlap') {
+            return __('A candidate to review: if the pages answer the same need, make one the clear answer and link to it from the others (or merge them); leave it if each serves a different need.', 'seoprostats');
+        }
         return __('Find what changed (see the cause and the changes on the page), then update it.', 'seoprostats');
     }
 
@@ -792,6 +833,39 @@ final class SEOProStats_Queue {
      */
     public static function key($kind, $engine, $path, $query) {
         return SEOProStats_Dict::hash($kind . "\n" . $engine . "\n" . $path . "\n" . $query);
+    }
+
+    /**
+     * The pages an item is about: its page, and for overlap every page
+     * sharing the query.
+     *
+     * @param array<string,mixed> $item Item.
+     * @return int[]
+     */
+    private static function page_ids(array $item) {
+        $ids = array((int) $item['path_id']);
+        if (!empty($item['figures']['pages'])) {
+            foreach ((array) $item['figures']['pages'] as $page) {
+                $ids[] = isset($page['path_id']) ? (int) $page['path_id'] : 0;
+            }
+        }
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * The paths an item is about, as page_ids().
+     *
+     * @param array<string,mixed> $item Item.
+     * @return string[]
+     */
+    private static function paths(array $item) {
+        $paths = array((string) $item['path']);
+        if (!empty($item['figures']['pages'])) {
+            foreach ((array) $item['figures']['pages'] as $page) {
+                $paths[] = isset($page['path']) ? (string) $page['path'] : '';
+            }
+        }
+        return array_values(array_unique(array_filter($paths)));
     }
 
     /**

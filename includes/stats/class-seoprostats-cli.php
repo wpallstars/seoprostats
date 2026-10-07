@@ -905,15 +905,18 @@ final class SEOProStats_CLI {
      * the top three: potential clicks), low CTR (a top-10 query with a CTR
      * well under the site's own at that position: clicks missed) or decay
      * (pages losing clicks against the previous period, with the likely
-     * cause: position, demand, ctr or gone) or missing (a top-20 query
-     * whose words its page does not have, or has only some of). The
-     * period is cut at the newest day with search data and to its newest
-     * 91 days.
+     * cause: position, demand, ctr or gone), missing (a top-20 query
+     * whose words its page does not have, or has only some of) or overlap
+     * (a query for which two or more pages each get at least 10% of the
+     * impressions: a candidate to review, with each page's share and
+     * whether the page with most impressions changed between the halves
+     * of the period). The period is cut at the newest day with search data
+     * and to its newest 91 days.
      *
      * ## OPTIONS
      *
      * [<kind>]
-     * : striking, ctr, decay or missing.
+     * : striking, ctr, decay, missing or overlap.
      * ---
      * default: striking
      * options:
@@ -921,6 +924,7 @@ final class SEOProStats_CLI {
      *   - ctr
      *   - decay
      *   - missing
+     *   - overlap
      * ---
      *
      * [--engine=<engine>]
@@ -979,6 +983,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats opportunities
      *     wp seoprostats opportunities ctr --range=90d
      *     wp seoprostats opportunities decay --format=json
+     *     wp seoprostats opportunities overlap --range=90d
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -1033,6 +1038,19 @@ final class SEOProStats_CLI {
                 );
                 continue;
             }
+            if ($answer['kind'] === 'overlap') {
+                $rows[] = array(
+                    'query'       => $row['query'],
+                    'impressions' => $row['impressions'],
+                    'clicks'      => $row['clicks'],
+                    'pages'       => implode('; ', array_map(static function ($page) use ($pct) {
+                        return sprintf('%s %s pos %.1f', $page['path'], $pct($page['share']), $page['position']);
+                    }, $row['pages'])) . ($row['page_count'] > count($row['pages']) ? sprintf('; +%d', $row['page_count'] - count($row['pages'])) : ''),
+                    'switched'    => $row['switched'] ? implode(' → ', $row['leaders']) : '',
+                    'potential'   => $row['potential'],
+                );
+                continue;
+            }
             if ($answer['kind'] === 'missing') {
                 $rows[] = array(
                     'path'        => $row['path'],
@@ -1056,6 +1074,9 @@ final class SEOProStats_CLI {
                 'position'     => sprintf('%.1f', $row['position']),
                 'potential'    => $row['potential'],
             );
+        }
+        if ($answer['kind'] === 'overlap') {
+            WP_CLI::log(__('Candidates to review, not faults: two pages can both be right for one search. switched: the page with most impressions in each half of the period; potential: clicks with the best of the pages\' CTRs.', 'seoprostats'));
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
         if ($answer['kind'] === 'decay' && $answer['updates']) {
@@ -1679,7 +1700,7 @@ final class SEOProStats_CLI {
     /**
      * The decision queue: one ranked list of search work, made from
      * Opportunities (low CTR, missing from the page, striking distance,
-     * losing clicks). Each item says why it is listed and how its score is
+     * losing clicks, overlapping pages). Each item says why it is listed and how its score is
      * made: potential clicks per 28 days × value (how well the page's
      * visits from search convert) × confidence ÷ effort. Pages with a
      * running experiment are left out. Done opens an experiment on the

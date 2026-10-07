@@ -452,7 +452,7 @@ export interface SearchAnswer extends Answer, SearchEngineAnswer {
 }
 
 /** Kinds of search opportunity. */
-export const OPPORTUNITY_KINDS = ['striking', 'ctr', 'decay', 'missing'] as const;
+export const OPPORTUNITY_KINDS = ['striking', 'ctr', 'decay', 'missing', 'overlap'] as const;
 export type OpportunityKind = (typeof OPPORTUNITY_KINDS)[number];
 
 /** Likely cause of a page losing clicks. */
@@ -507,6 +507,29 @@ export interface OpportunityMissing extends OpportunityPage, SearchMetrics, Cove
 	query: string;
 }
 
+/** A page sharing a query: its figures and share of the query's impressions. */
+export interface OverlapPage extends OpportunityPage, SearchMetrics {
+	share: number;
+}
+
+/**
+ * A query shared by pages (a candidate to review): the leading page's
+ * fields, with the query's figures over all its pages.
+ */
+export interface OpportunityOverlap extends OpportunityPage, SearchMetrics {
+	query: string;
+	/** Most impressions first; at most rules.pages. */
+	pages: OverlapPage[];
+	/** Pages with the share or more, including any not listed. */
+	page_count: number;
+	/** The page with most impressions in the first and second half of the period. */
+	leaders: [string | null, string | null];
+	/** Whether the page with most impressions changed between the halves. */
+	switched: boolean;
+	/** Clicks it would have if all its pages' impressions had the best of their CTRs. */
+	potential: number;
+}
+
 export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer {
 	kind: OpportunityKind;
 	/** The period read: cut at the newest search day and to its newest 91 days. */
@@ -518,9 +541,11 @@ export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer {
 	connected: boolean;
 	ignored: string[];
 	rules: Record<string, number>;
-	rows: (OpportunityPair | OpportunityDecay | OpportunityMissing)[];
+	rows: (OpportunityPair | OpportunityDecay | OpportunityMissing | OpportunityOverlap)[];
 	total: number;
 	more: boolean;
+	/** overlap: the two halves of the period; null when too short to halve. */
+	halves?: [Range, Range] | null;
 	/** striking and ctr: the site's CTR by position (1–20). */
 	curve?: { source: 'site' | 'mixed' | 'default'; ctr: Record<string, number> } | null;
 	/** decay: the earlier period, and search engine updates in either. */
@@ -802,6 +827,10 @@ export interface QueueFigures {
 	match?: CoverageMatch;
 	missing?: string[];
 	question?: boolean;
+	/** overlap: whether the leading page changed between the halves. */
+	switched?: boolean;
+	/** overlap: the pages sharing the query. */
+	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number; share: number }[];
 }
 
 export interface QueueItem extends OpportunityPage {

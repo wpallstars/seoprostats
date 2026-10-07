@@ -200,7 +200,10 @@ final class SEOProStats_Demo {
      * Search queries the demo site shows for (Search → Rankings): query =>
      * [page, impressions a day at the end of the period, position then,
      * places it has climbed over a year, and optionally a second page that
-     * gets a fifth of the impressions, two places lower].
+     * gets a fifth of the impressions, two places lower, and the days ago
+     * from which the second page leads instead]. Queries with a second page
+     * are Opportunities' overlapping pages; the one whose second page
+     * takes over is shown as switched.
      */
     const SEARCH_QUERIES = array(
         'core web vitals'                  => array('/blog/core-web-vitals-explained/', 420, 7.8, 6, '/blog/speed-up-wordpress/'),
@@ -215,7 +218,7 @@ final class SEOProStats_Demo {
         'gdpr analytics without consent'   => array('/blog/privacy-friendly-analytics/', 90, 11.2, 1),
         'speed up wordpress'               => array('/blog/speed-up-wordpress/', 520, 14.5, 7),
         'wordpress slow admin'             => array('/blog/speed-up-wordpress/', 140, 8.1, 2),
-        'reduce ttfb wordpress'            => array('/blog/speed-up-wordpress/', 60, 6.7, 1),
+        'reduce ttfb wordpress'            => array('/blog/speed-up-wordpress/', 60, 6.7, 1, '/blog/core-web-vitals-explained/', 40),
         'seo pro stats'                    => array('/', 85, 1.1, 0, '/pricing/'),
         'seo pro stats pricing'            => array('/pricing/', 20, 1.3, 0),
         'wordpress analytics plugin'       => array('/', 380, 16.8, 9, '/features/'),
@@ -288,7 +291,7 @@ final class SEOProStats_Demo {
     );
 
     /** Search data made by this version of the demo; older demo search days are made again. */
-    const SEARCH_VERSION = 3;
+    const SEARCH_VERSION = 4;
 
     /** Changes behind SEARCH_EVENTS, as CHANGES. */
     const SEARCH_CHANGES = array(
@@ -1064,6 +1067,10 @@ final class SEOProStats_Demo {
             $pages = array(array($info[0], 1.0, 0.0));
             if (!empty($info[4])) {
                 $pages[] = array($info[4], 0.2, 2.0);
+                if (!empty($info[5]) && $ago < (int) $info[5]) {
+                    // The second page has taken over: it leads, the first follows lower.
+                    $pages = array(array($info[0], 0.3, 2.0), array($info[4], 1.0, 0.0));
+                }
             }
             foreach ($pages as $page) {
                 list($path, $share, $lower) = $page;

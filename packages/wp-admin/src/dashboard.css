@@ -1008,6 +1008,12 @@ code.spst-meta {
 	min-width: 140px;
 }
 
+/* Overlapping pages: the pages, each with its figures, get most of the width. */
+.spst-overlap .spst-overlap__pages {
+	width: 45%;
+	min-width: 280px;
+}
+
 .spst-decay .spst-changes__group {
 	align-items: baseline;
 	white-space: normal;

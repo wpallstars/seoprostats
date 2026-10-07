@@ -130,7 +130,7 @@ long-term record.
       measured against unchanged pages with confounders named (GH#73).
 - [x] Decision queue: one ranked plan from the opportunities; done opens
       an experiment (GH#75, after GH#73).
-- [ ] Overlapping pages: queries shared by several pages, as candidates to
+- [x] Overlapping pages: queries shared by several pages, as candidates to
       review (GH#76, after GH#75).
 - [ ] Content audit from WordPress: page facts on save and in cron,
       findings weighed by search and conversions (GH#77, after GH#75).

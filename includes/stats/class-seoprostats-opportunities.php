@@ -14,6 +14,11 @@
  *   words the page does not have, or has only some of
  *   (SEOProStats_Coverage); the pages with most impressions, at most
  *   MISSING_PAGES, are read.
+ * - overlap: a query for which two or more pages each get at least
+ *   OVERLAP_SHARE of the impressions of its pages, with each page's
+ *   figures and share and whether the page with most impressions changed
+ *   between the halves of the period. A candidate to review, not a fault:
+ *   a guide and a product page can both be right for one search.
  *
  * Expected CTR is the site's own: clicks ÷ impressions of its pages'
  * queries by rounded position in the period, never rising with position;
@@ -23,7 +28,8 @@
  * cut at the newest one, page filters apply and visit filters do not.
  * The period is also cut to its newest MAX_DAYS days, so a year never
  * reads every pair. Every read is by the primary key (engine, day) or
- * path_day; nothing reads the visit tables.
+ * path_day (and overlap's halves by query_day for the queries shown);
+ * nothing reads the visit tables.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -40,7 +46,7 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Opportunities {
 
     /** Kinds of opportunity. */
-    const KINDS = array('striking', 'ctr', 'decay', 'missing');
+    const KINDS = array('striking', 'ctr', 'decay', 'missing', 'overlap');
 
     /** Days read at most: the newest of the period. */
     const MAX_DAYS = 91;
@@ -62,6 +68,10 @@ final class SEOProStats_Opportunities {
 
     /** Missing from the page: pages whose text is read at most, most impressions first. */
     const MISSING_PAGES = 50;
+
+    /** Overlapping pages: the share of a query's impressions each page needs, and pages listed per query. */
+    const OVERLAP_SHARE = 0.1;
+    const OVERLAP_PAGES = 5;
 
     /** Impressions a position needs for the site's own CTR there. */
     const CURVE_MIN = 500;
@@ -102,6 +112,8 @@ final class SEOProStats_Opportunities {
             $row = SEOProStats_Clicks::with_edit_url($row);
             if ($kind === 'decay') {
                 $row['changes'] = isset($changes[$row['path_id']]) ? $changes[$row['path_id']] : array();
+            } elseif ($kind === 'overlap') {
+                $row['pages'] = array_map(array('SEOProStats_Clicks', 'with_edit_url'), $row['pages']);
             }
         }
         unset($row);
@@ -148,6 +160,8 @@ final class SEOProStats_Opportunities {
         if ($kind === 'decay') {
             $answer['compare'] = null;
             $answer['updates'] = array();
+        } elseif ($kind === 'overlap') {
+            $answer['halves'] = null;
         } elseif ($kind !== 'missing') {
             $answer['curve'] = null;
         }
@@ -170,6 +184,11 @@ final class SEOProStats_Opportunities {
         } elseif ($kind === 'missing') {
             $list           = self::missing_list($engine, $now, $pages, $answer['rules']);
             $answer['rows'] = self::missing_rows(array_slice($list, $offset, $limit));
+        } elseif ($kind === 'overlap') {
+            $list             = self::overlap_list($engine, $now, $pages, $answer['rules']);
+            $halves           = self::halves($now, $weekly);
+            $answer['halves'] = $halves ? array_map(array('SEOProStats_Query', 'range_out'), $halves) : null;
+            $answer['rows']   = self::overlap_rows($engine, $halves, $pages, array_slice($list, $offset, $limit));
         } else {
             $curve           = self::curve($engine, $now);
             $answer['curve'] = $curve;
@@ -222,6 +241,13 @@ final class SEOProStats_Opportunities {
                 'position_from'   => 1,
                 'position_to'     => 20,
                 'pages'           => self::MISSING_PAGES,
+            );
+        }
+        if ($kind === 'overlap') {
+            return array(
+                'min_impressions' => max(20, $days),
+                'min_share'       => self::OVERLAP_SHARE,
+                'pages'           => self::OVERLAP_PAGES,
             );
         }
         if ($kind === 'ctr') {
@@ -418,6 +444,178 @@ final class SEOProStats_Opportunities {
         $out  = array();
         foreach ($list as $row) {
             $out[] = self::page($row['path_id'], $text) + array_diff_key($row, array('path_id' => true));
+        }
+        return $out;
+    }
+
+    /**
+     * Queries shared by pages, most impressions on pages other than the
+     * leading one first: query_id, the query's sums and its pages (each
+     * with OVERLAP_SHARE or more of the query's impressions, most first).
+     * From the CANDIDATES pairs with most impressions.
+     *
+     * @param int                     $engine Engine.
+     * @param array<string,mixed>     $days   From SEOProStats_Search::days().
+     * @param int[]|null              $pages  Path ids, or null for every page.
+     * @param array<string,int|float> $rules  From rules().
+     * @return array<int,array<string,mixed>>
+     */
+    private static function overlap_list($engine, array $days, $pages, array $rules) {
+        global $wpdb;
+        $on    = self::where($engine, $days, $pages);
+        $share = (float) $rules['min_share'];
+        // A pair under this cannot hold its share of a query with the fewest impressions listed.
+        $least = max(1, (int) ceil((int) $rules['min_impressions'] * $share));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by its primary key (engine, day) or path_day; $on holds only placeholders and a fixed key name.
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT path_id AS pg, query_id AS q, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`{$on['key']}`) WHERE {$on['where']} GROUP BY path_id, query_id HAVING i >= %d ORDER BY i DESC, path_id, query_id LIMIT %d", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $on['args'], array($least, self::CANDIDATES))), ARRAY_A);
+        $by_query = array();
+        foreach ($rows as $row) {
+            $by_query[(int) $row['q']][] = array('path_id' => (int) $row['pg'], 'c' => (int) $row['c'], 'i' => (int) $row['i'], 'p' => (int) $row['p']);
+        }
+
+        $list = array();
+        foreach ($by_query as $query_id => $pairs) {
+            if (count($pairs) < 2) {
+                continue;
+            }
+            $sum = array('c' => 0, 'i' => 0, 'p' => 0);
+            foreach ($pairs as $pair) {
+                $sum['c'] += $pair['c'];
+                $sum['i'] += $pair['i'];
+                $sum['p'] += $pair['p'];
+            }
+            $shared = array_values(array_filter($pairs, static function ($pair) use ($sum, $share) {
+                return $pair['i'] >= $share * $sum['i'];
+            }));
+            if ($sum['i'] < (int) $rules['min_impressions'] || count($shared) < 2) {
+                continue;
+            }
+            // Pairs come most impressions first, so the leading page is the first.
+            $list[] = array(
+                'query_id' => (int) $query_id,
+                'sum'      => $sum,
+                'pairs'    => $shared,
+                'others'   => $sum['i'] - $shared[0]['i'],
+            );
+        }
+        usort($list, static function ($a, $b) {
+            return array($b['others'], $b['sum']['i'], $a['query_id']) <=> array($a['others'], $a['sum']['i'], $b['query_id']);
+        });
+        return $list;
+    }
+
+    /**
+     * The two halves of a period (whole weeks for an engine that gives
+     * pages by week), or null when it is too short to halve.
+     *
+     * @param array<string,mixed> $days   From SEOProStats_Search::days().
+     * @param bool                $weekly Whether rows come by week.
+     * @return array{0:array<string,mixed>,1:array<string,mixed>}|null
+     */
+    private static function halves(array $days, $weekly) {
+        $length = SEOProStats_Search::length($days);
+        $half   = $weekly ? 7 * (int) floor($length / 14) : (int) floor($length / 2);
+        if ($half < 1) {
+            return null;
+        }
+        /** @var DateTimeImmutable $start */
+        $start = $days['start'];
+        $mid   = $start->modify('+' . $half . ' days');
+        $first = array(
+            'key'    => 'custom',
+            'end'    => $mid,
+            'to'     => $mid->getTimestamp(),
+            'day_to' => $mid->modify('-1 day')->format('Y-m-d'),
+        ) + $days;
+        $second = array(
+            'key'      => 'custom',
+            'start'    => $mid,
+            'from'     => $mid->getTimestamp(),
+            'day_from' => $mid->format('Y-m-d'),
+        ) + $days;
+        return array($first, $second);
+    }
+
+    /**
+     * Shared queries as the answer gives them: the query, its sums, the
+     * leading page (its fields head the row), each page's figures and
+     * share, the leading page of each half and whether it changed, and
+     * the clicks the query would have if all its pages' impressions had
+     * the best of their CTRs.
+     *
+     * One read of gsc_pairs by key query_day for the shown queries' first
+     * halves; the second half is the period less the first.
+     *
+     * @param int                                          $engine Engine.
+     * @param array{0:array<string,mixed>,1:array<string,mixed>}|null $halves From halves().
+     * @param int[]|null                                   $pages  Path ids, or null for every page.
+     * @param array<int,array<string,mixed>>               $list   From overlap_list(), the rows shown.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function overlap_rows($engine, $halves, $pages, array $list) {
+        global $wpdb;
+        if (!$list) {
+            return array();
+        }
+        $first = array();
+        if ($halves) {
+            $ids   = array_column($list, 'query_id');
+            $where = 'query_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ') AND day >= %s AND day <= %s AND engine = %d';
+            $args  = array_merge($ids, array((string) $halves[0]['day_from'], (string) $halves[0]['day_to'], (int) $engine));
+            if ($pages !== null) {
+                $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
+                $args   = array_merge($args, array_map('intval', $pages));
+            }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by key query_day (query_id, day); $where holds only placeholders.
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT query_id AS q, path_id AS pg, SUM(impressions) AS i FROM %i FORCE INDEX (`query_day`) WHERE $where GROUP BY query_id, path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $args)), ARRAY_A);
+            foreach ($rows as $row) {
+                $first[(int) $row['q'] . ':' . (int) $row['pg']] = (int) $row['i'];
+            }
+        }
+
+        $ids  = array_column($list, 'query_id');
+        foreach ($list as $row) {
+            $ids = array_merge($ids, array_column($row['pairs'], 'path_id'));
+        }
+        $text = SEOProStats_Query::texts($ids);
+        $out  = array();
+        foreach ($list as $row) {
+            $q     = (int) $row['query_id'];
+            $best  = 0.0;
+            $lead  = array(null, null);
+            $most  = array(0, 0);
+            $items = array();
+            foreach ($row['pairs'] as $pair) {
+                $m    = SEOProStats_Search::metrics($pair['c'], $pair['i'], $pair['p']);
+                $best = max($best, (float) $m['ctr']);
+                if ($halves) {
+                    $was  = isset($first[$q . ':' . $pair['path_id']]) ? min($pair['i'], $first[$q . ':' . $pair['path_id']]) : 0;
+                    $half = array($was, $pair['i'] - $was);
+                    foreach (array(0, 1) as $h) {
+                        if ($half[$h] > $most[$h]) {
+                            $most[$h] = $half[$h];
+                            $lead[$h] = $pair['path_id'];
+                        }
+                    }
+                }
+                $items[] = self::page($pair['path_id'], $text) + $m + array('share' => round($pair['i'] / max(1, $row['sum']['i']), 4));
+            }
+            $shown     = array_slice($items, 0, self::OVERLAP_PAGES);
+            $listed    = array_sum(array_column($items, 'impressions'));
+            $clicks    = array_sum(array_column($items, 'clicks'));
+            $path_of   = static function ($id) use ($text) {
+                return $id !== null && isset($text[$id]) ? $text[$id] : null;
+            };
+            // The row is the leading page's, with the query's sums over all its pages read.
+            $out[] = self::page($row['pairs'][0]['path_id'], $text) + array(
+                'query' => isset($text[$q]) ? $text[$q] : '',
+            ) + SEOProStats_Search::metrics($row['sum']['c'], $row['sum']['i'], $row['sum']['p']) + array(
+                'pages'      => $shown,
+                'page_count' => count($items),
+                'leaders'    => array($path_of($lead[0]), $path_of($lead[1])),
+                'switched'   => $lead[0] !== null && $lead[1] !== null && $lead[0] !== $lead[1],
+                'potential'  => max(0, (int) round($listed * $best - $clicks)),
+            );
         }
         return $out;
     }
