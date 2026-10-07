@@ -66,10 +66,12 @@ parse_args() {
 
 # Only resources labelled by this helper are removed, never a shared site.
 down() {
-	local id
+	local id containers
+	containers="$(docker ps -aq --filter "label=$LABEL")" || return 1
 	while IFS= read -r id; do
-		[[ -z "$id" ]] || docker rm -f "$id" >/dev/null || return 1
-	done < <(docker ps -aq --filter "label=$LABEL")
+		# -v also removes MariaDB's anonymous data volume.
+		[[ -z "$id" ]] || docker rm -fv "$id" >/dev/null || return 1
+	done <<<"$containers"
 	if docker volume inspect "$NAME-wp" >/dev/null 2>&1; then
 		[[ "$(docker volume inspect --format '{{index .Labels "seoprostats.demo-site"}}' "$NAME-wp")" = 1 ]] || { die 'refusing to remove an unlabelled volume'; return 1; }
 		docker volume rm "$NAME-wp" >/dev/null || return 1
