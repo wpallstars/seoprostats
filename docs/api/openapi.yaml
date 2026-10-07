@@ -626,6 +626,176 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /queue:
+    get:
+      operationId: getQueue
+      summary: The decision queue — one ranked list of search work, with each item's why and score parts.
+      description: |
+        Made from the opportunities (`ctr`: low CTR; `missing`: a query
+        whose words the page lacks; `striking`: positions 4–20; `decay`:
+        a page losing clicks) when the list is read. Each item's score is
+        potential clicks per 28 days × value × confidence ÷ effort, and
+        every part is given so an agent can rank by its own rule:
+
+        - potential clicks: the opportunity's (missing: impressions × the
+          site's CTR at its position × `rules.missing_share`), scaled to
+          28 days;
+        - value: the page's conversion rate of visits from search for
+          `goal` (smoothed toward the site's) ÷ the site's rate, from 1
+          to `rules.max_value`; 1 without goals;
+        - confidence: the kind's own × √(impressions per 28 days ÷
+          `rules.full_impressions`), the root at most 1;
+        - effort: the kind's (`rules.effort`) unless someone set another.
+
+        Only items someone acted on are stored. New items on a page with
+        a running experiment are left out (`left_out`); dismissed items
+        stay hidden for `rules.hide_days` days. Accepted and done items no
+        longer found are listed as they were (`found` false). As
+        `/opportunities`, the period is cut at the newest search day and
+        to its newest 91 days, and decay compares with the period before.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: status
+          in: query
+          description: Items in this state; open is new and accepted.
+          schema:
+            type: string
+            enum: [open, new, accepted, done, dismissed, all]
+            default: open
+        - name: goal
+          in: query
+          description: ID of the goal whose conversions give a page its value; the first goal when left out.
+          schema:
+            type: string
+        - name: range
+          in: query
+          description: Period, in the site time zone.
+          schema:
+            type: string
+            default: 90d
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: The ranked items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /queue/{key}:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: The item's key, from /queue.
+        schema:
+          type: string
+          pattern: '^[0-9a-fA-F]{16}$'
+      - $ref: '#/components/parameters/data'
+    post:
+      operationId: updateQueueItem
+      summary: Accept, do, dismiss or restore a queue item, or set its effort or note (manage_options).
+      description: |
+        Give the same period, engine and goal as the list the key came
+        from: an item not yet stored must be in that list now. done
+        opens an experiment on the item's page, starting now, with the
+        kind's measure (ctr: CTR; missing and decay: clicks; striking:
+        position), expected up (position: a better place); the item then
+        shows the experiment's result. restore forgets what was done with
+        the item (its experiment stays).
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: goal
+          in: query
+          schema:
+            type: string
+        - name: range
+          in: query
+          schema:
+            type: string
+            default: 90d
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [accept, done, dismiss, restore, effort, note]
+                effort:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+                  description: For effort.
+                note:
+                  type: string
+                  maxLength: 190
+                  description: With any action; for note, empty clears it.
+                name:
+                  type: string
+                  maxLength: 190
+                  description: For done, the experiment's name; one is made from the item without it.
+                days:
+                  type: integer
+                  enum: [7, 14, 28, 56, 84]
+                  default: 28
+                  description: For done, days in each window.
+                threshold:
+                  type: number
+                  minimum: 0
+                  description: For done, the smallest change that counts; percent (default 10), or places for position (default 1).
+      responses:
+        '200':
+          description: The item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueueItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The item is done already.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /goals:
     get:
       operationId: getGoals
@@ -2402,6 +2572,216 @@ components:
             $ref: '#/components/schemas/Experiment'
         total:
           type: integer
+
+    QueueItem:
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - type: object
+          required: [key, kind, engine, status, found, query, why, todo, figures, metric, parts, score, note, updated, user, effort_set, experiment_id, experiment]
+          properties:
+            key:
+              type: string
+              description: 16 hex characters, from kind, engine, page and query.
+            kind:
+              type: string
+              enum: [ctr, missing, striking, decay]
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            status:
+              type: string
+              enum: [new, accepted, done, dismissed]
+            found:
+              type: boolean
+              description: Whether the opportunity is still found in this period; else as it was when acted on.
+            query:
+              type: [string, 'null']
+              description: The query; null for decay (a page).
+            why:
+              type: string
+              description: Why it is listed, in the site's language.
+            todo:
+              type: string
+              description: What to do, in the site's language.
+            figures:
+              type: object
+              description: The numbers behind it; which are there depends on the kind.
+              properties:
+                clicks:
+                  type: integer
+                impressions:
+                  type: integer
+                ctr:
+                  type: number
+                position:
+                  type: [number, 'null']
+                expected_ctr:
+                  type: number
+                potential:
+                  type: integer
+                then_clicks:
+                  type: integer
+                then_position:
+                  type: number
+                lost:
+                  type: integer
+                cause:
+                  type: string
+                  enum: [position, demand, ctr, gone]
+                match:
+                  type: string
+                  enum: [partial, none]
+                missing:
+                  type: array
+                  items:
+                    type: string
+                question:
+                  type: boolean
+            metric:
+              type: string
+              enum: [clicks, ctr, position]
+              description: The measure of the experiment done opens.
+            parts:
+              type: object
+              required: [clicks, value, confidence, effort]
+              properties:
+                clicks:
+                  type: number
+                  description: Potential clicks per 28 days.
+                value:
+                  type: number
+                  description: 1 to rules.max_value.
+                confidence:
+                  type: number
+                  description: 0 to the kind's own.
+                effort:
+                  type: integer
+                  minimum: 1
+                  maximum: 5
+            score:
+              type: number
+              description: clicks × value × confidence ÷ effort.
+            note:
+              type: string
+            updated:
+              type: [string, 'null']
+              format: date-time
+            user:
+              type: [string, 'null']
+              description: Who acted, for people who may list users.
+            effort_set:
+              type: boolean
+              description: Whether someone set the effort.
+            experiment_id:
+              type: [integer, 'null']
+            experiment:
+              type: [object, 'null']
+              description: Done, the experiment it opened, with its state and result.
+              properties:
+                id:
+                  type: integer
+                name:
+                  type: string
+                status:
+                  type: string
+                  enum: [running, decided, cancelled]
+                result:
+                  type: [string, 'null']
+                  enum: [keep, revise, undo, inconclusive, null]
+                due:
+                  type: boolean
+                review:
+                  type: string
+                  format: date
+                metric:
+                  type: string
+                state:
+                  type: [string, 'null']
+                  enum: [running, ready, null]
+                effect:
+                  type: [number, 'null']
+                unit:
+                  type: [string, 'null']
+                  enum: [ratio, places, null]
+                suggested:
+                  type: [string, 'null']
+                summary:
+                  type: [string, 'null']
+
+    QueueAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [engine, engines, range, days, cut, through, connected, ignored, goal, goals, site_rate, rules, left_out, status, counts, items, total, more]
+          properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+            cut:
+              type: boolean
+              description: Whether the period was cut at the newest search day or to its newest 91 days.
+            through:
+              type: string
+              description: Newest day with search data (YYYY-MM-DD); empty with none.
+            connected:
+              type: boolean
+            ignored:
+              type: array
+              items:
+                type: string
+            goal:
+              type: [object, 'null']
+              description: The goal giving value; null without goals.
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+            goals:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+            site_rate:
+              type: [number, 'null']
+              description: The site's conversion rate of visits from search for the goal.
+            rules:
+              type: object
+              description: The constants the score uses.
+            left_out:
+              type: integer
+              description: New items left out because their page has a running experiment.
+            status:
+              type: string
+              enum: [open, new, accepted, done, dismissed, all]
+            counts:
+              type: object
+              description: Items in each state (dismissed ones only while hidden).
+              properties:
+                new:
+                  type: integer
+                accepted:
+                  type: integer
+                done:
+                  type: integer
+                dismissed:
+                  type: integer
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/QueueItem'
+            total:
+              type: integer
+            more:
+              type: boolean
 
     GoalStep:
       type: object

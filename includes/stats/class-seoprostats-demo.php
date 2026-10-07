@@ -772,6 +772,38 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::experiments();
         }
+        // Then the decision queue: one item accepted, one done (once).
+        if (!$more && empty($state['queue'])) {
+            $state          = self::state();
+            $state['queue'] = 1;
+            update_option(self::OPTION, $state, false);
+            self::queue();
+        }
+    }
+
+    /**
+     * Act on the demo's decision queue (SEOProStats_Queue): accept its top
+     * item and mark the best one on another page done, which opens a
+     * running experiment there; on the demo tables, once.
+     */
+    private static function queue() {
+        require_once __DIR__ . '/class-seoprostats-queue.php';
+        $req = SEOProStats_Query::request(array('range' => '90d', 'limit' => 20));
+        if (is_wp_error($req)) {
+            return;
+        }
+        $list = SEOProStats_Queue::report($req, 'google', 'new');
+        if (is_wp_error($list) || !$list['items']) {
+            return;
+        }
+        $top = $list['items'][0];
+        SEOProStats_Queue::update($top['key'], array('action' => 'accept', 'note' => __('Next up: the title is written.', 'seoprostats')), $req);
+        foreach (array_slice($list['items'], 1) as $item) {
+            if ($item['path'] !== $top['path']) {
+                SEOProStats_Queue::update($item['key'], array('action' => 'done'), $req);
+                return;
+            }
+        }
     }
 
     /**

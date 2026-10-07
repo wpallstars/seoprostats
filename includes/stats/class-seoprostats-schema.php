@@ -34,8 +34,9 @@ final class SEOProStats_Schema {
      * v7: gsc_pages, gsc_queries, gsc_pairs, gsc_totals (search data from
      *     Search Console and later Bing), imports (each import run).
      * v8: experiments (a change's hypothesis, measured before and after).
+     * v9: queue (decision queue items someone accepted, did or dismissed).
      */
-    const VERSION = 8;
+    const VERSION = 9;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -100,7 +101,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue');
     }
 
     /**
@@ -545,6 +546,31 @@ final class SEOProStats_Schema {
   KEY status_review (status,review),
   KEY path_id (path_id),
   KEY start (start)
+) $charset;",
+
+            // Decision queue items someone acted on (SEOProStats_Queue);
+            // items nobody touched are worked out when the list is read.
+            // ikey: 8-byte hash of kind, engine, page and query. Codes in
+            // SEOProStats_Queue. effort 0: the kind's. meta: JSON (the
+            // numbers and reason when it was acted on).
+            'queue' => "CREATE TABLE {$t['queue']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  ikey binary(8) NOT NULL,
+  kind tinyint unsigned NOT NULL,
+  engine tinyint unsigned NOT NULL DEFAULT 1,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  query_id int unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  effort tinyint unsigned NOT NULL DEFAULT 0,
+  experiment_id int unsigned NOT NULL DEFAULT 0,
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  note varchar(190) NOT NULL DEFAULT '',
+  meta text NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY ikey (ikey),
+  KEY status_updated (status,updated)
 ) $charset;",
         );
     }

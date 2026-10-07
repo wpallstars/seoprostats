@@ -126,9 +126,9 @@ long-term record.
       abilities' `engine` and demo Bing data (GH#62).
 - [x] SEO decision loop: design (`docs/seo-loop.md`) and child issues in
       build order (GH#61, parent of the items below).
-- [ ] Experiments: a change, its expected effect and review date,
+- [x] Experiments: a change, its expected effect and review date,
       measured against unchanged pages with confounders named (GH#73).
-- [ ] Decision queue: one ranked plan from the opportunities; done opens
+- [x] Decision queue: one ranked plan from the opportunities; done opens
       an experiment (GH#75, after GH#73).
 - [ ] Overlapping pages: queries shared by several pages, as candidates to
       review (GH#76, after GH#75).

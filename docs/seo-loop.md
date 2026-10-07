@@ -195,13 +195,17 @@ score = potential clicks per 28 days × value × confidence ÷ effort
   clicks; low CTR: missed clicks; decay: clicks lost; missing: impressions
   × the site's expected CTR at its position × 0.3, as covering a query
   earns part of it), scaled to 28 days.
-- **Value** is 1 plus how well visits from search to the page convert
-  against the site (the Content report's goal; smoothed toward the site's
-  rate with 20 visits), so a page that sells is worth more and a page with
-  no goal data is worth 1. Without a goal every page is 1.
+- **Value** is how well visits from search to the page convert against
+  the site: the page's conversion rate of the Content report's goal
+  (smoothed toward the site's rate with 20 visits) ÷ the site's rate, from
+  1 to 5. A page that sells is worth more; a page that converts no better
+  than the site, or has no goal data, is worth 1. Without a goal every
+  page is 1. The goal can be chosen (`goal`); the first is the default.
 - **Confidence** is the kind's own (decay 0.8, CTR 0.7, striking 0.6,
-  missing 0.5) times √(impressions per 28 days ÷ 1,000), at most 1.
-- **Effort** is the kind's (above). A person can change an item's effort.
+  missing 0.5) times √(impressions per 28 days ÷ 1,000), that root at
+  most 1.
+- **Effort** is the kind's (above). A person can set an item's effort
+  (1–5).
 - Pages with a running experiment are left out of new items, as a second
   change would spoil the measurement.
 
@@ -210,14 +214,14 @@ its own rule.
 
 ### Data
 
-`queue` (schema v8), one row per item someone acted on:
+`queue` (schema v9), one row per item someone acted on:
 
 | Column | Meaning |
 |---|---|
 | `id` | |
 | `ikey` | BINARY(8): hash of kind, engine, page and query; unique |
 | `kind`, `engine`, `path_id`, `query_id` | the item |
-| `status` | 1 accepted, 2 done, 3 dismissed |
+| `status` | 0 new (stored only with an effort or note), 1 accepted, 2 done, 3 dismissed |
 | `effort` | as set (0: the kind's) |
 | `experiment_id` | the experiment opened when done |
 | `created`, `updated`, `user_id` | |
@@ -237,11 +241,15 @@ decided, the item shows the result.
 
 ### Interfaces and place in the app
 
-- REST: `GET /queue` (`engine`, `status`, `limit`), `POST /queue/{key}`
-  (accept, done, dismiss, restore, effort, note). WP-CLI: `wp seoprostats
-  queue [list|accept|done|dismiss|restore]`. Ability: `seoprostats/queue`.
+- REST: `GET /queue` (`range`, page filters, `engine`, `goal`, `status`,
+  `limit`, `offset`), `POST /queue/{key}` (accept, done, dismiss,
+  restore, effort, note; the same period, engine and goal as the list).
+  WP-CLI: `wp seoprostats queue
+  [list|accept|done|dismiss|restore|effort|note]`. Abilities:
+  `seoprostats/queue` (read) and `seoprostats/queue-update`.
 - Dashboard: Search → **Plan**: the ranked list with each item's why and
-  score parts, and Accept, Done (opens the experiment), Dismiss.
+  score parts, and Accept, Done (opens the experiment), Dismiss, Restore,
+  and the effort and a note.
 - Demo data: the demo's opportunities make the items; one is accepted and
   one is done with its experiment running.
 

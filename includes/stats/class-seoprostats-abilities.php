@@ -20,6 +20,10 @@
  *   measured against unchanged pages, with a suggested result (read).
  * - seoprostats/experiment-record: record, decide, note or cancel an
  *   experiment (administrators).
+ * - seoprostats/queue: the decision queue, a ranked list of search work
+ *   with each item's why and score parts (read).
+ * - seoprostats/queue-update: accept, do (opens an experiment), dismiss
+ *   or restore an item, or set its effort or note (administrators).
  *
  * On older WordPress the hooks never run.
  *
@@ -478,6 +482,185 @@ final class SEOProStats_Abilities {
             ),
         ));
         self::register_experiments($data, $engine);
+        self::register_queue($data, $engine);
+    }
+
+    /**
+     * The decision queue abilities.
+     *
+     * @param array<string,mixed> $data   The data property.
+     * @param array<string,mixed> $engine The engine property.
+     */
+    private static function register_queue(array $data, array $engine) {
+        $period = array(
+            'engine' => $engine,
+            'range'  => array(
+                'type'        => 'string',
+                'enum'        => SEOProStats_Query::RANGES,
+                'default'     => '90d',
+                'description' => __('The period the list is made from, in the site time zone (at most its newest 91 days are read).', 'seoprostats'),
+            ),
+            'from'   => array(
+                'type'        => 'string',
+                'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+            ),
+            'to'     => array(
+                'type'        => 'string',
+                'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+            ),
+            'goal'   => array(
+                'type'        => 'string',
+                'description' => __('The goal whose conversions give a page its value; the first goal when left out.', 'seoprostats'),
+            ),
+            'data'   => $data,
+        );
+        wp_register_ability('seoprostats/queue', array(
+            'label'               => __('Decision queue', 'seoprostats'),
+            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it). Each item has a key, its page and query, why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => $period + array(
+                    'status' => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Queue::FILTERS,
+                        'default'     => 'open',
+                        'description' => __('open (new and accepted), new, accepted, done, dismissed (in the last 90 days) or all.', 'seoprostats'),
+                    ),
+                    'limit'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Queue::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'days'      => array('type' => 'integer'),
+                    'connected' => array('type' => 'boolean'),
+                    'rules'     => array('type' => 'object'),
+                    'counts'    => array('type' => 'object'),
+                    'items'     => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'queue'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/queue-update', array(
+            'label'               => __('Act on a decision queue item', 'seoprostats'),
+            'description'         => __('Accept an item of the decision queue, mark it done (opens an experiment on its page with the kind\'s measure: CTR, clicks or position), dismiss it (hidden for 90 days), restore it, or set its effort (1–5) or a note. Use a key from seoprostats/queue, with the same period, engine and goal.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'required'             => array('key', 'action'),
+                'properties'           => $period + array(
+                    'key'       => array(
+                        'type'        => 'string',
+                        'pattern'     => '^[0-9a-fA-F]{16}$',
+                        'description' => __('The item\'s key.', 'seoprostats'),
+                    ),
+                    'action'    => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Queue::ACTIONS,
+                        'description' => __('accept, done, dismiss, restore, effort or note.', 'seoprostats'),
+                    ),
+                    'effort'    => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Queue::MAX_EFFORT,
+                    ),
+                    'note'      => array(
+                        'type'      => 'string',
+                        'maxLength' => 190,
+                    ),
+                    'name'      => array(
+                        'type'        => 'string',
+                        'maxLength'   => 190,
+                        'description' => __('For done: the experiment\'s name.', 'seoprostats'),
+                    ),
+                    'days'      => array(
+                        'type'        => 'integer',
+                        'enum'        => SEOProStats_Experiments::WINDOWS,
+                        'description' => __('For done: days in each window of the experiment (default 28).', 'seoprostats'),
+                    ),
+                    'threshold' => array(
+                        'type'        => 'number',
+                        'minimum'     => 0,
+                        'description' => __('For done: the smallest change that counts: percent (default 10), or places for position (default 1).', 'seoprostats'),
+                    ),
+                ),
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'queue_update'),
+            'permission_callback' => array('SEOProStats_API', 'can_manage'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => false,
+                    'destructive' => false,
+                    'idempotent'  => false,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/queue.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function queue($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '90d', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        $status = isset($input['status']) ? (string) $input['status'] : 'open';
+        $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $engine, $status, $goal) {
+            return SEOProStats_Queue::report((array) $req, $engine, $status, $goal);
+        });
+    }
+
+    /**
+     * seoprostats/queue-update.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function queue_update($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request(array_diff_key($input, array('limit' => true)) + array('range' => '90d'));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
+        $key    = isset($input['key']) ? (string) $input['key'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($key, $input, $req, $engine, $goal) {
+            return SEOProStats_Queue::update($key, $input, (array) $req, $engine, $goal);
+        });
     }
 
     /**
