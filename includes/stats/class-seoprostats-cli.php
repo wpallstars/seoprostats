@@ -1708,7 +1708,7 @@ final class SEOProStats_CLI {
         /* translators: 1: id, 2: name */
         WP_CLI::log(sprintf(__('Experiment %1$d: %2$s', 'seoprostats'), $item['id'], $item['name']));
         /* translators: 1: pages, 2: start, 3: measure, 4: direction, 5: threshold */
-        WP_CLI::log(sprintf(__('Pages: %1$s. Start: %2$s. Expected: %3$s %4$s by at least %5$s.', 'seoprostats'), implode(', ', $item['pages']), $item['start'], $item['metric'], $item['direction'], $item['metric'] === 'position' ? $item['threshold'] . ' ' . __('places', 'seoprostats') : $item['threshold'] . '%'));
+        WP_CLI::log(sprintf(__('Pages: %1$s. Start: %2$s. Expected: %3$s %4$s by at least %5$s.', 'seoprostats'), implode(', ', $item['pages']), $item['start'], $item['metric'], $item['direction'], $item['metric'] === 'position' ? sprintf(/* translators: %s: places, such as 1 or 1.5 */ _n('%s place', '%s places', (int) ceil((float) $item['threshold']), 'seoprostats'), $item['threshold']) : $item['threshold'] . '%'));
         if (!$m) {
             /* translators: %s: state */
             WP_CLI::log(sprintf(__('Status: %s.', 'seoprostats'), $item['status']));
