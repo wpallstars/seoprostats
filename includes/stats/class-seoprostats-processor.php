@@ -370,6 +370,7 @@ final class SEOProStats_Processor {
             $visitors[$h['visitor']] = true;
         }
         $latest = array();
+        $history = array(); // Refunds may arrive after a later same-day visit.
         if ($visitors) {
             foreach (array_chunk(array_keys($visitors), SEOProStats_Dict::CHUNK) as $chunk) {
                 $d = implode(', ', array_fill(0, count($days), '%s'));
@@ -377,6 +378,7 @@ final class SEOProStats_Processor {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its (day, visitor) index; fixed placeholders.
                 $rows = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(skey)) AS skey, LOWER(HEX(visitor)) AS visitor, started, ended, pageviews + events AS n FROM %i WHERE day IN ($d) AND visitor IN ($v)", array_merge(array(SEOProStats_Schema::table('sessions')), array_keys($days), $chunk)));
                 foreach ((array) $rows as $row) {
+                    $history[$row->visitor][] = array('skey' => $row->skey, 'started' => (int) $row->started, 'ended' => (int) $row->ended, 'n' => (int) $row->n, 'stored' => true);
                     if (!isset($latest[$row->visitor]) || (int) $row->ended > $latest[$row->visitor]['ended']) {
                         $latest[$row->visitor] = array('skey' => $row->skey, 'started' => (int) $row->started, 'ended' => (int) $row->ended, 'n' => (int) $row->n, 'stored' => true);
                     }
@@ -389,16 +391,38 @@ final class SEOProStats_Processor {
         foreach ($hits as $h) {
             $v    = $h['visitor'];
             $prev = isset($open[$v]) ? $visits[$open[$v]] : (isset($latest[$v]) ? $latest[$v] : null);
+            $refund = !empty($h['line']['s']) && $h['type'] === 'e' && $h['hit']['n'] === 'Refund';
+            if ($refund) {
+                // Never create a visit for a refund (including after retention).
+                $candidates = isset($history[$v]) ? $history[$v] : array();
+                foreach ($visits as $visit_key => $candidate) {
+                    if ($candidate['visitor'] === $v) {
+                        $candidates[] = $candidate + array('skey' => $visit_key);
+                    }
+                }
+                $prev = null;
+                foreach ($candidates as $candidate) {
+                    if ($h['ts'] >= $candidate['started'] && $h['ts'] <= $candidate['ended'] && ($prev === null || $candidate['started'] > $prev['started'])) {
+                        $prev = $candidate;
+                    }
+                }
+                if ($prev === null) {
+                    continue;
+                }
+            }
             if ($prev !== null && $h['ts'] - $prev['ended'] < self::VISIT_GAP && $h['ts'] >= $prev['started'] - self::VISIT_GAP) {
                 $key = $prev['skey'];
                 if (!isset($visits[$key])) {
                     $visits[$key] = self::new_visit($h, $key, $prev['started'], $prev['n'], true);
+                    $visits[$key]['ended'] = $prev['ended'];
                 }
             } else {
                 $key          = substr(hash('sha256', $v . '|' . $h['ts']), 0, 16);
                 $visits[$key] = self::new_visit($h, $key, $h['ts'], 0, false);
             }
-            $open[$v] = $key;
+            if (!$refund) {
+                $open[$v] = $key;
+            }
             $visit    = &$visits[$key];
             $visit['ended'] = max($visit['ended'], $h['ts']);
             $visit['n']++;

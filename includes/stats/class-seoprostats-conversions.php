@@ -183,8 +183,21 @@ final class SEOProStats_Conversions {
         $out['conversion_rate'] = $visits ? round($out['visits'] / $visits, 4) : 0;
 
         if ($goal['kind'] === 'event' && $out['completions']) {
+            $sign = 'f.revenue';
+            if ($goal['match'] === SEOProStats_Purchases::EVENT) {
+                $refunds = SEOProStats_Dict::find(SEOProStats_Schema::DICT_EVENT, array(SEOProStats_Purchases::REFUND));
+                if ($refunds) {
+                    $refund_id = (int) $refunds[0];
+                    $revenue_ids = array_merge($ids, array($refund_id));
+                    $holders = implode(', ', array_fill(0, count($revenue_ids), '%d'));
+                    $args = array_merge(array(SEOProStats_Schema::table('sessions'), $table), SEOProStats_Query::fact_window($range), array($column), $revenue_ids, array($range['from'], $range['to']), $compiled['args']);
+                    $from = "FROM %i s INNER JOIN %i f ON f.session_id = s.id WHERE f.ts >= %d AND f.ts < %d AND f.%i IN ($holders) AND s.started >= %d AND s.started < %d$where";
+                    // The ID is an integer from our dictionary, not request SQL.
+                    $sign = "CASE WHEN f.name_id = $refund_id THEN -f.revenue ELSE f.revenue END";
+                }
+            }
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as above.
-            $money          = $wpdb->get_results($wpdb->prepare("SELECT f.currency AS c, SUM(f.revenue) AS r, COUNT(*) AS n $from AND f.revenue <> 0 GROUP BY f.currency ORDER BY r DESC", $args), ARRAY_A);
+            $money          = $wpdb->get_results($wpdb->prepare("SELECT f.currency AS c, SUM($sign) AS r, COUNT(*) AS n $from AND f.revenue <> 0 GROUP BY f.currency ORDER BY r DESC", $args), ARRAY_A);
             $out['revenue'] = self::money((array) $money);
         }
         return $out;
@@ -360,11 +373,21 @@ final class SEOProStats_Conversions {
         // Revenue of the events carrying each value, per currency.
         $money = array();
         if ($key !== '') {
+            $refunds = SEOProStats_Dict::find(SEOProStats_Schema::DICT_EVENT, array(SEOProStats_Purchases::REFUND));
+            $sign = 'e.revenue';
+            if ($refunds && ($event === '' || $event === SEOProStats_Purchases::EVENT)) {
+                $refund_id = (int) $refunds[0];
+                $sign = "CASE WHEN e.name_id = $refund_id THEN -e.revenue ELSE e.revenue END";
+                if ($event === SEOProStats_Purchases::EVENT) {
+                    $names[] = $refund_id;
+                    $only = ' AND e.name_id IN (' . implode(', ', array_fill(0, count($names), '%d')) . ')';
+                }
+            }
             $values  = array_map('intval', array_column($rows, 'v'));
             $holders = implode(', ', array_fill(0, count($values), '%d'));
             $margs   = array_merge(array($props, SEOProStats_Schema::table('events'), SEOProStats_Schema::table('sessions'), SEOProStats_Schema::OWNER_EVENT), $window, $keys, $names, $values, array($range['from'], $range['to']), $compiled['args']);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as above; $holders, $filter, $only and the where clause hold only placeholders.
-            $found = (array) $wpdb->get_results($wpdb->prepare("SELECT p.value_id AS v, e.currency AS c, SUM(e.revenue) AS r, COUNT(*) AS n FROM %i p FORCE INDEX (key_ts) INNER JOIN %i e ON e.id = p.owner_id INNER JOIN %i s ON s.id = e.session_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only AND p.value_id IN ($holders) AND e.revenue <> 0 AND s.started >= %d AND s.started < %d{$compiled['where']} GROUP BY p.value_id, e.currency ORDER BY r DESC", $margs), ARRAY_A);
+            $found = (array) $wpdb->get_results($wpdb->prepare("SELECT p.value_id AS v, e.currency AS c, SUM($sign) AS r, COUNT(*) AS n FROM %i p FORCE INDEX (key_ts) INNER JOIN %i e ON e.id = p.owner_id INNER JOIN %i s ON s.id = e.session_id WHERE p.owner = %d AND p.ts >= %d AND p.ts < %d$filter$only AND p.value_id IN ($holders) AND e.revenue <> 0 AND s.started >= %d AND s.started < %d{$compiled['where']} GROUP BY p.value_id, e.currency ORDER BY r DESC", $margs), ARRAY_A);
             foreach ($found as $row) {
                 $money[(int) $row['v']][] = $row;
             }

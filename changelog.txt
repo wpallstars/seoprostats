@@ -3,6 +3,7 @@
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
+* New: refunds from WooCommerce, Easy Digital Downloads 3, FluentCart and ThriveCart join the original purchase visit, once per refund. Purchase goal and property revenue subtract them per currency without increasing purchase completions; refunds never invent visits after retention.
 * New: statistics collection without cookies: a collector that runs without loading WordPress (or the REST route on the WordPress.org build), daily-salted visitor hashes, and a processor that turns hits into visits, pageviews, events and properties every minute.
 * New: reports for scripts and AI agents: the REST API (stats, timeseries, breakdown, realtime, markers) and wp seoprostats commands, with ranges, comparisons and filters.
 * New: the SEO Pro Stats menu (under Dashboard) and its Overview: headline metrics with a chart against the previous period, Sources, Pages, Locations and Devices, filters by clicking any row, live visitors, and a view kept in the address so it can be bookmarked. Follows the admin colour scheme; every chart has a table for screen readers.
