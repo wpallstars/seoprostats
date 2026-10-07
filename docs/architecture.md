@@ -12,7 +12,9 @@ and conversions on one timeline with the changes that moved them (page
 edits, plugin and theme updates, search engine updates, backlinks,
 mentions, outages). Owners see why numbers moved; AI agents (aidevops) read
 the same data through the API, WP-CLI and abilities to plan and test SEO
-and CRO work, then measure the result.
+and CRO work, then measure the result. How the plugin turns its data into
+audits, a ranked plan and measured experiments is designed in
+`docs/seo-loop.md`.
 
 Principles, in order:
 

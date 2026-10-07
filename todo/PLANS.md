@@ -124,8 +124,25 @@ long-term record.
       Rankings, Opportunities and Content with whole-week periods and
       weekly points; REST `engine`, WP-CLI `bing` and `--engine`, the
       abilities' `engine` and demo Bing data (GH#62).
-- [ ] SEO decision loop: audits, ranked plans and measured cause and
-      effect from the gathered data (GH#61).
+- [x] SEO decision loop: design (`docs/seo-loop.md`) and child issues in
+      build order (GH#61, parent of the items below).
+- [ ] Experiments: a change, its expected effect and review date,
+      measured against unchanged pages with confounders named (GH#73).
+- [ ] Decision queue: one ranked plan from the opportunities; done opens
+      an experiment (GH#75, after GH#73).
+- [ ] Overlapping pages: queries shared by several pages, as candidates to
+      review (GH#76, after GH#75).
+- [ ] Content audit from WordPress: page facts on save and in cron,
+      findings weighed by search and conversions (GH#77, after GH#75).
+- [ ] Internal links: orphans, converting pages with few links in,
+      missing links to a query's page (GH#78, after GH#77).
+- [ ] Indexation: published pages and sitemap addresses without
+      impressions (GH#79, after GH#77).
+- [ ] Refresh planner: update, leave, protect or merge pages losing
+      clicks (GH#80, after GH#77).
+- [ ] Search targets: chosen queries and their pages, positions and wrong
+      pages (GH#81, after GH#75).
+- [ ] Loop export and agent recipes (GH#82, after GH#75).
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.
 
@@ -139,7 +156,9 @@ long-term record.
 
 ## Phase 6: reach (depends on 1–5)
 
-- [ ] Alerts and email reports, webhooks.
+- [ ] Alerts and email reports, webhooks; the weekly email carries the
+      top decision queue items and experiments due for review
+      (`docs/seo-loop.md`).
 - [x] Each section's view in the address (filters, period, tabs), so
       any view can be bookmarked and shared (issue #24; Search's report
       with GH#53, Changes' page with GH#57).
@@ -151,7 +170,7 @@ long-term record.
 - [ ] Abilities for MCP clients (the reports; `seoprostats/markers` and
       `seoprostats/annotate` came with GH#35, `seoprostats/search` with
       GH#48); aidevops SEO loop recipes
-      in `docs/`.
+      in `docs/` (GH#82).
 - [ ] Optional location database (DB-IP Lite) with our own reader.
 
 ## Phase 7: move from other statistics plugins (depends on 6's import)
