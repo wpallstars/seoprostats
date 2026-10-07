@@ -1,13 +1,14 @@
 /**
  * SEO Pro Stats screen header.
  *
- * The colour tokens, the full-width screen (.spst-wrap), its header and the
- * main area: shared by the settings screen, whose stylesheet depends on
- * this one, and the plugin's own screens
- * (SEOProStats_Admin_Manager::enqueue_header() and render_header()). Only
- * .spst-wrap, the header and .spst-main are styled here, so a screen's
- * content keeps its styles. Uses core admin tokens so the header follows the active admin
- * colour scheme; logical properties keep RTL working.
+ * The colour tokens, the full-width screen (.spst-wrap), its header, the
+ * tab bar under it (.spst-nav) and the main area: shared by the settings
+ * screen, whose stylesheet depends on this one, and the plugin's own
+ * screens (SEOProStats_Admin_Manager::enqueue_header() and render_header()),
+ * so their tabs look the same. Only .spst-wrap, the header, .spst-nav and
+ * .spst-main are styled here, so a screen's content keeps its styles. Uses
+ * core admin tokens so the header follows the active admin colour scheme;
+ * logical properties keep RTL working.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -39,7 +40,9 @@
 .spst-header,
 .spst-header *,
 .spst-header *::before,
-.spst-header *::after {
+.spst-header *::after,
+.spst-nav,
+.spst-nav * {
 	box-sizing: border-box;
 }
 
@@ -189,6 +192,65 @@
 	margin: 0;
 }
 
+/* Navigation --------------------------------------------------------- */
+
+/* The tab bar under the header: the settings screen's groups of tabs, or
+   a plugin screen's own sections, in one look. */
+.spst-nav {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	padding-inline: 12px;
+	background: var(--spst-surface);
+	border-block-end: 1px solid var(--spst-border);
+	overflow-x: auto;
+}
+
+.spst-nav__group {
+	display: flex;
+	align-items: stretch;
+}
+
+.spst-nav__group + .spst-nav__group {
+	margin-inline-start: 8px;
+	padding-inline-start: 8px;
+	border-inline-start: 1px solid var(--spst-border);
+}
+
+.spst-nav__tab {
+	display: inline-flex;
+	align-items: center;
+	padding: 14px 12px 11px;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--spst-muted);
+	text-decoration: none;
+	white-space: nowrap;
+	border-block-end: 3px solid transparent;
+	transition: color 0.1s ease, border-color 0.1s ease;
+}
+
+.spst-nav__tab:hover {
+	color: var(--spst-text);
+}
+
+.spst-nav__tab:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.spst-nav__tab:focus-visible {
+	outline: 2px solid var(--spst-accent);
+	outline-offset: -4px;
+	border-radius: 4px;
+}
+
+.spst-nav__tab.is-active {
+	color: var(--spst-text);
+	font-weight: 600;
+	border-block-end-color: var(--spst-accent);
+}
+
 /* Main --------------------------------------------------------------- */
 
 .spst-wrap > .notice,
@@ -212,6 +274,11 @@
 @media screen and (width <= 782px) {
 	.spst-wrap {
 		margin-inline-start: -10px;
+	}
+
+	/* One row that scrolls sideways. */
+	.spst-nav {
+		flex-wrap: nowrap;
 	}
 
 	.spst-header,
@@ -247,7 +314,8 @@
 @media (prefers-reduced-motion: reduce) {
 	.spst-header *,
 	.spst-header *::before,
-	.spst-header *::after {
+	.spst-header *::after,
+	.spst-nav__tab {
 		transition: none !important;
 		animation: none !important;
 	}

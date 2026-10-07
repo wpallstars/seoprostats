@@ -575,11 +575,6 @@
 	color: var(--spst-subtle);
 }
 
-/* Sections: WordPress's tabs, one per section of the screen. */
-.spst-nav.nav-tab-wrapper {
-	margin-bottom: 0;
-}
-
 .spst-section__head {
 	display: flex;
 	flex-wrap: wrap;
