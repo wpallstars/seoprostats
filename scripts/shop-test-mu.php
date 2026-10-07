@@ -36,6 +36,8 @@ function seoprostats_shop_test_setup() {
     // Cron is disabled and no admin page has run the initial schedule yet.
     SEOProStats_Collection::rotate_salts();
     SEOProStats_Collection::write_config();
+    wp_schedule_event(time() + HOUR_IN_SECONDS, 'hourly', SEOProStats_Collection::CRON_HOOK);
+    wp_schedule_event(time() + MINUTE_IN_SECONDS, 'seoprostats_minute', SEOProStats_Collection::PROCESS_HOOK);
     if (function_exists('WC')) {
         update_option('woocommerce_currency', 'USD');
         update_option('woocommerce_calc_taxes', 'no');
@@ -106,6 +108,7 @@ add_action('template_redirect', static function () {
 /** Assert raw facts as well as their source properties and visit joins. */
 function seoprostats_shop_test_assert() {
     global $wpdb;
+    require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-channels.php';
     $expected = array('thrivecart' => array(1, 99700, 'USD'));
     if (function_exists('WC')) {
         $expected['woocommerce'] = array(2, 7996, 'USD');

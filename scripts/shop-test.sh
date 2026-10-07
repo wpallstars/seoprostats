@@ -181,6 +181,14 @@ install_shops() {
 			printf 'SKIP %s: requires WordPress %s / PHP %s\n' "$shop" "$(jq -r .RequiresWP <<<"$metadata")" "$(jq -r .RequiresPHP <<<"$metadata")"
 			continue
 		fi
+		# FluentCart 1.7's declared minimum misses a newer core API used
+		# unconditionally by its category template. Check the downloaded code,
+		# so older pinned versions without that dependency remain testable.
+		if [[ "$shop" == fluent-cart ]] && [[ "$(wp_cli eval 'echo function_exists("register_block_template") ? "yes" : "no";')" == no ]] \
+			&& grep -Rq 'register_block_template(' "$TMP_DIR/zips/$shop-source/$shop/app/Modules/Templating"; then
+			printf 'SKIP fluent-cart: uses register_block_template, unavailable in this WordPress version\n'
+			continue
+		fi
 		chmod 644 "$TMP_DIR/zips/$shop.zip"
 		wp_cli plugin install "/zips/$shop.zip" --activate --quiet
 		SHOPS+=("$shop")
@@ -269,7 +277,7 @@ check_results() {
 	local doctor
 	wp_cli seoprostats process
 	wp_cli eval 'seoprostats_shop_test_assert();' || fail 'purchase counts, amounts, currencies or visit joins'
-	doctor="$(wp_cli seoprostats doctor --format=json)"
+	doctor="$(wp_cli seoprostats doctor --format=json --quiet)"
 	jq -e 'any(.[]; .check == "purchases" and (.detail | contains("1 ThriveCart orders without a known page load")))' <<<"$doctor" >/dev/null || fail 'doctor: expected 1 ThriveCart order not joined'
 	# Read through PHP so the fixture can group notice + backtrace lines and
 	# allow only WooCommerce's independently caused translation notice.
