@@ -3,7 +3,7 @@
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
-* Changed: the statistics screen has the settings screen's header: name, version, feature search (for administrators) and the Source code, Support and Buy me a coffee buttons.
+* Changed: the statistics screen has the settings screen's header: name, version, feature search (for administrators) and the Source code, Support and Buy me a coffee buttons. Its section tabs (Overview, Search, Goals, Funnels, Properties, Clicks, Changes) look like the settings tabs, full width under the header.
 * Changed: settings tabs (Shared reports, Tracking, Privacy, Data and Connections) switch at once, without loading the page again; the address follows the tab, so Back, reload and bookmarks still work. Read Me still opens as its own page.
 * Fixed: GitHub updates refresh their release information when WordPress's update cache is cleared (shared updater 1.3.1, from the starter plugin).
 * New: private shared reports for Overview, Goals and Clicks, with ordered saved views, password, expiry, revocation and link renewal, locked filters and period limits enforced on the server. Standalone untracked read-only page, local site and agency branding, contrast-checked accents, light/dark/system appearance and print styles. Administrators manage shares by REST, WP-CLI or the Shared reports screen; only token hashes and password hashes are stored.

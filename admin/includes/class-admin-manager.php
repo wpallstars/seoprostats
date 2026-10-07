@@ -470,7 +470,10 @@ class SEOProStats_Admin_Manager {
      * it too: enqueue_header() on their admin_enqueue_scripts, then print
      * it first in `<div class="wrap spst-wrap">`, followed by
      * `<hr class="wp-header-end">` so admin notices go below it, and their
-     * content in `<div class="spst-main">`.
+     * content in `<div class="spst-main">`. A screen with sections puts them
+     * between the two as the settings screen's tabs: `<nav class="spst-nav">`
+     * holding `<a class="spst-nav__tab">` links, the one shown `is-active`
+     * with `aria-current="page"`.
      */
     public static function render_header() {
         SEOProStats_Admin_Page::header();

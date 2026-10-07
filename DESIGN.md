@@ -152,7 +152,7 @@ the report, locked-filter description and branding.
 
 ### Header
 
-The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). The statistics sections' tabs sit under it, as the settings screen's do. Settings tabs in one group switch at once, without a page load.
+The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). Settings tabs in one group switch at once, without a page load.
 
 ### Markers
 

@@ -1,7 +1,7 @@
 /**
- * The SEO Pro Stats screen: section tabs, the period and comparison, the
- * Live/Demo switch and filters (shared by every section), then the
- * section the URL hash names.
+ * The SEO Pro Stats screen: the period and comparison, the Live/Demo
+ * switch and filters (shared by every section), then the section the URL
+ * hash names. The section tabs above it are the server's (useNavCurrent).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -33,58 +33,37 @@ export interface ViewProps {
 	update: (patch: Partial<ViewState>) => void;
 }
 
-function viewLabel(view: View): string {
-	const labels: Record<View, string> = {
-		overview: __('Overview', 'seoprostats'),
-		search: __('Search', 'seoprostats'),
-		goals: __('Goals', 'seoprostats'),
-		funnels: __('Funnels', 'seoprostats'),
-		properties: __('Properties', 'seoprostats'),
-		clicks: __('Clicks', 'seoprostats'),
-		changes: __('Changes', 'seoprostats'),
-	};
-	return labels[view];
+function markCurrent(link: HTMLAnchorElement, current: boolean, className: string, item: Element | null): void {
+	link.classList.toggle(className, current);
+	item?.classList.toggle(className, current);
+	if (current) {
+		link.setAttribute('aria-current', 'page');
+	} else {
+		link.removeAttribute('aria-current');
+	}
 }
 
-const NAV: View[] = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'];
-
-/** Mark the admin submenu item of the section shown (they differ only by hash). */
-function useMenuCurrent(view: View): void {
+/**
+ * Mark the section shown (none for shared reports) in the admin submenu,
+ * whose items differ only by hash, and in the screen's tabs, which the
+ * server draws (SEOProStats_Dashboard::render()) like the settings
+ * screen's. The tabs' links keep the period, comparison and filters.
+ */
+function useNavCurrent(state: ViewState, shown: View | null): void {
 	useEffect(() => {
-		const links = document.querySelectorAll<HTMLAnchorElement>('#toplevel_page_seoprostats-dashboard .wp-submenu a');
-		links.forEach((link) => {
-			const hash = link.hash.replace(/^#\/?/, '').split('?')[0] ?? '';
-			const page = new URLSearchParams(link.search).get('page');
-			if (page !== 'seoprostats-dashboard') {
+		document.querySelectorAll<HTMLAnchorElement>('#toplevel_page_seoprostats-dashboard .wp-submenu a').forEach((link) => {
+			if (new URLSearchParams(link.search).get('page') !== 'seoprostats-dashboard') {
 				return;
 			}
-			const current = (hash || 'overview') === view;
-			link.classList.toggle('current', current);
-			link.parentElement?.classList.toggle('current', current);
-			if (current) {
-				link.setAttribute('aria-current', 'page');
-			} else {
-				link.removeAttribute('aria-current');
-			}
+			const hash = link.hash.replace(/^#\/?/, '').split('?')[0] ?? '';
+			markCurrent(link, (hash || 'overview') === shown, 'current', link.parentElement);
 		});
-	}, [view]);
-}
-
-function ViewNav({ state }: { state: ViewState }) {
-	return (
-		<nav className="nav-tab-wrapper spst-nav" aria-label={__('Sections', 'seoprostats')}>
-			{NAV.map((view) => (
-				<a
-					key={view}
-					href={buildHash(switchView(state, view))}
-					className={`nav-tab${state.view === view ? ' nav-tab-active' : ''}`}
-					aria-current={state.view === view ? 'page' : undefined}
-				>
-					{viewLabel(view)}
-				</a>
-			))}
-		</nav>
-	);
+		document.querySelectorAll<HTMLAnchorElement>('#spst-dashboard-nav [data-spst-view]').forEach((link) => {
+			const view = link.dataset.spstView as View;
+			link.href = buildHash(switchView(state, view));
+			markCurrent(link, view === shown, 'is-active', null);
+		});
+	}, [state, shown]);
 }
 
 export function App() {
@@ -100,10 +79,11 @@ export function App() {
 	const data = useDataSet();
 	const demo = useDemo();
 	const waiting = data === 'demo' && demo.data.status !== 'ready';
-	useMenuCurrent(state.view);
+	const sharesShown = shares && boot.canManage;
+	useNavCurrent(state, sharesShown ? null : state.view);
 
 	const props: ViewProps = { state, update };
-	if (shares && boot.canManage) {
+	if (sharesShown) {
 		return <div className="spst-app"><a href="#/overview">{__('Back to reports', 'seoprostats')}</a><Shares state={state} /></div>;
 	}
 	let section = <Overview {...props} />;
@@ -125,7 +105,6 @@ export function App() {
 		<div className="spst-app">
 			{sharing && <ShareEditor state={state} close={() => setSharing(false)} saved={(share) => setLink(share.url ?? '')} />}
 			{link && <Notice status="success" onRemove={() => setLink('')}><p>{__('Copy this private link now; it is shown only once.', 'seoprostats')}</p><input aria-label="Private link" readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></Notice>}
-			<ViewNav state={state} />
 			<div className="spst-toolbar">
 				{!waiting && <Controls state={state} update={update} />}
 				<div className="spst-toolbar__end">

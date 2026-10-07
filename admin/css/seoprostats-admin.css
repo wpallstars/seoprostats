@@ -4,8 +4,8 @@
  * Scoped to .spst-wrap. Uses core admin tokens so the screen follows the
  * active admin colour scheme; core buttons, notices and plugin cards keep
  * their native styles. Logical properties keep RTL working without a
- * separate stylesheet. The colour tokens, header and main area are in
- * seoprostats-header.css, which loads first.
+ * separate stylesheet. The colour tokens, header, tab bar and main area
+ * are in seoprostats-header.css, which loads first.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -28,63 +28,6 @@
 
 .spst-wrap .spst-search__group:first-of-type {
 	margin-block-start: 8px;
-}
-
-/* Navigation --------------------------------------------------------- */
-
-.spst-nav {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: stretch;
-	padding-inline: 12px;
-	background: var(--spst-surface);
-	border-block-end: 1px solid var(--spst-border);
-	overflow-x: auto;
-}
-
-.spst-nav__group {
-	display: flex;
-	align-items: stretch;
-}
-
-.spst-nav__group + .spst-nav__group {
-	margin-inline-start: 8px;
-	padding-inline-start: 8px;
-	border-inline-start: 1px solid var(--spst-border);
-}
-
-.spst-nav__tab {
-	display: inline-flex;
-	align-items: center;
-	padding: 14px 12px 11px;
-	font-size: 14px;
-	font-weight: 500;
-	color: var(--spst-muted);
-	text-decoration: none;
-	white-space: nowrap;
-	border-block-end: 3px solid transparent;
-	transition: color 0.1s ease, border-color 0.1s ease;
-}
-
-.spst-nav__tab:hover {
-	color: var(--spst-text);
-}
-
-.spst-nav__tab:focus {
-	outline: none;
-	box-shadow: none;
-}
-
-.spst-nav__tab:focus-visible {
-	outline: 2px solid var(--spst-accent);
-	outline-offset: -4px;
-	border-radius: 4px;
-}
-
-.spst-nav__tab.is-active {
-	color: var(--spst-text);
-	font-weight: 600;
-	border-block-end-color: var(--spst-accent);
 }
 
 /* Sections ----------------------------------------------------------- */
@@ -643,10 +586,6 @@
 /* Responsive --------------------------------------------------------- */
 
 @media screen and (width <= 782px) {
-	.spst-nav {
-		flex-wrap: nowrap;
-	}
-
 	.spst-setting__header {
 		grid-template-columns: auto 1fr;
 	}
