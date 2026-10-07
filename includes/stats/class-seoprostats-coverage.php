@@ -58,6 +58,28 @@ final class SEOProStats_Coverage {
     /** Match levels, best first. */
     const MATCHES = array('title', 'heading', 'text', 'partial', 'none');
 
+    /** A post's SEO fields when no SEO plugin set them (seo_fields()). */
+    const NO_SEO = array(
+        'plugin'         => '',
+        'seo_title'      => '',
+        'seo_title_vars' => false,
+        'description'    => '',
+        'focus'          => array(),
+        'noindex'        => false,
+        'canonical'      => '',
+    );
+
+    /** Meta key prefix of each SEO plugin seo_plugin() names (All in One SEO keeps its own table). */
+    const META_PREFIX = array(
+        'rank-math' => 'rank_math_',
+        'yoast'     => '_yoast_wpseo_',
+        'seopress'  => '_seopress_',
+        'aioseo'    => '_aioseo_',
+    );
+
+    /** SEO plugins' variables (%%title%%, %sitename%, #post_title), which stand for text read elsewhere. */
+    const VARIABLES = '/%%?[a-z0-9_]+%%?|#[a-z_]+/i';
+
     /**
      * The coverage report of one page: its queries in the period, each
      * with how far the page's words cover it.
@@ -287,22 +309,26 @@ final class SEOProStats_Coverage {
             $all = self::seo_fields(array((int) $post->ID));
             $seo = isset($all[$post->ID]) ? $all[$post->ID] : null;
         }
-        $seo  = is_array($seo) ? $seo : array('plugin' => '', 'seo_title' => '', 'description' => '', 'focus' => array());
+        $seo  = is_array($seo) ? $seo + self::NO_SEO : self::NO_SEO;
         $text = array(
-            'source'      => 'post',
-            'title'       => (string) $post->post_title,
-            'content'     => (string) $post->post_content,
-            'excerpt'     => (string) $post->post_excerpt,
-            'plugin'      => (string) $seo['plugin'],
-            'seo_title'   => (string) $seo['seo_title'],
-            'description' => (string) $seo['description'],
-            'focus'       => (array) $seo['focus'],
+            'source'         => 'post',
+            'title'          => (string) $post->post_title,
+            'content'        => (string) $post->post_content,
+            'excerpt'        => (string) $post->post_excerpt,
+            'plugin'         => (string) $seo['plugin'],
+            'seo_title'      => (string) $seo['seo_title'],
+            'seo_title_vars' => (bool) $seo['seo_title_vars'],
+            'description'    => (string) $seo['description'],
+            'focus'          => (array) $seo['focus'],
+            'noindex'        => (bool) $seo['noindex'],
+            'canonical'      => (string) $seo['canonical'],
         );
         /**
-         * Filters the text a page's search queries are checked against,
-         * such as a page builder's text kept outside post_content.
+         * Filters the text a page's search queries are checked against
+         * (and the content audit reads), such as a page builder's text
+         * kept outside post_content.
          *
-         * @param array<string,mixed> $text    title, content (HTML), excerpt, seo_title, description, focus, plugin.
+         * @param array<string,mixed> $text    title, content (HTML), excerpt, seo_title, seo_title_vars (it was made of variables), description, focus, plugin, noindex, canonical.
          * @param WP_Post             $post    The post.
          */
         $text = apply_filters('seoprostats_coverage_text', $text, $post);
@@ -310,12 +336,15 @@ final class SEOProStats_Coverage {
     }
 
     /**
-     * SEO plugins' title, description and focus keywords of posts.
+     * SEO plugins' title, description, focus keywords, robots rule and
+     * canonical address of posts. Robots and canonical are read from the
+     * active SEO plugin's fields (any plugin's when none is active), so
+     * those left by a plugin no longer used do not count.
      *
      * @param int[] $post_ids Posts.
-     * @return array<int,array{plugin:string,seo_title:string,description:string,focus:array<int,array{keyword:string,source:string}>}>
+     * @return array<int,array{plugin:string,seo_title:string,seo_title_vars:bool,description:string,focus:array<int,array{keyword:string,source:string}>,noindex:bool,canonical:string}>
      */
-    private static function seo_fields(array $post_ids) {
+    public static function seo_fields(array $post_ids) {
         global $wpdb;
         $post_ids = array_values(array_filter(array_map('intval', $post_ids)));
         if (!$post_ids) {
@@ -329,16 +358,23 @@ final class SEOProStats_Coverage {
         if (function_exists('aioseo')) {
             $holders = implode(', ', array_fill(0, count($post_ids), '%d'));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- All in One SEO's table by its post_id key; $holders holds only fixed placeholders.
-            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT post_id, title, description, keyphrases FROM %i WHERE post_id IN ($holders)", array_merge(array($wpdb->prefix . 'aioseo_posts'), $post_ids)), ARRAY_A);
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT post_id, title, description, keyphrases, robots_default, robots_noindex, canonical_url FROM %i WHERE post_id IN ($holders)", array_merge(array($wpdb->prefix . 'aioseo_posts'), $post_ids)), ARRAY_A);
             foreach ($rows as $row) {
                 $aioseo[(int) $row['post_id']] = $row;
             }
         }
 
-        $out = array();
+        $active = self::seo_plugin();
+        $out    = array();
         foreach ($post_ids as $post_id) {
-            $fields = array('plugin' => '', 'seo_title' => '', 'description' => '', 'focus' => array());
+            $fields = self::NO_SEO;
             foreach (SEOProStats_Changes::SEO_META as $key => $how) {
+                $own = $active === '' || strpos($key, self::META_PREFIX[$active]) === 0;
+                if ($how[0] === 12 && $own && !$fields['noindex']) {
+                    $fields['noindex'] = preg_match('/\bnoindex\b/', SEOProStats_Changes::meta_text($key, get_post_meta($post_id, $key, true))) === 1;
+                } elseif ($how[0] === 13 && $own && $fields['canonical'] === '') {
+                    $fields['canonical'] = trim((string) get_post_meta($post_id, $key, true));
+                }
                 if (($how[0] !== 10 && $how[0] !== 11) || ($fields[$how[0] === 10 ? 'seo_title' : 'description'] !== '')) {
                     continue;
                 }
@@ -360,6 +396,10 @@ final class SEOProStats_Coverage {
                 if ($fields['description'] === '') {
                     $fields['description'] = (string) $row['description'];
                 }
+                if ($active === 'aioseo' || $active === '') {
+                    $fields['noindex']   = $fields['noindex'] || (!(int) $row['robots_default'] && (int) $row['robots_noindex']);
+                    $fields['canonical'] = $fields['canonical'] !== '' ? $fields['canonical'] : trim((string) $row['canonical_url']);
+                }
                 $phrases = json_decode((string) $row['keyphrases'], true);
                 $list    = is_array($phrases) ? array_merge(isset($phrases['focus']) ? array($phrases['focus']) : array(), isset($phrases['additional']) && is_array($phrases['additional']) ? $phrases['additional'] : array()) : array();
                 foreach ($list as $phrase) {
@@ -368,9 +408,10 @@ final class SEOProStats_Coverage {
                     }
                 }
             }
-            $fields['seo_title']   = self::without_variables($fields['seo_title']);
-            $fields['description'] = self::without_variables($fields['description']);
-            $fields['plugin']      = $fields['focus'] ? $fields['focus'][0]['source'] : self::seo_plugin();
+            $fields['seo_title_vars'] = preg_match(self::VARIABLES, $fields['seo_title']) === 1;
+            $fields['seo_title']      = self::without_variables($fields['seo_title']);
+            $fields['description']    = self::without_variables($fields['description']);
+            $fields['plugin']         = $fields['focus'] ? $fields['focus'][0]['source'] : $active;
 
             /**
              * Filters a post's focus keywords (the search terms its SEO
@@ -444,7 +485,7 @@ final class SEOProStats_Coverage {
      * @return string
      */
     private static function without_variables($text) {
-        return trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace('/%%?[a-z0-9_]+%%?|#[a-z_]+/i', ' ', $text)));
+        return trim((string) preg_replace('/\s+/u', ' ', (string) preg_replace(self::VARIABLES, ' ', $text)));
     }
 
     /**
@@ -557,7 +598,7 @@ final class SEOProStats_Coverage {
      * @param string $text Text.
      * @return string[]
      */
-    private static function words($text) {
+    public static function words($text) {
         $text = remove_accents(function_exists('mb_strtolower') ? mb_strtolower((string) $text, 'UTF-8') : strtolower((string) $text));
         $out  = preg_split('/[^\p{L}\p{N}]+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
         return is_array($out) ? $out : array();
@@ -596,7 +637,7 @@ final class SEOProStats_Coverage {
      * @param string $html HTML.
      * @return string
      */
-    private static function plain($html) {
+    public static function plain($html) {
         $html = (string) preg_replace('/<(script|style)\b[^>]*>.*?<\/\1>/is', ' ', $html);
         return html_entity_decode((string) preg_replace('/<[^>]*>/', ' ', $html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }

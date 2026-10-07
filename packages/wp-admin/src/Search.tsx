@@ -10,9 +10,11 @@
  * Bing's are by week. Search days are final only (some days old), so the
  * period stops at the newest one.
  *
- * Opportunities (./Opportunities): where search effort pays; Content
- * (./Content): each page's search clicks with its visits from search and
- * their conversions. Choosing a row in either opens it in Rankings.
+ * Opportunities (./Opportunities): where search effort pays; Audit
+ * (./Audit): what WordPress says about each page (title, description,
+ * headings, length, images, noindex, canonical), pages that matter most
+ * first; Content (./Content): each page's search clicks with its visits
+ * from search and their conversions. Choosing a row opens it in Rankings.
  * Plan (./Plan): one ranked list of what to do next, made from
  * Opportunities. Experiments (./Experiments): changes measured against
  * unchanged pages.
@@ -47,6 +49,7 @@ import { MainChart } from './components/MainChart';
 import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 import { Opportunities } from './Opportunities';
+import { Audit } from './Audit';
 import { Content } from './Content';
 import { Experiments } from './Experiments';
 import { Plan } from './Plan';
@@ -136,12 +139,13 @@ export function Search(props: ViewProps) {
 	const names: Record<SearchReport, string> = {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
+		audit: __('Audit', 'seoprostats'),
 		content: __('Content', 'seoprostats'),
 		plan: __('Plan', 'seoprostats'),
 		experiments: __('Experiments', 'seoprostats'),
 	};
 	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content, Plan's state and goal with Plan, a change with Experiments.
-	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, change: undefined });
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
 		const at = SEARCH_REPORTS.indexOf(report);
@@ -162,6 +166,7 @@ export function Search(props: ViewProps) {
 			sort: undefined,
 			goal: undefined,
 			status: undefined,
+			finding: undefined,
 			page: pick.page || undefined,
 			query: pick.query || undefined,
 			tab: pick.query && !pick.page ? 'pages' : undefined,
@@ -195,6 +200,7 @@ export function Search(props: ViewProps) {
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
 				{report === 'rankings' && <Rankings {...reportProps} />}
 				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
+				{report === 'audit' && <Audit {...reportProps} open={open} />}
 				{report === 'content' && <Content {...reportProps} open={open} />}
 				{report === 'plan' && <Plan {...reportProps} open={open} />}
 				{report === 'experiments' && <Experiments {...reportProps} />}

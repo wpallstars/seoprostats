@@ -12,6 +12,8 @@
  * - seoprostats/opportunities: striking-distance and low-CTR queries,
  *   pages losing clicks with the likely cause, queries missing from
  *   their page, and queries shared by several pages (read).
+ * - seoprostats/audit: published pages with findings from their content
+ *   and SEO plugin fields, weighed by search impressions (read).
  * - seoprostats/coverage: one page's queries, each checked against the
  *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
@@ -335,6 +337,78 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/audit', array(
+            'label'               => __('Content audit', 'seoprostats'),
+            'description'         => __('Published pages with findings from their WordPress content and SEO plugin fields, most search impressions first: title or description missing, too long or the same as another page\'s (with those pages), no H1 or several, images without alt text, a thin page (few words, with impressions but no clicks), and noindex or a canonical address elsewhere on a page with search impressions. Each page has its search figures and its facts (lengths, words, H1s, images, robots, when it was read); counts give the pages per finding. Facts are read when a post is saved and by a daily batch.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'finding' => array(
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), SEOProStats_Audit::FINDINGS),
+                        'default'     => '',
+                        'description' => __('Only pages with this finding; all when empty.', 'seoprostats'),
+                    ),
+                    'engine'  => $engine,
+                    'range'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period of the search figures, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'      => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'limit'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Audit::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'offset'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'connected' => array('type' => 'boolean'),
+                    'rules'     => array('type' => 'object'),
+                    'checked'   => array('type' => 'object'),
+                    'counts'    => array('type' => 'object'),
+                    'pages'     => array('type' => 'integer'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'audit'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
         wp_register_ability('seoprostats/coverage', array(
             'label'               => __('Query coverage of a page', 'seoprostats'),
             'description'         => __('The Google Search Console queries one page shows for (most impressions first, up to 200), each with how far the page\'s own words cover it: title (every word in the title or SEO title), heading, text, partial or none, the words missing, and whether it is a question. Also the focus keywords of Rank Math, Yoast SEO, SEOPress or All in One SEO when one is active, with their search figures. Queries the page does not cover are cheap wins: add the words, or answer the question in a heading. Works without any SEO plugin. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
@@ -516,7 +590,7 @@ final class SEOProStats_Abilities {
         );
         wp_register_ability('seoprostats/queue', array(
             'label'               => __('Decision queue', 'seoprostats'),
-            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need). Each item has a key, its page and query, why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
+            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need; audit: fix a content audit finding on a page with search impressions, one item per page and finding). Each item has a key, its page and query (or finding), why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -896,6 +970,25 @@ final class SEOProStats_Abilities {
         $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $engine) {
             return SEOProStats_Opportunities::report((array) $req, $kind, $engine);
+        });
+    }
+
+    /**
+     * seoprostats/audit.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function audit($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $finding = isset($input['finding']) ? (string) $input['finding'] : '';
+        $engine  = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $finding, $engine) {
+            return SEOProStats_Audit::report((array) $req, $engine, $finding);
         });
     }
 

@@ -198,6 +198,11 @@ final class SEOProStats_Changes {
         add_action('updated_post_meta', array(__CLASS__, 'meta'), 10, 4);
         add_action('deleted_post_meta', array(__CLASS__, 'deleted_meta'), 10, 3);
 
+        // The content audit: a saved or deleted post's facts are read
+        // again at the end of the request (SEO fields above too).
+        add_action('save_post', array(__CLASS__, 'audit'), 10, 1);
+        add_action('deleted_post', array(__CLASS__, 'audit'), 10, 1);
+
         // WooCommerce products (and variations) and coupons.
         add_action('woocommerce_before_product_object_save', array(__CLASS__, 'product'), 10, 1);
         add_action('woocommerce_before_product_variation_object_save', array(__CLASS__, 'product'), 10, 1);
@@ -493,7 +498,7 @@ final class SEOProStats_Changes {
      * @param WP_Post $post Post.
      * @return bool
      */
-    private static function is_public(WP_Post $post) {
+    public static function is_public(WP_Post $post) {
         if ($post->post_type === 'attachment' || $post->post_type === 'revision' || wp_is_post_autosave($post) || wp_is_post_revision($post)) {
             return false;
         }
@@ -729,7 +734,23 @@ final class SEOProStats_Changes {
         unset($meta_id);
         if (isset(self::SEO_META[$key])) {
             self::meta_change((int) $post_id, (string) $key, self::meta_text($key, $value));
+            self::audit($post_id);
         }
+    }
+
+    /**
+     * A post saved, deleted or its SEO fields changed: the content audit
+     * reads it at the end of the request (the class loads only then).
+     *
+     * @param int $post_id Post.
+     */
+    public static function audit($post_id) {
+        if (defined('WP_IMPORTING') && WP_IMPORTING) {
+            // Imports are read by the daily cron.
+            return;
+        }
+        require_once __DIR__ . '/class-seoprostats-audit.php';
+        SEOProStats_Audit::saved((int) $post_id);
     }
 
     /**
@@ -743,6 +764,7 @@ final class SEOProStats_Changes {
         unset($meta_ids);
         if (isset(self::SEO_META[$key])) {
             self::meta_change((int) $post_id, (string) $key, self::meta_text($key, ''));
+            self::audit($post_id);
         }
     }
 
@@ -788,7 +810,7 @@ final class SEOProStats_Changes {
      * @param mixed  $value Value.
      * @return string
      */
-    private static function meta_text($key, $value) {
+    public static function meta_text($key, $value) {
         $read = isset(self::SEO_META[$key]) ? self::SEO_META[$key][1] : 'text';
         if (is_array($value)) {
             $value = array_map('strval', array_filter($value, 'is_scalar'));

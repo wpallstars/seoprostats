@@ -1086,6 +1086,133 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * The content audit: published pages with findings, by search impressions.
+     *
+     * Findings come from each page's WordPress content and SEO plugin
+     * fields: title or description missing, long or the same as another
+     * page's; no H1 or several; images without alt text; a thin page with
+     * impressions but no clicks; noindex or a canonical address elsewhere
+     * on a page with impressions. Facts are read when a post is saved and
+     * by the daily cron, 200 posts a day; run reads the next posts now.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : list (the pages with findings) or run (read the next posts' facts now).
+     * ---
+     * default: list
+     * options:
+     *   - list
+     *   - run
+     * ---
+     *
+     * [--finding=<finding>]
+     * : Only pages with this finding: noindex, canonical, thin, title_missing, title_duplicate, title_long, description_missing, description_duplicate, description_long, h1_none, h1_several or images_alt.
+     *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools), for the search figures.
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats.
+     *
+     * [--limit=<limit>]
+     * : Most rows (list; 20 when left out), or most posts read (run; a daily batch, 200, when left out).
+     *
+     * [--data=<data>]
+     * : live or demo (list).
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats audit
+     *     wp seoprostats audit --finding=description_missing --limit=50
+     *     wp seoprostats audit run --limit=1000
+     *     wp seoprostats audit --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function audit($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
+        $action = isset($args[0]) ? (string) $args[0] : 'list';
+        if ($action === 'run') {
+            if (!SEOProStats_Schema::maybe_upgrade()) {
+                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+            }
+            $limit = isset($assoc['limit']) ? max(1, (int) $assoc['limit']) : SEOProStats_Audit::BATCH;
+            $done  = SEOProStats_Audit::batch($limit, 600);
+            /* translators: 1: posts read, 2: posts looked at */
+            WP_CLI::success(sprintf(__('Read %1$d posts of %2$d looked at.', 'seoprostats'), $done['read'], $done['looked']) . ($done['done'] ? ' ' . __('Every post has been looked at; the next run starts from the first.', 'seoprostats') : ''));
+            return;
+        }
+        $engine  = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $finding = isset($assoc['finding']) ? (string) $assoc['finding'] : '';
+        $req     = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
+        $answer  = $this->on_data($assoc, static function () use ($req, $engine, $finding) {
+            return SEOProStats_Audit::report($req, $engine, $finding);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        /* translators: 1: pages with facts, 2: date the oldest was read, 3: pages with findings */
+        WP_CLI::log(sprintf(__('%1$d pages read (the oldest on %2$s); %3$d with findings.', 'seoprostats'), $answer['checked']['pages'], $answer['checked']['oldest'] ? substr((string) $answer['checked']['oldest'], 0, 10) : '–', $answer['pages']));
+        $counts = array_filter($answer['counts']);
+        if ($counts) {
+            WP_CLI::log(implode(', ', array_map(static function ($name, $n) {
+                return $name . ' ' . $n;
+            }, array_keys($counts), $counts)));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No pages with findings.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $rows[] = array(
+                'path'        => $row['path'],
+                'impressions' => $row['impressions'],
+                'clicks'      => $row['clicks'],
+                'position'    => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
+                'words'       => $row['facts']['words'],
+                'findings'    => implode(', ', $row['findings']),
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * Query coverage of one page: the Google Search Console queries it
      * shows for, each with how far the page's own words cover it (title,
      * heading, text, partial or none), the words it lacks and whether it

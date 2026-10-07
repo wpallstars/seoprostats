@@ -11,14 +11,18 @@
  *   missing: impressions × the site's expected CTR at its position ×
  *   MISSING_SHARE; overlap: the clicks the query's pages would have with
  *   the best of their CTRs, so items where no page does better are left
- *   out), scaled to 28 days;
+ *   out; audit: the page's expected clicks at its position × the
+ *   finding's share, SEOProStats_Audit::SHARE), scaled to 28 days;
  * - value: how well visits from search to the page convert against the
  *   site (the Content report's goal), smoothed toward the site's rate
  *   with SMOOTH visits; at least 1 (a page with no goal data is 1) and at
  *   most MAX_VALUE;
  * - confidence: the kind's own × √(impressions per 28 days ÷
  *   FULL_IMPRESSIONS), at most the kind's own;
- * - effort: the kind's, unless a person set another.
+ * - effort: the kind's (an audit finding's), unless a person set another.
+ *
+ * Audit items are one per page and finding (the key's query is the
+ * finding), on the pages with most impressions (SEOProStats_Audit).
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -53,6 +57,7 @@ final class SEOProStats_Queue {
         3 => 'striking',
         4 => 'decay',
         5 => 'overlap',
+        6 => 'audit',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -70,14 +75,29 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1);
     const MAX_EFFORT = 5;
 
+    /** Effort of audit findings other than the audit kind's. */
+    const AUDIT_EFFORT = array('thin' => 3);
+
     /** The kind's own confidence, before the impressions are weighed. */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5);
 
     /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks');
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks');
+
+    /** Audit findings measured otherwise than the audit kind's. */
+    const AUDIT_METRIC = array(
+        'noindex'               => 'impressions',
+        'canonical'             => 'impressions',
+        'title_missing'         => 'ctr',
+        'title_duplicate'       => 'ctr',
+        'title_long'            => 'ctr',
+        'description_missing'   => 'ctr',
+        'description_duplicate' => 'ctr',
+        'description_long'      => 'ctr',
+    );
 
     /** Potential clicks are given per this many days. */
     const SCALE_DAYS = 28;
@@ -177,6 +197,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-experiments.php';
         require_once __DIR__ . '/class-seoprostats-dict.php';
         require_once __DIR__ . '/class-seoprostats-clicks.php';
+        require_once __DIR__ . '/class-seoprostats-audit.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -184,6 +205,9 @@ final class SEOProStats_Queue {
         foreach (SEOProStats_Opportunities::KINDS as $kind) {
             $found[$kind] = SEOProStats_Opportunities::report($ask, $kind, $engine);
         }
+        // Audit findings on the pages with most impressions.
+        $audit = SEOProStats_Audit::report($ask, $engine);
+        $audit = is_wp_error($audit) ? array() : $audit['rows'];
         $head  = $found['striking'];
         $days  = (int) $head['days'];
         $curve = isset($head['curve']['ctr']) && is_array($head['curve']['ctr']) ? $head['curve']['ctr'] : SEOProStats_Opportunities::DEFAULT_CURVE;
@@ -200,6 +224,14 @@ final class SEOProStats_Queue {
                     }
                     $item = self::item($kind, $engine, $row, $days, $curve, $value);
                     if (!isset($items[$item['key']])) {
+                        $items[$item['key']] = $item;
+                    }
+                }
+            }
+            foreach ($audit as $row) {
+                foreach ((array) $row['findings'] as $finding) {
+                    $item = self::audit_item($engine, $row, (string) $finding, $days, $curve, $value);
+                    if ($item && !isset($items[$item['key']])) {
                         $items[$item['key']] = $item;
                     }
                 }
@@ -222,6 +254,7 @@ final class SEOProStats_Queue {
                 'rules'     => array(
                     'scale_days'       => self::SCALE_DAYS,
                     'effort'           => self::EFFORT,
+                    'audit_effort'     => self::AUDIT_EFFORT,
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
                     'missing_share'    => self::MISSING_SHARE,
@@ -326,16 +359,9 @@ final class SEOProStats_Queue {
                 $clicks                  = (int) $row['potential'];
             }
         }
-        $site  = $value['site'];
-        $worth = 1.0;
-        if ($site) {
-            $page  = isset($value['pages'][(int) $row['path_id']]) ? $value['pages'][(int) $row['path_id']] : array('visits' => 0, 'conversions' => 0);
-            $rate  = ($page['conversions'] + self::SMOOTH * $site) / ($page['visits'] + self::SMOOTH);
-            $worth = min((float) self::MAX_VALUE, max(1.0, $rate / $site));
-        }
         $parts = array(
             'clicks'     => round($clicks * $scale, 1),
-            'value'      => round($worth, 2),
+            'value'      => round(self::worth((int) $row['path_id'], $value), 2),
             'confidence' => round(self::CONFIDENCE[$kind] * min(1.0, sqrt($impr * $scale / self::FULL_IMPRESSIONS)), 2),
             'effort'     => self::EFFORT[$kind],
         );
@@ -351,6 +377,7 @@ final class SEOProStats_Queue {
             'post_id'  => (int) $row['post_id'],
             'edit_url' => isset($row['edit_url']) ? $row['edit_url'] : null,
             'query'    => $kind === 'decay' ? null : $query,
+            'finding'  => null,
             'why'      => self::why($kind, $row, $figures),
             'todo'     => self::todo($kind),
             'figures'  => $figures,
@@ -358,6 +385,105 @@ final class SEOProStats_Queue {
             'parts'    => $parts,
             'score'    => self::score($parts),
         );
+    }
+
+    /**
+     * One item from an audit finding on a page: the page's expected
+     * clicks at its position (the site's curve) × the finding's share
+     * (SEOProStats_Audit::SHARE). Null without potential clicks.
+     *
+     * @param string              $engine  Engine name.
+     * @param array<string,mixed> $row     Audit row.
+     * @param string              $finding Finding.
+     * @param int                 $days    Days of the period.
+     * @param array<int,float>    $curve   Expected CTR by position.
+     * @param array<string,mixed> $value   From values().
+     * @return array<string,mixed>|null
+     */
+    private static function audit_item($engine, array $row, $finding, $days, array $curve, array $value) {
+        $impr = (int) $row['impressions'];
+        if ($impr < 1 || $row['position'] === null) {
+            return null;
+        }
+        $scale    = self::SCALE_DAYS / max(1, (int) $days);
+        $place    = max(1, min(20, (int) round((float) $row['position'])));
+        $expected = $impr * (float) $curve[$place];
+        $clicks   = $expected * SEOProStats_Audit::share(array($finding));
+        if ($clicks * $scale < 1) {
+            return null;
+        }
+        $figures = array(
+            'finding'      => $finding,
+            'clicks'       => (int) $row['clicks'],
+            'impressions'  => $impr,
+            'ctr'          => $row['ctr'],
+            'position'     => $row['position'],
+            'expected_ctr' => round((float) $curve[$place], 4),
+            'share'        => SEOProStats_Audit::share(array($finding)),
+            'facts'        => (array) $row['facts'],
+            // The other pages with the same title or description.
+            'same'         => $finding === 'title_duplicate' ? array_values((array) $row['same_title']) : ($finding === 'description_duplicate' ? array_values((array) $row['same_description']) : array()),
+        );
+        $parts = array(
+            'clicks'     => round($clicks * $scale, 1),
+            'value'      => round(self::worth((int) $row['path_id'], $value), 2),
+            'confidence' => round(self::CONFIDENCE['audit'] * min(1.0, sqrt($impr * $scale / self::FULL_IMPRESSIONS)), 2),
+            'effort'     => self::effort_of('audit', $finding),
+        );
+        /* translators: 1: what the content audit found, 2: impressions, 3: average position */
+        $why = sprintf(__('The content audit found %1$s on a page with %2$s impressions at position %3$s.', 'seoprostats'), SEOProStats_Audit::phrase($finding, $row), number_format_i18n($impr), number_format_i18n((float) $row['position'], 1));
+        return array(
+            'key'      => self::key('audit', $engine, (string) $row['path'], $finding),
+            'kind'     => 'audit',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => (int) $row['path_id'],
+            'path'     => (string) $row['path'],
+            'url'      => (string) $row['url'],
+            'post_id'  => (int) $row['post_id'],
+            'edit_url' => isset($row['edit_url']) ? $row['edit_url'] : null,
+            'query'    => null,
+            'finding'  => $finding,
+            'why'      => $why,
+            'todo'     => SEOProStats_Audit::todo(array($finding)),
+            'figures'  => $figures,
+            'metric'   => isset(self::AUDIT_METRIC[$finding]) ? self::AUDIT_METRIC[$finding] : self::METRIC['audit'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
+     * A page's value: how well its visits from search convert against the
+     * site's, smoothed, 1 to MAX_VALUE (1 without a goal).
+     *
+     * @param int                 $path_id Path id.
+     * @param array<string,mixed> $value   From values().
+     * @return float
+     */
+    private static function worth($path_id, array $value) {
+        $site = $value['site'];
+        if (!$site) {
+            return 1.0;
+        }
+        $page = isset($value['pages'][(int) $path_id]) ? $value['pages'][(int) $path_id] : array('visits' => 0, 'conversions' => 0);
+        $rate = ($page['conversions'] + self::SMOOTH * $site) / ($page['visits'] + self::SMOOTH);
+        return min((float) self::MAX_VALUE, max(1.0, $rate / $site));
+    }
+
+    /**
+     * The effort of an item's kind (and audit finding).
+     *
+     * @param string      $kind    Kind name.
+     * @param string|null $finding Audit finding.
+     * @return int
+     */
+    private static function effort_of($kind, $finding = null) {
+        if ($kind === 'audit' && $finding !== null && isset(self::AUDIT_EFFORT[$finding])) {
+            return self::AUDIT_EFFORT[$finding];
+        }
+        return self::EFFORT[$kind];
     }
 
     /**
@@ -594,7 +720,7 @@ final class SEOProStats_Queue {
                 $wpdb->delete($table, array('id' => (int) $row['id']), array('%d'));
             }
             $item = array_merge($item, array('status' => 'new', 'note' => '', 'experiment_id' => null, 'effort_set' => false));
-            $item['parts']['effort'] = self::EFFORT[$item['kind']];
+            $item['parts']['effort'] = self::effort_of($item['kind'], isset($item['finding']) ? (string) $item['finding'] : null);
             $item['score']           = self::score($item['parts']);
             return self::finish($item);
         }
@@ -736,6 +862,10 @@ final class SEOProStats_Queue {
         if ($item['kind'] === 'overlap') {
             /* translators: %s: search query */
             return sprintf(__('One clear page for “%s” lifts its clicks', 'seoprostats'), $query);
+        }
+        if ($item['kind'] === 'audit') {
+            /* translators: %s: page path */
+            return sprintf(__('Fixing the content audit\'s finding lifts %s', 'seoprostats'), $page);
         }
         /* translators: %s: page path */
         return sprintf(__('Updating %s wins back its clicks', 'seoprostats'), $page);

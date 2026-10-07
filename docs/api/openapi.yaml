@@ -634,21 +634,26 @@ paths:
         Made from the opportunities (`ctr`: low CTR; `missing`: a query
         whose words the page lacks; `striking`: positions 4–20; `decay`:
         a page losing clicks; `overlap`: a query several pages share, on
-        its leading page, with every page in `figures.pages`) when the
-        list is read. Each item's score is potential clicks per 28 days ×
+        its leading page, with every page in `figures.pages`) and the
+        content audit (`audit`: one item per page and `finding`, from
+        `/audit`'s pages with most impressions) when the list is read.
+        Each item's score is potential clicks per 28 days ×
         value × confidence ÷ effort, and every part is given so an agent
         can rank by its own rule:
 
         - potential clicks: the opportunity's (missing: impressions × the
           site's CTR at its position × `rules.missing_share`; overlap: the
           clicks with the best of its pages' CTRs, so overlaps where no
-          page does better are not items), scaled to 28 days;
+          page does better are not items; audit: the page's impressions ×
+          the site's CTR at its position × the finding's share of them,
+          `figures.share`), scaled to 28 days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
         - confidence: the kind's own × √(impressions per 28 days ÷
           `rules.full_impressions`), the root at most 1;
-        - effort: the kind's (`rules.effort`) unless someone set another.
+        - effort: the kind's (`rules.effort`; an audit finding's in
+          `rules.audit_effort` when it differs) unless someone set another.
 
         Only items someone acted on are stored. New items on a page with
         a running experiment are left out (`left_out`); dismissed items
@@ -1294,6 +1299,77 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OpportunitiesAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /audit:
+    get:
+      operationId: getAudit
+      summary: The content audit — published pages with findings from their content and SEO plugin fields, most search impressions first.
+      description: |
+        Facts read from WordPress about each published post: the title
+        shown (the SEO plugin's, else the post's), the description (the
+        SEO plugin's, else the excerpt), H1s in the text, words, images and
+        those without alt text, and whether the SEO plugin sets noindex or
+        a canonical address on another page. Facts are read when a post is
+        saved and by the daily cron (`rules.batch` posts a run, each again
+        after `rules.stale_days` days), never on visitor pages; `checked`
+        says how many pages have facts and when they were read.
+
+        Findings, most serious first (`AuditFinding`): `noindex` and
+        `canonical` (only on pages with impressions), `thin` (under
+        `rules.thin_words` words with `rules.thin_impressions` or more
+        impressions and no clicks), `title_missing`, `title_duplicate`,
+        `title_long` (over `rules.title_max` characters),
+        `description_missing`, `description_duplicate`,
+        `description_long` (over `rules.description_max`), `h1_none`,
+        `h1_several` (themes show the title as an H1, so one in the text
+        makes several) and `images_alt`. Lengths are of what was written:
+        an SEO title made of its plugin's variables counts as the post's.
+
+        Pages are listed most impressions first, with their search figures
+        from the same imported days as `/search` (one `engine`; cut as
+        `/opportunities` is). `counts` gives pages per finding whatever
+        `finding` is asked for. Each finding also becomes a `/queue` item.
+        Page filters apply; other filters are listed in `ignored`.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: finding
+          in: query
+          description: Only pages with this finding; all when left out.
+          schema:
+            $ref: '#/components/schemas/AuditFinding'
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Pages with findings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2599,12 +2675,17 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap]
+              enum: [ctr, missing, striking, decay, overlap, audit]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
+            finding:
+              description: audit; the finding (one item per page and finding). Null for other kinds.
+              oneOf:
+                - $ref: '#/components/schemas/AuditFinding'
+                - type: 'null'
             found:
               type: boolean
               description: Whether the opportunity is still found in this period; else as it was when acted on.
@@ -2673,10 +2754,22 @@ components:
                         type: number
                       share:
                         type: number
+                finding:
+                  $ref: '#/components/schemas/AuditFinding'
+                share:
+                  type: number
+                  description: audit; the share of the page's expected clicks the finding puts at stake.
+                facts:
+                  $ref: '#/components/schemas/AuditFacts'
+                same:
+                  type: array
+                  description: audit; the other pages with the same title or description.
+                  items:
+                    type: string
             metric:
               type: string
-              enum: [clicks, ctr, position]
-              description: The measure of the experiment done opens.
+              enum: [clicks, impressions, ctr, position]
+              description: The measure of the experiment done opens (impressions for an audit item's noindex or canonical).
             parts:
               type: object
               required: [clicks, value, confidence, effort]
@@ -3677,6 +3770,155 @@ components:
               description: decay; search engine updates in either period.
               items:
                 $ref: '#/components/schemas/Marker'
+
+    AuditFinding:
+      type: string
+      enum: [noindex, canonical, thin, title_missing, title_duplicate, title_long, description_missing, description_duplicate, description_long, h1_none, h1_several, images_alt]
+      description: A content audit finding; the list is most serious first.
+
+    AuditFacts:
+      type: object
+      description: What the content audit read from a page's post and SEO plugin fields.
+      required: [title_length, seo_title_length, description_length, h1, words, images, images_no_alt, noindex, canonical_away, modified, checked]
+      properties:
+        title_length:
+          type: integer
+          description: Characters of the title shown (the SEO title, else the post title).
+        seo_title_length:
+          type: integer
+          description: Characters of the SEO title as written; 0 when it is made of the plugin's variables.
+        description_length:
+          type: integer
+          description: Characters of the description (the SEO plugin's, else the excerpt).
+        h1:
+          type: integer
+          description: H1s in the text (themes show the title as one more).
+        words:
+          type: integer
+        images:
+          type: integer
+        images_no_alt:
+          type: integer
+        noindex:
+          type: boolean
+        canonical_away:
+          type: boolean
+          description: Whether the canonical address is another page.
+        modified:
+          type: [string, 'null']
+          format: date-time
+        checked:
+          type: string
+          format: date-time
+          description: When the facts were read.
+
+    AuditRow:
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [findings, facts, same_title, same_description]
+          properties:
+            findings:
+              type: array
+              items:
+                $ref: '#/components/schemas/AuditFinding'
+            facts:
+              $ref: '#/components/schemas/AuditFacts'
+            same_title:
+              type: array
+              description: Other pages with the same title (up to five).
+              items:
+                type: string
+            same_description:
+              type: array
+              description: Other pages with the same description (up to five).
+              items:
+                type: string
+
+    AuditAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [engine, engines, range, days, cut, through, first, connected, ignored, finding, rules, checked, plugin, counts, pages, rows, total, more]
+          properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+              description: Days of search figures; 0 without search data.
+            cut:
+              type: boolean
+            through:
+              type: string
+            first:
+              type: string
+            connected:
+              type: boolean
+            ignored:
+              type: array
+              items:
+                type: string
+            finding:
+              type: string
+              description: The finding asked for; empty for all.
+            rules:
+              type: object
+              required: [title_max, description_max, thin_words, thin_impressions, batch, stale_days]
+              properties:
+                title_max:
+                  type: integer
+                description_max:
+                  type: integer
+                thin_words:
+                  type: integer
+                thin_impressions:
+                  type: integer
+                  description: Impressions in the period from which a short page with no clicks is thin.
+                batch:
+                  type: integer
+                  description: Posts the daily cron reads at most.
+                stale_days:
+                  type: integer
+                  description: Days after which a page's facts are read again.
+            checked:
+              type: object
+              required: [pages, oldest, newest]
+              properties:
+                pages:
+                  type: integer
+                  description: Pages with facts.
+                oldest:
+                  type: [string, 'null']
+                  format: date-time
+                newest:
+                  type: [string, 'null']
+                  format: date-time
+            plugin:
+              type: string
+              enum: [rank-math, yoast, seopress, aioseo, demo, '']
+              description: The SEO plugin the fields are read from; empty without one.
+            counts:
+              type: object
+              description: Pages per finding, whatever finding is asked for.
+              additionalProperties:
+                type: integer
+            pages:
+              type: integer
+              description: Pages with any finding.
+            rows:
+              type: array
+              description: Most impressions first.
+              items:
+                $ref: '#/components/schemas/AuditRow'
+            total:
+              type: integer
+            more:
+              type: boolean
 
     SearchEngine:
       type: string
