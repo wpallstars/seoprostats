@@ -11,7 +11,12 @@
  * job asks for new final days at most every few hours (one small request
  * when it does). Each run is an imports row, so it can be undone. Runs
  * come from cron, WP-CLI or an administrator only; never a visitor page.
- * Design: docs/architecture.md → Integrations → Search Console.
+ *
+ * Bing Webmaster Tools goes through the same days (its source hands over
+ * one day at a time of answers that cover every day), then imports
+ * pages with their queries page by page, as Bing gives them, while
+ * `pairs_from`/`pairs_to` in the connection's state say a range needs
+ * them. Design: docs/architecture.md → Integrations.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -210,7 +215,7 @@ final class SEOProStats_Search_Import {
             $days[] = array($day, 'back');
         }
         if (!$days) {
-            return array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true);
+            return self::run_pairs($source, $class, $token, $property, $start, $budget, array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true));
         }
 
         $import = 0;
@@ -240,7 +245,176 @@ final class SEOProStats_Search_Import {
         }
         self::finish($import, self::DONE, $span, $rows);
         SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
-        return array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => $count === count($days));
+        self::pairs_due($source, $class, $span);
+        $result = array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => $count === count($days));
+        return $result['done'] ? self::run_pairs($source, $class, $token, $property, $start, $budget, $result) : $result;
+    }
+
+    /**
+     * Whether a source gives pages with their queries page by page, after
+     * the days (Bing), rather than with each day.
+     *
+     * @param string $class Source class.
+     * @return bool
+     */
+    public static function by_page($class) {
+        return defined($class . '::PAIRS_BY_PAGE') && constant($class . '::PAIRS_BY_PAGE');
+    }
+
+    /**
+     * Note that pages' queries are due for days just imported (a source
+     * that gives them page by page): the range grows to take them, and
+     * reaches back over the weeks whose pages' queries may still come.
+     * The list of pages is made again for the new range.
+     *
+     * @param string   $source Source key.
+     * @param string   $class  Source class.
+     * @param string[] $span   Days imported.
+     */
+    private static function pairs_due($source, $class, array $span) {
+        if (!$span || !self::by_page($class)) {
+            return;
+        }
+        $state = SEOProStats_Connections::get($source)['state'];
+        $from  = self::shift((string) min($span), -(int) constant($class . '::PAIR_LAG_DAYS'));
+        $to    = (string) max($span);
+        if (!empty($state['pairs_from'])) {
+            $from = min($from, (string) $state['pairs_from']);
+            $to   = max($to, (string) $state['pairs_to']);
+        }
+        SEOProStats_Connections::update_state($source, array('pairs_from' => $from, 'pairs_to' => $to, 'pairs_queue' => null));
+    }
+
+    /**
+     * Import pages with their queries page by page (Bing: one request a
+     * page, every week of the range at once), within the budget. Each
+     * page's rows in the range are replaced; each run is an import.
+     *
+     * @param string                                          $source   Source key.
+     * @param string                                          $class    Source class.
+     * @param string                                          $token    Token or key.
+     * @param string                                          $property Property.
+     * @param float                                           $start    microtime(true) of the run.
+     * @param int                                             $budget   Seconds (0: no limit).
+     * @param array{days:int,rows:int,import:int,done:bool}   $result   The run so far.
+     * @return array{days:int,rows:int,import:int,done:bool,pages?:int}|WP_Error
+     */
+    private static function run_pairs($source, $class, $token, $property, $start, $budget, array $result) {
+        if (!self::by_page($class)) {
+            return $result;
+        }
+        $state = SEOProStats_Connections::get($source)['state'];
+        $from  = isset($state['pairs_from']) ? (string) $state['pairs_from'] : '';
+        $to    = isset($state['pairs_to']) ? (string) $state['pairs_to'] : '';
+        if ($from === '' || $to === '') {
+            return $result;
+        }
+        $queue = isset($state['pairs_queue']) && is_array($state['pairs_queue']) ? $state['pairs_queue'] : null;
+        if ($queue === null) {
+            $urls = $class::pair_pages($token, $property, $from, $to);
+            if (is_wp_error($urls)) {
+                return self::failed($source, $urls);
+            }
+            // One address per page: Bing may list a page with and without www.
+            $queue = array();
+            foreach ($urls as $url) {
+                $path = self::path($url);
+                if ($path !== '' && !isset($queue[$path])) {
+                    $queue[$path] = $url;
+                }
+            }
+            $queue = array_values($queue);
+            SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        }
+        $import = 0;
+        $rows   = 0;
+        $pages  = 0;
+        $days   = array();
+        while ($queue) {
+            if (($pages > 0 || $result['days'] > 0) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+                break;
+            }
+            if (!$import) {
+                $import = self::start($source, $property, $from);
+                if (!$import) {
+                    return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
+                }
+            }
+            $url  = (string) $queue[0];
+            $data = $class::page_pairs($token, $property, $url, $from, $to);
+            if (is_wp_error($data)) {
+                self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
+                return self::failed($source, $data);
+            }
+            $added = self::replace_pairs((int) $class::ENGINE, $url, $data, $from, $to, $import);
+            if (is_wp_error($added)) {
+                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
+                return self::failed($source, $added);
+            }
+            $rows += $added;
+            $days  = array_values(array_unique(array_merge($days, array_keys($data))));
+            $pages++;
+            array_shift($queue);
+            SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        }
+        if ($import) {
+            self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
+            SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
+        }
+        if (!$queue) {
+            SEOProStats_Connections::update_state($source, array('pairs_from' => null, 'pairs_to' => null, 'pairs_queue' => null));
+        }
+        return array(
+            'days'   => $result['days'],
+            'rows'   => $result['rows'] + $rows,
+            'import' => $result['import'] ? $result['import'] : $import,
+            'done'   => !$queue,
+            'pages'  => $pages,
+        );
+    }
+
+    /**
+     * Replace one page's rows with its queries in a range (gsc_pairs by
+     * path_day), in one transaction.
+     *
+     * @param int                                              $engine Engine.
+     * @param string                                           $url    The page's address.
+     * @param array<string,array<int,array<string,mixed>>>     $data   Day => the source's rows (keys: page, query).
+     * @param string                                           $from   Y-m-d.
+     * @param string                                           $to     Y-m-d.
+     * @param int                                              $import imports.id.
+     * @return int|WP_Error Rows written.
+     */
+    private static function replace_pairs($engine, $url, array $data, $from, $to, $import) {
+        global $wpdb;
+        $path = self::path($url);
+        if ($path === '') {
+            return 0;
+        }
+        $ids     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array($path));
+        $path_id = isset($ids[SEOProStats_Dict::clean($path)]) ? (int) $ids[SEOProStats_Dict::clean($path)] : 0;
+        if (!$path_id) {
+            return 0;
+        }
+        $table = SEOProStats_Schema::table('gsc_pairs');
+        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one page's rows replaced together.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, one page's days by its path_day key.
+        $ok      = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE path_id = %d AND engine = %d AND day >= %s AND day <= %s', $table, $path_id, $engine, $from, $to)) !== false;
+        $written = 0;
+        foreach ($data as $day => $rows) {
+            if (!$ok) {
+                break;
+            }
+            $added = self::insert($table, 'pairs', $engine, (string) $day, $import, self::rows(array('pairs' => $rows))['pairs']);
+            $ok    = $added !== false;
+            $written += (int) $added;
+        }
+        $wpdb->query($ok ? 'COMMIT' : 'ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+        if (!$ok) {
+            /* translators: %s: page path */
+            return new WP_Error('seoprostats_import_write', sprintf(__('The search queries of %s could not be saved in the database.', 'seoprostats'), $path));
+        }
+        return $written;
     }
 
     /**
@@ -283,7 +457,7 @@ final class SEOProStats_Search_Import {
         }
         $to = min($to, $final);
         if ($from > $to) {
-            return new WP_Error('seoprostats_import_range', __('No final days in that range: Search Console\'s figures for the last few days are not final yet.', 'seoprostats'));
+            return new WP_Error('seoprostats_import_range', __('No final days in that range: the search engine\'s figures for the last days are not final yet.', 'seoprostats'));
         }
         $import = self::start($source, $property, $from);
         if (!$import) {
@@ -301,6 +475,8 @@ final class SEOProStats_Search_Import {
             $span[] = $day;
         }
         self::finish($import, self::DONE, $span, $rows);
+        // Pages with their queries, for a source that gives them page by page: the next run.
+        self::pairs_due($source, $class, $span);
         return array('days' => count($span), 'rows' => $rows, 'import' => $import, 'done' => true);
     }
 
@@ -324,7 +500,7 @@ final class SEOProStats_Search_Import {
         $through = isset($state['through']) ? (string) $state['through'] : '';
         $back    = isset($state['back']) ? (string) $state['back'] : '';
         $final   = isset($state['final']) ? (string) $state['final'] : '';
-        if ($through === '' || $back === '' || $final > $through) {
+        if ($through === '' || $back === '' || $final > $through || !empty($state['pairs_from'])) {
             return true;
         }
         $today = $class::today();
@@ -353,7 +529,7 @@ final class SEOProStats_Search_Import {
         }
         $property = isset($conn['settings']['property']) ? (string) $conn['settings']['property'] : '';
         if ($property === '') {
-            return new WP_Error('seoprostats_property_none', __('No Search Console property is chosen.', 'seoprostats'));
+            return new WP_Error('seoprostats_property_none', __('No property or site is chosen. Connect it again.', 'seoprostats'));
         }
         $key = SEOProStats_Connections::credentials($source);
         if (is_wp_error($key)) {
@@ -428,7 +604,8 @@ final class SEOProStats_Search_Import {
         $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one day's rows replaced together.
         $ok      = true;
         $written = 0;
-        foreach (self::TABLES as $kind => $name) {
+        // Only the kinds the source gives by day (Bing's pages with their queries come page by page).
+        foreach (array_intersect_key(self::TABLES, $data) as $kind => $name) {
             $table = SEOProStats_Schema::table($name);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, one day by its primary key.
             if ($wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, $engine, $day)) === false) {

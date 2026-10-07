@@ -31,6 +31,7 @@ final class SEOProStats_Connections {
     /** Sources: key => class, in includes/stats/sources/. */
     const SOURCES = array(
         'search-console' => 'SEOProStats_Source_Search_Console',
+        'bing'           => 'SEOProStats_Source_Bing',
     );
 
     /** Prefix of an encrypted value, so a later scheme can be told apart. */
@@ -79,7 +80,7 @@ final class SEOProStats_Connections {
         }
         $reset = array('error' => null, 'error_at' => null, 'properties' => count($result['properties']));
         if (!$before || (isset($before['settings']['property']) ? (string) $before['settings']['property'] : '') !== $result['settings']['property']) {
-            $reset += array('through' => null, 'back' => null, 'first' => null, 'final' => null, 'checked' => null);
+            $reset += array('through' => null, 'back' => null, 'first' => null, 'final' => null, 'checked' => null, 'pairs_from' => null, 'pairs_to' => null, 'pairs_queue' => null);
         }
         self::update_state($source, $reset);
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
@@ -162,6 +163,8 @@ final class SEOProStats_Connections {
                 'of'       => $total,
                 'complete' => $through !== '' && $back !== '' && $back <= $first,
             ),
+            // Pages whose queries are still to import (a source that gives them page by page); null: none due.
+            'pages_left'    => !empty($state['pairs_from']) ? (isset($state['pairs_queue']) && is_array($state['pairs_queue']) ? count($state['pairs_queue']) : null) : 0,
             'final_through' => isset($state['final']) ? (string) $state['final'] : '',
             'checked'       => isset($state['checked']) ? (int) $state['checked'] : 0,
             'last_run'      => isset($state['last_run']) ? (int) $state['last_run'] : 0,

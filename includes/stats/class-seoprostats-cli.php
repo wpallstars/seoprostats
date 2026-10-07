@@ -714,6 +714,15 @@ final class SEOProStats_CLI {
      * [--query=<query>]
      * : Only this search query (* for any text).
      *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools; no countries or devices).
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
      * [--range=<range>]
      * : As for stats.
      * ---
@@ -761,6 +770,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats search --range=90d --compare=prev
      *     wp seoprostats search queries --page=/pricing/
      *     wp seoprostats search pages --query="seo pro stats" --format=json
+     *     wp seoprostats search --engine=bing
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -769,17 +779,16 @@ final class SEOProStats_CLI {
         $kind   = isset($args[0]) ? (string) $args[0] : 'queries';
         $page   = isset($assoc['page']) ? (string) $assoc['page'] : '';
         $query  = isset($assoc['query']) ? (string) $assoc['query'] : '';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $req    = $this->request($assoc + array('range' => '30d'));
-        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page, $query) {
-            return SEOProStats_Search::report($req, $kind, $page, $query);
+        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page, $query, $engine) {
+            return SEOProStats_Search::report($req, $kind, $page, $query, $engine);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
         }
-        if (!$answer['connected']) {
-            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
-        }
+        $this->search_connected($answer);
         $this->range_line($answer['range']);
         if ($answer['through'] !== '') {
             /* translators: %s: a day (YYYY-MM-DD). */
@@ -818,6 +827,22 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Warn when a search report's engine is not connected (live data).
+     *
+     * @param array<string,mixed> $answer A search, opportunities or content answer.
+     */
+    private function search_connected(array $answer) {
+        if (!empty($answer['connected'])) {
+            return;
+        }
+        if (isset($answer['engine']) && $answer['engine'] === 'bing') {
+            WP_CLI::warning(__('Bing Webmaster Tools is not connected: wp seoprostats connect bing --key-file=<file>.', 'seoprostats'));
+            return;
+        }
+        WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+    }
+
+    /**
      * Search opportunities from Google Search Console's imported days:
      * striking distance (a page's query at position 4–20 that could reach
      * the top three: potential clicks), low CTR (a top-10 query with a CTR
@@ -836,6 +861,15 @@ final class SEOProStats_CLI {
      *   - striking
      *   - ctr
      *   - decay
+     * ---
+     *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools).
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
      * ---
      *
      * [--range=<range>]
@@ -891,17 +925,16 @@ final class SEOProStats_CLI {
      */
     public function opportunities($args, $assoc) {
         $kind   = isset($args[0]) ? (string) $args[0] : 'striking';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $req    = $this->request($assoc + array('range' => '30d', 'compare' => 'prev'));
-        $answer = $this->on_data($assoc, static function () use ($req, $kind) {
-            return SEOProStats_Opportunities::report($req, $kind);
+        $answer = $this->on_data($assoc, static function () use ($req, $kind, $engine) {
+            return SEOProStats_Opportunities::report($req, $kind, $engine);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
         }
-        if (!$answer['connected']) {
-            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
-        }
+        $this->search_connected($answer);
         $this->range_line($answer['range']);
         if ($answer['cut']) {
             /* translators: %d: days */
@@ -980,6 +1013,15 @@ final class SEOProStats_CLI {
      * [--goal=<id>]
      * : ID of the goal counted (wp seoprostats goals); the first when left out.
      *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools) for the search figures.
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
      * [--range=<range>]
      * : As for stats.
      * ---
@@ -1034,17 +1076,16 @@ final class SEOProStats_CLI {
     public function content($args, $assoc) {
         $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : 'clicks';
         $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $req    = $this->request($assoc + array('range' => '30d', 'compare' => 'none'));
-        $answer = $this->on_data($assoc, static function () use ($req, $sort, $goal) {
-            return SEOProStats_Content::report($req, $sort, $goal);
+        $answer = $this->on_data($assoc, static function () use ($req, $sort, $goal, $engine) {
+            return SEOProStats_Content::report($req, $sort, $goal, $engine);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
         }
-        if (!$answer['connected']) {
-            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
-        }
+        $this->search_connected($answer);
         $this->range_line($answer['range']);
         if ($answer['partial']) {
             WP_CLI::log($answer['landings_from'] === ''
@@ -1622,8 +1663,12 @@ final class SEOProStats_CLI {
      * Search Console: make a service account in Google Cloud, give it a
      * JSON key, and add its address as a user of the Search Console
      * property (Settings → Users and permissions; Restricted is enough).
-     * The key is stored encrypted; the import of the 16 months Search
-     * Console keeps starts in cron straight after.
+     *
+     * Bing Webmaster Tools: verify the site there, then copy the API key
+     * from Settings → API access.
+     *
+     * The key is stored encrypted; the import of the 16 months each keeps
+     * starts in cron straight after.
      *
      * ## OPTIONS
      *
@@ -1632,15 +1677,18 @@ final class SEOProStats_CLI {
      * ---
      * options:
      *   - search-console
+     *   - bing
      * ---
      *
      * [--key-file=<file>]
-     * : The service account's JSON key file; - reads it from standard
-     * input. Without it, the saved key is kept (to change the property).
+     * : A file with the key (Search Console: the service account's JSON
+     * key; Bing: the API key); - reads it from standard input. Without
+     * it, the saved key is kept (to change the property or site).
      *
      * [--property=<property>]
-     * : The property to import (https://example.com/ or
-     * sc-domain:example.com). Without it, the one for this site.
+     * : Search Console: the property to import (https://example.com/ or
+     * sc-domain:example.com); Bing: the site (https://example.com/).
+     * Without it, the one for this site.
      *
      * [--format=<format>]
      * : table or json.
@@ -1652,6 +1700,7 @@ final class SEOProStats_CLI {
      *
      *     wp seoprostats connect search-console --key-file=service-account.json
      *     wp seoprostats connect search-console --property=sc-domain:example.com
+     *     wp seoprostats connect bing --key-file=- < bing-api-key.txt
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -1681,7 +1730,7 @@ final class SEOProStats_CLI {
                 WP_CLI::log(sprintf(__('Service account: %s', 'seoprostats'), $data['account']));
             }
             if (is_array($data) && !empty($data['properties'])) {
-                WP_CLI::log(__('Properties it can read:', 'seoprostats'));
+                WP_CLI::log($args[0] === 'bing' ? __('Verified sites of the key:', 'seoprostats') : __('Properties it can read:', 'seoprostats'));
                 foreach ($data['properties'] as $property) {
                     WP_CLI::log('  ' . $property);
                 }
@@ -1691,8 +1740,8 @@ final class SEOProStats_CLI {
         }
         $this->connection_status($status, $assoc);
         if ($this->format($assoc) !== 'json') {
-            /* translators: %s: source name */
-            WP_CLI::success(sprintf(__('%s is connected. The import runs in cron; wp seoprostats search-console import runs it now.', 'seoprostats'), $status['name']));
+            /* translators: 1: source name, 2: source key */
+            WP_CLI::success(sprintf(__('%1$s is connected. The import runs in cron; wp seoprostats %2$s import runs it now.', 'seoprostats'), $status['name'], $args[0]));
         }
     }
 
@@ -1707,6 +1756,7 @@ final class SEOProStats_CLI {
      * ---
      * options:
      *   - search-console
+     *   - bing
      * ---
      *
      * [--delete-data]
@@ -1788,9 +1838,71 @@ final class SEOProStats_CLI {
      * @param array<string,string> $assoc Options.
      */
     public function search_console($args, $assoc) {
+        $this->imports_command('search-console', $args, $assoc);
+    }
+
+    /**
+     * Bing Webmaster Tools imports: show the status, import now, list
+     * imports, undo one, or import days again.
+     *
+     * Bing gives the site's clicks and impressions by day, and its top
+     * pages and queries by week (each week's figures are stored on its
+     * last day). A day is imported once its week is in, about a week
+     * later; on connecting, the 16 months Bing keeps. Then each page's
+     * queries, one request a page. `import` does all of it now.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : status, import, imports (the last 20), undo (one import, by --id)
+     * or reimport (--from and --to).
+     * ---
+     * options:
+     *   - status
+     *   - import
+     *   - imports
+     *   - undo
+     *   - reimport
+     * ---
+     *
+     * [--id=<id>]
+     * : The import to undo.
+     *
+     * [--from=<day>]
+     * : First day to import again (Y-m-d).
+     *
+     * [--to=<day>]
+     * : Last day to import again (Y-m-d).
+     *
+     * [--format=<format>]
+     * : table or json.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats bing status
+     *     wp seoprostats bing import
+     *     wp seoprostats bing undo --id=12
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function bing($args, $assoc) {
+        $this->imports_command('bing', $args, $assoc);
+    }
+
+    /**
+     * A source's imports subcommand.
+     *
+     * @param string               $source Source key.
+     * @param string[]             $args   Positional arguments.
+     * @param array<string,string> $assoc  Options.
+     */
+    private function imports_command($source, $args, $assoc) {
         $this->load_connections();
         $this->need_tables();
-        $source = 'search-console';
         $action = $args[0];
         if ($action === 'imports') {
             $rows = SEOProStats_Search_Import::imports($source, 20);
@@ -1807,19 +1919,21 @@ final class SEOProStats_CLI {
         }
         if ($action === 'undo') {
             if (empty($assoc['id'])) {
-                WP_CLI::error(__('Give the import with --id (wp seoprostats search-console imports lists them).', 'seoprostats'));
+                /* translators: %s: source key */
+                WP_CLI::error(sprintf(__('Give the import with --id (wp seoprostats %s imports lists them).', 'seoprostats'), $source));
             }
             $deleted = SEOProStats_Search_Import::undo((int) $assoc['id']);
             if (is_wp_error($deleted)) {
                 WP_CLI::error($deleted->get_error_message());
                 return;
             }
-            /* translators: 1: import ID, 2: number of rows */
-            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. wp seoprostats search-console reimport brings its days back.', 'seoprostats'), (int) $assoc['id'], $deleted));
+            /* translators: 1: import ID, 2: number of rows, 3: source key */
+            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. wp seoprostats %3$s reimport brings its days back.', 'seoprostats'), (int) $assoc['id'], $deleted, $source));
             return;
         }
         if (!SEOProStats_Connections::get($source)) {
-            WP_CLI::error(__('Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+            /* translators: 1: source name, 2: source key */
+            WP_CLI::error(sprintf(__('%1$s is not connected: wp seoprostats connect %2$s --key-file=<file>.', 'seoprostats'), SEOProStats_Connections::status($source)['name'], $source));
         }
         if ($action === 'reimport') {
             $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
@@ -1849,6 +1963,10 @@ final class SEOProStats_CLI {
                     /* translators: 1: days, 2: rows, 3: import ID */
                     WP_CLI::log(sprintf(__('%1$d days imported: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
                 }
+                if (!empty($result['pages'])) {
+                    /* translators: %d: pages */
+                    WP_CLI::log(sprintf(__('Search queries of %d pages imported.', 'seoprostats'), $result['pages']));
+                }
             } while (!$result['done']);
         }
         $this->connection_status(SEOProStats_Connections::status($source), $assoc);
@@ -1872,10 +1990,11 @@ final class SEOProStats_CLI {
         }
         $imported = $status['imported'];
         $rows     = array(
-            array('field' => 'account', 'value' => $status['account']),
+            array('field' => 'account', 'value' => $status['account'] !== '' ? $status['account'] : 'API key (stored encrypted)'),
             array('field' => 'property', 'value' => $status['property']),
             array('field' => 'imported', 'value' => $imported['from'] !== '' ? $imported['from'] . ' – ' . $imported['to'] : 'nothing yet'),
             array('field' => 'history', 'value' => $imported['complete'] ? 'complete' : sprintf('%d of %d days', $imported['days'], $imported['of'])),
+            array('field' => 'pages\' queries', 'value' => $status['pages_left'] === 0 ? 'in' : ($status['pages_left'] === null ? 'due' : sprintf('%d pages left', $status['pages_left']))),
             array('field' => 'final through', 'value' => $status['final_through'] !== '' ? $status['final_through'] : 'not asked yet'),
             array('field' => 'last run', 'value' => $status['last_run'] ? human_time_diff($status['last_run']) . ' ago' : 'never'),
             array('field' => 'next run', 'value' => $status['next_run'] ? 'in ' . human_time_diff($status['next_run']) : 'not scheduled'),

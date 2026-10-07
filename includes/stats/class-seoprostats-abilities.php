@@ -159,15 +159,22 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        $engine = array(
+            'type'        => 'string',
+            'enum'        => array_keys(SEOProStats_Search::ENGINES),
+            'default'     => 'google',
+            'description' => __('Search engine: google (Search Console) or bing (Bing Webmaster Tools). Bing gives pages and queries by week, stored on each week\'s last day, and no countries or devices.', 'seoprostats'),
+        );
         wp_register_ability('seoprostats/search', array(
             'label'               => __('Search rankings', 'seoprostats'),
-            'description'         => __('Google Search Console clicks, impressions, CTR and average position in a period, with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is about three days old; the period is cut there.', 'seoprostats'),
+            'description'         => __('Search engine clicks, impressions, CTR and average position in a period (Google Search Console, or Bing Webmaster Tools with engine bing), with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is some days old; the period is cut there. The answer lists the engines with data.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
                 'default'              => array(),
                 'additionalProperties' => false,
                 'properties'           => array(
+                    'engine'  => $engine,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
@@ -214,9 +221,15 @@ final class SEOProStats_Abilities {
             'output_schema'       => array(
                 'type'       => 'object',
                 'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'engines'   => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'string'),
+                    ),
                     'range'     => array('type' => 'object'),
                     'through'   => array('type' => 'string'),
                     'connected' => array('type' => 'boolean'),
+                    'grain'     => array('type' => 'string'),
                     'totals'    => array('type' => 'object'),
                     'points'    => array(
                         'type'  => 'array',
@@ -241,7 +254,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/opportunities', array(
             'label'               => __('Search opportunities', 'seoprostats'),
-            'description'         => __('Where search work pays, from Google Search Console: striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description) or decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description) or decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -254,6 +267,7 @@ final class SEOProStats_Abilities {
                         'default'     => 'striking',
                         'description' => __('striking, ctr or decay.', 'seoprostats'),
                     ),
+                    'engine'  => $engine,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
@@ -286,6 +300,7 @@ final class SEOProStats_Abilities {
             'output_schema'       => array(
                 'type'       => 'object',
                 'properties' => array(
+                    'engine'    => array('type' => 'string'),
                     'kind'      => array('type' => 'string'),
                     'range'     => array('type' => 'object'),
                     'through'   => array('type' => 'string'),
@@ -311,7 +326,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/content', array(
             'label'               => __('Content performance', 'seoprostats'),
-            'description'         => __('Which pages earn their search traffic: per page, Google Search Console clicks, impressions, CTR and position, with the visits from search that landed on the page (bounce rate, views per visit, visit duration in seconds) and how many reached a goal (conversions, conversion rate; the first goal unless one is named). A page that ranks but whose visits leave or never convert needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Final search days only.', 'seoprostats'),
+            'description'         => __('Which pages earn their search traffic: per page, Google Search Console (or Bing Webmaster Tools with engine bing) clicks, impressions, CTR and position, with the visits from search that landed on the page (bounce rate, views per visit, visit duration in seconds) and how many reached a goal (conversions, conversion rate; the first goal unless one is named). A page that ranks but whose visits leave or never convert needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Final search days only.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -328,6 +343,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'description' => __('ID of the goal counted (the answer lists the goals); the first when left out.', 'seoprostats'),
                     ),
+                    'engine'  => $engine,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
@@ -360,6 +376,7 @@ final class SEOProStats_Abilities {
             'output_schema'       => array(
                 'type'       => 'object',
                 'properties' => array(
+                    'engine'        => array('type' => 'string'),
                     'range'         => array('type' => 'object'),
                     'through'       => array('type' => 'string'),
                     'connected'     => array('type' => 'boolean'),
@@ -403,10 +420,11 @@ final class SEOProStats_Abilities {
         if (is_wp_error($req)) {
             return $req;
         }
-        $sort = isset($input['sort']) ? (string) $input['sort'] : 'clicks';
-        $goal = isset($input['goal']) ? (string) $input['goal'] : '';
-        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $sort, $goal) {
-            return SEOProStats_Content::report((array) $req, $sort, $goal);
+        $sort   = isset($input['sort']) ? (string) $input['sort'] : 'clicks';
+        $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $sort, $goal, $engine) {
+            return SEOProStats_Content::report((array) $req, $sort, $goal, $engine);
         });
     }
 
@@ -422,9 +440,10 @@ final class SEOProStats_Abilities {
         if (is_wp_error($req)) {
             return $req;
         }
-        $kind = isset($input['kind']) ? (string) $input['kind'] : 'striking';
-        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
-            return SEOProStats_Opportunities::report((array) $req, $kind);
+        $kind   = isset($input['kind']) ? (string) $input['kind'] : 'striking';
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $engine) {
+            return SEOProStats_Opportunities::report((array) $req, $kind, $engine);
         });
     }
 
@@ -442,9 +461,10 @@ final class SEOProStats_Abilities {
         }
         $kind  = isset($input['kind']) ? (string) $input['kind'] : 'queries';
         $page  = isset($input['page']) ? (string) $input['page'] : '';
-        $query = isset($input['query']) ? (string) $input['query'] : '';
-        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $page, $query) {
-            return SEOProStats_Search::report((array) $req, $kind, $page, $query);
+        $query  = isset($input['query']) ? (string) $input['query'] : '';
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $page, $query, $engine) {
+            return SEOProStats_Search::report((array) $req, $kind, $page, $query, $engine);
         });
     }
 

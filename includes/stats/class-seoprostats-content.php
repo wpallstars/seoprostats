@@ -44,10 +44,11 @@ final class SEOProStats_Content {
      *
      * @param array<string,mixed> $req  From SEOProStats_Query::request().
      * @param string              $sort One of SORTS.
-     * @param string              $goal Goal id; '' for the first goal.
+     * @param string              $goal   Goal id; '' for the first goal.
+     * @param string              $engine google or bing (SEOProStats_Search::ENGINES).
      * @return array<string,mixed>
      */
-    public static function report(array $req, $sort = 'clicks', $goal = '') {
+    public static function report(array $req, $sort = 'clicks', $goal = '', $engine = 'google') {
         require_once __DIR__ . '/class-seoprostats-search.php';
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-goals.php';
@@ -61,19 +62,21 @@ final class SEOProStats_Content {
                 $chosen = $item;
             }
         }
-        $live = SEOProStats_Schema::set() === 'live';
+        $live   = SEOProStats_Schema::set() === 'live';
+        $engine = SEOProStats_Search::engine_name($engine);
 
         $key    = array(
             'sort'     => $sort,
             'goal'     => $chosen,
+            'engine'   => $engine,
             'imports'  => SEOProStats_Search::version(),
             'landings' => SEOProStats_Rollup::landings_from(),
         );
-        $answer = SEOProStats_Query::cached('content', $req + $key, static function () use ($req, $sort, $chosen) {
-            return self::build($req, $sort, $chosen);
+        $answer = SEOProStats_Query::cached('content', $req + $key, static function () use ($req, $sort, $chosen, $engine) {
+            return self::build($req, $sort, $chosen, $engine);
         });
 
-        $answer['connected'] = !$live || SEOProStats_Search::connected();
+        $answer['connected'] = !$live || SEOProStats_Search::connected($engine);
         $answer['goals']     = array_map(static function ($item) {
             return array('id' => $item['id'], 'name' => $item['name']);
         }, $goals);
@@ -91,10 +94,11 @@ final class SEOProStats_Content {
      * @param array<string,mixed>      $req  From SEOProStats_Query::request().
      * @param string                   $sort One of SORTS.
      * @param array<string,mixed>|null $goal Goal, or null without goals.
+     * @param string                   $name Engine name.
      * @return array<string,mixed>
      */
-    private static function build(array $req, $sort, $goal) {
-        $engine  = SEOProStats_Schema::ENGINE_GOOGLE;
+    private static function build(array $req, $sort, $goal, $name) {
+        $engine  = SEOProStats_Search::ENGINES[$name];
         $bounds  = SEOProStats_Search::bounds($engine);
         $range   = SEOProStats_Query::range($req);
         $ignored = array();
@@ -105,6 +109,8 @@ final class SEOProStats_Content {
         $filled  = SEOProStats_Rollup::landings_from();
 
         $answer = array(
+            'engine'        => $name,
+            'engines'       => SEOProStats_Search::engines(),
             'range'         => SEOProStats_Query::range_out($now ? $now : $range),
             'through'       => $bounds['to'],
             'first'         => $bounds['from'],

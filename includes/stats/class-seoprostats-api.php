@@ -270,9 +270,16 @@ final class SEOProStats_API {
                 'offset' => self::args(true)['offset'],
             ),
         ));
+        $engine = array(
+            'description' => __('Search engine: google (Search Console) or bing (Bing Webmaster Tools).', 'seoprostats'),
+            'type'        => 'string',
+            'enum'        => array_keys(SEOProStats_Search::ENGINES),
+            'default'     => 'google',
+        );
         register_rest_route($ns, '/search', $read + array(
             'callback' => array(__CLASS__, 'search'),
             'args'     => $base + array(
+                'engine' => $engine,
                 'kind'   => array(
                     'description' => __('Rows: search queries, pages, countries or devices (countries and devices for the whole site only).', 'seoprostats'),
                     'type'        => 'string',
@@ -296,6 +303,7 @@ final class SEOProStats_API {
         register_rest_route($ns, '/opportunities', $read + array(
             'callback' => array(__CLASS__, 'opportunities'),
             'args'     => $base + array(
+                'engine' => $engine,
                 'kind'   => array(
                     'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position) or decay (pages losing clicks, with the likely cause).', 'seoprostats'),
                     'type'        => 'string',
@@ -309,6 +317,7 @@ final class SEOProStats_API {
         register_rest_route($ns, '/content', $read + array(
             'callback' => array(__CLASS__, 'content'),
             'args'     => $base + array(
+                'engine' => $engine,
                 'sort'   => array(
                     'description' => __('Order of the pages, most first: search clicks, visits from search, or conversions of the goal.', 'seoprostats'),
                     'type'        => 'string',
@@ -344,12 +353,12 @@ final class SEOProStats_API {
                 'callback'            => array(__CLASS__, 'connect'),
                 'args'                => array(
                     'key'      => array(
-                        'description' => __('Search Console: the service account\'s JSON key, as text; without it, the saved key is kept (to change the property).', 'seoprostats'),
+                        'description' => __('Search Console: the service account\'s JSON key, as text; Bing: the API key. Without it, the saved key is kept (to change the property or site).', 'seoprostats'),
                         'type'        => 'string',
                         'default'     => '',
                     ),
                     'property' => array(
-                        'description' => __('Search Console: the property to import (https://example.com/ or sc-domain:example.com); without it, the one for this site.', 'seoprostats'),
+                        'description' => __('Search Console: the property to import (https://example.com/ or sc-domain:example.com); Bing: the site (https://example.com/). Without it, the one for this site.', 'seoprostats'),
                         'type'        => 'string',
                         'default'     => '',
                     ),
@@ -791,11 +800,12 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function search($request) {
-        $kind  = (string) $request->get_param('kind');
-        $page  = (string) $request->get_param('page');
-        $query = (string) $request->get_param('query');
-        return self::report($request, static function ($req) use ($kind, $page, $query) {
-            return SEOProStats_Search::report($req, $kind, $page, $query);
+        $kind   = (string) $request->get_param('kind');
+        $page   = (string) $request->get_param('page');
+        $query  = (string) $request->get_param('query');
+        $engine = (string) $request->get_param('engine');
+        return self::report($request, static function ($req) use ($kind, $page, $query, $engine) {
+            return SEOProStats_Search::report($req, $kind, $page, $query, $engine);
         });
     }
 
@@ -807,9 +817,10 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function opportunities($request) {
-        $kind = (string) $request->get_param('kind');
-        return self::report($request, static function ($req) use ($kind) {
-            return SEOProStats_Opportunities::report($req, $kind);
+        $kind   = (string) $request->get_param('kind');
+        $engine = (string) $request->get_param('engine');
+        return self::report($request, static function ($req) use ($kind, $engine) {
+            return SEOProStats_Opportunities::report($req, $kind, $engine);
         });
     }
 
@@ -821,10 +832,11 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function content($request) {
-        $sort = (string) $request->get_param('sort');
-        $goal = (string) $request->get_param('goal');
-        return self::report($request, static function ($req) use ($sort, $goal) {
-            return SEOProStats_Content::report($req, $sort, $goal);
+        $sort   = (string) $request->get_param('sort');
+        $goal   = (string) $request->get_param('goal');
+        $engine = (string) $request->get_param('engine');
+        return self::report($request, static function ($req) use ($sort, $goal, $engine) {
+            return SEOProStats_Content::report($req, $sort, $goal, $engine);
         });
     }
 
