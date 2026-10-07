@@ -721,6 +721,11 @@ final class SEOProStats_API {
         $answer = SEOProStats_Shares::summary($share);
         unset($answer['id'], $answer['created'], $answer['opens'], $answer['last_opened'], $answer['revoked']);
         $answer['unlock'] = SEOProStats_Shares::grant($share, time() + HOUR_IN_SECONDS);
+        $answer['home'] = home_url('/');
+        $answer['site_name'] = get_bloginfo('name');
+        $logo = $share['branding']['logo'] ?: (int) get_theme_mod('custom_logo');
+        $answer['logo_url'] = SEOProStats_Shares::local_logo($logo) ?: SEOProStats_Shares::local_logo((int) get_option('site_icon'));
+        $answer['agency_logo_url'] = SEOProStats_Shares::local_logo($share['branding']['agency_logo']);
         return $answer;
     }
 

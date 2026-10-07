@@ -37,6 +37,62 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Manage private report links (use --user with an administrator).
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : list, create, revoke or renew.
+     *
+     * [<id>]
+     * : Share ID for revoke or renew.
+     *
+     * [--name=<name>]
+     * : Name of the new share.
+     *
+     * [--views=<json>]
+     * : JSON list of saved ViewState objects; default: Overview.
+     *
+     * [--locked-filters=<json>]
+     * : JSON list of filters enforced on every report.
+     *
+     * [--max-days=<days>]
+     * : Only the last N days; 0 means any period.
+     *
+     * [--expires=<timestamp>]
+     * : Unix expiry timestamp; 0 means no expiry.
+     *
+     * @param string[] $args Positional arguments.
+     * @param array    $assoc Options.
+     */
+    public function share($args, $assoc) {
+        if (!current_user_can('manage_options')) {
+            WP_CLI::error('Use --user with an administrator to manage shared reports.');
+        }
+        $action = $args[0] ?? 'list';
+        if ($action === 'list') {
+            $answer = array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all()));
+        } elseif ($action === 'create') {
+            $answer = SEOProStats_Shares::save(array(
+                'name' => $assoc['name'] ?? 'Shared report',
+                'views' => isset($assoc['views']) ? json_decode($assoc['views'], true) : array(array('view' => 'overview', 'range' => '30d', 'compare' => 'none')),
+                'locked_filters' => isset($assoc['locked-filters']) ? json_decode($assoc['locked-filters'], true) : array(),
+                'max_days' => $assoc['max-days'] ?? 0,
+                'expires' => $assoc['expires'] ?? 0,
+                'hide_realtime' => true, 'hide_sensitive' => true,
+            ));
+        } elseif (in_array($action, array('revoke', 'renew'), true)) {
+            $answer = SEOProStats_Shares::revoke($args[1] ?? '', $action === 'renew');
+        } else {
+            WP_CLI::error('Use list, create, revoke or renew.');
+        }
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
      * Headline metrics: visitors, visits, pageviews, views per visit,
      * bounce rate, visit duration (seconds) and events.
      *

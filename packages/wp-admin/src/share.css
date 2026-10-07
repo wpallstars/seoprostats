@@ -1,0 +1,44 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn */
+@import "./dashboard.css";
+
+.spst-share { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #fff; }
+.spst-report, .spst-share-unlock { padding: 24px; margin: auto; }
+.spst-share-unlock { max-width: 400px; }
+.spst-share .spst-report {
+    --spst-accent: var(--spst-share-accent);
+    --wp-admin-theme-color: var(--spst-share-accent);
+    --spst-background: #fff;
+    color-scheme: light;
+    background: var(--spst-background);
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+.spst-share .spst-report.is-dark {
+    color-scheme: dark;
+    --spst-text: #f0f0f1;
+    --spst-muted: #c3c4c7;
+    --spst-subtle: #c3c4c7;
+    --spst-border: #646970;
+    --spst-hover: #2c3338;
+    --spst-background: #1d2327;
+    --spst-good: #68de7c;
+    --spst-bad: #ff8085;
+}
+.spst-share-brand, .spst-share-nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
+.spst-share-brand a { display: flex; align-items: center; gap: 12px; }
+.spst-share-brand img { max-width: 160px; max-height: 64px; object-fit: contain; }
+.spst-share-brand h1 { font-size: 24px; }
+.spst-share a { color: var(--spst-accent); }
+.spst-share .components-card, .spst-share .spst-card { background: var(--spst-background); color: var(--spst-text); }
+.spst-share .components-button { color: var(--spst-accent); }
+.spst-share .components-button.is-primary { background: var(--spst-accent); color: #fff; }
+.spst-share .is-dark .components-button.is-primary { color: #1d2327; }
+.spst-share input, .spst-share select { background: var(--spst-background); color: var(--spst-text); max-width: 100%; }
+.spst-share footer { margin-top: 32px; border-top: 1px solid var(--spst-border); padding-top: 16px; }
+@media (max-width: 480px) { .spst-report { padding: 12px; } .spst-share .spst-controls .components-base-control { min-width: 0; } }
+@media print {
+    .spst-share .spst-toolbar, .spst-share .spst-share-nav, .spst-share header button, .spst-share .spst-filter-add { display: none !important; }
+    .spst-share .spst-report { --spst-text: #1d2327; --spst-muted: #50575e; --spst-background: #fff; color-scheme: light; }
+    .spst-share .spst-card { break-inside: avoid; }
+}

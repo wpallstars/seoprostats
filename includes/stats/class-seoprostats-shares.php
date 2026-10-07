@@ -174,13 +174,26 @@ final class SEOProStats_Shares {
         $out['website'] = esc_url_raw($raw['website'] ?? '', array('https', 'http'));
         foreach (array('logo', 'agency_logo') as $key) {
             $id  = (int) ($raw[$key] ?? 0);
-            $url = $id ? wp_get_attachment_image_url($id, 'medium') : '';
-            $out[$key] = $url && wp_parse_url($url, PHP_URL_HOST) === wp_parse_url(home_url(), PHP_URL_HOST) ? $id : 0;
+            $out[$key] = self::local_logo($id) ? $id : 0;
         }
         $out['accent'] = sanitize_hex_color($raw['accent'] ?? '') ?: '#2271b1';
         $out['mode']   = in_array($raw['mode'] ?? '', array('light', 'dark', 'system'), true) ? $raw['mode'] : 'system';
         $out['credit'] = !isset($raw['credit']) || (bool) $raw['credit'];
         return $out;
+    }
+
+    /**
+     * Local raster logo only, including the site's default logo/icon.
+     *
+     * @param int $id Attachment ID.
+     * @return string
+     */
+    public static function local_logo($id) {
+        if (!$id || !in_array(get_post_mime_type($id), array('image/png', 'image/jpeg', 'image/webp', 'image/gif'), true)) {
+            return '';
+        }
+        $url = wp_get_attachment_image_url($id, 'medium');
+        return $url && wp_parse_url($url, PHP_URL_HOST) === wp_parse_url(home_url(), PHP_URL_HOST) ? $url : '';
     }
 
     /**
@@ -234,6 +247,7 @@ final class SEOProStats_Shares {
         global $wpdb;
         $key = 'seoprostats_share_' . substr($share['token_hash'], 0, 24) . '_' . $kind;
         if (wp_using_ext_object_cache()) {
+            // phpcs:ignore WordPressVIPMinimum.Performance.LowExpiryCacheTime.LowCacheTime -- a security quota's fixed one-minute window, not a report cache.
             wp_cache_add($key, 0, 'seoprostats', 60);
             $count = wp_cache_incr($key, 1, 'seoprostats');
             return $count !== false && $count <= $limit;

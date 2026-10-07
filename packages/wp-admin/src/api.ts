@@ -42,8 +42,34 @@ const NAMESPACE = '/seoprostats/v1';
 
 type Args = Record<string, string | string[] | number>;
 
+/** Public-shell transport. Never sends WordPress cookies or an admin nonce. */
+export const shareAccess = { token: '', root: '', unlock: '', section: 'overview' };
+
 export function get<T>(route: string, args: Args = {}): Promise<T> {
+    if (shareAccess.token) {
+        return shareFetch<T>(`${shareAccess.section}/${route}`, 'GET', args);
+    }
 	return apiFetch<T>({ path: addQueryArgs(`${NAMESPACE}/${route}`, args) });
+}
+
+export async function shareFetch<T>(route: string, method: 'GET' | 'POST', args: Record<string, unknown> = {}): Promise<T> {
+    let url = `${shareAccess.root}share/${shareAccess.token}${route ? `/${route}` : ''}`;
+    if (method === 'GET') {
+        url = addQueryArgs(url, args);
+    }
+    const response = await fetch(url, {
+        method,
+        credentials: 'omit',
+        cache: 'no-store',
+        referrerPolicy: 'no-referrer',
+        headers: { 'Content-Type': 'application/json', 'X-Seoprostats-Unlock': shareAccess.unlock },
+        ...(method === 'POST' ? { body: JSON.stringify(args) } : {}),
+    });
+    const answer: unknown = await response.json();
+    if (!response.ok) {
+        throw answer;
+    }
+    return answer as T;
 }
 
 function send<T>(route: string, method: 'POST' | 'DELETE', data: Record<string, unknown> = {}): Promise<T> {

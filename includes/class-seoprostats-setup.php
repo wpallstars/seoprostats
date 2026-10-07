@@ -107,6 +107,8 @@ final class SEOProStats_Setup {
         });
         SEOProStats_Collection::init();
         SEOProStats_API::init();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-share-page.php';
+        SEOProStats_Share_Page::init();
         // Shops' order hooks and the ThriveCart webhook route (hooks only).
         SEOProStats_Purchases::init();
         // The change log: hooks on saving posts, products, plugins and settings only.
