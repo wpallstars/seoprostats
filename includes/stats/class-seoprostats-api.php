@@ -34,6 +34,7 @@ final class SEOProStats_API {
      * Register hooks.
      */
     public static function init() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-shares.php';
         add_filter('map_meta_cap', array(__CLASS__, 'map_meta_cap'), 10, 3);
         add_action('rest_api_init', array(__CLASS__, 'register_routes'));
     }
@@ -120,6 +121,7 @@ final class SEOProStats_API {
         self::load();
         $ns   = SEOProStats_Collection::REST_NAMESPACE;
         $base = self::args(false);
+        self::share_routes($ns);
         $read = array(
             'methods'             => WP_REST_Server::READABLE,
             'permission_callback' => array(__CLASS__, 'can_read'),
@@ -637,6 +639,166 @@ final class SEOProStats_API {
      */
     public static function can_read() {
         return current_user_can(self::CAP);
+    }
+
+    /**
+     * Separate public routes: share credentials never authorize normal routes.
+     *
+     * @param string $ns REST namespace.
+     */
+    private static function share_routes($ns) {
+        $manage = array(__CLASS__, 'can_manage');
+        register_rest_route($ns, '/shares', array(
+            array('methods' => 'GET', 'permission_callback' => $manage, 'callback' => static function () {
+                return array('shares' => array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all())));
+            }),
+            array('methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
+                return SEOProStats_Shares::save((array) $request->get_json_params());
+            }),
+        ));
+        register_rest_route($ns, '/shares/(?P<id>[a-zA-Z0-9]+)', array(
+            array('methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
+                return SEOProStats_Shares::save((array) $request->get_json_params(), $request['id']);
+            }),
+            array('methods' => 'DELETE', 'permission_callback' => $manage, 'callback' => static function ($request) {
+                return SEOProStats_Shares::revoke($request['id']);
+            }),
+        ));
+        register_rest_route($ns, '/shares/(?P<id>[a-zA-Z0-9]+)/renew', array(
+            'methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
+                return SEOProStats_Shares::revoke($request['id'], true);
+            },
+        ));
+        register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})', array(
+            'methods' => 'POST', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_open'),
+        ));
+        register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})/(?P<section>overview|goals|clicks)/(?P<report>stats|timeseries|breakdown|markers|realtime|goals|clicks)', array(
+            'methods' => 'GET', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_report'),
+        ));
+        add_filter('rest_post_dispatch', array(__CLASS__, 'share_headers'), 10, 3);
+    }
+
+    /**
+     * Sensitive answers and errors must never enter a public cache.
+     *
+     * @param WP_REST_Response $response Response.
+     * @param WP_REST_Server   $server   Server.
+     * @param WP_REST_Request  $request  Request.
+     * @return WP_REST_Response
+     */
+    public static function share_headers($response, $server, $request) {
+        unset($server);
+        if (strpos($request->get_route(), '/seoprostats/v1/share') === 0) {
+            $response->header('Cache-Control', 'private, no-store');
+            $response->header('X-Robots-Tag', 'noindex, nofollow');
+            $response->header('Referrer-Policy', 'no-referrer');
+        }
+        return $response;
+    }
+
+    /**
+     * Unlock and open; uniform failures for token, expiry and password.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return array|WP_Error
+     */
+    public static function share_open($request) {
+        $share = SEOProStats_Shares::find((string) $request['token']);
+        if (is_wp_error($share)) {
+            return $share;
+        }
+        if (!SEOProStats_Shares::quota($share, 'passwords', 5)) {
+            return SEOProStats_Shares::denied();
+        }
+        $grant = (string) $request->get_header('X-Seoprostats-Unlock');
+        if (!SEOProStats_Shares::unlocked($share, $grant) && !wp_check_password((string) $request->get_param('password'), $share['password_hash'])) {
+            return SEOProStats_Shares::denied();
+        }
+        $all = SEOProStats_Shares::all();
+        $all[$share['id']]['last_opened'] = time();
+        ++$all[$share['id']]['opens'];
+        update_option(SEOProStats_Shares::OPTION, $all, false);
+        $answer = SEOProStats_Shares::summary($share);
+        unset($answer['id'], $answer['created'], $answer['opens'], $answer['last_opened'], $answer['revoked']);
+        $answer['unlock'] = SEOProStats_Shares::grant($share, time() + HOUR_IN_SECONDS);
+        return $answer;
+    }
+
+    /**
+     * Public reports are rebuilt from safe inputs, never an admin request.
+     * Filters are ANDed, comparison periods obey the same date boundary.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function share_report($request) {
+        $share = SEOProStats_Shares::find((string) $request['token']);
+        if (is_wp_error($share) || !SEOProStats_Shares::unlocked($share, (string) $request->get_header('X-Seoprostats-Unlock'))) {
+            return SEOProStats_Shares::denied();
+        }
+        $section = (string) $request['section'];
+        $report  = (string) $request['report'];
+        if (!in_array($section, array_column($share['views'], 'view'), true) || !in_array($report, SEOProStats_Shares::REPORTS[$section], true) || !SEOProStats_Shares::quota($share, 'reads', 120)) {
+            return SEOProStats_Shares::denied();
+        }
+        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind')));
+        $filters = SEOProStats_Query::parse_filters($args['filters'] ?? array());
+        if (is_wp_error($filters)) {
+            return $filters;
+        }
+        $args['filters'] = array_merge($filters, $share['locked_filters']);
+        $args['data'] = 'live';
+        $args['limit'] = min(100, max(1, (int) ($args['limit'] ?? 10)));
+        $args['offset'] = min(1000, max(0, (int) ($args['offset'] ?? 0)));
+        $req = SEOProStats_Query::request($args);
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        if ($share['max_days']) {
+            $floor = (new DateTimeImmutable('today', wp_timezone()))->modify('-' . ($share['max_days'] - 1) . ' days')->getTimestamp();
+            $range = SEOProStats_Query::range($req);
+            $other = SEOProStats_Query::compare_range($range, $req['compare']);
+            if ($range['from'] < $floor || ($other && $other['from'] < $floor)) {
+                return SEOProStats_Shares::denied();
+            }
+        }
+        if ($report === 'realtime' && ($share['hide_realtime'] || $share['locked_filters'])) {
+            return rest_ensure_response(array('visitors' => 0));
+        }
+        if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], array('search', 'no_results', 'source', 'utm_term'), true)) {
+            return rest_ensure_response(array('dimension' => $req['dimension'], 'rows' => array(), 'total' => 0, 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
+        }
+        // The change log contains users, configuration and arbitrary note text.
+        // Do not expose it through chart markers until there is a scoped projection.
+        if ($report === 'markers') {
+            return rest_ensure_response(array('markers' => array(), 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
+        }
+        $safe = new WP_REST_Request('GET');
+        foreach ($args as $key => $value) {
+            $safe->set_param($key, $value);
+        }
+        $answer = call_user_func(array(__CLASS__, $report), $safe);
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        $answer->set_data(self::share_redact($answer->get_data()));
+        return $answer;
+    }
+
+    /**
+     * Strip editor links even when opened by a signed-in administrator.
+     *
+     * @param mixed $value Answer.
+     * @return mixed
+     */
+    private static function share_redact($value) {
+        if (!is_array($value)) {
+            return $value;
+        }
+        foreach ($value as $key => &$item) {
+            $item = $key === 'edit_url' ? null : self::share_redact($item);
+        }
+        return $value;
     }
 
     /**
