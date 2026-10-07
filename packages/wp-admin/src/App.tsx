@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react';
 import { __ } from '@wordpress/i18n';
-import { buildHash, type View, type ViewState } from '@seoprostats/core';
+import { buildHash, switchView, type View, type ViewState } from '@seoprostats/core';
 import { useDemo } from './api';
 import { useDataSet } from './data';
 import { useViewState } from './hash';
@@ -73,7 +73,7 @@ function ViewNav({ state }: { state: ViewState }) {
 			{NAV.map((view) => (
 				<a
 					key={view}
-					href={buildHash({ ...state, view })}
+					href={buildHash(switchView(state, view))}
 					className={`nav-tab${state.view === view ? ' nav-tab-active' : ''}`}
 					aria-current={state.view === view ? 'page' : undefined}
 				>

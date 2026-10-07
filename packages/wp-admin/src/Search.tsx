@@ -10,7 +10,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useState, type KeyboardEvent } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { addQueryArgs } from '@wordpress/url';
@@ -22,6 +22,7 @@ import {
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchRow,
+	type ViewState,
 } from '@seoprostats/core';
 import { errorMessage, useMarkers, useSearch } from './api';
 import { boot, locale } from './boot';
@@ -110,12 +111,16 @@ function Setup({ answer }: { answer: SearchAnswer }) {
 }
 
 export function Search({ state, update }: ViewProps) {
-	const [kind, setKind] = useState<SearchKind>('queries');
-	const [metric, setMetric] = useState<SearchMetricKey>('clicks');
-	const [page, setPage] = useState('');
-	const [query, setQuery] = useState('');
-	const [typedPage, setTypedPage] = useState('');
-	const [typedQuery, setTypedQuery] = useState('');
+	const kind: SearchKind = state.tab ?? 'queries';
+	const metric: SearchMetricKey = state.chart ?? 'clicks';
+	const page = state.page ?? '';
+	const query = state.query ?? '';
+	// The boxes are drafts until Apply; they follow the address (back button, links).
+	const [typedPage, setTypedPage] = useState(page);
+	const [typedQuery, setTypedQuery] = useState(query);
+	useEffect(() => setTypedPage(page), [page]);
+	useEffect(() => setTypedQuery(query), [query]);
+	const setKind = (tab: SearchKind) => update({ tab });
 	const id = useId();
 	// Countries and devices exist for the whole site only.
 	const kinds: SearchKind[] = page || query ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
@@ -132,20 +137,20 @@ export function Search({ state, update }: ViewProps) {
 
 	// A page chosen shows its queries; a query chosen, its pages.
 	const choose = (next: { page?: string; query?: string }) => {
+		const patch: Partial<ViewState> = {};
 		if (next.page !== undefined) {
-			setPage(next.page);
-			setTypedPage(next.page);
+			patch.page = next.page;
 			if (next.page && next.query === undefined) {
-				setKind('queries');
+				patch.tab = 'queries';
 			}
 		}
 		if (next.query !== undefined) {
-			setQuery(next.query);
-			setTypedQuery(next.query);
+			patch.query = next.query;
 			if (next.query && next.page === undefined) {
-				setKind('pages');
+				patch.tab = 'pages';
 			}
 		}
+		update(patch);
 	};
 
 	const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -248,7 +253,7 @@ export function Search({ state, update }: ViewProps) {
 							type="button"
 							className={`spst-tile${metric === key ? ' is-selected' : ''}`}
 							aria-pressed={metric === key}
-							onClick={() => setMetric(key)}
+							onClick={() => update({ chart: key })}
 						>
 							<span className="spst-tile__label">{metricName(key)}</span>
 							<span className="spst-tile__value">{totals ? value(key, totals) : '–'}</span>

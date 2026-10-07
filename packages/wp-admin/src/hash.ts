@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useMemo, useSyncExternalStore } from 'react';
-import { buildHash, parseHash, type ViewState } from '@seoprostats/core';
+import { buildHash, parseHash, switchView, type ViewState } from '@seoprostats/core';
 
 function subscribe(onChange: () => void): () => void {
 	window.addEventListener('hashchange', onChange);
@@ -21,7 +21,10 @@ export function useViewState(): [ViewState, (patch: Partial<ViewState>) => void]
 	const hash = useSyncExternalStore(subscribe, snapshot);
 	const state = useMemo(() => parseHash(hash), [hash]);
 	const update = useCallback((patch: Partial<ViewState>) => {
-		const next = buildHash({ ...parseHash(window.location.hash), ...patch });
+		const current = parseHash(window.location.hash);
+		// Another section starts from the shared values, without this one's choices.
+		const base = patch.view ? switchView(current, patch.view) : current;
+		const next = buildHash({ ...base, ...patch });
 		if (next !== window.location.hash) {
 			// A new history entry, so the back button undoes it.
 			window.location.hash = next;

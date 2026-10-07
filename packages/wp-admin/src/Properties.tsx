@@ -7,7 +7,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent } from '@seoprostats/core';
@@ -18,10 +18,12 @@ import { PeriodLine } from './Overview';
 import { Money } from './components/Money';
 import { TableScroll } from './components/TableScroll';
 
-export function Properties({ state }: ViewProps) {
-	const [key, setKey] = useState('');
-	const [event, setEvent] = useState('');
-	const [typed, setTyped] = useState('');
+export function Properties({ state, update }: ViewProps) {
+	const key = state.key ?? '';
+	const event = state.event ?? '';
+	// The box is a draft until Apply; it follows the address (back button, links).
+	const [typed, setTyped] = useState(event);
+	useEffect(() => setTyped(event), [event]);
 	const query = useProperties(state, key, event);
 	const events = useBreakdown(state, 'event', 100);
 	const list = useId();
@@ -52,7 +54,7 @@ export function Properties({ state }: ViewProps) {
 						className="spst-properties__event"
 						onSubmit={(e) => {
 							e.preventDefault();
-							setEvent(typed.trim());
+							update({ event: typed.trim() });
 						}}
 					>
 						<TextControl
@@ -77,7 +79,7 @@ export function Properties({ state }: ViewProps) {
 								variant="link"
 								onClick={() => {
 									setTyped('');
-									setEvent('');
+									update({ event: '' });
 								}}
 							>
 								{__('Any event', 'seoprostats')}
@@ -88,7 +90,7 @@ export function Properties({ state }: ViewProps) {
 				<CardBody className="spst-card__body">
 					{key && (
 						<p>
-							<Button variant="link" onClick={() => setKey('')}>
+							<Button variant="link" onClick={() => update({ key: '' })}>
 								{__('← All properties', 'seoprostats')}
 							</Button>
 						</p>
@@ -123,7 +125,7 @@ export function Properties({ state }: ViewProps) {
 												{key ? (
 													<span>{row.label}</span>
 												) : (
-													<Button variant="link" onClick={() => setKey(row.value)}>
+													<Button variant="link" onClick={() => update({ key: row.value })}>
 														{row.label}
 													</Button>
 												)}
