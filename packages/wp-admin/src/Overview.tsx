@@ -71,6 +71,7 @@ export function Overview({ state, update }: ViewProps) {
 
 			<div className="spst-grid">
 				<BreakdownCard
+					card="sources"
 					title={__('Sources', 'seoprostats')}
 					state={state}
 					update={update}
@@ -81,6 +82,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="pages"
 					title={__('Pages', 'seoprostats')}
 					state={state}
 					update={update}
@@ -92,6 +94,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="content"
 					title={__('Content', 'seoprostats')}
 					state={state}
 					update={update}
@@ -102,6 +105,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="search"
 					title={__('Site search', 'seoprostats')}
 					state={state}
 					update={update}
@@ -111,6 +115,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="locations"
 					title={__('Locations', 'seoprostats')}
 					state={state}
 					update={update}
@@ -120,6 +125,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="devices"
 					title={__('Devices', 'seoprostats')}
 					state={state}
 					update={update}
@@ -131,6 +137,7 @@ export function Overview({ state, update }: ViewProps) {
 					]}
 				/>
 				<BreakdownCard
+					card="events"
 					title={__('Events', 'seoprostats')}
 					state={state}
 					update={update}

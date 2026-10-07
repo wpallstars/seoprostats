@@ -6,10 +6,10 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useState, type KeyboardEvent } from 'react';
+import { type KeyboardEvent } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { formatNumber, formatPercent, hasFilterValue, toggleFilterValue, type Dimension, type ViewState } from '@seoprostats/core';
+import { formatNumber, formatPercent, hasFilterValue, toggleFilterValue, type Dimension, type ViewCard, type ViewState } from '@seoprostats/core';
 import { errorMessage, useBreakdown } from '../api';
 import { locale } from '../boot';
 import { dimensionLabel, metricLabel, valueLabel } from '../labels';
@@ -20,6 +20,7 @@ export interface Tab {
 }
 
 interface Props {
+	card: ViewCard;
 	title: string;
 	tabs: Tab[];
 	state: ViewState;
@@ -147,8 +148,9 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 	);
 }
 
-export function BreakdownCard({ title, tabs, state, update, wide = false }: Props) {
-	const [active, setActive] = useState<Dimension>(tabs[0]?.dimension ?? 'channel');
+export function BreakdownCard({ card, title, tabs, state, update, wide = false }: Props) {
+	const active = state.tabs?.[card] ?? tabs[0]?.dimension ?? 'channel';
+	const setActive = (dimension: Dimension) => update({ tabs: { ...state.tabs, [card]: dimension } });
 	const id = `spst-card-${tabs[0]?.dimension ?? 'x'}`;
 
 	// Tabs pattern: one tab stop; arrows, Home and End move and select.

@@ -705,9 +705,20 @@ filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
 and events seen in the last 90 days are offered as they type.
 
-The page state lives in the URL hash (`#/pages?range=30d&compare=prev&f=…`),
-so every view can be bookmarked and shared with another admin, and the
-browser's back button works.
+The view state lives in the URL hash (`#/clicks?kind=dead&page=%2Fshop%2F`):
+section, period, comparison, metric, filters, applied Clicks kind and page,
+Properties key and event, and each Overview card's tab (`tab.sources`,
+`tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`).
+Reloading, copying the address and the back button restore these choices;
+text being typed is only a draft until Apply or Enter. Switching sections
+keeps the common values and drops section-specific choices. Unknown or
+invalid values take defaults, which are omitted from the address.
+The portable `ViewState` object and pure `parseHash()` / `buildHash()` in
+`packages/core/src/state.ts` also define the format for future stored,
+read-only shared views. No user IDs, nonces or settings belong in it.
+Live/Demo remains a per-user setting outside the address; shared views will
+always use live data. Sharing tokens, access and the public screen are not
+implemented by this format.
 
 Stack, and why:
 

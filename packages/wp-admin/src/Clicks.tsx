@@ -8,7 +8,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClickTotals } from '@seoprostats/core';
@@ -110,10 +110,11 @@ function Flags({ row }: { row: ClickRow }) {
 	return flags.length ? <span className="spst-meta">{flags.join(' · ')}</span> : null;
 }
 
-export function Clicks({ state }: ViewProps) {
-	const [kind, setKind] = useState<ClickKind>('elements');
-	const [page, setPage] = useState('');
-	const [typed, setTyped] = useState('');
+export function Clicks({ state, update }: ViewProps) {
+	const kind = state.kind ?? 'elements';
+	const page = state.page ?? '';
+	const [typed, setTyped] = useState(page);
+	useEffect(() => setTyped(page), [page]);
 	const query = useClicks(state, kind, page);
 	const pages = useBreakdown(state, 'page', 100);
 	const list = useId();
@@ -145,7 +146,7 @@ export function Clicks({ state }: ViewProps) {
 						className="spst-properties__event"
 						onSubmit={(e) => {
 							e.preventDefault();
-							setPage(typed.trim());
+							update({ page: typed.trim() });
 						}}
 					>
 						<TextControl
@@ -170,7 +171,7 @@ export function Clicks({ state }: ViewProps) {
 								variant="link"
 								onClick={() => {
 									setTyped('');
-									setPage('');
+									update({ page: '' });
 								}}
 							>
 								{__('Any page', 'seoprostats')}
@@ -186,7 +187,7 @@ export function Clicks({ state }: ViewProps) {
 							type="button"
 							className={`spst-tile${kind === t.kind ? ' is-selected' : ''}`}
 							aria-pressed={kind === t.kind}
-							onClick={() => setKind(t.kind)}
+							onClick={() => update({ kind: t.kind })}
 						>
 							<span className="spst-tile__label">{t.label}</span>
 							<span className="spst-tile__value">{totals ? formatNumber(totals[t.total], locale) : '–'}</span>
