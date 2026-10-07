@@ -89,8 +89,10 @@ long-term record.
 
 ## Phase 4: search (depends on 1, 3)
 
-- [ ] Search Console connection (service account; OAuth client),
-      daily import and backfill, retention.
+- [x] Search Console connection (service account, key stored encrypted),
+      import of final days and the 16-month history, undo, retention;
+      Settings → Connections, REST and WP-CLI (GH#43).
+- [ ] Search Console through an OAuth client the owner makes.
 - [ ] Rankings, content performance, striking distance, CTR gaps, decay,
       likely causes for drops (position, demand, CTR).
 - [ ] Backlinks from verified referrers; optional provider.

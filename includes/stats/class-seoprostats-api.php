@@ -266,6 +266,61 @@ final class SEOProStats_API {
                 'offset' => self::args(true)['offset'],
             ),
         ));
+        // Outside data sources (administrators who may change the settings).
+        $settings = array(__CLASS__, 'can_change');
+        $source   = '/connections/(?P<source>[a-z0-9-]+)';
+        register_rest_route($ns, '/connections', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'connections'),
+        ));
+        register_rest_route($ns, $source, array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'permission_callback' => $settings,
+                'callback'            => array(__CLASS__, 'connection'),
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $settings,
+                'callback'            => array(__CLASS__, 'connect'),
+                'args'                => array(
+                    'key'      => array(
+                        'description' => __('Search Console: the service account\'s JSON key, as text; without it, the saved key is kept (to change the property).', 'seoprostats'),
+                        'type'        => 'string',
+                        'default'     => '',
+                    ),
+                    'property' => array(
+                        'description' => __('Search Console: the property to import (https://example.com/ or sc-domain:example.com); without it, the one for this site.', 'seoprostats'),
+                        'type'        => 'string',
+                        'default'     => '',
+                    ),
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::DELETABLE,
+                'permission_callback' => $settings,
+                'callback'            => array(__CLASS__, 'disconnect'),
+                'args'                => array(
+                    'delete_data' => array(
+                        'description' => __('Also delete the data imported from it.', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
+                ),
+            ),
+        ));
+        register_rest_route($ns, $source . '/import', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'import_now'),
+        ));
+        register_rest_route($ns, '/imports/(?P<id>\d+)', array(
+            'methods'             => WP_REST_Server::DELETABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'undo_import'),
+        ));
+
         register_rest_route($ns, '/demo', array(
             array(
                 'methods'             => WP_REST_Server::READABLE,
@@ -312,6 +367,157 @@ final class SEOProStats_API {
      */
     public static function can_manage() {
         return current_user_can('manage_options');
+    }
+
+    /**
+     * Whether the current user may change the settings (connections).
+     *
+     * @return bool
+     */
+    public static function can_change() {
+        return SEOProStats_Settings::can_change();
+    }
+
+    /**
+     * Load the connection classes.
+     */
+    private static function load_connections() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+    }
+
+    /**
+     * The source of a /connections/{source} request, or an error.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return string|WP_Error
+     */
+    private static function source($request) {
+        self::load_connections();
+        $source = (string) $request->get_param('source');
+        if (!SEOProStats_Connections::source_class($source)) {
+            return new WP_Error('seoprostats_source_unknown', __('Unknown source.', 'seoprostats'), array('status' => 404));
+        }
+        return $source;
+    }
+
+    /**
+     * GET /connections: every source's status. Never credentials.
+     *
+     * @return WP_REST_Response
+     */
+    public static function connections() {
+        self::load_connections();
+        return rest_ensure_response(array('sources' => SEOProStats_Connections::statuses()));
+    }
+
+    /**
+     * GET /connections/{source}: its status.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function connection($request) {
+        $source = self::source($request);
+        return is_wp_error($source) ? $source : rest_ensure_response(SEOProStats_Connections::status($source));
+    }
+
+    /**
+     * POST /connections/{source}: connect it, or change its property. The
+     * import starts in cron a few seconds later.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function connect($request) {
+        $source = self::source($request);
+        if (is_wp_error($source)) {
+            return $source;
+        }
+        $status = SEOProStats_Connections::connect($source, array(
+            'key'      => (string) $request->get_param('key'),
+            'property' => (string) $request->get_param('property'),
+        ));
+        return self::with_status($status, 400);
+    }
+
+    /**
+     * DELETE /connections/{source}: forget its credentials, and its data
+     * when asked.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function disconnect($request) {
+        $source = self::source($request);
+        if (is_wp_error($source)) {
+            return $source;
+        }
+        return self::with_status(SEOProStats_Connections::disconnect($source, (bool) $request->get_param('delete_data')), 400);
+    }
+
+    /**
+     * POST /connections/{source}/import: import now, for up to
+     * SEOProStats_Search_Import::BUDGET seconds; the job carries on.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function import_now($request) {
+        $source = self::source($request);
+        if (is_wp_error($source)) {
+            return $source;
+        }
+        if (!SEOProStats_Connections::get($source)) {
+            return new WP_Error('seoprostats_not_connected', __('This source is not connected.', 'seoprostats'), array('status' => 400));
+        }
+        $result = SEOProStats_Search_Import::run($source, SEOProStats_Search_Import::BUDGET, true);
+        if (is_wp_error($result)) {
+            return self::with_status($result, $result->get_error_code() === 'seoprostats_import_busy' ? 409 : 502);
+        }
+        if (!$result['done']) {
+            wp_schedule_single_event(time() + MINUTE_IN_SECONDS, SEOProStats_Search_Import::HOOK, array('more'));
+        }
+        return rest_ensure_response(array('run' => $result) + SEOProStats_Connections::status($source));
+    }
+
+    /**
+     * DELETE /imports/{id}: undo an import (delete the rows it wrote).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function undo_import($request) {
+        self::load_connections();
+        if (!SEOProStats_Schema::is_current()) {
+            return new WP_Error('seoprostats_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoprostats'), array('status' => 503));
+        }
+        $deleted = SEOProStats_Search_Import::undo((int) $request->get_param('id'));
+        if (is_wp_error($deleted)) {
+            return self::with_status($deleted, 404);
+        }
+        return rest_ensure_response(array('id' => (int) $request->get_param('id'), 'deleted' => $deleted));
+    }
+
+    /**
+     * An answer, or its error with an HTTP status.
+     *
+     * @param mixed    $answer Answer or WP_Error.
+     * @param int      $status Status for an error without one.
+     * @return WP_REST_Response|WP_Error
+     */
+    private static function with_status($answer, $status) {
+        if (!is_wp_error($answer)) {
+            return rest_ensure_response($answer);
+        }
+        $data = $answer->get_error_data();
+        $data = is_array($data) ? $data : array();
+        // Google's own status (401, 403) is not this request's.
+        if (empty($data['status']) || strpos((string) $answer->get_error_code(), 'seoprostats_google_') === 0) {
+            $data['status'] = $status;
+        }
+        $answer->add_data($data);
+        return $answer;
     }
 
     /**

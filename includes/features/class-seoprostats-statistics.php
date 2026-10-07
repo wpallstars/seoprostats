@@ -218,6 +218,16 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Clicks and form submits', 'seoprostats'),
                 'description' => __('Many rows, most useful while a page is new or changing. Never kept longer than their visits.', 'seoprostats'),
             ),
+            'retention_search'        => array(
+                'type'        => 'int',
+                'default'     => 25,
+                'min'         => 1,
+                'max'         => 120,
+                'unit'        => __('months', 'seoprostats'),
+                'parent'      => 'retention',
+                'label'       => __('Search data by page and query', 'seoprostats'),
+                'description' => __('Clicks, impressions and positions imported from a connected search engine (Settings → Connections). Search Console itself keeps 16 months; 25 allows a comparison with two years before. Daily search totals are kept.', 'seoprostats'),
+            ),
             'search_updates'          => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -432,18 +442,20 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
     }
 
     /**
-     * Months visits, events and clicks are kept; 0 keeps them forever.
+     * Months visits, events, clicks and search data by page and query are
+     * kept; 0 keeps them forever.
      *
-     * @return array{visits:int,events:int,clicks:int}
+     * @return array{visits:int,events:int,clicks:int,search:int}
      */
     public static function retention() {
         if (!SEOProStats_Settings::get('retention')) {
-            return array('visits' => 0, 'events' => 0, 'clicks' => 0);
+            return array('visits' => 0, 'events' => 0, 'clicks' => 0, 'search' => 0);
         }
         return array(
             'visits' => max(1, (int) SEOProStats_Settings::get('retention_visits')),
             'events' => max(1, (int) SEOProStats_Settings::get('retention_events')),
             'clicks' => max(1, (int) SEOProStats_Settings::get('retention_clicks')),
+            'search' => max(1, (int) SEOProStats_Settings::get('retention_search')),
         );
     }
 

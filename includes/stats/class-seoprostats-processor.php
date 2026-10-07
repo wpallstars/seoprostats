@@ -1027,11 +1027,12 @@ final class SEOProStats_Processor {
 
     /**
      * Path (with the remaining query) and the campaign tags of a URL.
+     * Imports use it too, so their pages are the same dict rows as visits'.
      *
      * @param string $url Path and query, or a full URL.
      * @return array{path:string,utm:array<string,string>,click:string}
      */
-    private static function split_url($url) {
+    public static function split_url($url) {
         $path  = (string) wp_parse_url($url, PHP_URL_PATH);
         $query = (string) wp_parse_url($url, PHP_URL_QUERY);
         $utm   = array();

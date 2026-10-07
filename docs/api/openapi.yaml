@@ -732,6 +732,218 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /connections:
+    get:
+      operationId: listConnections
+      summary: Every outside data source's status. Needs the right to change the settings; never returns credentials.
+      responses:
+        '200':
+          description: Statuses.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sources]
+                properties:
+                  sources:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connection'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /connections/{source}:
+    parameters:
+      - $ref: '#/components/parameters/source'
+    get:
+      operationId: getConnection
+      summary: One source's status.
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UnknownSource'
+    post:
+      operationId: connect
+      summary: Connect a source, or change its property or key.
+      description: |
+        Search Console: signs in with the service account's key and lists
+        the properties it can read before anything is stored. The key is
+        stored encrypted and never returned. The import starts in WP-Cron a
+        few seconds later: the 16 months Search Console keeps, newest
+        first, then each day once Search Console marks it final. Another
+        property starts the import again from the beginning.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                key:
+                  type: string
+                  description: The service account's JSON key, as text. Without it, the saved key is kept (to change the property).
+                property:
+                  type: string
+                  description: The property to import. Without it, the one for this site's address (a domain property before an address one).
+                  examples: ['sc-domain:example.com', 'https://example.com/']
+      responses:
+        '200':
+          description: Connected; its status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Connection'
+        '400':
+          description: |
+            The key cannot be read, Google refused the sign-in, or the
+            service account cannot read the property. When a property is the
+            problem, `data.properties` lists the ones it can read and
+            `data.account` is its address, to add in Search Console.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UnknownSource'
+    delete:
+      operationId: disconnect
+      summary: Disconnect a source (forget its credentials); its imported data stays unless delete_data is true.
+      parameters:
+        - name: delete_data
+          in: query
+          description: Also delete the data imported from it, and its import history.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Disconnected; its status, with the rows deleted.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Connection'
+                  - type: object
+                    required: [deleted]
+                    properties:
+                      deleted:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UnknownSource'
+
+  /connections/{source}/import:
+    parameters:
+      - $ref: '#/components/parameters/source'
+    post:
+      operationId: importNow
+      summary: Import now, for up to 20 seconds; while history remains, the job carries on in WP-Cron a minute apart.
+      responses:
+        '200':
+          description: What this run did, and the status after it.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Connection'
+                  - type: object
+                    required: [run]
+                    properties:
+                      run:
+                        type: object
+                        required: [days, rows, import, done]
+                        properties:
+                          days:
+                            type: integer
+                          rows:
+                            type: integer
+                          import:
+                            type: integer
+                            description: The imports row it wrote (0 when there was nothing new).
+                          done:
+                            type: boolean
+                            description: Every final day is in.
+        '400':
+          description: The source is not connected.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/UnknownSource'
+        '409':
+          description: Another import is running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: The source answered with an error (the message is its own); the job tries again later.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /imports/{id}:
+    delete:
+      operationId: undoImport
+      summary: Undo an import, deleting the rows it wrote.
+      description: |
+        The job does not import those days again; `wp seoprostats
+        search-console reimport --from=… --to=…` does. Undoing an import
+        already undone deletes nothing.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Undone.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, deleted]
+                properties:
+                  id:
+                    type: integer
+                  deleted:
+                    type: integer
+                    description: Rows deleted.
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: There is no import with that ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     applicationPassword:
@@ -851,6 +1063,14 @@ components:
       schema:
         type: string
         pattern: '^[a-z0-9]+$'
+    source:
+      name: source
+      in: path
+      required: true
+      description: An outside data source.
+      schema:
+        type: string
+        enum: [search-console]
 
   responses:
     BadDefinition:
@@ -892,6 +1112,12 @@ components:
             $ref: '#/components/schemas/Error'
     Forbidden:
       description: Not logged in, or without view_seoprostats.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnknownSource:
+      description: There is no such data source.
       content:
         application/json:
           schema:
@@ -1488,7 +1714,7 @@ components:
           description: Its text, or a form's name; emails and long numbers masked; '' when hidden with data-sps-mask.
         target:
           type: string
-          description: Destination; a path here, origin and path elsewhere, or mailto:/tel: without the address.
+          description: "Destination; a path here, origin and path elsewhere, or mailto:/tel: without the address."
         count:
           type: integer
         visits:
@@ -1604,6 +1830,97 @@ components:
           type: string
           enum: [live, demo]
           description: The data set the signed-in person chose to see.
+
+    Connection:
+      type: object
+      description: |
+        An outside data source's status, without credentials. Fields after
+        `connected` are there only while it is connected. Days are the
+        source's own (Search Console: Pacific time).
+      required: [source, name, connected]
+      properties:
+        source:
+          type: string
+          enum: [search-console]
+        name:
+          type: string
+        connected:
+          type: boolean
+        account:
+          type: string
+          description: The service account's address.
+        property:
+          type: string
+        connected_at:
+          type: integer
+          description: Unix time.
+        imported:
+          type: object
+          required: [from, to, days, of, complete]
+          properties:
+            from:
+              type: string
+              description: First day with data ('' when none).
+            to:
+              type: string
+              description: Last day with data.
+            days:
+              type: integer
+              description: Days the job has been through, of `of`.
+            of:
+              type: integer
+              description: Days in the history the source keeps, back to the property's first search.
+            complete:
+              type: boolean
+        final_through:
+          type: string
+          description: The newest day the source says is final ('' before the first check).
+        checked:
+          type: integer
+          description: When it was last asked for new final days (Unix time; 0 never).
+        last_run:
+          type: integer
+        next_run:
+          type: integer
+          description: When the job runs next (Unix time; 0 none).
+        error:
+          type: string
+          description: The last run's error ('' none).
+        error_at:
+          type: integer
+        imports:
+          type: array
+          description: The last five imports, newest first.
+          items:
+            $ref: '#/components/schemas/Import'
+
+    Import:
+      type: object
+      required: [id, source, status, started, finished, from, to, days, rows, error]
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+        status:
+          type: string
+          enum: [running, done, failed, undone]
+        started:
+          type: integer
+        finished:
+          type: integer
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        days:
+          type: integer
+        rows:
+          type: integer
+        error:
+          type: string
 
     Error:
       type: object

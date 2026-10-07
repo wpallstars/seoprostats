@@ -381,6 +381,67 @@ lane shows those on its first point. The lane draws each rollout as a bar
 from its start to its end (or now), and Changes links each update to its
 source.
 
+### Search Console
+
+`SEOProStats_Connections` keeps the outside data sources the owner
+connects (Settings → Connections, `POST /connections/{source}`, `wp
+seoprostats connect`), each off until connected. The first is Google
+Search Console (`SEOProStats_Source_Search_Console`), through a service
+account: the owner makes one in Google Cloud with the Search Console API
+on, gives it a JSON key and adds its address as a user of the property
+(Restricted is enough). Connecting signs in and lists the properties it
+can read before anything is stored; without a property asked for, the
+site's own is chosen (a domain property before an address one).
+
+The connection is one option, `seoprostats_connections` (autoload off):
+per source the credentials, encrypted with libsodium's secretbox (a
+random nonce; `v1:` then base64), the settings (property, service
+account address) and the job's state. The key comes from
+`SEOPROSTATS_ENCRYPTION_KEY` when `wp-config.php` defines it, else from
+the site's `AUTH_KEY` and `AUTH_SALT`, so new security keys mean
+connecting again (the status says so). Credentials are never returned by
+the REST API, WP-CLI or the screen. Sign-in is a JWT signed with the key
+(RS256, OpenSSL) for a one-hour token, kept for the request.
+
+The import job (`SEOProStats_Search_Import`, hook
+`seoprostats_search_import`) is scheduled hourly only while a source is
+connected, and never runs on a visitor page; the classes load only in
+cron, WP-CLI, the Connections tab and its routes. Each run has a
+20-second budget and one lock (option `seoprostats_search_import_lock`),
+and asks:
+
+1. **New final days**, at most every six hours and only when the newest
+   imported day is more than two days old: the last ten days by date
+   (Search Console's default, final data only), and the newest day with
+   data is the last final one. Preliminary days are never imported, so a
+   day is imported once, about three days after it ends.
+2. **History**: on the first run, one request finds the property's first
+   day with searches in the 16 months Search Console keeps; then the
+   days from the last final one back to it, newest first. While days
+   remain, another run is queued a minute later.
+
+Each day is four requests (paged at 25,000 rows): by page, query, page
+and query, and device and country, up to 5,000 pages, 5,000 queries and
+10,000 pairs, the top by clicks (`seoprostats_search_import_limits`).
+Pages are stored as the processor stores page paths (the same `dict`
+rows, so search joins visits by `path_id`); pages of other sites in a
+domain property are left out, and the addresses of one page (http and
+https, with and without www) are added together. Queries are their own
+dictionary kind (16). Positions are stored as position × impressions ×
+100, so `SUM(pos_impr) / SUM(impressions) / 100` is the weighted average
+over any days. A day's rows are replaced in one transaction, by the
+primary key `(engine, day, …)`; days are Search Console's (Pacific time).
+
+Each run that imports writes an `imports` row, and its rows carry its
+id: undoing it (`DELETE /imports/{id}`, `wp seoprostats search-console
+undo`) deletes them by its days through the primary key. The job does
+not import undone days again; `wp seoprostats search-console reimport
+--from --to` does. Changing the property starts again from the
+beginning. Disconnecting forgets the credentials and stops the job; the
+data stays unless asked to delete it too. A failed run keeps Google's
+message in the state, shown on the tab and by `doctor`, and the next run
+tries again.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also
@@ -446,13 +507,13 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
 | `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
-| `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | day × page / query / page and query / device and country | `clicks`, `impressions`, `pos_impr` (position × impressions, for weighted averages) |
+| `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Search Console above) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
 | `changes` | change to the site, a marker on the timeline (schema v6; Changes below) | `id`, `ts`, `kind` (a code in `SEOProStats_Changes::KINDS`), `path_id` (0: site-wide), `object_type` (the post type, or `coupon`, `plugin`, `theme`, `core`, `option`), `object_id`, `old`, `new` (190 characters), `meta` (JSON), `source` (1 WordPress, 2 WP-CLI, 3 API, 4 cron, 5 feed, 6 note), `user_id` |
 | `snapshots` | stored version of a page | `path_id`, `post_id`, `ts`, title, description, H1, word count, text hash, compressed text |
 | `pages` | address that shows one item (schema v5) | `path_id` (primary key), `post_id`, `post_type`, `author_id`, `term_id`, `seen` (when last checked; the latest view wins); later `title`, `launched`, `removed`, `status` |
 | `links` | backlink | source URL and host, target page, anchor, rel, first and last seen, lost, authority, how found |
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
-| `imports` | import run | source, status, rows, days covered; imported rows carry its id so it can be undone |
+| `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -471,7 +532,9 @@ and retention and `(key_id, ts, value_id)` for a key's values (schema v3);
 `pageviews` has `(search_id, ts)` for search filters, and `pages` a key
 on each of `post_type`, `author_id` and `term_id` for content filters
 (schema v5); `changes` has `ts`, `(path_id, ts)` and `(kind, ts)` (schema
-v6);
+v6); the `gsc_*` tables have `(path_id, day)` and `(query_id, day)` for
+one page's or query's search data, and `imports` `(source, status)`
+(schema v7);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →
@@ -487,7 +550,10 @@ The `seoprostats_retention` filter applies on top (0 keeps forever).
 Once a day, after the daily
 summaries are up to date, cron deletes old rows in batches of 5,000 with a
 time budget, from site-local midnight back, and never from a day that is
-not summarised. `wp seoprostats prune --dry-run` counts them.
+not summarised. Search data by page, query and pair has its own setting
+(25 months); the import job deletes older days once a day, by the
+primary key's `(engine, day)` prefix, and keeps `gsc_totals`. `wp
+seoprostats prune --dry-run` counts them.
 
 | Data | Default | Why |
 |---|---|---|
@@ -651,7 +717,10 @@ in the future meets the same length of the other period.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `changes`, `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`; planned: `pages`,
+  `changes`, `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`,
+  and for settings administrators `connections` (`GET`; `/{source}` to
+  read, connect or disconnect; `/{source}/import` to import now) and
+  `imports/{id}` (`DELETE` undoes one); planned: `pages`,
   `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
   `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
@@ -660,7 +729,10 @@ in the future meets the same length of the other period.
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
   `changes [--page=<path>] [--kind=<kinds>]`, `pages`, `search`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
-  `demo` (`make`, `status`, `remove`); reports and definitions take
+  `demo` (`make`, `status`, `remove`), `connect <source>
+  [--key-file=<file>] [--property=<property>]`, `disconnect <source>
+  [--delete-data]`, `search-console` (`status`, `import`, `imports`,
+  `undo --id`, `reimport --from --to`); reports and definitions take
   `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
@@ -739,7 +811,7 @@ Every chart has a table view for screen readers.
 
 | Integration | How | Stored in |
 |---|---|---|
-| Search Console | Service-account key (or an OAuth client the owner makes); daily job for the day three days back, 16-month backfill on connect; pages, queries and pairs by impressions | `gsc_*` |
+| Search Console | Opt-in: a service account's key, stored encrypted (an OAuth client later); hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
 | Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
 | Search engine updates | Opt-in: Google Search Status Dashboard's JSON history and the owner's other feeds, daily (Search engine updates above) | `changes` |
 | Backlinks | Referrers verified by fetching the referring page; optional provider (DataForSEO) with the owner's key | `links` |

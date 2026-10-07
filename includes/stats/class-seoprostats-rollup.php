@@ -65,11 +65,16 @@ final class SEOProStats_Rollup {
     /** Seconds after a day ends before it is summarised: engagement of its last pages arrives late. */
     const GRACE = 3600;
 
-    /** Default retention in months (0 keeps forever): visits with their pageviews; events; clicks and form submits. */
+    /**
+     * Default retention in months (0 keeps forever): visits with their
+     * pageviews; events; clicks and form submits; search data by page and
+     * query (SEOProStats_Search_Import prunes it; its totals are kept).
+     */
     const RETENTION = array(
         'visits' => 75,
         'events' => 120,
         'clicks' => 3,
+        'search' => 25,
     );
 
     /**
@@ -341,16 +346,17 @@ final class SEOProStats_Rollup {
     /**
      * Retention in months per kind of data.
      *
-     * @return array{visits:int,events:int,clicks:int}
+     * @return array{visits:int,events:int,clicks:int,search:int}
      */
     public static function retention() {
         /**
          * Filters how many months visits (with their pageviews and
-         * properties), events, and clicks and form submits are kept; 0
-         * keeps them forever. Clicks never outlast their visits. Daily
-         * summaries are always kept.
+         * properties), events, clicks and form submits, and search data
+         * by page and query are kept; 0 keeps them forever. Clicks never
+         * outlast their visits. Daily summaries and search totals are
+         * always kept.
          *
-         * @param array{visits:int,events:int,clicks:int} $months Months by kind, from Settings → Data.
+         * @param array{visits:int,events:int,clicks:int,search:int} $months Months by kind, from Settings → Data.
          */
         $months = apply_filters('seoprostats_retention', SEOProStats_Statistics::retention());
         $out    = self::RETENTION;

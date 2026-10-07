@@ -20,6 +20,8 @@ require_once __DIR__ . '/includes/stats/class-seoprostats-collection.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-demo.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-goals.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-purchases.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-connections.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-search-import.php';
 
 /**
  * Delete the plugin's tables (live and demo), collector folder, cron job,
@@ -32,6 +34,8 @@ function seoprostats_uninstall_site() {
     SEOProStats_Schema::drop();
     SEOProStats_Goals::forget();
     SEOProStats_Purchases::forget();
+    SEOProStats_Search_Import::forget();
+    SEOProStats_Connections::forget();
     SEOProStats_Collection::remove();
     delete_option('seoprostats_options');
     delete_option('seoprostats_options_lock');

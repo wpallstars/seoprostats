@@ -15,7 +15,7 @@ Privacy-friendly site statistics in WordPress: visits, pages, sources and goals,
 
 SEO Pro Stats is what wpallstars plugins are made from. It has no features of its own: it holds the parts every plugin needs, so a new plugin starts with them working.
 
-* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages) and Data (how long visits are kept, who can see the statistics).
+* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages), Data (how long visits are kept, who can see the statistics) and Connections (outside data, such as Google Search Console).
 * **A Read Me tab** that shows the plugin's README.md, banner included.
 * **Features as classes**, off by default, with settings, hooks, one-off imports from the plugins they replace and clean uninstall.
 * **Release and check scripts**: lint, smoke test, release build, preflight and Plugin Check.
@@ -61,6 +61,10 @@ Yes. The Overview lists the addresses people reached that were not found, what t
 
 Yes. It keeps a change log, recorded as changes are saved: posts and pages published, unpublished, moved, retitled and edited (words, internal links and the sites linked to), SEO titles, descriptions and robots settings from the common SEO plugins, WooCommerce prices, sales, stock and coupons, plugin, theme and WordPress updates, and settings such as search engine visibility and permalinks. The Changes section lists it, and a lane under the Overview's chart marks each change on the day it happened. Administrators add notes for what the log cannot see, such as a newsletter sent. Switched on under Settings → Data, Google's search ranking updates and search incidents show there too, with how long each rolled out, along with update posts from other feeds you add. Scripts and AI agents read it and add notes through the REST API (markers, changes, annotations), wp seoprostats changes and annotate, and on WordPress 6.9 and later the abilities seoprostats/markers and seoprostats/annotate, so traffic and sales can be set against what changed.
 
+= Can it show Google Search Console data? =
+
+Yes, once you connect it under Settings → Connections with a Google Cloud service account's JSON key (the tab lists the steps). The key is stored encrypted and never shown again. Clicks, impressions and average position for each page and search query are imported by day: the 16 months Search Console keeps on connecting, then each day once Search Console marks it final, about three days later. Imports run in the background, never while a visitor loads a page, and each can be undone. Search data by page and query is kept 25 months; daily totals are kept.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.
@@ -71,7 +75,7 @@ Ask aidevops (https://aidevops.sh): open the plugin's repository, or your site, 
 
 = Does it contact other services? =
 
-Not unless you switch on Show search engine updates under Settings → Data (off by default). Then, once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
+Not unless you switch on Show search engine updates under Settings → Data, or connect Google Search Console under Settings → Connections (both off by default). Search engine updates: once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Search Console: it signs in to Google with your service account and asks for your property's search data. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
 
 = When do versions reach WordPress.org? =
 
@@ -82,6 +86,8 @@ GitHub releases are the stable beta channel: each version comes out there first.
 **Google Search Status Dashboard** (status.search.google.com), only when Settings → Data → Show search engine updates is on: once a day the site downloads the dashboard's public list of Google Search ranking updates and incidents (https://status.search.google.com/incidents.json), to mark them on the charts. The request sends nothing about the site or its visitors: no cookies and no site address; the user agent names only the plugin and its version. Google's terms: https://policies.google.com/terms; privacy policy: https://policies.google.com/privacy.
 
 **Other feeds** you add under Settings → Data → Other feeds are downloaded the same way, once a day each, and only while the setting is on; their own terms apply.
+
+**Google Search Console API** (searchconsole.googleapis.com) and **Google's sign-in service** (oauth2.googleapis.com), only after you connect Search Console under Settings → Connections with your own service account's key: the site signs a sign-in request with the key and sends it to Google for an access token, lists the properties the service account can read, and asks for the chosen property's clicks, impressions and positions by day, page, query, device and country. This happens when you connect, when you choose Import now, and from WP-Cron (hourly, more often while the history is imported); never on visitors' pages, and nothing about the site's visitors is sent. The user agent names only the plugin and its version. Disconnecting stops it. Google's terms: https://policies.google.com/terms; privacy policy: https://policies.google.com/privacy.
 
 == Screenshots ==
 
