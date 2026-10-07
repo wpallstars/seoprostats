@@ -984,8 +984,10 @@ in the future meets the same length of the other period.
 A top-level **SEO Pro Stats** menu at position 3 (where site statistics
 usually sit) opens one admin page,
 `admin.php?page=seoprostats-dashboard#/overview`, holding the React app
-(`includes/admin/class-seoprostats-dashboard.php`). Submenus link to its
-sections. The last one is **Settings**, the starter's settings screen
+(`includes/admin/class-seoprostats-dashboard.php`) under the settings
+screen's header (`SEOProStats_Admin_Manager::render_header()`, with its
+own small stylesheet, so the app's classes keep their styles). Submenus
+link to its sections. The last one is **Settings**, the starter's settings screen
 (`admin.php?page=seoprostats`), there and not under WordPress's Settings
 because `SEOProStats_Setup::MENU_PARENT` names this menu; the old
 `options-general.php?page=seoprostats` address redirects. When SEO Pro

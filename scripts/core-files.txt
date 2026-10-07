@@ -16,9 +16,11 @@ includes/github-updater/
 admin/settings.php
 admin/data/readme.php
 admin/includes/class-admin-manager.php
+admin/includes/class-admin-page.php
 admin/includes/class-settings-manager.php
 admin/includes/class-readme-manager.php
 admin/includes/class-replaced-plugins.php
+admin/css/seoprostats-header.css
 admin/css/seoprostats-admin.css
 admin/js/seoprostats-admin.js
 

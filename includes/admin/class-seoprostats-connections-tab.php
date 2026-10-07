@@ -61,6 +61,10 @@ final class SEOProStats_Connections_Tab {
             'label'      => __('Connections', 'seoprostats'),
             'group'      => 'settings',
             'capability' => 'manage_options',
+            // Drawn with the other settings tabs, so switching to it is
+            // instant: it reads only stored statuses, and its script
+            // listens on the document.
+            'preload'    => true,
             'render'     => array(__CLASS__, 'render'),
         );
         $out = array();
@@ -77,9 +81,10 @@ final class SEOProStats_Connections_Tab {
     }
 
     /**
-     * Enqueue the tab's script on the tab only.
+     * Enqueue the tab's script when the tab is drawn on the page (shown,
+     * or ready to switch to).
      *
-     * @param string $tab Active tab.
+     * @param string $tab A tab drawn on the page.
      */
     public static function enqueue($tab) {
         if ($tab !== self::TAB) {

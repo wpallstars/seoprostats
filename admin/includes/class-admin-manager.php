@@ -2,14 +2,20 @@
 /**
  * SEO Pro Stats admin screen.
  *
- * Owns the settings screen: tab registry, page chrome and the single admin
- * script/stylesheet. Tab content is delegated to the manager classes.
+ * Owns the settings screen: tab registry, page chrome and the admin
+ * script and stylesheets. Its markup (header, navigation, panels) is in
+ * SEOProStats_Admin_Page; tab content is delegated to the manager classes.
  * Settings tabs and header links come from SEOProStats_Setup; add other tabs
  * with the `seoprostats_admin_tabs` filter.
  *
+ * The screen draws the active tab with the other tabs of its group
+ * (page_tabs()), so the script switches between them without a reload.
+ *
  * The screen is Settings → SEO Pro Stats, or Settings in the plugin's own
  * top-level menu when SEOProStats_Setup::MENU_PARENT names that menu. Build
- * its links with page_url() or tab_url(), which follow where it is.
+ * its links with page_url() or tab_url(), which follow where it is. The
+ * plugin's own screens show the same header with enqueue_header() and
+ * render_header().
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -34,9 +40,15 @@ class SEOProStats_Admin_Manager {
      */
     const HOOK = 'settings_page_' . self::PAGE;
 
-    /** Admin stylesheet and script, relative to the plugin folder. */
-    const CSS_FILE = 'admin/css/seoprostats-admin.css';
-    const JS_FILE  = 'admin/js/seoprostats-admin.js';
+    /**
+     * Admin stylesheets and script, relative to the plugin folder. The
+     * header stylesheet (colour tokens, the full-width screen and its
+     * header) is also for the plugin's own screens; the settings one
+     * depends on it.
+     */
+    const HEADER_CSS_FILE = 'admin/css/seoprostats-header.css';
+    const CSS_FILE        = 'admin/css/seoprostats-admin.css';
+    const JS_FILE         = 'admin/js/seoprostats-admin.js';
 
     /** Hook suffix WordPress gave the screen when it was registered. */
     private static $hook = '';
@@ -106,9 +118,10 @@ class SEOProStats_Admin_Manager {
     }
 
     /**
-     * Registered tabs.
+     * Registered tabs. Settings tabs and Read Me preload: they are drawn
+     * with the other tabs of their group (page_tabs()).
      *
-     * @return array<string,array{label:string,group:string,render:callable}>
+     * @return array<string,array{label:string,group:string,render:callable,preload?:bool,capability?:string}>
      */
     public static function get_tabs() {
         $tabs = array();
@@ -132,9 +145,10 @@ class SEOProStats_Admin_Manager {
                 break;
             }
             $tabs[$slug] = array(
-                'label'  => $tab['label'],
-                'group'  => 'settings',
-                'render' => function () use ($slug, $tab) {
+                'label'   => $tab['label'],
+                'group'   => 'settings',
+                'preload' => true,
+                'render'  => function () use ($slug, $tab) {
                     SEOProStats_Settings_Manager::render_tab($slug, $tab['label'], $tab['description']);
                 },
             );
@@ -142,9 +156,10 @@ class SEOProStats_Admin_Manager {
 
         $tabs += array(
             'readme' => array(
-                'label'  => __('Read Me', 'seoprostats'),
-                'group'  => 'about',
-                'render' => array('SEOProStats_Readme_Manager', 'display_tab_content'),
+                'label'   => __('Read Me', 'seoprostats'),
+                'group'   => 'about',
+                'preload' => true,
+                'render'  => array('SEOProStats_Readme_Manager', 'display_tab_content'),
             ),
         );
 
@@ -152,7 +167,10 @@ class SEOProStats_Admin_Manager {
          * Filter the admin tabs.
          *
          * @param array $tabs Tabs keyed by slug: label, group (settings|discover|about),
-         *                    render callback, optional capability.
+         *                    render callback, optional capability, optional
+         *                    preload (true: drawn with the other tabs of its
+         *                    group, so switching to it is instant; its script
+         *                    must then work while its panel is hidden).
          */
         $tabs = (array) apply_filters('seoprostats_admin_tabs', $tabs);
 
@@ -180,6 +198,27 @@ class SEOProStats_Admin_Manager {
             $tab = (string) key($tabs);
         }
         return $tab;
+    }
+
+    /**
+     * Tabs drawn on this page, the active one first: the active tab and the
+     * other tabs of its group that preload. The script switches between
+     * them without a reload; a link to any other tab loads its page. Search
+     * results are drawn alone.
+     *
+     * @return string[]
+     */
+    public static function page_tabs() {
+        $active = self::get_active_tab();
+        $tabs   = self::get_tabs();
+        $group  = isset($tabs[$active]['group']) ? (string) $tabs[$active]['group'] : '';
+        if (self::SEARCH === $active || '' === $group) {
+            return array($active);
+        }
+        $preload = array_filter($tabs, function ($tab, $slug) use ($active, $group) {
+            return (string) $slug !== $active && !empty($tab['preload']) && isset($tab['group']) && $tab['group'] === $group;
+        }, ARRAY_FILTER_USE_BOTH);
+        return array_merge(array($active), array_map('strval', array_keys($preload)));
     }
 
     /**
@@ -263,7 +302,27 @@ class SEOProStats_Admin_Manager {
     }
 
     /**
-     * Enqueue the admin stylesheet and script on our screen only.
+     * Version of an admin file: its file time, so edits bust caches, or the
+     * plugin version when that can't be read.
+     *
+     * @param string $file Path relative to the plugin folder.
+     * @return string
+     */
+    private static function asset_version($file) {
+        $time = file_exists(SEOPROSTATS_DIR . $file) ? filemtime(SEOPROSTATS_DIR . $file) : false;
+        return false === $time ? SEOPROSTATS_VERSION : (string) $time;
+    }
+
+    /**
+     * Enqueue the header's stylesheet (render_header()), for the plugin's
+     * own screens; the settings screen loads it with its own.
+     */
+    public static function enqueue_header() {
+        wp_enqueue_style('seoprostats-header', SEOPROSTATS_URL . self::HEADER_CSS_FILE, array('dashicons'), self::asset_version(self::HEADER_CSS_FILE));
+    }
+
+    /**
+     * Enqueue the admin stylesheets and script on our screen only.
      *
      * @param string $hook Current admin page hook.
      */
@@ -272,32 +331,39 @@ class SEOProStats_Admin_Manager {
             return;
         }
 
-        $tab = self::get_active_tab();
-        // File times bust caches after edits; the version is the fallback.
-        $css = file_exists(SEOPROSTATS_DIR . self::CSS_FILE) ? filemtime(SEOPROSTATS_DIR . self::CSS_FILE) : false;
-        $css = false === $css ? SEOPROSTATS_VERSION : (string) $css;
-        $js  = file_exists(SEOPROSTATS_DIR . self::JS_FILE) ? filemtime(SEOPROSTATS_DIR . self::JS_FILE) : false;
-        $js  = false === $js ? SEOPROSTATS_VERSION : (string) $js;
+        $tab       = self::get_active_tab();
+        $page_tabs = self::page_tabs();
 
-        wp_enqueue_style('seoprostats-admin', SEOPROSTATS_URL . self::CSS_FILE, array('dashicons'), $css);
+        self::enqueue_header();
+        wp_enqueue_style('seoprostats-admin', SEOPROSTATS_URL . self::CSS_FILE, array('seoprostats-header'), self::asset_version(self::CSS_FILE));
 
-        /**
-         * Filter the admin script's dependencies; enqueue what a tab needs.
-         *
-         * @param string[] $deps Script handles.
-         * @param string   $tab  Active tab.
-         */
-        $deps = array_values(array_filter(array_map('strval', (array) apply_filters('seoprostats_admin_script_deps', array('jquery', 'wp-a11y', 'wp-i18n'), $tab))));
+        $deps = array('jquery', 'wp-a11y', 'wp-i18n');
+        foreach ($page_tabs as $page_tab) {
+            /**
+             * Filter the admin script's dependencies; enqueue what a tab
+             * needs. Runs for each tab drawn on the page (page_tabs()), the
+             * active tab first.
+             *
+             * @param string[] $deps Script handles.
+             * @param string   $tab  Tab slug.
+             */
+            $deps = (array) apply_filters('seoprostats_admin_script_deps', $deps, $page_tab);
+        }
+        $deps = array_values(array_unique(array_filter(array_map('strval', $deps))));
 
-        if (self::shows_media_field($tab)) {
-            wp_enqueue_media();
+        foreach ($page_tabs as $page_tab) {
+            if (self::shows_media_field($page_tab)) {
+                wp_enqueue_media();
+                break;
+            }
         }
 
-        wp_enqueue_script('seoprostats-admin', SEOPROSTATS_URL . self::JS_FILE, $deps, $js, true);
+        wp_enqueue_script('seoprostats-admin', SEOPROSTATS_URL . self::JS_FILE, $deps, self::asset_version(self::JS_FILE), true);
         wp_set_script_translations('seoprostats-admin', 'seoprostats');
 
         /**
-         * Filter the data the admin script reads (seoprostatsAdmin).
+         * Filter the data the admin script reads (seoprostatsAdmin). Its tab
+         * follows the tab shown; tabs lists the tabs drawn on the page.
          *
          * @param array  $data Script data.
          * @param string $tab  Active tab.
@@ -306,6 +372,7 @@ class SEOProStats_Admin_Manager {
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce'   => wp_create_nonce(SEOProStats_Settings::NONCE),
             'tab'     => $tab,
+            'tabs'    => $page_tabs,
             'i18n'    => array(
                 'saving'      => __('Saving…', 'seoprostats'),
                 'saved'       => __('Saved', 'seoprostats'),
@@ -315,13 +382,18 @@ class SEOProStats_Admin_Manager {
             ),
         ), $tab));
 
-        /**
-         * Fires after the admin stylesheet and script are enqueued: enqueue
-         * the plugin's own, depending on 'seoprostats-admin'.
-         *
-         * @param string $tab Active tab.
-         */
-        do_action('seoprostats_admin_enqueue', $tab);
+        foreach ($page_tabs as $page_tab) {
+            /**
+             * Fires after the admin stylesheets and script are enqueued:
+             * enqueue the plugin's own, depending on 'seoprostats-admin'. Fires
+             * for each tab drawn on the page (page_tabs()), the active tab
+             * first; WordPress loads each handle once, but guard inline code
+             * with the tab.
+             *
+             * @param string $tab Tab slug.
+             */
+            do_action('seoprostats_admin_enqueue', $page_tab);
+        }
     }
 
     /**
@@ -352,140 +424,55 @@ class SEOProStats_Admin_Manager {
     }
 
     /**
-     * Render the page chrome and the active tab.
+     * Render the page chrome and the tabs drawn on the page (page_tabs()),
+     * each in its own panel; only the active tab's shows.
      */
     public static function render_settings_page() {
         if (!current_user_can('manage_options')) {
             return;
         }
 
-        $tabs   = self::get_tabs();
-        $active = self::get_active_tab();
-        $links  = SEOProStats_Setup::header_links();
+        $tabs      = self::get_tabs();
+        $active    = self::get_active_tab();
+        $page_tabs = self::page_tabs();
         ?>
         <div class="wrap spst-wrap">
-            <header class="spst-header">
-                <div class="spst-header__brand">
-                    <span class="spst-header__logo dashicons dashicons-star-filled" aria-hidden="true"></span>
-                    <h1 class="spst-header__title"><?php esc_html_e('SEO Pro Stats', 'seoprostats'); ?></h1>
-                    <span class="spst-badge"><?php echo esc_html('v' . SEOPROSTATS_VERSION); ?></span>
-                </div>
-                <form class="spst-search" role="search" method="get" action="<?php echo esc_url(admin_url(self::screen_file())); ?>">
-                    <input type="hidden" name="page" value="<?php echo esc_attr(self::PAGE); ?>" />
-                    <input type="hidden" name="tab" value="<?php echo esc_attr(self::SEARCH); ?>" />
-                    <label class="screen-reader-text" for="spst-search-input"><?php esc_html_e('Search features', 'seoprostats'); ?></label>
-                    <span class="spst-search__field">
-                        <span class="spst-search__icon dashicons dashicons-search" aria-hidden="true"></span>
-                        <input type="search"
-                               id="spst-search-input"
-                               class="spst-search__input"
-                               name="s"
-                               maxlength="100"
-                               value="<?php echo esc_attr(self::search_query()); ?>"
-                               placeholder="<?php esc_attr_e('Search features', 'seoprostats'); ?>" />
-                    </span>
-                    <button type="submit" class="button spst-search__button"><?php esc_html_e('Search', 'seoprostats'); ?></button>
-                </form>
-                <div class="spst-header__actions">
-                    <?php if (!empty($links['source'])) : ?>
-                        <a class="button spst-header__support" href="<?php echo esc_url($links['source']); ?>" target="_blank" rel="noopener noreferrer">
-                            <span class="dashicons dashicons-editor-code" aria-hidden="true"></span>
-                            <?php esc_html_e('Source code', 'seoprostats'); ?>
-                            <span class="screen-reader-text"><?php esc_html_e('(opens in a new tab)', 'seoprostats'); ?></span>
-                        </a>
-                    <?php elseif (!empty($links['website'])) : ?>
-                        <?php // Older {Prefix}_Setup classes link the maker's website instead. ?>
-                        <a class="button" href="<?php echo esc_url($links['website']); ?>" target="_blank" rel="noopener noreferrer">
-                            <?php esc_html_e('Visit website', 'seoprostats'); ?>
-                            <span class="screen-reader-text"><?php esc_html_e('(opens in a new tab)', 'seoprostats'); ?></span>
-                        </a>
-                    <?php endif; ?>
-                    <?php if (!empty($links['support'])) : ?>
-                        <a class="button spst-header__support" href="<?php echo esc_url($links['support']); ?>" target="_blank" rel="noopener noreferrer">
-                            <span class="dashicons dashicons-sos" aria-hidden="true"></span>
-                            <?php esc_html_e('Support', 'seoprostats'); ?>
-                            <span class="screen-reader-text"><?php esc_html_e('(opens in a new tab)', 'seoprostats'); ?></span>
-                        </a>
-                    <?php endif; ?>
-                    <?php if (!empty($links['donate'])) : ?>
-                        <a class="button spst-header__support spst-header__donate" href="<?php echo esc_url($links['donate']); ?>" target="_blank" rel="noopener noreferrer">
-                            <span class="dashicons dashicons-coffee" aria-hidden="true"></span>
-                            <?php esc_html_e('Buy me a coffee', 'seoprostats'); ?>
-                            <span class="screen-reader-text"><?php esc_html_e('(opens in a new tab)', 'seoprostats'); ?></span>
-                        </a>
-                    <?php endif; ?>
-                </div>
-            </header>
+            <?php SEOProStats_Admin_Page::header(); ?>
 
-            <?php self::render_nav($tabs, $active); ?>
+            <?php SEOProStats_Admin_Page::nav($tabs, $active, $page_tabs); ?>
 
             <?php // Core moves admin notices after this marker instead of into the header. ?>
             <hr class="wp-header-end" />
 
             <?php settings_errors(); ?>
 
-            <?php // Not <main>: core's #wpbody already carries role="main". ?>
-            <div class="spst-main spst-tab-<?php echo esc_attr($active); ?>" id="spst-tab-<?php echo esc_attr($active); ?>">
-                <?php
-                if (self::SEARCH === $active) {
-                    SEOProStats_Settings_Manager::render_search(self::search_query(), $tabs);
-                } elseif (isset($tabs[$active]['render']) && is_callable($tabs[$active]['render'])) {
-                    call_user_func($tabs[$active]['render']);
-                }
-                ?>
-            </div>
-        </div>
-        <?php
-    }
-
-    /**
-     * Render the tab navigation: one labelled group of links per section
-     * that has tabs.
-     *
-     * @param array  $tabs   Tabs (get_tabs()).
-     * @param string $active Active tab slug.
-     */
-    private static function render_nav(array $tabs, $active) {
-        $groups = array(
-            'settings' => __('Settings', 'seoprostats'),
-            'discover' => __('Discover', 'seoprostats'),
-            'about'    => __('About', 'seoprostats'),
-        );
-        ?>
-        <nav class="spst-nav" aria-label="<?php esc_attr_e('SEO Pro Stats sections', 'seoprostats'); ?>">
             <?php
-            foreach ($groups as $group => $group_label) {
-                $group_tabs = array_filter($tabs, function ($tab) use ($group) {
-                    return isset($tab['group']) && $tab['group'] === $group;
-                });
-                if ($group_tabs) {
-                    self::render_nav_group($group_label, $group_tabs, $active);
+            if (self::SEARCH === $active) {
+                SEOProStats_Admin_Page::panel($active, function () use ($tabs) {
+                    SEOProStats_Settings_Manager::render_search(self::search_query(), $tabs);
+                }, true);
+            } else {
+                foreach ($page_tabs as $slug) {
+                    if (isset($tabs[$slug]['render']) && is_callable($tabs[$slug]['render'])) {
+                        SEOProStats_Admin_Page::panel($slug, $tabs[$slug]['render'], $slug === $active);
+                    }
                 }
             }
             ?>
-        </nav>
+        </div>
         <?php
     }
 
     /**
-     * Render one navigation group. A group of links, not form controls, so
-     * role="group" with a label rather than <fieldset>.
-     *
-     * @param string $label  Group label.
-     * @param array  $tabs   The group's tabs.
-     * @param string $active Active tab slug.
+     * Render the screen's header: the plugin's name and version, the feature
+     * search (for people who can open the settings screen) and the links
+     * SEOProStats_Setup::header_links() gives. The plugin's own screens can show
+     * it too: enqueue_header() on their admin_enqueue_scripts, then print
+     * it first in `<div class="wrap spst-wrap">`, followed by
+     * `<hr class="wp-header-end">` so admin notices go below it, and their
+     * content in `<div class="spst-main">`.
      */
-    private static function render_nav_group($label, array $tabs, $active) {
-        ?>
-        <div class="spst-nav__group" role="group" aria-label="<?php echo esc_attr($label); ?>">
-            <?php foreach ($tabs as $slug => $tab) : ?>
-                <a href="<?php echo esc_url(self::tab_url($slug)); ?>"
-                   class="spst-nav__tab<?php echo $slug === $active ? ' is-active' : ''; ?>"
-                   <?php echo $slug === $active ? 'aria-current="page"' : ''; ?>>
-                    <?php echo esc_html($tab['label']); ?>
-                </a>
-            <?php endforeach; ?>
-        </div>
-        <?php
+    public static function render_header() {
+        SEOProStats_Admin_Page::header();
     }
 }

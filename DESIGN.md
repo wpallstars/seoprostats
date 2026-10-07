@@ -150,6 +150,10 @@ the report, locked-filter description and branding.
 - **Error (`#b32d2e`)**: a change for the worse, destructive actions (`--spst-bad`).
 - **Outline (`#dcdcde`)**: borders and dividers (`--spst-border`).
 
+### Header
+
+The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). The statistics sections' tabs sit under it, as the settings screen's do. Settings tabs in one group switch at once, without a page load.
+
 ### Markers
 
 Each group of the change log has a colour (`--spst-mark-{group}`), used for the dots of the chart's markers lane and of the Changes section's rows. A marker shows up to three group dots and, when it holds more than one change, their count; the colour is never the only sign, as each marker's name and tooltip list its changes. Markers never overlap: ones closer than 18 px, or whose pills would touch (as on a phone), merge into one. Choosing a marker opens its changes in a modal (the Changes table, times only when they share one day), closed with Close or Escape, with **Open in Changes** for the same days and page.
