@@ -354,7 +354,7 @@ final class SEOProStats_API {
                 'offset' => self::args(true)['offset'],
             ),
         ));
-        self::experiment_routes($ns, $read, $manage, $data);
+        self::experiment_routes($read, $manage, $data);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
@@ -453,12 +453,12 @@ final class SEOProStats_API {
      * Register the experiment routes: read with view_seoprostats; add,
      * decide and delete with manage_options.
      *
-     * @param string                $ns     Namespace.
      * @param array<string,mixed>   $read   Read route base.
      * @param callable              $manage Write permission callback.
      * @param array<string,mixed>   $data   The data argument.
      */
-    private static function experiment_routes($ns, array $read, $manage, array $data) {
+    private static function experiment_routes(array $read, $manage, array $data) {
+        $ns = SEOProStats_Collection::REST_NAMESPACE;
         register_rest_route($ns, '/experiments', array(
             $read + array(
                 'callback' => array(__CLASS__, 'experiments'),

@@ -96,7 +96,7 @@ final class SEOProStats_Experiments {
     const MAX_CHANGES     = 5000;
     const MAX_CONFOUNDERS = 20;
 
-    /** @var array<int,string> Newest day with search data by engine code, per request. */
+    /** @var array<string,string> Newest day with search data by data set and engine code, per request. */
     private static $through = array();
 
     // ------------------------------------------------------------------
@@ -990,9 +990,10 @@ final class SEOProStats_Experiments {
             /* translators: %s: the measure, such as Clicks */
             return sprintf(__('%s could not be compared: there is no data before the change.', 'seoprostats'), $label);
         }
+        // Position: places climbed (+ is a better place), as the dashboard shows it.
         $size = (int) $metric === 4
-            /* translators: %s: places, such as +1.5 (lower is better) */
-            ? sprintf(__('%s places (lower is better)', 'seoprostats'), sprintf('%+.1f', $effect))
+            /* translators: %s: places climbed, such as +1.5 */
+            ? sprintf(__('%s places (+ is a better place)', 'seoprostats'), sprintf('%+.1f', 0 - $effect))
             : sprintf('%+.1f%%', $effect * 100);
         $note = $enough ? '' : ' ' . __('There is too little data to judge.', 'seoprostats');
         if (!$compared) {
@@ -1098,7 +1099,7 @@ final class SEOProStats_Experiments {
         if ($direction === false) {
             return self::error('seoprostats_experiment_direction', __('The direction is up or down (for position, up means a better place).', 'seoprostats'));
         }
-        $given = isset($input['threshold']) && $input['threshold'] !== '' && $input['threshold'] !== null ? (float) $input['threshold'] : null;
+        $given = isset($input['threshold']) && $input['threshold'] !== '' ? (float) $input['threshold'] : null;
         if ($given !== null && $given < 0) {
             return self::error('seoprostats_experiment_threshold', __('The threshold is a percent (or places, for position) of 0 or more.', 'seoprostats'));
         }

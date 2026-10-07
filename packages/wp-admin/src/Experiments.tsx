@@ -73,6 +73,17 @@ export function resultLabel(result: ExperimentResult): string {
 	return names[result];
 }
 
+/** The data counted for "enough", in words. */
+function unitText(unit: string): string {
+	const texts: Record<string, string> = {
+		clicks: __('clicks', 'seoprostats'),
+		impressions: __('impressions', 'seoprostats'),
+		visits: __('visits', 'seoprostats'),
+		conversions: __('conversions', 'seoprostats'),
+	};
+	return texts[unit] ?? unit;
+}
+
 function reasonText(reason: ExperimentReason): string {
 	const texts: Record<ExperimentReason, string> = {
 		no_group: __('too few unchanged pages to compare with, so the change is only associated with the change made', 'seoprostats'),
@@ -395,7 +406,7 @@ function Detail({ item, onError, onDeleted }: { item: Experiment; onError: (mess
 								{sprintf(
 									/* translators: 1: the data counted, e.g. "clicks", 2: before, 3: after, 4: needed in each window. */
 									__('Data on its pages: %2$s %1$s before, %3$s after (%4$s needed in each).', 'seoprostats'),
-									m.enough.unit,
+									unitText(m.enough.unit),
 									formatNumber(m.enough.before, locale, false),
 									formatNumber(m.enough.after, locale, false),
 									formatNumber(m.enough.needed, locale, false)
