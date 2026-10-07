@@ -41,6 +41,7 @@ function seoprostats_uninstall_site() {
     delete_option('seoprostats_options_lock');
     delete_option('seoprostats_db_version');
     delete_option('seoprostats_page_cache');
+    delete_option('seoprostats_shares');
     wp_clear_scheduled_hook('seoprostats_page_cache_purge');
 
     $patterns = array('_transient_seoprostats_', '_transient_timeout_seoprostats_');

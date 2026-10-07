@@ -148,6 +148,7 @@ final class SEOProStats_Dashboard {
             // A slug that is an address, with no callback, is a plain link.
             add_submenu_page(self::SLUG, $title, $title, SEOProStats_API::CAP, 'admin.php?page=' . self::SLUG . '#/' . $view);
         }
+        add_submenu_page(self::SLUG, __('Shared reports', 'seoprostats'), __('Shared reports', 'seoprostats'), 'manage_options', 'admin.php?page=' . self::SLUG . '#/shares');
     }
 
     /**
@@ -216,9 +217,10 @@ final class SEOProStats_Dashboard {
      * Enqueue a built entry (assets/build/{name}.js and .css) with the
      * dependencies and version its .asset.php file lists.
      *
-     * @param string $name Entry name.
+     * @param string     $name Entry name.
+     * @param array|null $boot Public boot data, or null for the admin.
      */
-    private static function enqueue_entry($name) {
+    public static function enqueue_entry($name, $boot = null) {
         $asset_file = SEOPROSTATS_DIR . 'assets/build/' . $name . '.asset.php';
         if (!is_readable($asset_file)) {
             return;
@@ -239,7 +241,7 @@ final class SEOProStats_Dashboard {
         if ($shim) {
             wp_add_inline_script($handle, self::jsx_runtime_shim(), 'before');
         }
-        wp_add_inline_script($handle, 'window.seoprostatsBoot = ' . wp_json_encode(self::boot($name)) . ';', 'before');
+        wp_add_inline_script($handle, 'window.seoprostatsBoot = ' . wp_json_encode($boot === null ? self::boot($name) : $boot) . ';', 'before');
         wp_set_script_translations($handle, 'seoprostats');
 
         $style = 'assets/build/' . $name . (is_rtl() ? '-rtl' : '') . '.css';

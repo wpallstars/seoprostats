@@ -156,19 +156,28 @@ export function MainChart<K extends string>({ series, metric, label, format, hei
 		if (!el) {
 			return;
 		}
-		const accent = themeColor(el);
-		const full: TimeseriesConfig = {
-			...config,
-			series: config.series.map((s, i) => ({ ...s, color: i === 0 ? accent : '#8c8f94' })),
-			axisColor: '#50575e',
-			gridColor: 'rgba(0, 0, 0, 0.06)',
-			onDraw: layoutLane,
+		const update = () => {
+			const accent = themeColor(el);
+			const styles = getComputedStyle(el);
+			const full: TimeseriesConfig = {
+				...config,
+				series: config.series.map((s, i) => ({ ...s, color: i === 0 ? accent : '#8c8f94' })),
+				axisColor: styles.getPropertyValue('--spst-muted').trim() || '#50575e',
+				gridColor: styles.getPropertyValue('--spst-grid').trim() || 'rgba(0, 0, 0, 0.06)',
+				onDraw: layoutLane,
+			};
+			if (chart.current) {
+				chart.current.update(full);
+			} else {
+				chart.current = createTimeseries(el, full);
+			}
 		};
-		if (chart.current) {
-			chart.current.update(full);
-		} else {
-			chart.current = createTimeseries(el, full);
-		}
+		update();
+		// The standalone report changes its palette without changing data.
+		const report = el.closest('.spst-report');
+		const observer = report ? new MutationObserver(update) : null;
+		observer?.observe(report!, { attributes: true, attributeFilter: ['class'] });
+		return () => observer?.disconnect();
 		// layoutLane reads refs only.
 	}, [config]);
 

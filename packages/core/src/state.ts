@@ -35,6 +35,12 @@ import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
 export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'] as const;
 export type View = (typeof VIEWS)[number];
+export const SHARE_VIEWS: readonly View[] = ['overview', 'goals', 'clicks'];
+
+/** Normalize saved public views with exactly the address reader's rules. */
+export function shareView(state: ViewState): ViewState | null {
+    return SHARE_VIEWS.includes(state.view) ? parseHash(buildHash(state)) : null;
+}
 
 /** Overview's cards (stable names) and their tabs; the first tab is the default. */
 export const VIEW_TABS = {

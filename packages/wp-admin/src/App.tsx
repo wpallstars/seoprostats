@@ -7,7 +7,8 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Button, Notice } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { buildHash, switchView, type View, type ViewState } from '@seoprostats/core';
 import { useDemo } from './api';
@@ -24,6 +25,8 @@ import { Funnels } from './Funnels';
 import { Properties } from './Properties';
 import { Clicks } from './Clicks';
 import { Changes } from './Changes';
+import { boot } from './boot';
+import { ShareEditor, Shares } from './Shares';
 
 export interface ViewProps {
 	state: ViewState;
@@ -86,12 +89,23 @@ function ViewNav({ state }: { state: ViewState }) {
 
 export function App() {
 	const [state, update] = useViewState();
+	const [sharing, setSharing] = useState(false);
+	const [link, setLink] = useState('');
+	const [shares, setShares] = useState(window.location.hash.startsWith('#/shares'));
+	useEffect(() => {
+		const change = () => setShares(window.location.hash.startsWith('#/shares'));
+		window.addEventListener('hashchange', change);
+		return () => window.removeEventListener('hashchange', change);
+	}, []);
 	const data = useDataSet();
 	const demo = useDemo();
 	const waiting = data === 'demo' && demo.data.status !== 'ready';
 	useMenuCurrent(state.view);
 
 	const props: ViewProps = { state, update };
+	if (shares && boot.canManage) {
+		return <div className="spst-app"><a href="#/overview">{__('Back to reports', 'seoprostats')}</a><Shares state={state} /></div>;
+	}
 	let section = <Overview {...props} />;
 	if (state.view === 'search') {
 		section = <Search {...props} />;
@@ -109,10 +123,13 @@ export function App() {
 
 	return (
 		<div className="spst-app">
+			{sharing && <ShareEditor state={state} close={() => setSharing(false)} saved={(share) => setLink(share.url ?? '')} />}
+			{link && <Notice status="success" onRemove={() => setLink('')}><p>{__('Copy this private link now; it is shown only once.', 'seoprostats')}</p><input aria-label="Private link" readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></Notice>}
 			<ViewNav state={state} />
 			<div className="spst-toolbar">
 				{!waiting && <Controls state={state} update={update} />}
 				<div className="spst-toolbar__end">
+					{boot.canManage && data === 'live' && ['overview', 'goals', 'clicks'].includes(state.view) && <Button variant="secondary" onClick={() => setSharing(true)}>{__('Share', 'seoprostats')}</Button>}
 					{!waiting && <Realtime />}
 					<DemoSwitch />
 				</div>
