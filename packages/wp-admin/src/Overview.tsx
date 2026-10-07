@@ -17,7 +17,8 @@ import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
-import type { Marker } from '@seoprostats/core';
+import { metricLabel } from './labels';
+import { METRICS, type Marker } from '@seoprostats/core';
 
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
@@ -52,6 +53,8 @@ export function Overview({ state, update }: ViewProps) {
 						<MainChart
 							series={series.data}
 							metric={state.metric}
+							label={metricLabel(state.metric)}
+							format={METRICS[state.metric].format}
 							markers={markers.data?.markers ?? NO_MARKERS}
 							onMarker={() => update({ view: 'changes' })}
 						/>

@@ -596,7 +596,15 @@ clicks (some dead, some on affiliate links) and form submits, and changes
 for the markers (posts published and edited, a price drop and a sale,
 stock running out, plugin and WordPress updates, a theme switch, and
 made-up core and spam updates with their rollouts;
-`SEOProStats_Demo::CHANGES`). Making it is done in slices of up to ten seconds per
+`SEOProStats_Demo::CHANGES`), and Search Console days in the `gsc_*`
+tables, written as an import writes them, up to three days ago (final
+days only): made-up queries for its pages (`SEARCH_QUERIES`), some on two
+pages, whose impressions follow the traffic and whose positions climb
+over the year, clicks that follow the position, and the site's totals by
+device and country, with more impressions than the listed queries, as
+Search Console leaves out rare ones. The same day always gets the same
+numbers; demo data made before search data gets them on its next top-up.
+Making it is done in slices of up to ten seconds per
 request (`POST /demo`, which the screen repeats) or in one go
 (`wp seoprostats demo make`); an option lock keeps two requests from
 making the same visits. While someone looks at it, demo data is topped
@@ -700,6 +708,27 @@ cached administrator answers never leak links to another viewer. Future
 shared read-only views must omit `edit_url`. All lookups run in reporting
 requests, never on visitor pages. Unknown demo paths have no editor link.
 
+Search (`SEOProStats_Search`) reads only the imported Search Console days
+(`gsc_*`, engine 1 for Google), never the visit tables. The range's days
+are cut at the newest day with search data (`through`, about three days
+ago, as only final days are imported), and the comparison takes the same
+number of days, so days not imported yet never look like a drop. Totals
+and the points (daily, monthly past 120 days) come from `gsc_totals` for
+the site, `gsc_pages` by `path_day` for a page or pattern, `gsc_queries`
+by `query_day` for a query, and `gsc_pairs` for both; each read names
+its key (`FORCE INDEX`, the primary key without a page or query), so a
+year over most of a table still reads only its days. Rows: queries
+(`gsc_queries`, or pairs by `path_day` for a page), pages (`gsc_pages`,
+or pairs by `query_day` for a query), countries and devices (`gsc_totals`,
+the site only), ordered by clicks, each with clicks, impressions, CTR,
+the weighted position and its share of clicks, and with a comparison the
+rows shown get their figures then and the change. Position changes are
+in places (now − then; lower is better). Page filters narrow it like the
+page box; other filters select visits, which search data has not, so the
+answer names them in `ignored`. The cache key adds the newest import and
+the last one finished or undone, so new days show at once. Pages rows
+and an exact page get the same addresses and editor links as Clicks.
+
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
 yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
 months, last year, all time, custom; comparison with the previous period
@@ -717,17 +746,18 @@ in the future meets the same length of the other period.
   `goals` and `funnels` answer reports on GET and add, change and delete
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
-  `changes`, `goals`, `funnels`, `properties`, `clicks`, `demo`, `view`,
-  and for settings administrators `connections` (`GET`; `/{source}` to
+  `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`, `demo`,
+  `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
-  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `search`, `opportunities`,
+  `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`, `opportunities`,
   `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
-  `changes [--page=<path>] [--kind=<kinds>]`, `pages`, `search`,
+  `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
+  [--page=<path>] [--query=<query>]`, `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -736,7 +766,8 @@ in the future meets the same length of the other period.
   `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
-  clients reach them through the WordPress MCP adapter.
+  clients reach them through the WordPress MCP adapter. So far
+  `seoprostats/markers`, `seoprostats/annotate` and `seoprostats/search`.
 
 ## Dashboard app
 
@@ -779,10 +810,16 @@ Content (authors, categories, post types); Site search (searches, no
 results); Locations; Devices (devices, browsers, systems, logged in);
 Events.
 
-Built so far: Overview, Goals, Funnels, Properties and Clicks, as WordPress tabs
+Built so far: Overview, Search (Rankings), Goals, Funnels, Properties,
+Clicks and Changes, as WordPress tabs
 at the top of the screen and as submenu items (links to the hash, marked
 current by the app). The period, comparison, Live/Demo switch and filters
-are shared by every section. Choosing a breakdown row, goal or funnel step
+are shared by every section. Search shows clicks, impressions, CTR and
+average position as tiles that pick the chart's metric (the Overview's
+chart, with the markers lane), then queries, pages, countries and
+devices; choosing a page shows its queries and choosing a query its
+pages. Before Search Console is connected it links to Settings →
+Connections. Choosing a breakdown row, goal or funnel step
 filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
 and events seen in the last 90 days are offered as they type.

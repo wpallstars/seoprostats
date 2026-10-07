@@ -8,8 +8,9 @@
  * the same code and queries as live ones. Traffic grows over the period,
  * with weekends, seasons, the odd spike, campaigns, paid visits, AI
  * answers, events with properties, purchases with revenue, and (for the
- * last three months, as kept by default) clicks and form submits, and
- * changes for the markers (SEOProStats_Changes). While it
+ * last three months, as kept by default) clicks and form submits,
+ * changes for the markers (SEOProStats_Changes), and Search Console days
+ * (the gsc_* tables, final days only) for the search report. While it
  * is shown, demo data is topped up to the present, so today and realtime
  * have visits too. Design: docs/architecture.md → Demo data.
  *
@@ -193,6 +194,42 @@ final class SEOProStats_Demo {
         'import from csv' => array(1, 0),
         'dark mode'       => array(1, 0),
     );
+
+    /**
+     * Search queries the demo site shows for (Search → Rankings): query =>
+     * [page, impressions a day at the end of the period, position then,
+     * places it has climbed over a year, and optionally a second page that
+     * gets a fifth of the impressions, two places lower].
+     */
+    const SEARCH_QUERIES = array(
+        'core web vitals'                  => array('/blog/core-web-vitals-explained/', 420, 7.8, 6, '/blog/speed-up-wordpress/'),
+        'what are core web vitals'         => array('/blog/core-web-vitals-explained/', 160, 4.2, 3),
+        'inp vs fid'                       => array('/blog/core-web-vitals-explained/', 70, 2.6, 1),
+        'how to read search rankings'      => array('/blog/how-to-read-search-rankings/', 110, 2.1, 2),
+        'average position search console'  => array('/blog/how-to-read-search-rankings/', 240, 5.4, 4),
+        'why did my rankings drop'         => array('/blog/what-changed-after-an-update/', 300, 9.6, 5, '/blog/how-to-read-search-rankings/'),
+        'google core update traffic drop'  => array('/blog/what-changed-after-an-update/', 190, 12.4, 2),
+        'privacy friendly analytics'       => array('/blog/privacy-friendly-analytics/', 260, 6.3, 4, '/'),
+        'cookieless analytics wordpress'   => array('/blog/privacy-friendly-analytics/', 130, 3.9, 3),
+        'gdpr analytics without consent'   => array('/blog/privacy-friendly-analytics/', 90, 11.2, 1),
+        'speed up wordpress'               => array('/blog/speed-up-wordpress/', 520, 14.5, 7),
+        'wordpress slow admin'             => array('/blog/speed-up-wordpress/', 140, 8.1, 2),
+        'reduce ttfb wordpress'            => array('/blog/speed-up-wordpress/', 60, 6.7, 1),
+        'seo pro stats'                    => array('/', 85, 1.1, 0, '/pricing/'),
+        'seo pro stats pricing'            => array('/pricing/', 20, 1.3, 0),
+        'wordpress analytics plugin'       => array('/', 380, 16.8, 9, '/features/'),
+        'site statistics plugin'           => array('/features/', 150, 9.4, 4),
+        'search console in wordpress'      => array('/features/', 110, 7.2, 3, '/docs/getting-started/'),
+        'analytics with rankings and traffic' => array('/features/', 45, 4.6, 2),
+        'seo pro stats docs'               => array('/docs/', 12, 1.0, 0),
+        'connect search console service account' => array('/docs/getting-started/', 55, 3.3, 2),
+        'seo pro stats refund'             => array('/docs/faq/', 8, 1.4, 0),
+        'analytics plugin licence'         => array('/shop/pro-licence/', 25, 8.8, 1),
+    );
+
+    /** Search Console countries (alpha-3) and devices of the demo's searches: weight. */
+    const SEARCH_COUNTRIES = array('usa' => 36, 'gbr' => 17, 'ind' => 9, 'deu' => 8, 'can' => 6, 'aus' => 5, 'fra' => 5, 'nld' => 3, 'esp' => 3, 'bra' => 3, 'jpn' => 2, 'pol' => 2, 'ita' => 1);
+    const SEARCH_DEVICES   = array(1 => 52, 2 => 44, 3 => 4);
 
     /** Browsers and devices: weight, user agent, screen width. */
     const DEVICES = array(
@@ -618,6 +655,9 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
         }
         $more = $upto < $now;
+        if (!$more && !self::search_days($start, $budget, $state)) {
+            $more = true;
+        }
         // The summaries' own budget is longer: end it with this one.
         $rollup_start = $start - max(0, SEOProStats_Rollup::BUDGET - $budget);
         while (!$more && SEOProStats_Rollup::due() !== null) {
@@ -632,6 +672,162 @@ final class SEOProStats_Demo {
         }
         // New data: cached answers for the demo data go.
         update_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array('last' => time()), false);
+    }
+
+    /** Search data is final this many days after the day, as from Google. */
+    const SEARCH_LAG = 3;
+
+    /**
+     * Make the search days (the gsc_* tables, as an import writes them)
+     * from the start of the period to the newest final day, within the
+     * time budget. Demo data made before search data gets them here too.
+     *
+     * @param float               $start  microtime(true) when the work began.
+     * @param int                 $budget Seconds.
+     * @param array<string,mixed> $state  Progress (search: the last day made); updated.
+     * @return bool Whether every final day is made.
+     */
+    private static function search_days($start, $budget, array &$state) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        $tz    = wp_timezone();
+        $today = new DateTimeImmutable('today', $tz);
+        $final = $today->modify('-' . self::SEARCH_LAG . ' days')->format('Y-m-d');
+        $first = (new DateTimeImmutable('@' . (isset($state['from']) ? (int) $state['from'] : time())))->setTimezone($tz)->format('Y-m-d');
+        $made  = isset($state['search']) ? (string) $state['search'] : '';
+        $day   = $made !== '' && $made >= $first ? (new DateTimeImmutable($made, $tz))->modify('+1 day') : new DateTimeImmutable($first, $tz);
+        $ids   = null;
+        while ($day->format('Y-m-d') <= $final) {
+            if (!SEOProStats_Feature::more_time($start, $budget)) {
+                return false;
+            }
+            if ($ids === null) {
+                $ids = array(
+                    'paths'   => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_unique(array_merge(array_column(self::SEARCH_QUERIES, 0), array_filter(array_column(self::SEARCH_QUERIES, 4))))),
+                    'queries' => SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys(self::SEARCH_QUERIES)),
+                );
+            }
+            if (!self::search_day($day, $today, $ids)) {
+                return false;
+            }
+            $state['search'] = $day->format('Y-m-d');
+            update_option(self::OPTION, $state, false);
+            $day = $day->modify('+1 day');
+        }
+        return true;
+    }
+
+    /**
+     * One demo search day: each query's impressions grow with the site
+     * and drop at weekends, its position climbs over the year, and clicks
+     * follow the position. Pages and the site's totals add searches too
+     * rare to list, as Search Console's do. The same day always gets the
+     * same numbers.
+     *
+     * @param DateTimeImmutable                                       $day   The day (site time zone).
+     * @param DateTimeImmutable                                       $today Today.
+     * @param array{paths:array<string,int>,queries:array<string,int>} $ids   Dictionary IDs.
+     * @return bool Whether it was written.
+     */
+    private static function search_day(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
+        global $wpdb;
+        $date  = $day->format('Y-m-d');
+        $ago   = (int) $day->diff($today)->days;
+        $scale = exp(-$ago / 420) * ((int) $day->format('N') >= 6 ? 0.7 : 1.0) * (1 + 0.08 * sin(2 * M_PI * ((int) $day->format('z') - 80) / 365));
+        $rows  = array_fill_keys(array_keys(SEOProStats_Search_Import::TABLES), array());
+        $sum   = array(0, 0, 0);
+
+        $add = static function ($kind, array $keys, $clicks, $impressions, $pos_impr) use (&$rows) {
+            $id = implode("\t", $keys);
+            if (!isset($rows[$kind][$id])) {
+                $rows[$kind][$id] = array_merge($keys, array(0, 0, 0));
+            }
+            $n                        = count($keys);
+            $rows[$kind][$id][$n]     += $clicks;
+            $rows[$kind][$id][$n + 1] += $impressions;
+            $rows[$kind][$id][$n + 2] += $pos_impr;
+        };
+
+        foreach (self::SEARCH_QUERIES as $query => $info) {
+            $query_id = isset($ids['queries'][SEOProStats_Dict::clean($query)]) ? (int) $ids['queries'][SEOProStats_Dict::clean($query)] : 0;
+            if (!$query_id) {
+                continue;
+            }
+            $pages = array(array($info[0], 1.0, 0.0));
+            if (!empty($info[4])) {
+                $pages[] = array($info[4], 0.2, 2.0);
+            }
+            foreach ($pages as $page) {
+                list($path, $share, $lower) = $page;
+                $path_id = isset($ids['paths'][SEOProStats_Dict::clean($path)]) ? (int) $ids['paths'][SEOProStats_Dict::clean($path)] : 0;
+                $noise   = self::noise($date . $query . $path);
+                $impr    = (int) round($info[1] * $share * $scale * (0.75 + 0.5 * $noise));
+                if (!$path_id || $impr < 1) {
+                    continue;
+                }
+                $position = max(1.0, $info[2] + $lower + $info[3] * min(1.0, $ago / 365) + 1.6 * (self::noise($query . $date) - 0.5));
+                $ctr      = min(0.6, 0.32 / pow($position, 1.15)) * (0.85 + 0.3 * self::noise($date . $path . $query));
+                $clicks   = (int) round($impr * $ctr);
+                $pos_impr = (int) round($position * $impr * 100);
+                $add('pairs', array($path_id, $query_id), $clicks, $impr, $pos_impr);
+                $add('queries', array($query_id), $clicks, $impr, $pos_impr);
+                $add('pages', array($path_id), $clicks, $impr, $pos_impr);
+                $sum[0] += $clicks;
+                $sum[1] += $impr;
+                $sum[2] += $pos_impr;
+            }
+        }
+        // Searches too rare to list: about a sixth more on each page, a
+        // little further down. Rows: path_id, clicks, impressions, pos_impr.
+        foreach ($rows['pages'] as &$row) {
+            $row[1] = (int) round($row[1] * 1.15);
+            $row[2] = (int) round($row[2] * 1.18);
+            $row[3] = (int) round($row[3] * 1.18 * 1.08);
+        }
+        unset($row);
+
+        // The site by device and country, from the listed searches and a
+        // quarter more unlisted, a little further down the results.
+        $weights = array_sum(self::SEARCH_COUNTRIES) * array_sum(self::SEARCH_DEVICES);
+        // Average position × 100, as pos_impr holds it.
+        $average = $sum[1] ? $sum[2] / $sum[1] : 0;
+        foreach (self::SEARCH_DEVICES as $device => $device_weight) {
+            foreach (self::SEARCH_COUNTRIES as $country => $country_weight) {
+                $share  = $device_weight * $country_weight / $weights * (0.85 + 0.3 * self::noise($date . $country . $device));
+                $impr   = (int) round($sum[1] * 1.25 * $share);
+                if ($impr < 1) {
+                    continue;
+                }
+                // Mobile searchers click a little less; desktop ranks a
+                // little higher; each country ranks a little differently.
+                $local    = self::noise($country);
+                $position = $average * 1.08 * ($device === 1 ? 0.95 : 1.04) * (0.85 + 0.3 * $local);
+                $clicks   = (int) round($sum[0] * 1.2 * $share * ($device === 2 ? 0.9 : 1.08) * (1.15 - 0.3 * $local));
+                $add('totals', array($device, $country), min($clicks, $impr), $impr, (int) round($position * $impr));
+            }
+        }
+
+        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
+        foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
+            $table = SEOProStats_Schema::table($name);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
+            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_GOOGLE, $date));
+            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_GOOGLE, $date, 0, $rows[$kind]) === false) {
+                $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+                return false;
+            }
+        }
+        $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+        return true;
+    }
+
+    /**
+     * A number from 0 up to 1 that is always the same for a text.
+     *
+     * @param string $text Text.
+     * @return float
+     */
+    private static function noise($text) {
+        return (crc32('seoprostats-demo-search-' . $text) % 10007) / 10007;
     }
 
     /**

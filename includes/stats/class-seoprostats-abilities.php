@@ -7,6 +7,8 @@
  *
  * - seoprostats/markers: the changes in a range, oldest first (read).
  * - seoprostats/annotate: add a note to the timeline (administrators).
+ * - seoprostats/search: Search Console clicks, impressions, CTR and
+ *   position, with top queries, pages, countries or devices (read).
  *
  * On older WordPress the hooks never run.
  *
@@ -153,6 +155,106 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/search', array(
+            'label'               => __('Search rankings', 'seoprostats'),
+            'description'         => __('Google Search Console clicks, impressions, CTR and average position in a period, with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is about three days old; the period is cut there.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'range'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'      => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'compare' => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::COMPARE,
+                        'default'     => 'none',
+                        'description' => __('Compare with the period before (prev) or the same period last year (year).', 'seoprostats'),
+                    ),
+                    'kind'    => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Search::KINDS,
+                        'default'     => 'queries',
+                        'description' => __('Rows: search queries, pages, countries or devices (countries and devices for the whole site only).', 'seoprostats'),
+                    ),
+                    'page'    => array(
+                        'type'        => 'string',
+                        'description' => __('Only searches that showed this page (a path such as /pricing/; * for any text).', 'seoprostats'),
+                    ),
+                    'query'   => array(
+                        'type'        => 'string',
+                        'description' => __('Only this search query (* for any text).', 'seoprostats'),
+                    ),
+                    'limit'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Query::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => 'string'),
+                    'connected' => array('type' => 'boolean'),
+                    'totals'    => array('type' => 'object'),
+                    'points'    => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'search'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/search.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function search($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $kind  = isset($input['kind']) ? (string) $input['kind'] : 'queries';
+        $page  = isset($input['page']) ? (string) $input['page'] : '';
+        $query = isset($input['query']) ? (string) $input['query'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $page, $query) {
+            return SEOProStats_Search::report((array) $req, $kind, $page, $query);
+        });
     }
 
     /**

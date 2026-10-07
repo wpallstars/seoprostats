@@ -634,6 +634,85 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NoDemo'
+  /search:
+    get:
+      operationId: getSearch
+      summary: Google Search Console clicks, impressions, CTR and position, with rows.
+      description: |
+        Search data imported from Google Search Console (`/connections`):
+        totals of the period, a point per day (per month past 120 days),
+        and rows of one `kind`: search queries, pages, countries or
+        devices, sorted by clicks. `page` keeps the searches that showed
+        that page (its queries), `query` keeps one query (its pages);
+        countries and devices exist for the whole site only, so with
+        either they are empty.
+
+        Search days are the engine's own (Pacific time for Google) and
+        final only, so the newest is about three days old. The period is
+        cut at the newest day with search data (`through`), and the
+        comparison has the same number of days, so days not imported yet
+        never look like a drop. Page filters apply like `page`; other
+        filters select visits, which search data has not, and are listed
+        in `ignored`.
+
+        CTR is clicks ÷ impressions. Position is the average of the
+        highest place a page held each time it was shown, weighted by
+        impressions; lower is better, and 0 means no impressions.
+        Search Console leaves out rare searches, so rows add up to less
+        than the totals. Demo data has made-up search days.
+      parameters:
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [queries, pages, countries, devices]
+            default: queries
+        - name: page
+          in: query
+          description: A path; `*` is any text.
+          schema:
+            type: string
+            examples: [/pricing/]
+        - name: query
+          in: query
+          description: A search query; `*` is any text.
+          schema:
+            type: string
+            examples: [core web vitals]
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 10
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Totals, points and rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
 
   /demo:
     get:
@@ -1804,6 +1883,147 @@ components:
                   description: (now − then) ÷ then per total; null when then is 0.
                   additionalProperties:
                     type: [number, 'null']
+
+    SearchMetrics:
+      type: object
+      required: [clicks, impressions, ctr, position]
+      properties:
+        clicks:
+          type: integer
+        impressions:
+          type: integer
+        ctr:
+          type: number
+          description: clicks ÷ impressions.
+        position:
+          type: number
+          description: Average position weighted by impressions; lower is better; 0 without impressions.
+
+    SearchChange:
+      type: object
+      description: (now − then) ÷ then for clicks, impressions and CTR (null when then is 0); for position, now − then in places (negative is a climb; null when either has no impressions).
+      required: [clicks, impressions, ctr, position]
+      properties:
+        clicks:
+          type: [number, 'null']
+        impressions:
+          type: [number, 'null']
+        ctr:
+          type: [number, 'null']
+        position:
+          type: [number, 'null']
+
+    SearchPoint:
+      allOf:
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [t]
+          properties:
+            t:
+              type: string
+              format: date-time
+              description: Start of the day or month.
+
+    SearchRow:
+      allOf:
+        - $ref: '#/components/schemas/SearchMetrics'
+        - type: object
+          required: [id, value, label, share]
+          properties:
+            id:
+              type: string
+              description: Query or page ID, country code (ISO 3166-1 alpha-3, as Search Console gives it) or device code.
+            value:
+              type: string
+              description: The query, the page path, the country (ISO 3166-1 alpha-2; empty when unknown) or the device (desktop, mobile, tablet, unknown).
+            label:
+              type: string
+            share:
+              type: number
+              description: clicks ÷ all clicks of the period.
+            path:
+              type: string
+              description: Pages rows only.
+            url:
+              type: string
+              description: Pages rows only.
+            post_id:
+              type: integer
+              description: Pages rows only; 0 when no post matches.
+            edit_url:
+              type: [string, 'null']
+              description: Pages rows only; only when the current user can edit the post.
+            compare:
+              description: With a comparison.
+              allOf:
+                - $ref: '#/components/schemas/SearchMetrics'
+                - type: object
+                  required: [change]
+                  properties:
+                    change:
+                      $ref: '#/components/schemas/SearchChange'
+
+    SearchAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            through:
+              type: string
+              description: Newest day with search data (YYYY-MM-DD); empty with none.
+            first:
+              type: string
+              description: Oldest day with search data (YYYY-MM-DD); empty with none.
+            connected:
+              type: boolean
+              description: Whether Search Console is connected (demo data, always).
+            kind:
+              type: string
+              enum: [queries, pages, countries, devices]
+            page:
+              type: string
+            query:
+              type: string
+            page_info:
+              $ref: '#/components/schemas/ClickPageInfo'
+            ignored:
+              type: array
+              description: Filter dimensions left out (only page filters apply to search data).
+              items:
+                type: string
+            totals:
+              $ref: '#/components/schemas/SearchMetrics'
+            grain:
+              type: string
+              enum: [day, month]
+            points:
+              type: array
+              items:
+                $ref: '#/components/schemas/SearchPoint'
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/SearchRow'
+            more:
+              type: boolean
+              description: Whether there are more rows after these.
+            compare:
+              type: object
+              required: [range, totals, change, points]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                totals:
+                  $ref: '#/components/schemas/SearchMetrics'
+                change:
+                  $ref: '#/components/schemas/SearchChange'
+                points:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/SearchPoint'
 
     DemoStatus:
       type: object

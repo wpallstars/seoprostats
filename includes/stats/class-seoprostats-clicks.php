@@ -93,12 +93,13 @@ final class SEOProStats_Clicks {
 
     /**
      * Resolve an exact local path, never a pattern or an external address.
-     * Only called for the selected page and the bounded returned page rows.
+     * Only called for the selected page and the bounded returned page rows
+     * (here and in SEOProStats_Search).
      *
      * @param string $path Page path.
      * @return array{path:string,url:string,post_id:int,edit_url:null}|null
      */
-    private static function page_info($path) {
+    public static function page_info($path) {
         if ($path === '' || $path[0] !== '/' || strpos($path, '//') === 0 || strpos($path, '*') !== false || strpos($path, '\\') !== false) {
             return null;
         }
@@ -118,7 +119,7 @@ final class SEOProStats_Clicks {
      * @param array<string,mixed> $info Page identity or page row.
      * @return array<string,mixed>
      */
-    private static function with_edit_url(array $info) {
+    public static function with_edit_url(array $info) {
         $post_id = (int) $info['post_id'];
         $info['edit_url'] = $post_id && current_user_can('edit_post', $post_id) ? (get_edit_post_link($post_id, 'raw') ?: null) : null;
         return $info;

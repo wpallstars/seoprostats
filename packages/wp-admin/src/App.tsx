@@ -18,6 +18,7 @@ import { DemoNotice, DemoSwitch } from './components/Demo';
 import { FilterBar } from './components/FilterBar';
 import { Realtime } from './components/Realtime';
 import { Overview } from './Overview';
+import { Search } from './Search';
 import { Goals } from './Goals';
 import { Funnels } from './Funnels';
 import { Properties } from './Properties';
@@ -32,6 +33,7 @@ export interface ViewProps {
 function viewLabel(view: View): string {
 	const labels: Record<View, string> = {
 		overview: __('Overview', 'seoprostats'),
+		search: __('Search', 'seoprostats'),
 		goals: __('Goals', 'seoprostats'),
 		funnels: __('Funnels', 'seoprostats'),
 		properties: __('Properties', 'seoprostats'),
@@ -41,7 +43,7 @@ function viewLabel(view: View): string {
 	return labels[view];
 }
 
-const NAV: View[] = ['overview', 'goals', 'funnels', 'properties', 'clicks', 'changes'];
+const NAV: View[] = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'];
 
 /** Mark the admin submenu item of the section shown (they differ only by hash). */
 function useMenuCurrent(view: View): void {
@@ -91,7 +93,9 @@ export function App() {
 
 	const props: ViewProps = { state, update };
 	let section = <Overview {...props} />;
-	if (state.view === 'goals') {
+	if (state.view === 'search') {
+		section = <Search {...props} />;
+	} else if (state.view === 'goals') {
 		section = <Goals {...props} />;
 	} else if (state.view === 'funnels') {
 		section = <Funnels {...props} />;

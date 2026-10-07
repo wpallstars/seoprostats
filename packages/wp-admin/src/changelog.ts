@@ -8,7 +8,7 @@
 
 import { __ } from '@wordpress/i18n';
 import type { ChartMarker, ChartSpan } from '@seoprostats/charts';
-import { CHANGE_GROUPS, type ChangeGroup, type Filter, type Marker, type TimeseriesAnswer } from '@seoprostats/core';
+import { CHANGE_GROUPS, type ChangeGroup, type ChartData, type Filter, type Marker } from '@seoprostats/core';
 
 export { CHANGE_GROUPS };
 
@@ -80,7 +80,7 @@ export function filteredPage(filters: Filter[]): string {
 }
 
 /** The point (by index) a change falls in: the last point that starts at or before it. */
-export function pointIndex(series: TimeseriesAnswer, t: string): number {
+export function pointIndex(series: ChartData, t: string): number {
 	const at = Date.parse(t);
 	const end = Date.parse(series.range.to);
 	if (!Number.isFinite(at) || at >= end) {
@@ -98,7 +98,7 @@ export function pointIndex(series: TimeseriesAnswer, t: string): number {
 }
 
 /** Whether a time falls before the series' first point. */
-function beforeRange(series: TimeseriesAnswer, t: string): boolean {
+function beforeRange(series: ChartData, t: string): boolean {
 	const first = Date.parse(series.points[0]?.t ?? '');
 	return Number.isFinite(first) && Date.parse(t) < first;
 }
@@ -108,7 +108,7 @@ function beforeRange(series: TimeseriesAnswer, t: string): boolean {
  * before the range (the API adds those still running) shows on its first
  * point.
  */
-export function changesByPoint(series: TimeseriesAnswer, markers: Marker[]): Map<number, Marker[]> {
+export function changesByPoint(series: ChartData, markers: Marker[]): Map<number, Marker[]> {
 	const out = new Map<number, Marker[]>();
 	for (const marker of markers) {
 		let i = pointIndex(series, marker.t);
@@ -126,7 +126,7 @@ export function changesByPoint(series: TimeseriesAnswer, markers: Marker[]): Map
  * Rollouts as spans: from the point they began in (or the first) to the
  * point they ended in, or to now while rolling out.
  */
-export function chartSpans(series: TimeseriesAnswer, markers: Marker[], colors: Record<ChangeGroup, string>): ChartSpan[] {
+export function chartSpans(series: ChartData, markers: Marker[], colors: Record<ChangeGroup, string>): ChartSpan[] {
 	const last = series.points.length - 1;
 	if (last < 0) {
 		return [];

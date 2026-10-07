@@ -65,6 +65,8 @@ Yes. It keeps a change log, recorded as changes are saved: posts and pages publi
 
 Yes, once you connect it under Settings → Connections with a Google Cloud service account's JSON key (the tab lists the steps). The key is stored encrypted and never shown again. Clicks, impressions and average position for each page and search query are imported by day: the 16 months Search Console keeps on connecting, then each day once Search Console marks it final, about three days later. Imports run in the background, never while a visitor loads a page, and each can be undone. Search data by page and query is kept 25 months; daily totals are kept.
 
+SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and average position against the previous period, a chart with the site's changes under it, and the search queries, pages, countries and devices. Choose a page to see its queries, or a query to see its pages. Scripts and AI agents read the same report through the REST API (search), wp seoprostats search, and on WordPress 6.9 and later the ability seoprostats/search. Demo data has made-up search data, so you can try it before connecting.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

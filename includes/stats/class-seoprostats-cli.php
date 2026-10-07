@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, clicks, changes, annotate, search-updates,
+ * goals, funnels, properties, clicks, search, changes, annotate, search-updates,
  * process, rollup, prune, doctor, demo and purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
@@ -687,6 +687,134 @@ final class SEOProStats_CLI {
             'pages'     => array('path', 'count', 'dead', 'dead_rate', 'links', 'forms', 'visits'),
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields[$answer['kind']]);
+    }
+
+    /**
+     * Search (Google Search Console's imported days): clicks, impressions,
+     * CTR and average position, then search queries, pages, countries or
+     * devices. The period is cut at the newest day with search data
+     * (about three days ago); visit filters do not apply, page filters do.
+     *
+     * ## OPTIONS
+     *
+     * [<kind>]
+     * : queries, pages, countries or devices (countries and devices for the whole site only).
+     * ---
+     * default: queries
+     * options:
+     *   - queries
+     *   - pages
+     *   - countries
+     *   - devices
+     * ---
+     *
+     * [--page=<path>]
+     * : Only searches that showed this page (* for any text).
+     *
+     * [--query=<query>]
+     * : Only this search query (* for any text).
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--compare=<compare>]
+     * : none, prev or year.
+     * ---
+     * default: none
+     * ---
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats (others do not apply to search data).
+     *
+     * [--limit=<limit>]
+     * : Most rows.
+     * ---
+     * default: 10
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats search --range=90d --compare=prev
+     *     wp seoprostats search queries --page=/pricing/
+     *     wp seoprostats search pages --query="seo pro stats" --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function search($args, $assoc) {
+        $kind   = isset($args[0]) ? (string) $args[0] : 'queries';
+        $page   = isset($assoc['page']) ? (string) $assoc['page'] : '';
+        $query  = isset($assoc['query']) ? (string) $assoc['query'] : '';
+        $req    = $this->request($assoc + array('range' => '30d'));
+        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page, $query) {
+            return SEOProStats_Search::report($req, $kind, $page, $query);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        if (!$answer['connected']) {
+            WP_CLI::warning(__('Google Search Console is not connected: wp seoprostats connect search-console --key-file=<file>.', 'seoprostats'));
+        }
+        $this->range_line($answer['range']);
+        if ($answer['through'] !== '') {
+            /* translators: %s: a day (YYYY-MM-DD). */
+            WP_CLI::log(sprintf(__('Search data through %s (final days only).', 'seoprostats'), $answer['through']));
+        }
+        if ($answer['ignored']) {
+            /* translators: %s: filter dimensions. */
+            WP_CLI::log(sprintf(__('Not applied to search data: %s.', 'seoprostats'), implode(', ', $answer['ignored'])));
+        }
+        $totals = $answer['totals'];
+        /* translators: 1: clicks, 2: impressions, 3: CTR, 4: average position */
+        WP_CLI::log(sprintf(__('%1$d clicks, %2$d impressions, CTR %3$s, average position %4$s.', 'seoprostats'), $totals['clicks'], $totals['impressions'], sprintf('%.1f%%', $totals['ctr'] * 100), $totals['impressions'] ? sprintf('%.1f', $totals['position']) : '–'));
+        if (isset($answer['compare'])) {
+            $then   = $answer['compare']['totals'];
+            $change = $answer['compare']['change'];
+            /* translators: 1: clicks, 2: change, 3: impressions, 4: change, 5: position, 6: change in places (lower is better) */
+            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s), %3$d impressions (%4$s), position %5$s (%6$s places).', 'seoprostats'), $then['clicks'], $change['clicks'] === null ? '–' : sprintf('%+.1f%%', $change['clicks'] * 100), $then['impressions'], $change['impressions'] === null ? '–' : sprintf('%+.1f%%', $change['impressions'] * 100), $then['impressions'] ? sprintf('%.1f', $then['position']) : '–', $change['position'] === null ? '–' : sprintf('%+.1f', $change['position'])));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No search data of this kind in this range.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $row['ctr']   = sprintf('%.1f%%', $row['ctr'] * 100);
+            $row['share'] = sprintf('%.1f%%', $row['share'] * 100);
+            $rows[]       = $row;
+        }
+        $first = array(
+            'queries'   => 'value',
+            'pages'     => 'path',
+            'countries' => 'label',
+            'devices'   => 'label',
+        );
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array($first[$answer['kind']], 'clicks', 'impressions', 'ctr', 'position', 'share'));
     }
 
     /**
