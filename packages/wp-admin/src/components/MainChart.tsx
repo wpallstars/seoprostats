@@ -147,6 +147,7 @@ export function MainChart<K extends string>({ series, metric, label, format, hei
 			labels: series.points.map((p) => axisLabel(p.t, grain)),
 			series: list,
 			height,
+			integer: format === 'number',
 			formatValue: (v: number) => formatMetric(v, format, locale),
 		};
 	}, [series, metric, label, height, format, partial]);
