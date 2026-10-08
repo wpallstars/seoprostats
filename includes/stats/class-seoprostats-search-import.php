@@ -64,6 +64,7 @@ final class SEOProStats_Search_Import {
         'queries' => 'gsc_queries',
         'pairs'   => 'gsc_pairs',
         'totals'  => 'gsc_totals',
+        'appearance' => 'gsc_appearance',
     );
 
     /** One run at a time (autoload off): the time it started. */
@@ -215,7 +216,7 @@ final class SEOProStats_Search_Import {
             $days[] = array($day, 'back');
         }
         if (!$days) {
-            return self::run_pairs($source, $class, $token, $property, $start, $budget, array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true));
+            return self::run_extra($source, $class, $token, $property, $start, $budget, array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true));
         }
 
         $import = 0;
@@ -246,8 +247,134 @@ final class SEOProStats_Search_Import {
         self::finish($import, self::DONE, $span, $rows);
         SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
         self::pairs_due($source, $class, $span);
+        self::appearance_due($source, $class, $span);
         $result = array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => $count === count($days));
-        return $result['done'] ? self::run_pairs($source, $class, $token, $property, $start, $budget, $result) : $result;
+        return $result['done'] ? self::run_extra($source, $class, $token, $property, $start, $budget, $result) : $result;
+    }
+
+    /**
+     * Queue Google appearances for imported days; merging a range restarts
+     * discovery, so no value is missed when older days join the backfill.
+     *
+     * @param string $source Source key.
+     * @param string $class Source class.
+     * @param string[] $span Imported days.
+     */
+    private static function appearance_due($source, $class, array $span) {
+        if (!$span || $class !== 'SEOProStats_Source_Search_Console') {
+            return;
+        }
+        $state = SEOProStats_Connections::get($source)['state'];
+        $from = min($span);
+        $to = max($span);
+        if (!empty($state['appearance_from'])) {
+            $from = min($from, (string) $state['appearance_from']);
+            $to = max($to, (string) $state['appearance_to']);
+        }
+        SEOProStats_Connections::update_state($source, array('appearance_from' => $from, 'appearance_to' => $to, 'appearance_queue' => null));
+    }
+
+    /**
+     * Finish the source's extra breakdowns under the same run lock.
+     *
+     * @param string $source Source key.
+     * @param string $class Source class.
+     * @param string $token Access token.
+     * @param string $property Property.
+     * @param float $start Run start.
+     * @param int $budget Seconds, 0 unlimited.
+     * @param array{days:int,rows:int,import:int,done:bool} $result Run so far.
+     * @return array{days:int,rows:int,import:int,done:bool,pages?:int}|WP_Error
+     */
+    private static function run_extra($source, $class, $token, $property, $start, $budget, array $result) {
+        if ($class !== 'SEOProStats_Source_Search_Console') {
+            return self::run_pairs($source, $class, $token, $property, $start, $budget, $result);
+        }
+        global $wpdb;
+        $state = SEOProStats_Connections::get($source)['state'];
+        $from = isset($state['appearance_from']) ? (string) $state['appearance_from'] : '';
+        $to = isset($state['appearance_to']) ? (string) $state['appearance_to'] : '';
+        if ($from === '' || $to === '') {
+            return $result;
+        }
+        $result['done'] = false;
+        if ($budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+            return $result;
+        }
+        $queue = isset($state['appearance_queue']) && is_array($state['appearance_queue']) ? $state['appearance_queue'] : null;
+        if ($queue === null) {
+            $found = $class::appearances($token, $property, $from, $to);
+            if (is_wp_error($found)) {
+                return self::failed($source, $found);
+            }
+            // Include old values too: reimport removes appearances no longer returned.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table's primary key bounds the days.
+            $ids = $wpdb->get_col($wpdb->prepare('SELECT DISTINCT appearance_id FROM %i FORCE INDEX (PRIMARY) WHERE engine = %d AND day >= %s AND day <= %s', SEOProStats_Schema::table('gsc_appearance'), (int) $class::ENGINE, $from, $to));
+            $queue = array_values(array_unique(array_merge(array_filter(array_map('strval', array_column(array_column($found, 'keys'), 0))), array_values(SEOProStats_Query::texts(array_map('intval', (array) $ids))))));
+            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        }
+        while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
+            $value = (string) $queue[0];
+            $data = $class::appearances($token, $property, $from, $to, $value);
+            if (is_wp_error($data)) {
+                return self::failed($source, $data);
+            }
+            $import = self::start($source, $property, $from);
+            if (!$import) {
+                return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
+            }
+            $added = self::replace_appearance($value, $data, $from, $to, $import);
+            self::finish($import, is_wp_error($added) ? self::FAILED : self::DONE, array($from, $to), is_wp_error($added) ? 0 : $added, is_wp_error($added) ? $added->get_error_message() : '');
+            if (is_wp_error($added)) {
+                return self::failed($source, $added);
+            }
+            $result['rows'] += $added;
+            $result['import'] = $import;
+            array_shift($queue);
+            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue, 'last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
+        }
+        if (!$queue) {
+            SEOProStats_Connections::update_state($source, array('appearance_from' => null, 'appearance_to' => null, 'appearance_queue' => null));
+            $result['done'] = true;
+        }
+        return $result;
+    }
+
+    /**
+     * Atomically replace one appearance's daily rows, including empty days.
+     *
+     * @param string $value API appearance value.
+     * @param array<int,array<string,mixed>> $data Rows grouped by date.
+     * @param string $from First day.
+     * @param string $to Last day.
+     * @param int $import Import ID.
+     * @return int|WP_Error Rows written.
+     */
+    private static function replace_appearance($value, array $data, $from, $to, $import) {
+        global $wpdb;
+        $ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, array($value));
+        $id = isset($ids[SEOProStats_Dict::clean($value)]) ? (int) $ids[SEOProStats_Dict::clean($value)] : 0;
+        $table = SEOProStats_Schema::table('gsc_appearance');
+        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one appearance replaced together.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table, bounded by engine and day primary key prefix.
+        $ok = $id > 0 && $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day >= %s AND day <= %s AND appearance_id = %d', $table, SEOProStats_Schema::ENGINE_GOOGLE, $from, $to, $id)) !== false;
+        $written = 0;
+        foreach ($data as $row) {
+            $day = isset($row['keys'][0]) ? (string) $row['keys'][0] : '';
+            if (!$ok || $day < $from || $day > $to || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $day)) {
+                continue;
+            }
+            $row['keys'] = array($value);
+            $added = self::insert($table, 'appearance', SEOProStats_Schema::ENGINE_GOOGLE, $day, $import, self::rows(array('appearance' => array($row)))['appearance']);
+            $ok = $added !== false;
+            $written += (int) $added;
+        }
+        if ($ok) {
+            $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+            return $written;
+        }
+        $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
+        return new WP_Error('seoprostats_import_write', __('The search appearances could not be saved in the database.', 'seoprostats'));
     }
 
     /**
@@ -479,7 +606,8 @@ final class SEOProStats_Search_Import {
         self::finish($import, self::DONE, $span, $rows);
         // Pages with their queries, for a source that gives them page by page: the next run.
         self::pairs_due($source, $class, $span);
-        return array('days' => count($span), 'rows' => $rows, 'import' => $import, 'done' => true);
+        self::appearance_due($source, $class, $span);
+        return self::run_extra($source, $class, $token, $property, microtime(true), 0, array('days' => count($span), 'rows' => $rows, 'import' => $import, 'done' => true));
     }
 
     /**
@@ -502,7 +630,7 @@ final class SEOProStats_Search_Import {
         $through = isset($state['through']) ? (string) $state['through'] : '';
         $back    = isset($state['back']) ? (string) $state['back'] : '';
         $final   = isset($state['final']) ? (string) $state['final'] : '';
-        if ($through === '' || $back === '' || $final > $through || !empty($state['pairs_from'])) {
+        if ($through === '' || $back === '' || $final > $through || !empty($state['pairs_from']) || !empty($state['appearance_from'])) {
             return true;
         }
         $today = $class::today();
@@ -668,14 +796,19 @@ final class SEOProStats_Search_Import {
         }
         $path_ids  = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $paths) : array();
         $query_ids = $queries ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, $queries) : array();
+        $appearances = isset($data['appearance']) ? array_map('strval', array_column(array_column($data['appearance'], 'keys'), 0)) : array();
+        $appearance_ids = $appearances ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, $appearances) : array();
 
         $out = array_fill_keys(array_keys(self::TABLES), array());
-        foreach (array('pages', 'queries', 'pairs', 'totals') as $kind) {
+        foreach (array_keys(self::TABLES) as $kind) {
             foreach (isset($data[$kind]) ? $data[$kind] : array() as $row) {
                 if ($kind === 'pages') {
                     $keys = array(isset($path_ids[SEOProStats_Dict::clean($row['path'])]) ? $path_ids[SEOProStats_Dict::clean($row['path'])] : 0);
                 } elseif ($kind === 'queries') {
                     $keys = array(isset($query_ids[SEOProStats_Dict::clean($row['query'])]) ? $query_ids[SEOProStats_Dict::clean($row['query'])] : 0);
+                } elseif ($kind === 'appearance') {
+                    $value = SEOProStats_Dict::clean(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
+                    $keys = array(isset($appearance_ids[$value]) ? $appearance_ids[$value] : 0);
                 } elseif ($kind === 'pairs') {
                     $keys = array(
                         isset($path_ids[SEOProStats_Dict::clean($row['path'])]) ? $path_ids[SEOProStats_Dict::clean($row['path'])] : 0,
@@ -726,6 +859,7 @@ final class SEOProStats_Search_Import {
             'queries' => array('query_id' => '%d'),
             'pairs'   => array('path_id' => '%d', 'query_id' => '%d'),
             'totals'  => array('device' => '%d', 'country' => '%s'),
+            'appearance' => array('appearance_id' => '%d'),
         );
         $keys    = $columns[$kind];
         $names   = implode(', ', array_keys($keys));
@@ -974,7 +1108,7 @@ final class SEOProStats_Search_Import {
         }
         $before  = (new DateTimeImmutable('today', wp_timezone()))->modify("-$months months")->format('Y-m-d');
         $deleted = 0;
-        foreach (array('pages', 'queries', 'pairs') as $kind) {
+        foreach (array('pages', 'queries', 'pairs', 'appearance') as $kind) {
             foreach (array(SEOProStats_Schema::ENGINE_GOOGLE, SEOProStats_Schema::ENGINE_BING) as $engine) {
                 do {
                     if (!SEOProStats_Feature::more_time($start, self::BUDGET)) {
@@ -1004,7 +1138,7 @@ final class SEOProStats_Search_Import {
         }
         $before = (new DateTimeImmutable('today', wp_timezone()))->modify("-$months months")->format('Y-m-d');
         $out    = array();
-        foreach (array('pages', 'queries', 'pairs') as $kind) {
+        foreach (array('pages', 'queries', 'pairs', 'appearance') as $kind) {
             $name       = self::TABLES[$kind];
             $out[$name] = 0;
             foreach (array(SEOProStats_Schema::ENGINE_GOOGLE, SEOProStats_Schema::ENGINE_BING) as $engine) {
