@@ -3330,7 +3330,7 @@ final class SEOProStats_CLI {
      * ---
      *
      * [<source>]
-     * : The plugin, for run and cleanup: burst-statistics, koko-analytics or statify.
+     * : The plugin, for run and cleanup: burst-statistics, koko-analytics, statify, wp-statistics or independent (Independent Analytics).
      *
      * [--dry-run]
      * : run: only say what it would do (days, rows, overlap, settings). cleanup: only list (the default without --yes).

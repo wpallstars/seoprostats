@@ -197,44 +197,12 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
         $params   = in_array('parameters', $stats, true) ? "COALESCE(p.parameters, '')" : "''";
         $mixed    = $wpdb->get_results($wpdb->prepare("SELECT $referrer AS r, $params AS q, p.page_url AS e, $sums $base INNER JOIN %i p ON p.ID = x.f GROUP BY r, q, e ORDER BY visits DESC LIMIT %d", $ss, $st, self::ROWS * 5), ARRAY_A);
         // phpcs:enable
-        $rows = array_merge($rows, $this->visit_sources((array) $mixed));
-        return $rows;
-    }
-
-    /**
-     * Source, channel, campaign tags and search landings from visits
-     * grouped by referrer, the first page's tags and the first page.
-     *
-     * @param array<int,array<string,mixed>> $groups Rows: r, q, e and the sums.
-     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
-     */
-    private function visit_sources(array $groups) {
-        $sums = array();
-        $add  = function ($dimension, $value, array $metrics) use (&$sums) {
-            $key = $dimension . "\0" . $value;
-            if (!isset($sums[$key])) {
-                $sums[$key] = array($dimension, $value, array_fill_keys(array_keys($metrics), 0));
-            }
-            foreach ($metrics as $name => $count) {
-                $sums[$key][2][$name] += $count;
-            }
-        };
-        foreach ($groups as $row) {
-            $metrics = self::metrics($row);
-            $host    = self::host((string) $row['r']);
-            $host    = $host === 'spammer' ? '' : $host;
-            $split   = SEOProStats_Processor::split_url('/?' . ltrim((string) $row['q'], '?'));
-            $channel = SEOProStats_Channels::classify($host, $split['utm'], $split['click']);
-            $add('source', $host, $metrics);
-            $add('channel', $channel, $metrics);
-            foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
-                $add($tag, isset($split['utm'][$tag]) ? $split['utm'][$tag] : '', $metrics);
-            }
-            if ($channel === SEOProStats_Query::CHANNELS['organic_search']) {
-                $add('landing', self::path((string) $row['e']), $metrics);
-            }
+        $groups = array();
+        foreach ((array) $mixed as $row) {
+            $groups[] = array('r' => (string) $row['r'], 'q' => (string) $row['q'], 'e' => self::path((string) $row['e']), 'metrics' => self::metrics($row));
         }
-        return array_values($sums);
+        $rows = array_merge($rows, self::visit_sources($groups));
+        return $rows;
     }
 
     /**
@@ -377,45 +345,10 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
      * @return int|string
      */
     private static function name($dimension, $name) {
-        $name  = trim($name);
-        $lower = strtolower($name);
         if ($dimension === 'device') {
+            $lower = strtolower(trim($name));
             return isset(self::DEVICES[$lower]) ? self::DEVICES[$lower] : 0;
         }
-        if ($dimension === 'os') {
-            $systems = array(
-                'macos'     => '~^(mac|macintosh|os x|mac os)~',
-                'iOS'       => '~^(ios|iphone|ipad|ipod)~',
-                'Windows'   => '~^windows~',
-                'Android'   => '~^android~',
-                'ChromeOS'  => '~^(chrome ?os|cros)~',
-                'Linux'     => '~^(linux|ubuntu|debian|fedora)~',
-            );
-            foreach ($systems as $ours => $pattern) {
-                if (preg_match($pattern, $lower)) {
-                    return $ours === 'macos' ? 'macOS' : $ours;
-                }
-            }
-            return 'Other';
-        }
-        $browsers = array(
-            'Edge'              => '~^(microsoft )?edge~',
-            'Opera'             => '~^opera~',
-            'Samsung Internet'  => '~^samsung~',
-            'Yandex Browser'    => '~^yandex~',
-            'Vivaldi'           => '~^vivaldi~',
-            'UC Browser'        => '~^uc ?browser~',
-            'DuckDuckGo'        => '~^duckduckgo~',
-            'Firefox'           => '~firefox~',
-            'Chrome'            => '~^(google )?chrome~',
-            'Safari'            => '~safari~',
-            'Internet Explorer' => '~^(internet explorer|ie$|msie)~',
-        );
-        foreach ($browsers as $ours => $pattern) {
-            if (preg_match($pattern, $lower)) {
-                return $ours;
-            }
-        }
-        return 'Other';
+        return $dimension === 'os' ? self::os_name($name) : self::browser_name($name);
     }
 }

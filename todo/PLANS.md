@@ -205,10 +205,10 @@ generic import.
       site; invited users with Jetpack test it (GH#111, after GH#109).
 - [x] Koko Analytics and Statify, checked against real installs
       (GH#112).
-- [ ] Plugins that keep their data in the site's own database, each
-      table layout checked against a real install first: WP Statistics
-      and Independent Analytics (GH#113), Slimstat and Matomo for
-      WordPress (GH#114); all after GH#109.
+- [x] WP Statistics and Independent Analytics, checked against real
+      installs (GH#113).
+- [ ] Slimstat and Matomo for WordPress, each table layout checked
+      against a real install first (GH#114, after GH#109).
 
 ## Later
 

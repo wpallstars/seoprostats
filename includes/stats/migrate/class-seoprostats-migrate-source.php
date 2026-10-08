@@ -90,11 +90,11 @@ abstract class SEOProStats_Migrate_Source {
     /**
      * Exactly what it leaves on this site now: tables (with this site's
      * prefix), options, transients (their option names), cron hooks, user
-     * meta keys and files or folders (relative to wp-content). network:
-     * the same lists for what is shared by the whole network (multisite),
-     * which cleanup only lists.
+     * meta keys, post meta keys (optional) and files or folders (relative
+     * to wp-content). network: the same lists for what is shared by the
+     * whole network (multisite), which cleanup only lists.
      *
-     * @return array{tables:string[],options:string[],transients:string[],cron:string[],user_meta:string[],files:string[],network:array<string,string[]>}
+     * @return array{tables:string[],options:string[],transients:string[],cron:string[],user_meta:string[],post_meta?:string[],files:string[],network:array<string,string[]>}
      */
     abstract public function leftovers();
 
@@ -338,6 +338,36 @@ abstract class SEOProStats_Migrate_Source {
     }
 
     /**
+     * Post meta keys that start with a prefix (the meta_key index).
+     *
+     * @param string $prefix Prefix.
+     * @return string[]
+     */
+    protected static function post_meta_like($prefix) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- listing another plugin's post meta keys by the meta_key index (prefix).
+        $keys = (array) $wpdb->get_col($wpdb->prepare('SELECT DISTINCT meta_key FROM %i WHERE meta_key LIKE %s', $wpdb->postmeta, $wpdb->esc_like($prefix) . '%'));
+        sort($keys);
+        return array_values(array_map('strval', $keys));
+    }
+
+    /**
+     * Options that exist, of some exact names.
+     *
+     * @param string[] $names Option names.
+     * @return string[]
+     */
+    protected static function options_exact(array $names) {
+        $out = array();
+        foreach ($names as $name) {
+            if (get_option($name, null) !== null) {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Files and folders that exist, relative to wp-content.
      *
      * @param string[] $paths Absolute paths.
@@ -374,5 +404,144 @@ abstract class SEOProStats_Migrate_Source {
         }
         $referrer = trim($referrer, '. ');
         return strpos($referrer, 'www.') === 0 ? (string) substr($referrer, 4) : $referrer;
+    }
+
+    /**
+     * Source, channel, campaign tags and search landings from visits
+     * grouped by referrer, the first page's query and the first page, as
+     * the collector works them out (SEOProStats_Channels). The adapter
+     * loads SEOProStats_Channels and SEOProStats_Processor.
+     *
+     * @param array<int,array{r:string,q:string,e:string,c?:string,metrics:array<string,int>}> $groups r: referrer (host or address); q: the first page's query (campaign tags, ad click IDs); e: the first page's path; c: an ad click ID the plugin recorded in place of the query; metrics: the visits' sums.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    protected static function visit_sources(array $groups) {
+        $sums = array();
+        $add  = function ($dimension, $value, array $metrics) use (&$sums) {
+            $key = $dimension . "\0" . $value;
+            if (!isset($sums[$key])) {
+                $sums[$key] = array($dimension, $value, array_fill_keys(array_keys($metrics), 0));
+            }
+            foreach ($metrics as $name => $count) {
+                $sums[$key][2][$name] = (isset($sums[$key][2][$name]) ? $sums[$key][2][$name] : 0) + $count;
+            }
+        };
+        foreach ($groups as $row) {
+            $metrics = $row['metrics'];
+            $host    = self::host((string) $row['r']);
+            $host    = $host === 'spammer' ? '' : $host;
+            $split   = SEOProStats_Processor::split_url('/?' . ltrim((string) $row['q'], '?'));
+            $click   = !empty($row['c']) ? (string) $row['c'] : $split['click'];
+            $channel = SEOProStats_Channels::classify($host, $split['utm'], $click);
+            $add('source', $host, $metrics);
+            $add('channel', $channel, $metrics);
+            foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
+                $add($tag, isset($split['utm'][$tag]) ? $split['utm'][$tag] : '', $metrics);
+            }
+            if ($channel === SEOProStats_Query::CHANNELS['organic_search']) {
+                $add('landing', (string) $row['e'], $metrics);
+            }
+        }
+        return array_values($sums);
+    }
+
+    /**
+     * A device type name another plugin stores as SEO Pro Stats's code
+     * (SEOProStats_Query::DEVICES).
+     *
+     * @param string $name Such as Desktop, smartphone or tablet.
+     * @return int
+     */
+    protected static function device_code($name) {
+        $name = strtolower(trim((string) $name));
+        if ($name === 'desktop') {
+            return SEOProStats_Query::DEVICES['desktop'];
+        }
+        if (in_array($name, array('mobile', 'smartphone', 'phablet', 'feature phone'), true)) {
+            return SEOProStats_Query::DEVICES['mobile'];
+        }
+        return $name === 'tablet' ? SEOProStats_Query::DEVICES['tablet'] : SEOProStats_Query::DEVICES['unknown'];
+    }
+
+    /**
+     * An operating system name another plugin stores as SEO Pro Stats
+     * names it (SEOProStats_UA).
+     *
+     * @param string $name Its name.
+     * @return string
+     */
+    protected static function os_name($name) {
+        $lower   = strtolower(trim((string) $name));
+        $systems = array(
+            'macOS'    => '~^(mac|macintosh|os x|mac os)~',
+            'iOS'      => '~^(ios|iphone|ipad|ipod)~',
+            'Windows'  => '~^windows~',
+            'Android'  => '~^android~',
+            'ChromeOS' => '~^(chrome ?os|cros)~',
+            'Linux'    => '~^(linux|gnu/linux|ubuntu|debian|fedora)~',
+        );
+        foreach ($systems as $ours => $pattern) {
+            if (preg_match($pattern, $lower)) {
+                return $ours;
+            }
+        }
+        return 'Other';
+    }
+
+    /**
+     * A browser name another plugin stores as SEO Pro Stats names it
+     * (SEOProStats_UA::BROWSERS), such as Chrome Mobile as Chrome.
+     *
+     * @param string $name Its name.
+     * @return string
+     */
+    protected static function browser_name($name) {
+        $lower    = strtolower(trim((string) $name));
+        $browsers = array(
+            'Edge'              => '~^(microsoft )?edge~',
+            'Opera'             => '~^opera~',
+            'Samsung Internet'  => '~^samsung~',
+            'Yandex Browser'    => '~^yandex~',
+            'Vivaldi'           => '~^vivaldi~',
+            'UC Browser'        => '~^uc ?browser~',
+            'DuckDuckGo'        => '~^duckduckgo~',
+            'Firefox'           => '~firefox~',
+            'Chrome'            => '~^(google )?chrome~',
+            'Safari'            => '~safari~',
+            'Internet Explorer' => '~^(internet explorer|ie$|msie)~',
+        );
+        foreach ($browsers as $ours => $pattern) {
+            if (preg_match($pattern, $lower)) {
+                return $ours;
+            }
+        }
+        return 'Other';
+    }
+
+    /**
+     * IP addresses and ranges as SEO Pro Stats's exclude_ips lines: one a
+     * line, IPv4 ranges with a netmask (192.168.0.0/255.255.255.0) as a
+     * prefix length (/24).
+     *
+     * @param string|string[] $ips A list, or text with one or more a line.
+     * @return string[]
+     */
+    protected static function ip_lines($ips) {
+        $ips = is_array($ips) ? implode(' ', array_map('strval', $ips)) : (string) $ips;
+        $out = array();
+        foreach (explode(' ', str_replace(array("\r", "\n", "\t", ','), ' ', $ips)) as $ip) {
+            $ip = trim($ip);
+            if ($ip === '') {
+                continue;
+            }
+            if (preg_match('~^([0-9.]+)/(\d+\.\d+\.\d+\.\d+)$~', $ip, $m)) {
+                $mask = ip2long($m[2]);
+                if ($mask !== false) {
+                    $ip = $m[1] . '/' . substr_count(decbin($mask & 0xFFFFFFFF), '1');
+                }
+            }
+            $out[] = $ip;
+        }
+        return array_values(array_unique($out));
     }
 }

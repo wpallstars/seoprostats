@@ -271,6 +271,7 @@
 		['transients', __('Transients', 'seoprostats')],
 		['cron', __('Scheduled tasks', 'seoprostats')],
 		['user_meta', __('User settings', 'seoprostats')],
+		['post_meta', __('Post data', 'seoprostats')],
 		['files', __('Files and folders (in wp-content)', 'seoprostats')]
 	];
 
