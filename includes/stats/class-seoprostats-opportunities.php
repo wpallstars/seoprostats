@@ -304,7 +304,7 @@ final class SEOProStats_Opportunities {
         $own = array();
         foreach ($rows as $row) {
             if ((int) $row['i'] >= self::CURVE_MIN) {
-                $own[(int) $row['b']] = (int) $row['c'] / (int) $row['i'];
+                $own[(int) $row['b']] = SEOProStats_Search::ctr($row['c'], $row['i']);
             }
         }
         $ctr = array();

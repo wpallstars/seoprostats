@@ -452,9 +452,23 @@ final class SEOProStats_Search {
         return array(
             'clicks'      => $clicks,
             'impressions' => $impressions,
-            'ctr'         => $impressions ? round($clicks / $impressions, 4) : 0.0,
+            'ctr'         => round(self::ctr($clicks, $impressions), 4),
             'position'    => $impressions ? round((float) $pos_impr / $impressions / 100, 1) : 0.0,
         );
+    }
+
+    /**
+     * CTR from clicks and impressions, at most 1: Bing sometimes counts
+     * more clicks than impressions for a rare query. Clicks and
+     * impressions stay as imported; only the rate is capped.
+     *
+     * @param int|float|string $clicks      Clicks.
+     * @param int|float|string $impressions Impressions.
+     * @return float 0 without impressions.
+     */
+    public static function ctr($clicks, $impressions) {
+        $impressions = (float) $impressions;
+        return $impressions > 0 ? min(1.0, (float) $clicks / $impressions) : 0.0;
     }
 
     /**

@@ -845,7 +845,8 @@ final class SEOProStats_Experiments {
             case 2:
                 return (float) $sums['i'];
             case 3:
-                return $sums['i'] > 0 ? $sums['c'] / $sums['i'] : null;
+                // At most 1, as SEOProStats_Search::ctr(): Bing can count more clicks than impressions.
+                return $sums['i'] > 0 ? min(1.0, $sums['c'] / $sums['i']) : null;
             case 4:
                 return $sums['i'] > 0 ? $sums['p'] / $sums['i'] / 100 : null;
             case 5:
@@ -1065,7 +1066,7 @@ final class SEOProStats_Experiments {
             return array(
                 'clicks'      => (int) $sums['c'],
                 'impressions' => (int) $sums['i'],
-                'ctr'         => $sums['i'] ? round($sums['c'] / $sums['i'], 4) : null,
+                'ctr'         => $sums['i'] ? round(min(1.0, $sums['c'] / $sums['i']), 4) : null,
                 'position'    => $sums['i'] ? round($sums['p'] / $sums['i'] / 100, 1) : null,
             );
         }
