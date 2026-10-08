@@ -14,6 +14,7 @@
 import { parseFilter, serializeFilter, type Filter } from './filters';
 import {
 	AUDIT_FINDINGS,
+	CHANGE_GROUPS,
 	CLICK_KINDS,
 	COMPARE_KEYS,
 	CONTENT_SORTS,
@@ -25,6 +26,7 @@ import {
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
 	type AuditFinding,
+	type ChangeGroup,
 	type ClickKind,
 	type CompareKey,
 	type ContentSort,
@@ -97,6 +99,8 @@ export interface ViewState {
 	kind?: ClickKind;
 	/** Clicks, Search and Changes: only this page (a path; * for any text). */
 	page?: string;
+	/** Changes: only this group (all when left out). */
+	group?: ChangeGroup;
 	/** Properties: the property whose values are listed. */
 	key?: string;
 	/** Properties: only properties sent with this event. */
@@ -130,7 +134,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -171,6 +175,8 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		set('page', text(params.get('page')));
 	} else if (state.view === 'changes') {
 		set('page', text(params.get('page')));
+		const group = oneOf([...CHANGE_GROUPS, ''] as const, params.get('group'), '');
+		set('group', group || undefined);
 	} else if (state.view === 'properties') {
 		set('key', text(params.get('key')));
 		set('event', text(params.get('event')));
