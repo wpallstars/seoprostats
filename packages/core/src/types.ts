@@ -410,6 +410,8 @@ export interface SearchEngineAnswer<E extends SearchEngineChoice = SearchEngine>
 	engine: E;
 	/** Engines with search data or connected; Google always. */
 	engines: SearchEngine[];
+	/** Rankings, Opportunities and Content: whether Combined adds anything up (two or more engines with data). */
+	combined?: boolean;
 }
 
 export interface SearchMetrics {

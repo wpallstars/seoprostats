@@ -143,7 +143,14 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 	const id = useId();
 	// The engines with data, as the last answer listed them (every report's answer does).
 	const [engines, setEngines] = useState<SearchEngine[]>(['google']);
-	const onEngines = useCallback((list: SearchEngine[]) => setEngines((was) => (was.join() === list.join() ? was : list)), []);
+	// Whether Combined adds anything up (two or more engines with data), as Rankings, Opportunities or Content last said.
+	const [combinable, setCombinable] = useState(false);
+	const onEngines = useCallback((list: SearchEngine[], combined?: boolean) => {
+		setEngines((was) => (was.join() === list.join() ? was : list));
+		if (combined !== undefined) {
+			setCombinable(combined);
+		}
+	}, []);
 	// Google is the default, so it is left out of the address; only Google has countries and devices.
 	const chooseEngine = (next: SearchEngineChoice) =>
 		update({ engine: next === 'google' ? undefined : next, tab: next !== 'google' && (state.tab === 'countries' || state.tab === 'devices') ? undefined : state.tab });
@@ -208,7 +215,15 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 					</button>
 				))}
 			</div>
-			{!shared && <EngineSwitch engines={engines} engine={engine} choose={chooseEngine} combined={(COMBINED_REPORTS as readonly SearchReport[]).includes(report)} />}
+			{!shared && (
+				<EngineSwitch
+					engines={engines}
+					engine={engine}
+					choose={chooseEngine}
+					combined={(COMBINED_REPORTS as readonly SearchReport[]).includes(report)}
+					combinable={combinable}
+				/>
+			)}
 			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
 				{report === 'rankings' && <Rankings {...reportProps} />}
@@ -244,6 +259,8 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
 	useReportEngines(answer, onEngines);
+	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
+	const answered: SearchEngineChoice = answer?.engine ?? engine;
 	const printAll = usePrintAll();
 	const rows = answer?.kind === shown ? answer.rows : [];
 	const totals = answer?.totals;
@@ -298,14 +315,14 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 			<Card className="spst-summary">
 				<div className="spst-search__head">
 					<div>
-						<h2 className="spst-card__title">{title(page, query, engine)}</h2>
+						<h2 className="spst-card__title">{title(page, query, answered)}</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
 									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
 									__('%1$s, final days through %2$s', 'seoprostats'),
-									sourceName(answer.engine ?? engine, answer.engines),
+									sourceName(answered, answer.engines),
 									longLabel(answer.through, 'day')
 								)}
 								{answer.grain === 'week' && ` · ${__('by week', 'seoprostats')}`}
@@ -398,7 +415,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 							<span className="spst-tile__label">{metricName(key)}</span>
 							<span className="spst-tile__value">{totals ? value(key, totals) : '–'}</span>
 							<span className="spst-tile__foot">
-								<span className="spst-muted">{metricFoot(key, engine)}</span>
+								<span className="spst-muted">{metricFoot(key, answered)}</span>
 								{change && (
 									<Change
 										change={change[key]}
@@ -460,7 +477,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 					</CardHeader>
 					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
 						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
-						{answer && rows.length > 0 && <SearchNote engine={engine} />}
+						{answer && rows.length > 0 && <SearchNote engine={answered} />}
 					</CardBody>
 				</Card>
 			)}

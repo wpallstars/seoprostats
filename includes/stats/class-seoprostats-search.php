@@ -116,6 +116,7 @@ final class SEOProStats_Search {
             $answer = array(
                 'engine'    => $engine,
                 'engines'   => self::engines(),
+                'combined'  => self::combinable(),
                 'range'     => $now ? self::range_out($now) : SEOProStats_Query::range_out($range),
                 'through'   => $bounds['to'],
                 'first'     => $bounds['from'],
@@ -223,6 +224,15 @@ final class SEOProStats_Search {
             }
         }
         return $out;
+    }
+
+    /**
+     * Whether Combined adds anything up: two or more engines have data.
+     *
+     * @return bool
+     */
+    public static function combinable() {
+        return count(self::with_data()) > 1;
     }
 
     /**

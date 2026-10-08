@@ -145,19 +145,20 @@ final class SEOProStats_Opportunities {
         $offset  = (int) $req['offset'];
 
         $answer = array(
-            'engine'  => $name,
-            'engines' => SEOProStats_Search::engines(),
-            'kind'    => $kind,
-            'range'   => SEOProStats_Query::range_out($now ? $now : $range),
-            'days'    => $days,
-            'cut'     => $full && $now && SEOProStats_Search::length($full) > $days,
-            'through' => $bounds['to'],
-            'first'   => $bounds['from'],
-            'ignored' => array_values(array_unique($ignored)),
-            'rules'   => self::rules($kind, $days),
-            'rows'    => array(),
-            'total'   => 0,
-            'more'    => false,
+            'engine'   => $name,
+            'engines'  => SEOProStats_Search::engines(),
+            'combined' => SEOProStats_Search::combinable(),
+            'kind'     => $kind,
+            'range'    => SEOProStats_Query::range_out($now ? $now : $range),
+            'days'     => $days,
+            'cut'      => $full && $now && SEOProStats_Search::length($full) > $days,
+            'through'  => $bounds['to'],
+            'first'    => $bounds['from'],
+            'ignored'  => array_values(array_unique($ignored)),
+            'rules'    => self::rules($kind, $days),
+            'rows'     => array(),
+            'total'    => 0,
+            'more'     => false,
         );
         if ($kind === 'decay') {
             $answer['compare'] = null;

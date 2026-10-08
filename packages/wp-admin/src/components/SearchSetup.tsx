@@ -23,17 +23,25 @@ export interface SearchPick {
 	query: string;
 }
 
-/** A search report's props: the view's, and where to say which engines have data. */
-export type SearchReportProps = ViewProps & { onEngines?: (engines: SearchEngine[]) => void };
+/**
+ * A search report's props: the view's, and where to say which engines
+ * have data and (Rankings, Opportunities and Content) whether Combined
+ * adds anything up.
+ */
+export type SearchReportProps = ViewProps & { onEngines?: (engines: SearchEngine[], combined?: boolean) => void };
 
-/** Pass on the engines an answer lists, for the engine switch. */
-export function useReportEngines(answer: { engines?: SearchEngine[] } | undefined, onEngines?: (engines: SearchEngine[]) => void): void {
+/** Pass on the engines an answer lists, and whether it can combine them, for the engine switch. */
+export function useReportEngines(
+	answer: { engines?: SearchEngine[]; combined?: boolean } | undefined,
+	onEngines?: (engines: SearchEngine[], combined?: boolean) => void
+): void {
 	const list = answer?.engines;
+	const combined = answer?.combined;
 	useEffect(() => {
 		if (list && onEngines) {
-			onEngines(list);
+			onEngines(list, combined);
 		}
-	}, [list, onEngines]);
+	}, [list, combined, onEngines]);
 }
 
 /** An engine's name: Google, Bing; Combined for all. */
@@ -91,23 +99,26 @@ export function SearchSetup({ answer }: { answer: { through: string; connected: 
 
 /**
  * Google or Bing, when there is more than one engine (or Bing is chosen),
- * then Combined where the report can add them up (`combined`); elsewhere
- * Combined shows as Google, the engine those reports read.
+ * then Combined where the report can add them up (`combined`) and two
+ * engines have data (`combinable`), or it is chosen; elsewhere Combined
+ * shows as Google, the engine those reports read.
  */
 export function EngineSwitch({
 	engines,
 	engine,
 	choose,
 	combined,
+	combinable,
 }: {
 	engines: SearchEngine[];
 	engine: SearchEngineChoice;
 	choose: (engine: SearchEngineChoice) => void;
 	combined: boolean;
+	combinable: boolean;
 }) {
 	const chosen: SearchEngineChoice = combined || engine !== 'all' ? engine : 'google';
 	const one: SearchEngine[] = chosen === 'all' || engines.includes(chosen) ? engines : [...engines, chosen];
-	const shown: SearchEngineChoice[] = combined && one.length > 1 ? [...one, 'all'] : one;
+	const shown: SearchEngineChoice[] = combined && (combinable || chosen === 'all') ? [...one, 'all'] : one;
 	if (shown.length < 2) {
 		return null;
 	}

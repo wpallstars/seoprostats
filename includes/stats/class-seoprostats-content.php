@@ -112,6 +112,7 @@ final class SEOProStats_Content {
         $answer = array(
             'engine'        => $name,
             'engines'       => SEOProStats_Search::engines(),
+            'combined'      => SEOProStats_Search::combinable(),
             'range'         => SEOProStats_Query::range_out($now ? $now : $range),
             'through'       => $bounds['to'],
             'first'         => $bounds['from'],

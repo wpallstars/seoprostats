@@ -4389,12 +4389,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
+          required: [engine, engines, combined, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             range:
               $ref: '#/components/schemas/Range'
             through:
@@ -4740,12 +4742,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
+          required: [engine, engines, combined, kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             kind:
               type: string
               enum: [striking, ctr, decay, missing, overlap]
@@ -5279,6 +5283,10 @@ components:
         type: string
         enum: [google, bing]
 
+    SearchCombined:
+      type: boolean
+      description: Whether engine=all (Combined) adds anything up, two or more engines having data; without, all answers as the one engine with data.
+
     ContentMetrics:
       description: Search figures (the chosen engine's) with the visits from organic search that started on the page.
       allOf:
@@ -5336,12 +5344,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
+          required: [engine, engines, combined, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             range:
               $ref: '#/components/schemas/Range'
             through:

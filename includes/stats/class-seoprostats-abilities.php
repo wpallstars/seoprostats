@@ -252,6 +252,7 @@ final class SEOProStats_Abilities {
                         'type'  => 'array',
                         'items' => array('type' => 'string'),
                     ),
+                    'combined'  => array('type' => 'boolean'),
                     'range'     => array('type' => 'object'),
                     'through'   => array('type' => 'string'),
                     'connected' => array('type' => 'boolean'),

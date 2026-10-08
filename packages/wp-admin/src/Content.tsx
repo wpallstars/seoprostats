@@ -60,6 +60,8 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 	const query = useContent(state, sort, goal, PER_PAGE, offset);
 	const answer = query.data;
 	useReportEngines(answer, onEngines);
+	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
+	const answered: SearchEngineChoice = answer?.engine ?? engine;
 	const rows = answer?.rows ?? [];
 	const counted = answer?.goal ?? null;
 
@@ -116,7 +118,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 						</div>
 					)}
 				</div>
-				<Tiles answer={answer} engine={engine} />
+				<Tiles answer={answer} engine={answered} />
 			</Card>
 
 			<Card className="spst-card is-wide spst-section" size="small">
@@ -136,12 +138,12 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 					{answer && answer.through && (
 						<div className="spst-note">
 							<p>
-								{engine === 'all'
+								{answered === 'all'
 									? __(
 											'Clicks and position are every search engine’s added up, Bing’s from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
 											'seoprostats'
 										)
-									: engine === 'bing'
+									: answered === 'bing'
 									? __(
 											'Clicks and position are Bing’s, from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
 											'seoprostats'
