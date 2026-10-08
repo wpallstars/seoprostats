@@ -1655,6 +1655,7 @@ final class SEOProStats_CLI {
         if ($file === '') {
             WP_CLI::error(__('Name the file to import, or - for standard input.', 'seoprostats'));
         }
+        $text = '';
         if ($file === '-') {
             $text = (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the list piped in.
         } elseif (is_readable($file) && is_file($file)) {

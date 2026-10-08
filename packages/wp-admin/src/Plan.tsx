@@ -43,6 +43,7 @@ import {
 	type QueueStatus,
 	type RefreshProposal,
 	type SearchEngine,
+	type TargetFinding,
 } from '@seoprostats/core';
 import { errorMessage, updateQueueItem, useQueue } from './api';
 import { boot, locale } from './boot';
@@ -73,8 +74,19 @@ export function kindName(kind: QueueKind): string {
 		links: __('Internal links', 'seoprostats'),
 		index: __('Indexation', 'seoprostats'),
 		refresh: __('Refresh', 'seoprostats'),
+		target: __('Search target', 'seoprostats'),
 	};
 	return names[kind];
+}
+
+/** A search target item's finding, or null. */
+function targetFinding(item: QueueItem): TargetFinding | null {
+	return item.kind === 'target' && (item.finding === 'wrong_page' || item.finding === 'striking') ? item.finding : null;
+}
+
+/** A search target finding's name. */
+function targetFindingName(finding: TargetFinding): string {
+	return finding === 'wrong_page' ? __('Another page ranks', 'seoprostats') : __('Striking distance', 'seoprostats');
 }
 
 /** A refresh proposal's name. */
@@ -114,7 +126,8 @@ function itemKind(item: QueueItem): string {
 	const list = linksList(item);
 	const index = indexList(item);
 	const proposal = refreshProposal(item);
-	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : proposal ? proposalName(proposal) : '';
+	const target = targetFinding(item);
+	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : proposal ? proposalName(proposal) : target ? targetFindingName(target) : '';
 	return detail
 		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
@@ -664,7 +677,22 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 														number(f.clicks),
 														`${number((f.share ?? 0) * 100)}%`
 													)
-												: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+												: item.kind === 'target' && targetFinding(item) === 'wrong_page'
+													? sprintf(
+															/* translators: 1: share, e.g. 50%, 2: the target's priority, 3: the default priority. */
+															__('Potential clicks: the search’s impressions × the site’s CTR at its position × %1$s (what the wrong page puts at stake), × priority %2$s ÷ %3$s, scaled to 28 days.', 'seoprostats'),
+															`${number((answer.rules.target?.share ?? 0.5) * 100)}%`,
+															number(f.priority ?? 50),
+															number(answer.rules.target?.priority ?? 50)
+														)
+													: item.kind === 'target'
+														? sprintf(
+																/* translators: 1: the target's priority, 2: the default priority. */
+																__('Potential clicks: those of the top three less those now, × priority %1$s ÷ %2$s, scaled to 28 days.', 'seoprostats'),
+																number(f.priority ?? 50),
+																number(answer.rules.target?.priority ?? 50)
+															)
+														: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null

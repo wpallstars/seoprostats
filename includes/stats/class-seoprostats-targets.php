@@ -456,8 +456,8 @@ final class SEOProStats_Targets {
      */
     private static function parse_toon(array $lines) {
         $count = count($lines);
-        for ($index = 0; $index < $count; $index++) {
-            if (!preg_match('/^([A-Za-z_][\w.-]*)\[(\d+)([|\t,]?)\]\{(.*)\}:\s*$/', $lines[$index], $m)) {
+        foreach ($lines as $index => $line) {
+            if (!preg_match('/^([A-Za-z_][\w.-]*)\[(\d+)([|\t,]?)\]\{(.*)\}:\s*$/', $line, $m)) {
                 continue;
             }
             $delim  = $m[3] !== '' ? $m[3] : ',';
@@ -466,13 +466,17 @@ final class SEOProStats_Targets {
                 continue;
             }
             $rows = array();
-            for ($index++; $index < $count && strpos($lines[$index], '  ') === 0; $index++) {
-                $cells = self::toon_cells(substr($lines[$index], 2), $delim);
+            for ($at = $index + 1; $at < $count && strpos($lines[$at], '  ') === 0; $at++) {
+                $cells = self::toon_cells(substr($lines[$at], 2), $delim);
                 if ($cells === null || count($cells) !== count($fields)) {
                     /* translators: %d: row number */
                     return self::error('seoprostats_targets_toon', sprintf(__('Row %d of the targets table cannot be read.', 'seoprostats'), count($rows) + 1));
                 }
-                $rows[] = array_combine($fields, $cells);
+                $row = array();
+                foreach ($fields as $column => $field) {
+                    $row[$field] = $cells[$column];
+                }
+                $rows[] = $row;
                 if (count($rows) > self::MAX_ROWS) {
                     break;
                 }

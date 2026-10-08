@@ -371,7 +371,7 @@ export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as cons
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'plan', 'experiments'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'targets', 'plan', 'experiments'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 /**
@@ -1003,12 +1003,102 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 	more: boolean;
 }
 
+/** A search target's status, as the site set it. */
+export const TARGET_STATUSES = ['candidate', 'targeted', 'live', 'won', 'retired'] as const;
+export type TargetStatus = (typeof TARGET_STATUSES)[number];
+
+/** Targets a list can ask for: every target, the open ones (candidate, targeted, live), or one status. */
+export const TARGET_FILTERS = ['all', 'open', ...TARGET_STATUSES] as const;
+export type TargetFilter = (typeof TARGET_FILTERS)[number];
+
+/** How search treats a target: the page meant for it ranks, another page does, no page is chosen yet, or it is not shown. */
+export const TARGET_STATES = ['ranking', 'wrong_page', 'no_page', 'not_shown'] as const;
+export type TargetState = (typeof TARGET_STATES)[number];
+
+/** Decision queue findings of a search target: shown with another page, or high priority in striking distance. */
+export type TargetFinding = 'wrong_page' | 'striking';
+
+/** A page of a target with its figures for the target's query. */
+export interface TargetPage extends OpportunityPage {
+	clicks: number;
+	impressions: number;
+	position: number | null;
+	/** Its share of the query's impressions; null when search did not show it. */
+	share: number | null;
+}
+
+export interface TargetRow {
+	query: string;
+	/** 0–100. */
+	priority: number;
+	status: TargetStatus;
+	/** list, aidevops or demo. */
+	source: string;
+	state: TargetState;
+	/** Positions 1–3, 4–20 or beyond; null when not shown. */
+	band: 'top' | 'striking' | 'beyond' | null;
+	clicks: number;
+	impressions: number;
+	ctr: number;
+	position: number | null;
+	/** With a comparison period: the query's position and clicks then. */
+	then_position: number | null;
+	then_clicks: number | null;
+	/** The page meant for it; null when none is chosen yet. */
+	page: TargetPage | null;
+	/** The page search shows most for it; null when not shown. */
+	shown: TargetPage | null;
+	/** Pages search showed for it. */
+	pages: number;
+	updated: string;
+}
+
+export interface TargetsAnswer extends Answer, SearchEngineAnswer {
+	/** The period read: cut at the newest search day and to its newest 91 days. */
+	range: Range;
+	days: number;
+	cut: boolean;
+	through: string;
+	first: string;
+	compare: { range: Range } | null;
+	connected: boolean;
+	rules: { priority: number; high_priority: number; striking_from: number; striking_to: number; max_targets: number };
+	/** Targets per status (every target). */
+	statuses: Record<TargetStatus, number>;
+	status: TargetFilter;
+	/** Targets of the list asked for, per state. */
+	counts: Record<TargetState, number>;
+	/** Highest priority first, then most impressions. */
+	rows: TargetRow[];
+	total: number;
+	more: boolean;
+}
+
+/** A row an import skipped, and why. */
+export interface TargetSkipped {
+	/** 1 for the first data row. */
+	row: number;
+	query: string;
+	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit';
+	message: string;
+}
+
+export interface TargetsImportAnswer {
+	/** list (objects), csv, json or toon. */
+	format: string;
+	added: number;
+	updated: number;
+	removed: number;
+	skipped: TargetSkipped[];
+	total: number;
+}
+
 /** Refresh planner proposals for a page losing clicks, in the order they are checked. */
 export const REFRESH_PROPOSALS = ['leave', 'protect', 'merge', 'update'] as const;
 export type RefreshProposal = (typeof REFRESH_PROPOSALS)[number];
 
-/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links, indexation and refresh proposals. */
-export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index' | 'refresh';
+/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links, indexation, refresh proposals and search targets. */
+export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index' | 'refresh' | 'target';
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -1086,6 +1176,9 @@ export interface QueueFigures {
 	changed?: boolean;
 	lost_queries?: { query: string; lost: number; position: number | null; then_position: number | null; rival: { path: string; clicks: number; position: number; then_position: number | null; share: number } | null }[];
 	rival?: DecayRival & { query: string; position_here: number | null; then_position_here: number | null };
+	/** target: the target's priority and status (wrong_page: pages are the page meant for it, then the page shown). */
+	priority?: number;
+	target_status?: TargetStatus;
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -1097,8 +1190,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
-	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; else null. */
-	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | null;
+	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; else null. */
+	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -1158,6 +1251,8 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		refresh_effort: Record<RefreshProposal, number>;
 		refresh_share: Record<RefreshProposal, number>;
 		refresh: { old_days: number; protect_value: number; protect_conversions: number };
+		/** Search targets: the share of a search's expected clicks at stake on the wrong page, the default and least striking priority, and the statuses listed. */
+		target: { share: number; priority: number; high_priority: number; statuses: TargetStatus[] };
 		confidence: Record<QueueKind, number>;
 		full_impressions: number;
 		missing_share: number;
