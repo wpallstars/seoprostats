@@ -3305,6 +3305,302 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Move from another statistics plugin: list the plugins found, import
+     * one's history (or see what an import would do), list imports, undo
+     * one, or remove what the plugin left behind.
+     *
+     * An import fills only days before SEO Pro Stats's own first day and
+     * not filled by another import, so running it again adds nothing. It
+     * also carries over the plugin's settings that are still at our
+     * default. cleanup lists exactly what the plugin left on this site
+     * and, with --yes, deletes it; it is refused while the plugin is
+     * active, and cannot be undone.
+     *
+     * ## OPTIONS
+     *
+     * <action>
+     * : list, run, imports (the last 20), undo (by --id) or cleanup.
+     * ---
+     * options:
+     *   - list
+     *   - run
+     *   - imports
+     *   - undo
+     *   - cleanup
+     * ---
+     *
+     * [<source>]
+     * : The plugin, for run and cleanup: burst-statistics.
+     *
+     * [--dry-run]
+     * : run: only say what it would do (days, rows, overlap, settings). cleanup: only list (the default without --yes).
+     *
+     * [--prefer=<source>]
+     * : run: when another plugin not imported yet has statistics on the same days, the one whose counts fill them (it imports first).
+     *
+     * [--from=<day>]
+     * : run: first day (Y-m-d).
+     *
+     * [--to=<day>]
+     * : run: last day (Y-m-d).
+     *
+     * [--id=<id>]
+     * : undo: the import.
+     *
+     * [--yes]
+     * : cleanup: delete the list without asking.
+     *
+     * [--format=<format>]
+     * : table or json.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats migrate list
+     *     wp seoprostats migrate run burst-statistics --dry-run
+     *     wp seoprostats migrate run burst-statistics
+     *     wp seoprostats migrate undo --id=12
+     *     wp seoprostats migrate cleanup burst-statistics --dry-run
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function migrate($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        $this->need_tables();
+        $action = $args[0];
+        $source = isset($args[1]) ? (string) $args[1] : '';
+        $json   = $this->format($assoc) === 'json';
+        $print  = function ($data) {
+            WP_CLI::line((string) wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+        };
+        if (in_array($action, array('run', 'cleanup'), true) && $source === '') {
+            WP_CLI::error(__('Name the plugin: wp seoprostats migrate list shows them.', 'seoprostats'));
+        }
+
+        if ($action === 'list') {
+            $status = SEOProStats_Migrate::status(true);
+            if ($json) {
+                $print($status);
+                return;
+            }
+            if (!$status['sources']) {
+                WP_CLI::log(__('No statistics plugin\'s data found on this site.', 'seoprostats'));
+                return;
+            }
+            $rows = array();
+            foreach ($status['sources'] as $found) {
+                $rows[] = array(
+                    'source'    => $found['key'],
+                    'name'      => $found['name'],
+                    'version'   => $found['version'],
+                    'plugin'    => $found['plugin']['state'],
+                    'from'      => $found['from'],
+                    'to'        => $found['to'],
+                    'days'      => $found['days'],
+                    'leftovers' => $found['leftovers'] ? 'yes' : ($found['plugin']['state'] === 'active' || $found['plugin']['state'] === 'network' ? 'while active: no' : 'no'),
+                );
+            }
+            WP_CLI\Utils\format_items('table', $rows, array('source', 'name', 'version', 'plugin', 'from', 'to', 'days', 'leftovers'));
+            /* translators: %s: day */
+            WP_CLI::log(sprintf(__('SEO Pro Stats\'s own days start %s; imports fill only days before it.', 'seoprostats'), $status['own_from']));
+            return;
+        }
+
+        if ($action === 'imports') {
+            $rows = SEOProStats_Migrate::imports();
+            if ($json) {
+                $print($rows);
+                return;
+            }
+            if (!$rows) {
+                WP_CLI::log(__('No imports yet.', 'seoprostats'));
+                return;
+            }
+            foreach ($rows as &$row) {
+                $row['check'] = isset($row['check']['source']['pageviews']) ? sprintf('%d / %d pageviews', $row['check']['imported']['pageviews'], $row['check']['source']['pageviews']) : '';
+            }
+            unset($row);
+            WP_CLI\Utils\format_items('table', $rows, array('id', 'source', 'status', 'from', 'to', 'days', 'rows', 'check', 'error'));
+            return;
+        }
+
+        if ($action === 'undo') {
+            if (empty($assoc['id'])) {
+                WP_CLI::error(__('Give the import with --id (wp seoprostats migrate imports lists them).', 'seoprostats'));
+            }
+            $deleted = SEOProStats_Migrate::undo((int) $assoc['id']);
+            if (is_wp_error($deleted)) {
+                WP_CLI::error($deleted->get_error_message());
+                return;
+            }
+            /* translators: 1: import ID, 2: number of rows */
+            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. Settings it carried over stay; run the import again to bring the days back.', 'seoprostats'), (int) $assoc['id'], $deleted));
+            return;
+        }
+
+        if ($action === 'cleanup') {
+            $dry    = !empty($assoc['dry-run']) || empty($assoc['yes']);
+            $result = SEOProStats_Migrate::cleanup($source, true);
+            if (is_wp_error($result)) {
+                WP_CLI::error($result->get_error_message());
+                return;
+            }
+            if ($json && $dry) {
+                $print($result);
+                return;
+            }
+            $this->leftovers_table($result['leftovers']);
+            if ($dry) {
+                if (empty($assoc['dry-run'])) {
+                    /* translators: %s: source key */
+                    WP_CLI::log(sprintf(__('Nothing deleted. Back up the database, then: wp seoprostats migrate cleanup %s --yes', 'seoprostats'), $source));
+                }
+                return;
+            }
+            $result = SEOProStats_Migrate::cleanup($source, false);
+            if (is_wp_error($result)) {
+                WP_CLI::error($result->get_error_message());
+                return;
+            }
+            if ($json) {
+                $print($result);
+                return;
+            }
+            $removed = array();
+            foreach ($result['removed'] as $kind => $count) {
+                $removed[] = $kind . ': ' . $count;
+            }
+            /* translators: 1: plugin name, 2: counts */
+            WP_CLI::success(sprintf(__('Leftover data of %1$s removed (%2$s). Imported days stay.', 'seoprostats'), $result['name'], implode(', ', $removed)));
+            return;
+        }
+
+        $run = array(
+            'from'   => isset($assoc['from']) ? (string) $assoc['from'] : '',
+            'to'     => isset($assoc['to']) ? (string) $assoc['to'] : '',
+            'prefer' => isset($assoc['prefer']) ? (string) $assoc['prefer'] : '',
+        );
+        if (!empty($assoc['dry-run'])) {
+            $plan = SEOProStats_Migrate::plan($source, $run);
+            if (is_wp_error($plan)) {
+                WP_CLI::error($plan->get_error_message());
+                return;
+            }
+            if ($json) {
+                $print($plan);
+                return;
+            }
+            $this->migrate_plan($plan);
+            return;
+        }
+        $job = SEOProStats_Migrate::run($source, $run, function ($job) use ($json) {
+            if (!$json) {
+                foreach ($job['queue'] as $item) {
+                    if ($item['total'] && $item['done'] < $item['total']) {
+                        /* translators: 1: plugin name, 2: days done, 3: days */
+                        WP_CLI::log(sprintf(__('%1$s: %2$d of %3$d days', 'seoprostats'), $item['name'], $item['done'], $item['total']));
+                    }
+                }
+            }
+        });
+        if (is_wp_error($job)) {
+            WP_CLI::error($job->get_error_message());
+            return;
+        }
+        if (!empty($job['locked'])) {
+            WP_CLI::error(__('Another request is running this import. Check with wp seoprostats migrate imports.', 'seoprostats'));
+        }
+        $ids     = wp_list_pluck($job['queue'], 'id');
+        $imports = array_values(array_filter(SEOProStats_Migrate::imports(), function ($row) use ($ids) {
+            return in_array($row['id'], $ids, true);
+        }));
+        if ($json) {
+            $print(array('job' => $job, 'imports' => $imports));
+            return;
+        }
+        foreach (array_reverse($imports) as $row) {
+            /* translators: 1: plugin name, 2: days, 3: rows, 4: import ID */
+            WP_CLI::success(sprintf(__('%1$s: %2$d days imported, %3$d rows (import %4$d).', 'seoprostats'), $row['name'], $row['days'], $row['rows'], $row['id']));
+            if (!empty($row['check']['source'])) {
+                $check = array();
+                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
+                    $check[] = array('metric' => $metric, 'plugin' => $row['check']['source'][$metric], 'imported' => $row['check']['imported'][$metric]);
+                }
+                WP_CLI\Utils\format_items('table', $check, array('metric', 'plugin', 'imported'));
+            }
+            foreach ((array) $row['settings'] as $key => $change) {
+                /* translators: 1: setting key, 2: before, 3: after */
+                WP_CLI::log(sprintf(__('Setting %1$s: %2$s → %3$s', 'seoprostats'), $key, $change[0], $change[1]));
+            }
+            if ($row['error'] !== '') {
+                WP_CLI::warning($row['error']);
+            }
+        }
+    }
+
+    /**
+     * Print a dry run.
+     *
+     * @param array<string,mixed> $plan SEOProStats_Migrate::plan().
+     */
+    private function migrate_plan(array $plan) {
+        $skipped = array();
+        foreach ($plan['skipped']['imported'] as $by => $count) {
+            /* translators: 1: days, 2: source key */
+            $skipped[] = sprintf(__('%1$d already imported from %2$s', 'seoprostats'), $count, $by);
+        }
+        $rows = array(
+            array('field' => 'plugin', 'value' => $plan['name'] . ' ' . $plan['version'] . ' (' . $plan['plugin']['state'] . ')'),
+            array('field' => 'statistics', 'value' => sprintf('%s – %s, %d days', $plan['from'], $plan['to'], $plan['days'])),
+            array('field' => 'own days from', 'value' => $plan['own_from'] . sprintf(' (%d days skipped)', $plan['skipped']['own'])),
+            array('field' => 'imported before', 'value' => $skipped ? implode('; ', $skipped) : 'none'),
+            array('field' => 'would import', 'value' => $plan['import']['days'] ? sprintf('%s – %s, %d days', $plan['import']['from'], $plan['import']['to'], $plan['import']['days']) : 'nothing'),
+            array('field' => 'its counts', 'value' => sprintf('%d pageviews, %d visits, %d visitors', $plan['totals']['pageviews'], $plan['totals']['visits'], $plan['totals']['visitors'])),
+        );
+        foreach ($plan['rows'] as $dimension => $count) {
+            $rows[] = array('field' => 'rows: ' . $dimension, 'value' => '~' . $count);
+        }
+        foreach ($plan['overlap'] as $overlap) {
+            $rows[] = array('field' => 'shares days with', 'value' => sprintf('%s: %s – %s, %d days; suggested --prefer=%s', $overlap['name'], $overlap['from'], $overlap['to'], $overlap['days'], $overlap['suggested']));
+        }
+        foreach ($plan['settings'] as $setting) {
+            $rows[] = array('field' => 'setting ' . $setting['key'], 'value' => sprintf('%s → %s (%s)', $setting['now'], $setting['to'], $setting['change'] ? 'would change' : ($setting['reason'] === 'same' ? 'already so' : 'kept: changed from the default')));
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('field', 'value'));
+        WP_CLI::log(__('Dry run: nothing written.', 'seoprostats'));
+    }
+
+    /**
+     * Print a leftovers list.
+     *
+     * @param array<string,mixed> $list SEOProStats_Migrate_Source::leftovers().
+     */
+    private function leftovers_table(array $list) {
+        $rows = array();
+        foreach ($list as $kind => $items) {
+            if ($kind === 'network') {
+                foreach ((array) $items as $network_kind => $names) {
+                    foreach ((array) $names as $name) {
+                        $rows[] = array('kind' => 'network ' . $network_kind . ' (kept)', 'name' => $name);
+                    }
+                }
+                continue;
+            }
+            foreach ((array) $items as $name) {
+                $rows[] = array('kind' => $kind, 'name' => $name);
+            }
+        }
+        if (!$rows) {
+            WP_CLI::log(__('Nothing left behind.', 'seoprostats'));
+            return;
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('kind', 'name'));
+    }
+
+    /**
      * A source's imports subcommand.
      *
      * @param string               $source Source key.

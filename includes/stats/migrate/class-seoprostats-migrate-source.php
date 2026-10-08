@@ -99,18 +99,6 @@ abstract class SEOProStats_Migrate_Source {
     abstract public function leftovers();
 
     /**
-     * Distinct values per dimension over a range, for the dry run.
-     *
-     * @param string $from First day.
-     * @param string $to   Last day.
-     * @return array<string,int> Dimension => values.
-     */
-    public function values($from, $to) {
-        unset($from, $to);
-        return array();
-    }
-
-    /**
      * Its settings with an equivalent of ours: each with key (ours),
      * label (its own name for it), from (its value, in words), value (ours
      * would be), and also (more of ours that go with it, key => value).

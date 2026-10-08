@@ -45,6 +45,12 @@ final class SEOProStats_Collection {
     /** Cron hook: search data imports (SEOProStats_Search_Import; only while a source is connected). */
     const IMPORT_HOOK = 'seoprostats_search_import';
 
+    /** Cron hook: an import from another statistics plugin (SEOProStats_Migrate; only while one runs). */
+    const MIGRATE_HOOK = 'seoprostats_migrate';
+
+    /** Transient: the statistics plugins found on the site (SEOProStats_Migrate::found()). */
+    const MIGRATE_FOUND = 'seoprostats_migrate_found';
+
     /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
     const PROCESS_OPTION = 'seoprostats_processor';
 
@@ -62,6 +68,11 @@ final class SEOProStats_Collection {
         add_action(self::PROCESS_HOOK, array(__CLASS__, 'process'));
         add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
         add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
+        add_action(self::MIGRATE_HOOK, array(__CLASS__, 'migrate'));
+        // Plugins switched on, off or deleted: look for statistics plugins again.
+        foreach (array('activated_plugin', 'deactivated_plugin', 'deleted_plugin') as $hook) {
+            add_action($hook, array(__CLASS__, 'forget_migrate'));
+        }
         add_filter('cron_schedules', array(__CLASS__, 'cron_schedules')); // phpcs:ignore WordPress.WP.CronInterval -- one minute on purpose: hits wait in the buffer until it runs, and an idle run is one file check.
         add_action('rest_api_init', array(__CLASS__, 'register_route'));
         add_action('admin_init', array(__CLASS__, 'schedule'));
@@ -147,6 +158,22 @@ final class SEOProStats_Collection {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
         SEOProStats_Search_Import::cron();
+    }
+
+    /**
+     * Cron: move an import from another statistics plugin on (the class
+     * loads only here, in WP-CLI and on the Import tab and routes).
+     */
+    public static function migrate() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        SEOProStats_Migrate::cron();
+    }
+
+    /**
+     * Forget the statistics plugins found (SEOProStats_Migrate::found()).
+     */
+    public static function forget_migrate() {
+        delete_transient(self::MIGRATE_FOUND);
     }
 
     /**
