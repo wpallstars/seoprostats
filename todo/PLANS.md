@@ -207,8 +207,8 @@ generic import.
       (GH#112).
 - [x] WP Statistics and Independent Analytics, checked against real
       installs (GH#113).
-- [ ] Slimstat and Matomo for WordPress, each table layout checked
-      against a real install first (GH#114, after GH#109).
+- [x] Slimstat and Matomo for WordPress, each table layout checked
+      against a real install first (GH#114).
 
 ## Later
 

@@ -3330,7 +3330,7 @@ final class SEOProStats_CLI {
      * ---
      *
      * [<source>]
-     * : The plugin, for run and cleanup: burst-statistics, koko-analytics, statify, wp-statistics or independent (Independent Analytics).
+     * : The plugin, for run and cleanup: burst-statistics, koko-analytics, statify, wp-statistics, independent (Independent Analytics), slimstat or matomo (Matomo for WordPress).
      *
      * [--dry-run]
      * : run: only say what it would do (days, rows, overlap, settings). cleanup: only list (the default without --yes).
@@ -3559,7 +3559,7 @@ final class SEOProStats_CLI {
             array('field' => 'own days from', 'value' => $plan['own_from'] . sprintf(' (%d days skipped)', $plan['skipped']['own'])),
             array('field' => 'imported before', 'value' => $skipped ? implode('; ', $skipped) : 'none'),
             array('field' => 'would import', 'value' => $plan['import']['days'] ? sprintf('%s – %s, %d days', $plan['import']['from'], $plan['import']['to'], $plan['import']['days']) : 'nothing'),
-            array('field' => 'its counts', 'value' => sprintf('%d pageviews, %d visits, %d visitors', $plan['totals']['pageviews'], $plan['totals']['visits'], $plan['totals']['visitors'])),
+            array('field' => 'its counts', 'value' => (!empty($plan['estimated']) ? '~' : '') . sprintf('%d pageviews, %d visits, %d visitors', $plan['totals']['pageviews'], $plan['totals']['visits'], $plan['totals']['visitors']) . (!empty($plan['estimated']) ? ' (estimated from a few days: large tables)' : '')),
         );
         foreach ($plan['rows'] as $dimension => $count) {
             $rows[] = array('field' => 'rows: ' . $dimension, 'value' => '~' . $count);

@@ -2451,7 +2451,7 @@ paths:
                     type: boolean
                   removed:
                     type: object
-                    description: Items removed by kind (tables, options, transients, cron, user_meta, post_meta, files).
+                    description: Items removed by kind (tables, options, transients, cron, user_meta, post_meta, roles, files).
                     additionalProperties:
                       type: integer
                   left:
@@ -5795,6 +5795,11 @@ components:
           description: Post meta keys, removed from every post.
           items:
             type: string
+        roles:
+          type: array
+          description: User roles the plugin added (users keep their other roles).
+          items:
+            type: string
         files:
           type: array
           description: Relative to wp-content; folders end in /.
@@ -6042,6 +6047,9 @@ components:
             type: integer
         totals:
           $ref: '#/components/schemas/MigrateCounts'
+        estimated:
+          type: boolean
+          description: True when the plugin's tables are large (over 250,000 rows by table statistics) and its totals were estimated from three of its days; the check after import uses exact counts.
         settings:
           type: array
           items:

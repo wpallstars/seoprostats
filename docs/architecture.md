@@ -662,9 +662,10 @@ past its import step, without a query). One adapter per plugin extends
 Statistics (`burst-statistics`, read from version 3.7.2), Koko Analytics
 (`koko-analytics`, read from 2.5.3 and its older table layouts),
 Statify (`statify`, read from 2.0.3), WP Statistics (`wp-statistics`,
-read from 14.16.15 and its older layouts) and Independent Analytics
+read from 14.16.15 and its older layouts), Independent Analytics
 (`independent`, read from 2.15.5; the key fits `imports.source`'s 20
-characters). Device, system and browser names, IP address lists, and
+characters), Slimstat (`slimstat`, read from 5.5.0) and Matomo for
+WordPress (`matomo`, read from 5.13.1). Device, system and browser names, IP address lists, and
 sources, channels and campaign tags from referrers and first pages are
 worked out in the base class, the same for every adapter.
 
@@ -677,6 +678,8 @@ What each plugin keeps sets what can be imported:
 | Statify | A row per pageview: day, page, referrer | Pageviews of the site, each page and each referring host and its channel | Visitors, visits and everything else |
 | WP Statistics | A row per visitor and day (its pageviews, referrer, browser, system, device, country, first and last page), pageviews per page and day, and the day's totals | Each visitor row as one visit: visitors, visits, pageviews, bounces; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems. Days it purged: the site's visitors and pageviews, and its pages' pageviews | Time, scroll, events |
 | Independent Analytics | A row per visit and per pageview (UTC), with the page, referrer, country, device, browser and system in tables of their own; UTM tags with its Pro version | Visitors, visits, pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags (Pro), search landing pages, countries, devices, browsers, systems | Scroll, events |
+| Slimstat | A row per pageview (local time), with its visit, page, referrer, browser, system, device type and country; rows its retention moved to an archive table | Visits (each one visitor), pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, scroll, events |
+| Matomo for WordPress | A row per visit (UTC) with its referrer, campaign name, browser, system, device and country codes, a row per action, and report archives | Visits (each one visitor), pageviews, bounces, visit time and time on page; pages, entry and exit pages, sources, channels, campaign name and keyword, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, campaign source and medium, scroll, events |
 
 Koko Analytics counts a visitor once a day, as SEO Pro Stats does, by a
 cookie or a fingerprint that changes daily (its setting), so its visitors
@@ -710,6 +713,28 @@ as it measures it (a visit's last page has none). Its ad referrers
 (Google Ads by gclid) count as paid search; its Facebook Ads (fbclid on
 a Facebook referrer) as organic social, as the collector counts fbclid.
 
+Slimstat and Matomo for WordPress keep raw rows, often millions, so
+each day is one set of grouped queries on the time index (one day a
+step of the run), and the dry run estimates from table statistics (see
+Dry run). Slimstat's `dt` is WordPress's legacy local timestamp (Unix
+time plus the site's offset then), so a site day is `dt`'s UTC day; it
+reads `slim_stats` and `slim_stats_archive` (its "Archive Mode" moves
+old rows there), leaves out crawlers (`browser_type` 1) and wp-admin
+pageviews, and counts each `visit_id` as a visit (a row without one as a
+visit of its own); time on page is to `dt_out`, at most 30 minutes.
+Matomo is read from its raw log tables, not its reporting API: that
+loads only while the plugin is active (an import must also work after
+it is switched off or deleted), boots all of Matomo inside the request,
+and starts archiving for a day not archived yet; its report archives
+are not decoded. Its visits are filed by their last action's time
+(UTC), as Matomo files them, with pageviews from their page actions.
+Matomo takes campaign tags out of page addresses and keeps the
+campaign's name and keyword, which become `utm_campaign` and
+`utm_term`; a campaign without a referrer or medium counts as direct, as
+the collector counts it. Neither keeps a visitor across visits that is
+read here (only IP addresses, fingerprints and visitor IDs, which are
+never read), so each visit counts as one visitor.
+
 - **Detection** comes from the plugin's data, not only from the plugin:
   its tables and options are looked for whether it is active, inactive
   or deleted with its data left. A plugin is listed while it has
@@ -737,7 +762,12 @@ a Facebook referrer) as organic social, as the collector counts fbclid.
 - **Dry run** (`POST /migrate/{source}` with `dry_run`): the days, what
   is skipped and why, the plugin's own counts, rows per dimension
   (estimated from its first, middle and last day), the overlap and the
-  settings it would fill in. It writes nothing.
+  settings it would fill in. It writes nothing. A plugin whose tables
+  hold over 250,000 rows (`SEOProStats_Migrate::LARGE`, from the
+  database's table statistics through the adapter's `size()`, without
+  counting) has its counts estimated from three days a quarter, half and
+  three quarters through (`estimated` in the answer), so the dry run
+  answers in seconds; the check after import still uses its exact counts.
 - **Runs**: the tab and REST start a job (`seoprostats_migrate` option)
   that the `seoprostats_migrate` cron hook moves on in 20-second
   budgets under a lock, a day per step; each read of `GET /migrate` while
@@ -766,7 +796,12 @@ a Facebook referrer) as organic social, as the collector counts fbclid.
   months of visits); Independent Analytics's "Track logged-in users"
   (off: every role; on: its ignored roles), ignored IP addresses and
   "Automatically Delete Old Data" (keep forever: ours off; else its
-  months). Its own options are never written.
+  months); Slimstat's "WP Users" (on: every role) or excluded
+  capabilities (the roles named, or holding a capability named, with its
+  `*` wildcard), excluded IP addresses, Do Not Track and "Retention
+  Period" when not its default 420 days; Matomo's roles excluded from
+  tracking and excluded IP addresses (its site's and global list). Their
+  own options are never written.
 - **Undo** (`DELETE /imports/{id}`, `wp seoprostats migrate undo`)
   deletes the import's rows by its days through the primary key and its
   id, in batches, and its timeline note. Settings it filled in stay.
@@ -776,14 +811,14 @@ seoprostats migrate cleanup`) is the owner's one exception to leaving
 other plugins' data alone (`AGENTS.md`). It lists the adapter's
 `leftovers()`: exactly what the plugin leaves on this site now (tables
 with this site's prefix, options, transients, cron hooks, user meta keys,
-post meta keys, files and folders in wp-content). It deletes exactly that list after
+post meta keys, roles it added, files and folders in wp-content). It deletes exactly that list after
 confirmation (`--yes` in WP-CLI), one table at a time with `DROP TABLE IF
 EXISTS`, and is refused while the plugin is active on the site or the
 network, or for people who cannot delete plugins and manage options. On
 multisite it acts on this site only and lists what the network shares
 without deleting it. It cannot be undone; imported days stay, and one
-timeline note records it. Only WP Statistics has a setting to remove
-its data when deleted:
+timeline note records it. WP Statistics, Slimstat and Matomo have a
+setting to remove their data when deleted:
 
 - **Burst Statistics** keeps its tables, options and upload folder.
 - **Koko Analytics** removes some options and keeps its tables, its
@@ -815,6 +850,26 @@ its data when deleted:
   transients, and its click-tracking files and GeoIP database in uploads
   if any are left (on a network the GeoIP database is the main site's,
   listed as shared). The capabilities it gave roles stay in the roles.
+- **Slimstat** keeps everything when deactivated. When deleted it
+  removes its tables (and the network's shared `slim_browsers`,
+  `slim_screenres` and `slim_content_info`), its options and transients,
+  its `wp_slimstat_` cron hooks, its screen-layout user meta and
+  `uploads/wp-slimstat/` (GeoIP database) unless "Delete
+  Data on Uninstall" (Slimstat → Settings → Maintenance) is off; it is
+  on until changed. Leftovers listed: its tables of every layout, its
+  `slimstat_` and `wp_slimstat_` options, widget option, transients,
+  cron hooks, user meta and the upload folder (on a network the shared
+  tables, user meta and folder are listed as shared).
+- **Matomo for WordPress** unschedules most of its cron hooks when
+  deactivated and keeps the rest. When deleted it removes its scheduled
+  tasks, its four `matomo_` roles and its dashboard user meta, and, with
+  "Delete all data on uninstall" (Matomo Analytics → Settings →
+  Advanced, or the `MATOMO_REMOVE_ALL_DATA` constant; on until changed),
+  every table with its prefix (`matomo_` after the site's), its
+  `matomo-` and `matomo_global-` options and `uploads/matomo/`.
+  Leftovers listed: the same, its `matomo_` and settings-tab transients
+  and its remaining `matomo_` cron hooks (on a network its site options
+  and user meta are listed as shared).
 
 **Notices** (`SEOProStats_Migrate_Notices`) give one next step per plugin
 found, with its link, from finding its data until the plugin and its data
