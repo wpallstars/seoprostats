@@ -297,7 +297,7 @@ final class SEOProStats_API {
             'args'     => $base + array(
                 'engine' => $combined,
                 'kind'   => array(
-                    'description' => __('Rows: search queries, pages, countries, devices or appearance (countries, devices and appearance for the whole site, Google only).', 'seoprostats'),
+                    'description' => __('Rows: search queries, pages, countries, devices, appearance (countries, devices and appearance for the whole site, Google only) or days (the chart\'s points by day, week or month, newest first).', 'seoprostats'),
                     'type'        => 'string',
                     'enum'        => SEOProStats_Search::KINDS,
                     'default'     => 'queries',

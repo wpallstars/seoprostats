@@ -1251,10 +1251,17 @@ paths:
         Tools (`/connections`), one `engine` at a time: totals of the
         period, a point per day (per month past 120 days), and rows of
         one `kind`: search queries, pages, countries, devices or appearance, sorted
-        by clicks. `page` keeps the searches that showed that page (its
+        by clicks, or `days`. `page` keeps the searches that showed that page (its
         queries), `query` keeps one query (its pages); countries, devices
         and appearance exist for the whole site and Google only, so with either they are
         empty.
+
+        `days` rows are the chart's points as a table, newest first, by the
+        answer's `grain` (day, week or month), for every engine, page and
+        query: each has `from` and `to`, the days it covers (both
+        included), and together they make the period's totals. `limit`
+        and `offset` page through them (`more`); they have no per-row
+        comparison (the totals carry it).
 
         Appearance values are open-ended Search Console codes, counted by
         page. One search may show several appearances, so these rows do
@@ -1288,7 +1295,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [queries, pages, countries, devices, appearance]
+            enum: [queries, pages, countries, devices, appearance, days]
             default: queries
         - name: page
           in: query
@@ -4359,15 +4366,23 @@ components:
           properties:
             id:
               type: string
-              description: Query or page ID, country code (ISO 3166-1 alpha-3, as Search Console gives it) or device code.
+              description: Query or page ID, country code (ISO 3166-1 alpha-3, as Search Console gives it), device code, appearance ID, or a days row's first day.
             value:
               type: string
-              description: The query, the page path, the country (ISO 3166-1 alpha-2; empty when unknown) or the device (desktop, mobile, tablet, unknown).
+              description: The query, the page path, the country (ISO 3166-1 alpha-2; empty when unknown), the device (desktop, mobile, tablet, unknown), the appearance code, or a days row's first day (YYYY-MM-DD).
             label:
               type: string
             share:
               type: number
               description: clicks ÷ all clicks of the period.
+            from:
+              type: string
+              format: date
+              description: Days rows only; the first day covered (YYYY-MM-DD).
+            to:
+              type: string
+              format: date
+              description: Days rows only; the last day covered (YYYY-MM-DD, included).
             path:
               type: string
               description: Pages rows only.
@@ -4415,7 +4430,7 @@ components:
               description: Whether the engine's source is connected (demo data, always).
             kind:
               type: string
-              enum: [queries, pages, countries, devices, appearance]
+              enum: [queries, pages, countries, devices, appearance, days]
             page:
               type: string
             query:

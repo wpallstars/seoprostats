@@ -585,6 +585,16 @@ with its own share of impressions, CTR against the site's and places from
 the site's position; `TRANSLATED_RESULT` has no name in the admin, so it
 shows the sentence-case label.
 
+The `days` report kind (`SEOProStats_Search::day_rows()`) turns the chart's
+`series()` points into rows, newest first, so it runs no query of its own and
+always agrees with the chart's `grain`: a day, a week ending on the anchor's
+weekday (the first may start late, cut at the period's start) or a month (the
+first and last cut at the period). Each row has `from` and `to` (both
+included); `limit` and `offset` slice the reversed points. It exists for every
+engine, page and query (`ANY_KINDS`, with queries and pages); rows have no
+comparison because the periods' days do not pair one to one, so the totals
+carry it.
+
 Each run that imports writes an `imports` row, and its rows carry its
 id: undoing it (`DELETE /imports/{id}`, `wp seoprostats search-console
 undo`) deletes them by its days through the primary key. The job does

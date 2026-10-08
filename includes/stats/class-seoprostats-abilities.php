@@ -193,7 +193,7 @@ final class SEOProStats_Abilities {
         ) + $engine;
         wp_register_ability('seoprostats/search', array(
             'label'               => __('Search rankings', 'seoprostats'),
-            'description'         => __('Search engine clicks, impressions, CTR and average position in a period (Google Search Console, Bing Webmaster Tools with engine bing, or every engine added up with engine all), with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is some days old; the period is cut there. The answer lists the engines with data.', 'seoprostats'),
+            'description'         => __('Search engine clicks, impressions, CTR and average position in a period (Google Search Console, Bing Webmaster Tools with engine bing, or every engine added up with engine all), with the comparison, and the top search queries, pages, countries, devices or search appearances, or the figures by day (week or month); or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is some days old; the period is cut there. The answer lists the engines with data.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -225,7 +225,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'enum'        => SEOProStats_Search::KINDS,
                         'default'     => 'queries',
-                        'description' => __('Rows: search queries, pages, countries, devices or appearance (countries, devices and appearance for the whole site, Google only).', 'seoprostats'),
+                        'description' => __('Rows: search queries, pages, countries, devices, appearance (countries, devices and appearance for the whole site, Google only) or days (the chart\'s points by day, week or month, newest first).', 'seoprostats'),
                     ),
                     'page'    => array(
                         'type'        => 'string',
@@ -240,6 +240,12 @@ final class SEOProStats_Abilities {
                         'minimum' => 1,
                         'maximum' => SEOProStats_Query::MAX_LIMIT,
                         'default' => 25,
+                    ),
+                    'offset'  => array(
+                        'type'        => 'integer',
+                        'minimum'     => 0,
+                        'default'     => 0,
+                        'description' => __('Rows skipped (for the next rows; the answer says whether there are more).', 'seoprostats'),
                     ),
                     'data'    => $data,
                 ),

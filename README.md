@@ -84,6 +84,17 @@ made-up appearance days. Scripts and AI agents use REST `search?kind=appearance`
 `wp seoprostats search appearance --data=demo --range=30d --compare=prev --format=json`,
 or the `seoprostats/search` ability with `kind: appearance`.
 
+### Search days
+
+**Search → Rankings → Days** lists the chart's points as a table, newest
+first: clicks, impressions, CTR and average position for each day, or each
+week or month when the chart shows those. It works for Google, Bing and
+Combined, and for one page or one query; Newer and Older page through long
+periods. The comparison stays on the totals, not on each row. Scripts and AI
+agents use REST `search?kind=days` (each row has `from` and `to`),
+`wp seoprostats search days --range=90d --limit=100 --format=csv`, or the
+`seoprostats/search` ability with `kind: days`; `offset` reads the next rows.
+
 ### Shared reports
 
 Administrators can choose **Share** after the period controls on any tab,

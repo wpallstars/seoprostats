@@ -3,7 +3,8 @@
  * The search report (Search → Rankings): clicks, impressions, CTR and
  * average position from Search Console's imported days (the gsc_*
  * tables), for the site, a page or a query, by day, with tables of
- * queries, pages, countries and devices, and the comparison.
+ * queries, pages, countries, devices, search appearances and the chart's
+ * days (weeks or months), and the comparison.
  *
  * Search days are the engine's (Pacific time for Google) and final only,
  * so the newest is about three days old. A period is cut at the newest
@@ -35,7 +36,10 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Search {
 
     /** Kinds of report rows. */
-    const KINDS = array('queries', 'pages', 'countries', 'devices', 'appearance');
+    const KINDS = array('queries', 'pages', 'countries', 'devices', 'appearance', 'days');
+
+    /** Kinds every engine, page and query has (the others are Google's whole site only). */
+    const ANY_KINDS = array('queries', 'pages', 'days');
 
     /** Daily points up to this many days, else monthly. */
     const DAILY_DAYS = 120;
@@ -109,7 +113,13 @@ final class SEOProStats_Search {
             // Combined weeks end on the period's last day, so each holds one week of every engine.
             $anchor  = $grain !== 'week' ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
             $totals  = self::totals($scope);
-            $rows    = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
+            $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
+            if ($kind !== 'days') {
+                $rows = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
+            } else {
+                // No search data yet: no rows of zeros (as the chart, which is not drawn then).
+                $rows = $bounds['to'] !== '' ? self::day_rows($points, $now, $grain, $anchor, (int) $req['limit'], (int) $req['offset'], $totals) : array();
+            }
             $more    = count($rows) > (int) $req['limit'];
             $rows    = array_slice($rows, 0, (int) $req['limit']);
 
@@ -127,7 +137,7 @@ final class SEOProStats_Search {
                 'ignored'   => array_values(array_unique($ignored)),
                 'totals'    => $totals,
                 'grain'     => $grain,
-                'points'    => $now ? self::series($scope, $now, $grain, $anchor) : array(),
+                'points'    => $points,
                 'rows'      => $rows,
                 'more'      => $more,
             );
@@ -723,6 +733,58 @@ final class SEOProStats_Search {
     }
 
     /**
+     * Rows of the days kind: the chart's points (day, week or month, as
+     * its grain), newest first, so the table always agrees with the chart.
+     * Each has the days it covers (from and to, both included, Y-m-d);
+     * one more than the limit, to tell whether there are more.
+     *
+     * @param array<int,array<string,mixed>> $points From series().
+     * @param array<string,mixed>|null       $days   From days().
+     * @param string                         $grain  day, week or month.
+     * @param string                         $anchor The last day of a week (Y-m-d), for weeks.
+     * @param int                            $limit  Rows.
+     * @param int                            $offset Rows skipped.
+     * @param array<string,int|float>        $totals From totals(), for shares.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function day_rows(array $points, $days, $grain, $anchor, $limit, $offset, array $totals) {
+        $last    = $days ? (string) $days['day_to'] : '';
+        $weekday = static function ($day) {
+            return (int) gmdate('w', (int) strtotime($day . ' 00:00:00 UTC'));
+        };
+        // As series(): without an anchor, weeks end six days after the period's start.
+        $end     = $anchor !== '' ? $weekday($anchor) : ($days ? ($weekday((string) $days['day_from']) + 6) % 7 : 6);
+        $out     = array();
+        foreach ($points as $n => $point) {
+            $from = substr((string) $point['t'], 0, 10);
+            if ($grain === 'day') {
+                $to = $from;
+            } elseif ($grain === 'week') {
+                // A week ends on the anchor's weekday (the first may start late, cut at the period's start).
+                $to = gmdate('Y-m-d', (int) strtotime($from . ' 00:00:00 UTC') + (($end - $weekday($from) + 7) % 7) * DAY_IN_SECONDS);
+            } elseif (isset($points[$n + 1])) {
+                $to = gmdate('Y-m-d', (int) strtotime(substr((string) $points[$n + 1]['t'], 0, 10) . ' 00:00:00 UTC') - DAY_IN_SECONDS);
+            } else {
+                $to = $last;
+            }
+            if ($last !== '' && $to > $last) {
+                $to = $last;
+            }
+            $row = $point;
+            unset($row['t']);
+            $row['share'] = $totals['clicks'] ? round($row['clicks'] / $totals['clicks'], 4) : 0.0;
+            $out[]        = array(
+                'id'    => $from,
+                'value' => $from,
+                'label' => $from === $to ? $from : $from . ' – ' . $to,
+                'from'  => $from,
+                'to'    => $to,
+            ) + $row;
+        }
+        return array_slice(array_reverse($out), max(0, $offset), $limit + 1);
+    }
+
+    /**
      * Where rows of a kind are read: the table, the column grouped by, and
      * the WHERE. Queries of pages come from pairs (path_day), pages of
      * queries from pairs (query_day); countries and devices exist only
@@ -843,7 +905,8 @@ final class SEOProStats_Search {
      */
     private static function with_compare($scope, $kind, array $rows) {
         global $wpdb;
-        if (!$rows) {
+        // Days do not pair one to one across periods; the totals carry the comparison.
+        if (!$rows || $kind === 'days') {
             return $rows;
         }
         $before = array();
