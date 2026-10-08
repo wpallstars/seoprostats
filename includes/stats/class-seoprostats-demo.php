@@ -166,6 +166,8 @@ final class SEOProStats_Demo {
         '/shop/pro-licence/'                   => array('product', 9001, 9105),
         '/cart/'                               => array('page', 9001, 0),
         '/checkout/'                           => array('page', 9001, 0),
+        // Last, so the other pages keep their post IDs: published lately, never shown in search (indexation).
+        '/docs/indexing-checklist/'            => array('page', 9003, 0),
     );
 
     /** Names of the demo authors, categories and post types, by ID or name. */
@@ -288,6 +290,7 @@ final class SEOProStats_Demo {
         '/docs/getting-started/'              => array('Getting started', array('Install the plugin', 'Connect Search Console'), 'Connect Search Console with a service account key: create the service account, add it to the property and paste its key.', array('connect search console')),
         '/docs/faq/'                          => array('FAQ', array('Can I get a refund?'), 'Questions people ask about SEO Pro Stats, such as refunds within 30 days.', array()),
         '/shop/pro-licence/'                  => array('Pro', array('What you get'), 'One year of updates and support for one site.', array()),
+        '/docs/indexing-checklist/'           => array('Indexing checklist', array('Before you publish', 'After you publish'), 'A short list to check before and after a page goes live, so search engines can find and show it.', array()),
     );
 
     /**
@@ -312,6 +315,7 @@ final class SEOProStats_Demo {
         '/docs/getting-started/'              => array('/features/' => 'Features', '/docs/' => 'Docs'),
         '/docs/faq/'                          => array('/docs/' => 'Docs'),
         '/shop/pro-licence/'                  => array(),
+        '/docs/indexing-checklist/'           => array('/docs/' => 'Docs'),
     );
 
     /**
@@ -338,10 +342,31 @@ final class SEOProStats_Demo {
         '/docs/getting-started/'              => array('', 'SEO Pro Stats docs: install, connect Search Console and read the reports.', '', false, ''),
         '/docs/faq/'                          => array('', 'Questions people ask about SEO Pro Stats, such as refunds within 30 days.', '', false, '/docs/'),
         '/shop/pro-licence/'                  => array('Pricing | SEO Pro Stats', 'One year of updates and support for one site.', '', false, ''),
+        '/docs/indexing-checklist/'           => array('Indexing checklist | SEO Pro Stats', 'What to check before and after publishing a page so search engines can find it and show it.', '', false, ''),
+    );
+
+    /**
+     * When the demo pages were published, in days before the demo is made
+     * (indexation, SEOProStats_Indexation): the indexing checklist lately,
+     * with no search impressions since; the rest long ago, by their order.
+     */
+    const PUBLISHED_DAYS = array('/docs/indexing-checklist/' => 45);
+
+    /**
+     * The demo's sitemap addresses besides its pages (indexation): path =>
+     * [source code (SEOProStats_Indexation::SOURCES), days listed]. None
+     * has search impressions: an archive and an author page search never
+     * showed, and one listed too lately to tell.
+     */
+    const SITEMAP = array(
+        '/category/news/'         => array(1, 120),
+        '/category/licences/'     => array(1, 120),
+        '/author/jonas-weber/'    => array(2, 120),
+        '/category/performance/'  => array(1, 10),
     );
 
     /** Content audit facts made by this version of the demo; older ones are made again. */
-    const AUDIT_VERSION = 1;
+    const AUDIT_VERSION = 2;
 
     /** Search data made by this version of the demo; older demo search days are made again. */
     const SEARCH_VERSION = 4;
@@ -647,10 +672,12 @@ final class SEOProStats_Demo {
     public static function remove() {
         require_once __DIR__ . '/class-seoprostats-goals.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
+        require_once __DIR__ . '/class-seoprostats-indexation.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
             SEOProStats_Goals::forget();
             SEOProStats_Audit::reset();
+            SEOProStats_Indexation::reset();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
@@ -849,11 +876,12 @@ final class SEOProStats_Demo {
 
     /**
      * Write the content audit's facts of the demo pages (PAGE_TEXT and
-     * PAGE_SEO), as the audit reads a live post; on the demo tables (called
-     * inside run()).
+     * PAGE_SEO), as the audit reads a live post, and the demo's sitemap
+     * addresses (SITEMAP); on the demo tables (called inside run()).
      */
     private static function audit() {
         require_once __DIR__ . '/class-seoprostats-audit.php';
+        require_once __DIR__ . '/class-seoprostats-indexation.php';
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return;
         }
@@ -865,15 +893,26 @@ final class SEOProStats_Demo {
             $page = self::page($path);
             if ($text && $page) {
                 $facts[$path] = SEOProStats_Audit::facts($text, $path) + array(
-                    'post_id'  => $page['post_id'],
+                    'post_id'   => $page['post_id'],
                     // Edited on different days over the last two months.
-                    'modified' => time() - (3 + 5 * $n++) * DAY_IN_SECONDS,
+                    'modified'  => time() - (3 + 5 * $n) * DAY_IN_SECONDS,
+                    // Published lately (PUBLISHED_DAYS), or over a year ago, by their order.
+                    'published' => time() - (isset(self::PUBLISHED_DAYS[$path]) ? self::PUBLISHED_DAYS[$path] : 380 + 9 * $n) * DAY_IN_SECONDS,
                 );
+                ++$n;
             }
         }
         SEOProStats_Audit::write($facts);
-        // Every demo page's links are read at once.
+        // Every demo page's links and published times are read at once.
         SEOProStats_Audit::touch($start);
+        // The sitemap addresses, each first listed some days ago.
+        $paths = array();
+        $first = array();
+        foreach (self::SITEMAP as $path => $info) {
+            $paths[$path] = (int) $info[0];
+            $first[$path] = time() - (int) $info[1] * DAY_IN_SECONDS;
+        }
+        SEOProStats_Indexation::write_sitemap($paths, true, true, $first);
     }
 
     /**

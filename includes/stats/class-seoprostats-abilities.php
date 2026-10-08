@@ -16,6 +16,8 @@
  *   and SEO plugin fields, weighed by search impressions (read).
  * - seoprostats/links: orphan pages, converting pages with few links in,
  *   and links missing between pages that share a search (read).
+ * - seoprostats/indexation: published pages and sitemap addresses
+ *   search has not shown in its newest days (read).
  * - seoprostats/coverage: one page's queries, each checked against the
  *   page's words, questions and SEO plugin focus keywords (read).
  * - seoprostats/content: per page, search clicks and position with the
@@ -479,6 +481,75 @@ final class SEOProStats_Abilities {
                 ),
             ),
             'execute_callback'    => array(__CLASS__, 'links'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/indexation', array(
+            'label'               => __('Indexation', 'seoprostats'),
+            'description'         => __('Pages search engines do not seem to show, from the site\'s own search data, in two lists. pages: published pages with no search impressions in the engine\'s newest days (28 by default), published before them. sitemap: other addresses in the site\'s own sitemaps (category, tag and author archives, other plugins\'), listed that long, with none. Each row says whether search never showed it (state never) or showed it until last_impression (state lost), with its age in days; pages add words and links_in (pages linking to it). Never shown first, then the newest. Pages that ask not to be indexed or name another page as canonical are left out (skipped counts them). typical is a page\'s clicks per 28 days here when search shows it. Fix: check the page may be indexed and is linked and in the sitemap, ask the engine to crawl it, or improve or merge it. Engine URL inspection is not used.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'kind'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Indexation::KINDS,
+                        'default'     => 'pages',
+                        'description' => __('Which list.', 'seoprostats'),
+                    ),
+                    'days'   => array(
+                        'type'        => 'integer',
+                        'minimum'     => SEOProStats_Indexation::MIN_DAYS,
+                        'maximum'     => SEOProStats_Indexation::MAX_DAYS,
+                        'default'     => SEOProStats_Indexation::DAYS,
+                        'description' => __('Days without search impressions, and since publishing or first listing.', 'seoprostats'),
+                    ),
+                    'engine' => $engine,
+                    'limit'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Indexation::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'offset' => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'   => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => 'string'),
+                    'connected' => array('type' => 'boolean'),
+                    'kind'      => array('type' => 'string'),
+                    'days'      => array('type' => 'integer'),
+                    'rules'     => array('type' => 'object'),
+                    'read'      => array('type' => 'object'),
+                    'typical'   => array('type' => 'number'),
+                    'skipped'   => array('type' => 'object'),
+                    'counts'    => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'indexation'),
             'permission_callback' => array('SEOProStats_API', 'can_read'),
             'meta'                => array(
                 'show_in_rest' => true,
@@ -1089,6 +1160,26 @@ final class SEOProStats_Abilities {
         $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $goal, $engine) {
             return SEOProStats_Links::report((array) $req, $engine, $kind, $goal);
+        });
+    }
+
+    /**
+     * seoprostats/indexation.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function indexation($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request(array_diff_key($input, array('days' => 1)) + array('limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $kind   = isset($input['kind']) ? (string) $input['kind'] : 'pages';
+        $days   = isset($input['days']) ? (int) $input['days'] : SEOProStats_Indexation::DAYS;
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $days, $engine) {
+            return SEOProStats_Indexation::report((array) $req, $engine, $kind, $days);
         });
     }
 

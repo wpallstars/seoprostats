@@ -15,20 +15,23 @@
  *   finding's share, SEOProStats_Audit::SHARE; links: the page's
  *   expected clicks at its position × LINKS_SHARE, for a missing link the
  *   impressions of the searches on the page that should link), scaled to
- *   28 days;
+ *   28 days; index: a typical shown page's clicks per 28 days ×
+ *   INDEX_SHARE (SEOProStats_Indexation);
  * - value: how well visits from search to the page convert against the
  *   site (the Content report's goal), smoothed toward the site's rate
  *   with SMOOTH visits; at least 1 (a page with no goal data is 1) and at
  *   most MAX_VALUE;
  * - confidence: the kind's own × √(impressions per 28 days ÷
- *   FULL_IMPRESSIONS), at most the kind's own;
+ *   FULL_IMPRESSIONS), at most the kind's own (index: the kind's own);
  * - effort: the kind's (an audit finding's), unless a person set another.
  *
  * Audit items are one per page and finding (the key's query is the
  * finding), on the pages with most impressions (SEOProStats_Audit).
  * Links items (SEOProStats_Links) are one per page and list: orphan,
  * converting, or missing (on the page the link should go to; the key's
- * query names the page that should link).
+ * query names the page that should link). Index items
+ * (SEOProStats_Indexation) are one per page or sitemap address search
+ * has not shown lately (the key's query is the list).
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -65,6 +68,7 @@ final class SEOProStats_Queue {
         5 => 'overlap',
         6 => 'audit',
         7 => 'links',
+        8 => 'index',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -82,21 +86,31 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2);
     const MAX_EFFORT = 5;
 
-    /** Effort of audit findings and links lists other than their kind's. */
+    /** Effort of audit findings and links and indexation lists other than their kind's. */
     const AUDIT_EFFORT = array('thin' => 3);
     const LINKS_EFFORT = array('converting' => 2);
+    const INDEX_EFFORT = array('sitemap' => 1);
 
-    /** The kind's own confidence, before the impressions are weighed. */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4);
+    /**
+     * The kind's own confidence, before the impressions are weighed;
+     * indexation items have no impressions, so theirs is not weighed.
+     */
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3);
 
     /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks');
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions');
 
     /** Share of a page's expected clicks links put at stake, by links list. */
     const LINKS_SHARE = array('missing' => 0.2, 'orphans' => 0.1, 'converting' => 0.1);
+
+    /**
+     * Share of a typical page's clicks (SEOProStats_Indexation's typical)
+     * a page search does not show could earn, by indexation list.
+     */
+    const INDEX_SHARE = array('pages' => 0.5, 'sitemap' => 0.2);
 
     /** Audit findings measured otherwise than the audit kind's. */
     const AUDIT_METRIC = array(
@@ -210,6 +224,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
         require_once __DIR__ . '/class-seoprostats-links.php';
+        require_once __DIR__ . '/class-seoprostats-indexation.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -225,6 +240,18 @@ final class SEOProStats_Queue {
         foreach (SEOProStats_Links::KINDS as $list) {
             $answer       = SEOProStats_Links::report($ask, $engine, $list, $goal);
             $links[$list] = is_wp_error($answer) ? array() : $answer['rows'];
+        }
+        // Indexation: each list's first rows (one cached report), with what a page shown in search earns here.
+        $index   = array();
+        $typical = 0.0;
+        $through = '';
+        foreach (SEOProStats_Indexation::KINDS as $list) {
+            $answer = SEOProStats_Indexation::report($ask, $engine, $list);
+            if (!is_wp_error($answer)) {
+                $index[$list] = $answer['rows'];
+                $typical      = (float) $answer['typical'];
+                $through      = (string) $answer['through'];
+            }
         }
         $head  = $found['striking'];
         $days  = (int) $head['days'];
@@ -262,6 +289,14 @@ final class SEOProStats_Queue {
                     }
                 }
             }
+            foreach ($index as $list => $rows) {
+                foreach ($rows as $row) {
+                    $item = self::index_item($engine, $row, (string) $list, $typical, $through, $value);
+                    if ($item && !isset($items[$item['key']])) {
+                        $items[$item['key']] = $item;
+                    }
+                }
+            }
         }
 
         return array(
@@ -283,6 +318,8 @@ final class SEOProStats_Queue {
                     'audit_effort'     => self::AUDIT_EFFORT,
                     'links_effort'     => self::LINKS_EFFORT,
                     'links_share'      => self::LINKS_SHARE,
+                    'index_effort'     => self::INDEX_EFFORT,
+                    'index_share'      => self::INDEX_SHARE,
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
                     'missing_share'    => self::MISSING_SHARE,
@@ -585,6 +622,70 @@ final class SEOProStats_Queue {
     }
 
     /**
+     * One item from an indexation row (SEOProStats_Indexation): a page or
+     * sitemap address search has not shown lately. Potential clicks: what
+     * a page shown in search earns here per 28 days (the report's typical)
+     * × INDEX_SHARE; confidence is the kind's own, as there are no
+     * impressions to weigh. Null without potential clicks.
+     *
+     * @param string              $engine  Engine name.
+     * @param array<string,mixed> $row     Indexation row.
+     * @param string              $list    pages or sitemap.
+     * @param float               $typical A shown page's clicks per 28 days.
+     * @param string              $through The newest search day.
+     * @param array<string,mixed> $value   From values().
+     * @return array<string,mixed>|null
+     */
+    private static function index_item($engine, array $row, $list, $typical, $through, array $value) {
+        if (!isset(self::INDEX_SHARE[$list])) {
+            return null;
+        }
+        $clicks = (float) $typical * self::INDEX_SHARE[$list];
+        if ($clicks < 1) {
+            return null;
+        }
+        $figures = array(
+            'list'            => $list,
+            'state'           => (string) $row['state'],
+            'last_impression' => $row['last_impression'],
+            'age'             => (int) $row['age'],
+            'typical'         => (float) $typical,
+            'share'           => self::INDEX_SHARE[$list],
+        );
+        foreach (array('published', 'words', 'links_in', 'first_seen', 'source') as $field) {
+            if (array_key_exists($field, $row)) {
+                $figures[$field] = $row[$field];
+            }
+        }
+        $parts = array(
+            'clicks'     => round($clicks, 1),
+            'value'      => round(self::worth((int) $row['path_id'], $value), 2),
+            'confidence' => self::CONFIDENCE['index'],
+            'effort'     => self::effort_of('index', $list),
+        );
+        return array(
+            'key'      => self::key('index', $engine, (string) $row['path'], $list),
+            'kind'     => 'index',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => (int) $row['path_id'],
+            'path'     => (string) $row['path'],
+            'url'      => (string) $row['url'],
+            'post_id'  => (int) $row['post_id'],
+            'edit_url' => isset($row['edit_url']) ? $row['edit_url'] : null,
+            'query'    => null,
+            'finding'  => $list,
+            'why'      => SEOProStats_Indexation::why($list, $row, $through),
+            'todo'     => SEOProStats_Indexation::todo($list),
+            'figures'  => $figures,
+            'metric'   => self::METRIC['index'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
      * A page's value: how well its visits from search convert against the
      * site's, smoothed, 1 to MAX_VALUE (1 without a goal).
      *
@@ -615,6 +716,9 @@ final class SEOProStats_Queue {
         }
         if ($kind === 'links' && $finding !== null && isset(self::LINKS_EFFORT[$finding])) {
             return self::LINKS_EFFORT[$finding];
+        }
+        if ($kind === 'index' && $finding !== null && isset(self::INDEX_EFFORT[$finding])) {
+            return self::INDEX_EFFORT[$finding];
         }
         return self::EFFORT[$kind];
     }
@@ -1003,6 +1107,10 @@ final class SEOProStats_Queue {
         if ($item['kind'] === 'links') {
             /* translators: %s: page path */
             return sprintf(__('Internal links lift clicks on %s', 'seoprostats'), $page);
+        }
+        if ($item['kind'] === 'index') {
+            /* translators: %s: page path */
+            return sprintf(__('Search shows %s once it can find it', 'seoprostats'), $page);
         }
         /* translators: %s: page path */
         return sprintf(__('Updating %s wins back its clicks', 'seoprostats'), $page);

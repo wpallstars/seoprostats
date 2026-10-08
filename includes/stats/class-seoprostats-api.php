@@ -88,6 +88,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-queue.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
     }
 
     /**
@@ -352,6 +353,27 @@ final class SEOProStats_API {
                     'default'     => '',
                 ),
                 'limit'  => array('maximum' => SEOProStats_Links::MAX_LIMIT, 'default' => SEOProStats_Links::LIMIT) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/indexation', $read + array(
+            'callback' => array(__CLASS__, 'indexation'),
+            'args'     => $base + array(
+                'engine' => $engine,
+                'kind'   => array(
+                    'description' => __('Indexation: pages (published pages with no search impressions in the engine\'s newest days, published before them) or sitemap (other addresses in the site\'s sitemaps, such as category and author archives, with none).', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Indexation::KINDS,
+                    'default'     => 'pages',
+                ),
+                'days'   => array(
+                    'description' => __('Days without search impressions, and since publishing or first listing.', 'seoprostats'),
+                    'type'        => 'integer',
+                    'minimum'     => SEOProStats_Indexation::MIN_DAYS,
+                    'maximum'     => SEOProStats_Indexation::MAX_DAYS,
+                    'default'     => SEOProStats_Indexation::DAYS,
+                ),
+                'limit'  => array('maximum' => SEOProStats_Indexation::MAX_LIMIT, 'default' => SEOProStats_Indexation::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
             ),
         ));
@@ -1066,7 +1088,7 @@ final class SEOProStats_API {
         if (in_array($section, SEOProStats_Shares::PAGE_ONLY, true) && !SEOProStats_Shares::page_locks_only($share['locked_filters'])) {
             return SEOProStats_Shares::denied();
         }
-        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind', 'engine', 'query', 'key', 'event', 'kinds', 'sort', 'goal', 'finding')));
+        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind', 'engine', 'query', 'key', 'event', 'kinds', 'sort', 'goal', 'finding', 'days')));
         $filters = SEOProStats_Shares::filters($args['filters'] ?? array());
         if (is_wp_error($filters)) {
             return $filters;
@@ -1438,6 +1460,22 @@ final class SEOProStats_API {
         $goal   = (string) $request->get_param('goal');
         return self::report($request, static function ($req) use ($engine, $kind, $goal) {
             return SEOProStats_Links::report($req, $engine, $kind, $goal);
+        });
+    }
+
+    /**
+     * GET /indexation: published pages and sitemap addresses search has
+     * not shown in its newest days.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function indexation($request) {
+        $engine = (string) $request->get_param('engine');
+        $kind   = (string) $request->get_param('kind');
+        $days   = (int) $request->get_param('days');
+        return self::report($request, static function ($req) use ($engine, $kind, $days) {
+            return SEOProStats_Indexation::report($req, $engine, $kind, $days);
         });
     }
 

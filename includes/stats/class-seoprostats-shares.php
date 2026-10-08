@@ -25,7 +25,7 @@ final class SEOProStats_Shares {
      */
     const REPORTS = array(
         'overview'   => array('stats', 'timeseries', 'breakdown', 'markers', 'realtime'),
-        'search'     => array('search', 'markers', 'opportunities', 'audit', 'links', 'content'),
+        'search'     => array('search', 'markers', 'opportunities', 'audit', 'links', 'indexation', 'content'),
         'goals'      => array('goals'),
         'funnels'    => array('funnels'),
         'properties' => array('properties', 'breakdown'),
