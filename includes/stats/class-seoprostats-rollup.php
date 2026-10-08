@@ -30,6 +30,9 @@ final class SEOProStats_Rollup {
     /** Progress (autoload off): through (last summarised day), pruned (day of the last full prune), kept_from (oldest time kept). */
     const STATE_OPTION = SEOProStats_Collection::ROLLUP_OPTION;
 
+    /** Days imported from other statistics plugins (autoload off): see imported(). */
+    const IMPORTED_OPTION = 'seoprostats_imported';
+
     /**
      * Dimension codes in the daily table, for SEOProStats_Query::DIMENSIONS.
      * Stored in every row: never change or reuse one. 0 is the site.
@@ -209,7 +212,9 @@ final class SEOProStats_Rollup {
 
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables, one day by index `started`; $cols and $val are fixed SQL.
         $wpdb->query('START TRANSACTION');
-        $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s', $d, $date)) !== false;
+        // Only the site's own rows: a day imported from another plugin
+        // (import_id, SEOProStats_Migrate) stays as imported.
+        $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND import_id = 0', $d, $date)) !== false;
         // The site. HAVING: no row for a day without visits.
         $site = $ok ? $wpdb->query($wpdb->prepare("INSERT INTO %i (day, dim, val, visitors, visits, pageviews, bounces, engaged_ms, events) SELECT %s, 0, 0, $cols FROM %i s WHERE s.started >= %d AND s.started < %d HAVING visits > 0", $d, $date, $s, $from, $to)) : false;
         $ok   = $site !== false;
@@ -293,7 +298,7 @@ final class SEOProStats_Rollup {
             $date = $day->format('Y-m-d');
             // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table by its primary key (day, dim).
             $wpdb->query('START TRANSACTION');
-            $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND dim = %d', $d, $date, self::SEARCH_LANDING)) !== false
+            $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND dim = %d AND import_id = 0', $d, $date, self::SEARCH_LANDING)) !== false
                 && self::insert_landings($date, $day->getTimestamp(), $day->modify('+1 day')->getTimestamp());
             if (!$ok) {
                 $wpdb->query('ROLLBACK');
@@ -524,6 +529,39 @@ final class SEOProStats_Rollup {
     public static function through() {
         $state = self::state();
         return isset($state['through']) ? (string) $state['through'] : '';
+    }
+
+    /**
+     * The last day the daily table answers for: the last summarised day,
+     * or before the first summary the last day imported from another
+     * statistics plugin (SEOProStats_Migrate; every imported day comes
+     * before the site's own first day). '' when neither.
+     *
+     * @return string Y-m-d, or ''.
+     */
+    public static function summary_through() {
+        $through = self::through();
+        if ($through !== '') {
+            return $through;
+        }
+        $imported = self::imported();
+        return $imported['through'];
+    }
+
+    /**
+     * Days imported from other statistics plugins (written by
+     * SEOProStats_Migrate when an import finishes or is undone): through,
+     * the last such day ('' for none), and at, when they last changed
+     * (report caches start again then).
+     *
+     * @return array{through:string,at:int}
+     */
+    public static function imported() {
+        $value = get_option(SEOProStats_Schema::option(self::IMPORTED_OPTION), array());
+        return array(
+            'through' => is_array($value) && isset($value['through']) ? (string) $value['through'] : '',
+            'at'      => is_array($value) && isset($value['at']) ? (int) $value['at'] : 0,
+        );
     }
 
     /**
