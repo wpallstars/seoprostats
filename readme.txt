@@ -123,7 +123,7 @@ Yes, from Burst Statistics so far. Open SEO Pro Stats → Settings → Import: t
 
 = How do I remove the old statistics plugin and its data? =
 
-After importing, switch the old plugin off and delete it from the Plugins screen (the Import tab links there). Many statistics plugins leave their tables and settings behind when deleted. Once the plugin is not active, Settings → Import → Remove leftover data lists exactly what it left on this site (database tables, options, scheduled tasks and files) and deletes it when you confirm. It is refused while that plugin is active and cannot be undone, so back up the database first. The days already imported stay.
+SEO Pro Stats shows the next step at the top of the Plugins screen, under the old plugin's row and on its own screens, from Import its history to Remove leftover data, until the plugin and its data are gone (Hide hides a step). Both plugins keep counting meanwhile. After importing, switch the old plugin off and delete it from the Plugins screen (the Import tab links there). Many statistics plugins leave their tables and settings behind when deleted. Once the plugin is not active, Settings → Import → Remove leftover data lists exactly what it left on this site (database tables, options, scheduled tasks and files) and deletes it when you confirm. It is refused while that plugin is active and cannot be undone, so back up the database first. The days already imported stay.
 
 = Can I see what it shows before my site has visits? =
 

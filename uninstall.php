@@ -53,6 +53,8 @@ function seoprostats_uninstall_site() {
     // the found list is a transient, removed below). Their plugins' own
     // data is never touched here.
     wp_clear_scheduled_hook(SEOProStats_Collection::MIGRATE_HOOK);
+    wp_clear_scheduled_hook(SEOProStats_Collection::MIGRATE_SCAN_HOOK);
+    delete_option(SEOProStats_Collection::MIGRATE_NOTICES);
     delete_option('seoprostats_migrate');
     delete_option('seoprostats_migrate_lock');
     delete_option('seoprostats_imported');
@@ -77,6 +79,9 @@ if (is_multisite()) {
 
 // Hidden "SEO Pro Stats can do the job of these plugins" lines.
 delete_metadata('user', 0, 'seoprostats_replaced_plugins_hidden', '', true);
+
+// Hidden "Moving to SEO Pro Stats from other statistics plugins" steps.
+delete_metadata('user', 0, 'seoprostats_migrate_notices_hidden', '', true);
 
 // Who chose to see the demo data.
 delete_metadata('user', 0, 'seoprostats_data', '', true);

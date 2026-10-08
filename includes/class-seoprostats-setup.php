@@ -191,6 +191,9 @@ final class SEOProStats_Setup {
         // Settings → Import (other statistics plugins' history; hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-import-tab.php';
         SEOProStats_Import_Tab::init();
+        // The next step in moving from another statistics plugin, on Plugins and our screens (hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-migrate-notices.php';
+        SEOProStats_Migrate_Notices::init();
         // Settings → Shared reports: the accent colour picker (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-share-settings.php';
         SEOProStats_Share_Settings::init();

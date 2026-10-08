@@ -127,47 +127,95 @@ final class SEOProStats_Migrate {
 
     /**
      * The plugins whose statistics are on the site (or, while they are not
-     * active, whose leftovers are), cached for CACHE_TIME.
+     * active, whose leftovers are), cached for CACHE_TIME. Looking also
+     * saves what the moving notices show (save_notices()).
      *
      * @param bool $fresh Look again.
-     * @return array<string,array<string,mixed>> Key => key, name, version, from, to, days, plugin (file, state), leftovers (whether any), uninstall_setting.
+     * @return array<string,array<string,mixed>> Key => key, name, version, from, to, days, pending (days still to import, -1 unknown), plugin (file, state), leftovers (whether any), uninstall_setting.
      */
     public static function found($fresh = false) {
         $cached = $fresh ? false : get_transient(self::CACHE);
         if (is_array($cached)) {
             return $cached;
         }
-        $out = array();
-        foreach (self::sources() as $key => $class) {
-            $source = new $class();
-            $data   = $source->detect();
-            $plugin = $source->plugin();
-            $left   = $plugin['state'] === 'active' || $plugin['state'] === 'network' ? null : $source->leftovers();
-            $any    = $left !== null && (bool) array_filter(array_diff_key($left, array('network' => true)));
-            if ($data['from'] === '' && !$any) {
-                continue;
+        $before = SEOProStats_Schema::use_set('live');
+        try {
+            $out = array();
+            foreach (self::sources() as $key => $class) {
+                $source = new $class();
+                $data   = $source->detect();
+                $plugin = $source->plugin();
+                $left   = $plugin['state'] === 'active' || $plugin['state'] === 'network' ? null : $source->leftovers();
+                $any    = $left !== null && (bool) array_filter(array_diff_key($left, array('network' => true)));
+                if ($data['from'] === '' && !$any) {
+                    continue;
+                }
+                // The days it has and those still to import, in one pass over its days.
+                $plan      = $data['from'] !== '' ? self::make_plan($key, array(), false) : null;
+                $out[$key] = array(
+                    'key'               => $key,
+                    'name'              => $class::NAME,
+                    'version'           => $data['version'],
+                    'from'              => $data['from'],
+                    'to'                => $data['to'],
+                    'days'              => is_array($plan) ? (int) $plan['days'] : ($data['from'] !== '' ? count($source->day_list($data['from'], $data['to'])) : 0),
+                    'pending'           => $plan === null ? 0 : (is_array($plan) ? count($plan['import']) : -1),
+                    'pending_from'      => is_array($plan) && $plan['import'] ? (string) min($plan['import']) : '',
+                    'pending_to'        => is_array($plan) && $plan['import'] ? (string) max($plan['import']) : '',
+                    'plugin'            => $plugin,
+                    'leftovers'         => $any,
+                    'uninstall_setting' => $source->uninstall_setting(),
+                );
             }
-            $out[$key] = array(
-                'key'               => $key,
-                'name'              => $class::NAME,
-                'version'           => $data['version'],
-                'from'              => $data['from'],
-                'to'                => $data['to'],
-                'days'              => count($source->day_list($data['from'], $data['to'])),
-                'plugin'            => $plugin,
-                'leftovers'         => $any,
-                'uninstall_setting' => $source->uninstall_setting(),
-            );
+            set_transient(self::CACHE, $out, self::CACHE_TIME);
+            self::save_notices($out);
+            return $out;
+        } finally {
+            SEOProStats_Schema::use_set($before);
         }
-        set_transient(self::CACHE, $out, self::CACHE_TIME);
-        return $out;
     }
 
     /**
-     * Forget the plugins found (after a change to them or their data).
+     * Save what the moving notices show (SEOProStats_Migrate_Notices): per
+     * plugin found, only facts, no words (people see them in their own
+     * language). Leftovers: whether it leaves data once switched off
+     * (statistics, or leftovers found while it was off).
+     *
+     * @param array<string,array<string,mixed>> $found From found().
+     */
+    private static function save_notices(array $found) {
+        $imported = array();
+        if (SEOProStats_Schema::is_current()) {
+            foreach (self::imports() as $import) {
+                if ($import['status'] === 'done' && $import['rows'] > 0) {
+                    $imported[$import['source']] = true;
+                }
+            }
+        }
+        $sources = array();
+        foreach ($found as $key => $item) {
+            $sources[$key] = array(
+                'name'         => (string) $item['name'],
+                'file'         => (string) $item['plugin']['file'],
+                'from'         => (string) $item['from'],
+                'to'           => (string) $item['to'],
+                'pending'      => (int) $item['pending'],
+                'pending_from' => (string) $item['pending_from'],
+                'pending_to'   => (string) $item['pending_to'],
+                'imported'     => isset($imported[$key]),
+                'leftovers'    => !empty($item['leftovers']) || (string) $item['from'] !== '',
+            );
+        }
+        update_option(SEOProStats_Collection::MIGRATE_NOTICES, array('at' => time(), 'sources' => $sources), false);
+    }
+
+    /**
+     * Look for the plugins again after an import, undo or cleanup changed
+     * their data, so the moving notices show the next step at once. These
+     * are actions people or the job take, never a screen load.
      */
     public static function forget_found() {
-        delete_transient(self::CACHE);
+        self::found(true);
     }
 
     /**

@@ -122,6 +122,20 @@ abstract class SEOProStats_Migrate_Source {
     }
 
     /**
+     * How to stop it recording statistics once its history is imported,
+     * when that is not deactivating the plugin (Jetpack does other jobs:
+     * switch off its Stats module instead): the step in words, a link to
+     * where it is done ('' for none), and whether it is done. Null:
+     * deactivate the plugin. Read on screen loads by the moving notices
+     * (SEOProStats_Migrate_Notices), so options only, no table queries.
+     *
+     * @return array{text:string,url:string,done:bool}|null
+     */
+    public function removal_step() {
+        return null;
+    }
+
+    /**
      * The plugin's file and state on this site: active (here), network
      * (for the whole network), inactive, or missing (not installed).
      *

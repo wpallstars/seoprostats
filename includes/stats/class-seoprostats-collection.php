@@ -51,6 +51,16 @@ final class SEOProStats_Collection {
     /** Transient: the statistics plugins found on the site (SEOProStats_Migrate::found()). */
     const MIGRATE_FOUND = 'seoprostats_migrate_found';
 
+    /**
+     * What the moving notices show (SEOProStats_Migrate_Notices), saved by
+     * each SEOProStats_Migrate::found() that looks (autoload off): screens
+     * read it and never look at other plugins' tables themselves.
+     */
+    const MIGRATE_NOTICES = 'seoprostats_migrate_notices';
+
+    /** Cron hook: look for statistics plugins again, for the notices. */
+    const MIGRATE_SCAN_HOOK = 'seoprostats_migrate_scan';
+
     /** The processor's progress (SEOProStats_Processor::STATE_OPTION). */
     const PROCESS_OPTION = 'seoprostats_processor';
 
@@ -69,6 +79,8 @@ final class SEOProStats_Collection {
         add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
         add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
         add_action(self::MIGRATE_HOOK, array(__CLASS__, 'migrate'));
+        add_action(self::MIGRATE_SCAN_HOOK, array(__CLASS__, 'migrate_scan'));
+        add_action(self::CRON_HOOK, array(__CLASS__, 'migrate_scan_due'));
         // Plugins switched on, off or deleted: look for statistics plugins again.
         foreach (array('activated_plugin', 'deactivated_plugin', 'deleted_plugin') as $hook) {
             add_action($hook, array(__CLASS__, 'forget_migrate'));
@@ -170,10 +182,41 @@ final class SEOProStats_Collection {
     }
 
     /**
-     * Forget the statistics plugins found (SEOProStats_Migrate::found()).
+     * Forget the statistics plugins found (SEOProStats_Migrate::found()),
+     * and look again in the background for the notices.
      */
     public static function forget_migrate() {
         delete_transient(self::MIGRATE_FOUND);
+        self::schedule_migrate_scan();
+    }
+
+    /**
+     * Look for statistics plugins again soon, in the background (once).
+     */
+    public static function schedule_migrate_scan() {
+        if (!wp_next_scheduled(self::MIGRATE_SCAN_HOOK)) {
+            wp_schedule_single_event(time(), self::MIGRATE_SCAN_HOOK);
+        }
+    }
+
+    /**
+     * Hourly: look again when the notices' list is a day old (or missing).
+     */
+    public static function migrate_scan_due() {
+        $saved = get_option(self::MIGRATE_NOTICES);
+        if (!is_array($saved) || empty($saved['at']) || (int) $saved['at'] < time() - DAY_IN_SECONDS) {
+            self::migrate_scan();
+        }
+    }
+
+    /**
+     * Cron: look for statistics plugins and save what the notices show
+     * (the class loads only here, in WP-CLI and on the Import tab and
+     * routes).
+     */
+    public static function migrate_scan() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        SEOProStats_Migrate::found(true);
     }
 
     /**

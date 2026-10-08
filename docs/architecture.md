@@ -655,7 +655,8 @@ mirrors `search-console`.
 SEO Pro Stats → Settings → Import brings another statistics plugin's
 history across as whole days in `daily`, so the charts start before SEO
 Pro Stats was installed (`SEOProStats_Migrate`, loaded only on the tab,
-its routes, WP-CLI and its cron hook). One adapter per plugin extends
+its routes, WP-CLI, its cron hooks, and the notices below for a plugin
+past its import step, without a query). One adapter per plugin extends
 `SEOProStats_Migrate_Source` (`includes/stats/migrate/`); the
 `seoprostats_migrate_sources` filter adds more. The first is Burst
 Statistics (`burst-statistics`, read from version 3.7.2).
@@ -724,6 +725,41 @@ multisite it acts on this site only and lists what the network shares
 without deleting it. It cannot be undone; imported days stay, and one
 timeline note records it. Burst keeps its tables, options and upload
 folder when deleted and has no setting to remove them.
+
+**Notices** (`SEOProStats_Migrate_Notices`) give one next step per plugin
+found, with its link, from finding its data until the plugin and its data
+are gone:
+
+| Step | When | Links |
+|---|---|---|
+| `import` | Its data has days not imported yet (before SEO Pro Stats's own first day, not filled by an import) | Import its history (the Import tab, at its card) |
+| `check` | Nothing left to import, and it still records statistics | Check the import, Deactivate (or the adapter's `removal_step()`) |
+| `remove` | It no longer records statistics; its data is on the site | Delete it (its own uninstall; single sites), Remove leftover data |
+| none | Plugin and data gone | — |
+
+A plugin that started after SEO Pro Stats has nothing to import and goes
+straight to `check`. In `check`, its own delete-data setting
+(`uninstall_setting()`) is named when it has one. An adapter whose plugin
+does other jobs (Jetpack) returns `removal_step()`, how to stop its
+statistics and whether that is done, instead of deactivating the plugin.
+
+They run side by side: SEO Pro Stats keeps counting the whole time, and
+no statistics plugin is in a setting's `replaces` list (that pauses
+collection, `SEOProStats_Replaced_Plugins`). Shown to people who can
+activate plugins: a note under the plugin's row on the Plugins screen,
+and a notice at the top of the Plugins screen (also for deleted plugins
+whose data is left) and of SEO Pro Stats's own screens (not the Import
+tab). Screens never read other plugins' tables: each `found()` that looks
+saves the facts the notices need (`seoprostats_migrate_notices`, autoload
+off: file, days, days still to import, whether imported and whether data
+is left), and the notices add only whether the plugin is installed and
+active. Plugins activated, deactivated or deleted, and a list over a day
+old, schedule a look in the background (`seoprostats_migrate_scan`); a
+finished import, an undo and a cleanup look again at once
+(`forget_found()`).
+**Hide** hides the listed steps for that person (user meta
+`seoprostats_migrate_notices_hidden`, `key:step`); a plugin shows again
+when its step changes.
 
 ## Processing
 
