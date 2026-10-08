@@ -78,8 +78,8 @@ abstract class SEOProStats_Migrate_Source {
 
     /**
      * The plugin's own totals for a range, for the check after import:
-     * pageviews, visits, and visitors as it counts them (once across the
-     * range).
+     * pageviews, visits and visitors, each day's added up (visitors as
+     * SEO Pro Stats counts them: once a day, never across days).
      *
      * @param string $from First day.
      * @param string $to   Last day.

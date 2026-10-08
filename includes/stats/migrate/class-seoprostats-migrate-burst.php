@@ -7,7 +7,7 @@
  * one row per pageview (time, page_url, parameters, time_on_page in
  * milliseconds, max_scroll in percent, session_id, uid_id), and
  * burst_sessions, one row per visit (start_time, referrer as a host,
- * bounce, browser_id, platform_id and device_id into burst_browsers,
+ * browser_id, platform_id and device_id into burst_browsers,
  * burst_platforms and burst_devices, city_code into burst_locations for
  * the country). Older versions kept the visitor as uid on the pageview;
  * either is read, and only counted. Its settings are one option,
@@ -29,6 +29,10 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+// Paths, sources and channels are worked out as the collector's are.
+require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-channels.php';
+require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
 
 final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
 
@@ -78,8 +82,12 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
         }
         $start = self::bounds($from)[0];
         $end   = self::bounds($to)[1];
+        // Visitors are counted each day and added up, as SEO Pro Stats
+        // counts them (no visitor is known across days); days are 24-hour
+        // steps from the first day's start, so a daylight-saving change
+        // moves an hour's visitors to the next day.
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- another plugin's table by its time index; only counts are read.
-        $row = $wpdb->get_row($wpdb->prepare('SELECT COUNT(*) AS pageviews, COUNT(DISTINCT session_id) AS visits, COUNT(DISTINCT %i) AS visitors FROM %i WHERE time >= %d AND time < %d', $this->uid(), self::table('statistics'), $start, $end), ARRAY_A);
+        $row = $wpdb->get_row($wpdb->prepare('SELECT COALESCE(SUM(d.pv), 0) AS pageviews, COALESCE(SUM(d.v), 0) AS visits, COALESCE(SUM(d.u), 0) AS visitors FROM (SELECT COUNT(*) AS pv, COUNT(DISTINCT session_id) AS v, COUNT(DISTINCT %i) AS u FROM %i WHERE time >= %d AND time < %d GROUP BY FLOOR((time - %d) / 86400)) d', $this->uid(), self::table('statistics'), $start, $end, $start), ARRAY_A);
         foreach (array_keys($out) as $key) {
             $out[$key] = isset($row[$key]) ? (int) $row[$key] : 0;
         }
@@ -126,11 +134,14 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
             $start,
             $end
         );
-        $bounce = in_array('bounce', $sessions, true) ? 'COALESCE(SUM(s.bounce), 0)' : 'COALESCE(SUM(x.pv <= 1), 0)';
-        $sums   = "COUNT(DISTINCT x.u) AS visitors, COUNT(*) AS visits, COALESCE(SUM(x.pv), 0) AS pageviews, $bounce AS bounces, COALESCE(SUM(x.ms), 0) AS engaged_ms";
+        // A bounce is a visit of one pageview, as SEO Pro Stats counts it
+        // (Burst keeps no events). Its own bounce column is not read: it
+        // starts at 1, its cron clears it later, and it counts a single
+        // pageview over 5 seconds as engaged.
+        $sums = 'COUNT(DISTINCT x.u) AS visitors, COUNT(*) AS visits, COALESCE(SUM(x.pv), 0) AS pageviews, COALESCE(SUM(x.pv <= 1), 0) AS bounces, COALESCE(SUM(x.ms), 0) AS engaged_ms';
         $base   = "FROM ($visit) x INNER JOIN %i s ON s.ID = x.sid";
 
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums, $bounce and the joins are fixed SQL. Only counts and names are read.
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums and the joins are fixed SQL. Only counts and names are read.
         $site = $wpdb->get_row($wpdb->prepare("SELECT $sums $base", $ss), ARRAY_A);
         if (!$site || (int) $site['pageviews'] === 0) {
             return $rows;
@@ -198,8 +209,6 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
      * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
      */
     private function visit_sources(array $groups) {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-channels.php';
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
         $sums = array();
         $add  = function ($dimension, $value, array $metrics) use (&$sums) {
             $key = $dimension . "\0" . $value;
