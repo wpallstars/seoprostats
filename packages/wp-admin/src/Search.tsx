@@ -7,8 +7,9 @@
  *
  * Rankings: clicks, impressions, CTR and average position as tiles that
  * pick the chart's metric, with the changes on the timeline under it;
- * then the top search queries, pages, countries and devices (Google
- * only). Choose a page to see its queries, or a query to see its pages;
+ * then the top search queries, pages, countries, devices and search
+ * appearances (Google only), and the chart's days (weeks or months) as a
+ * table, newest first. Choose a page to see its queries, or a query to see its pages;
  * Bing's are by week. Search days are final only (some days old), so the
  * period stops at the newest one.
  *
@@ -30,7 +31,10 @@ import { useCallback, useEffect, useId, useState, type KeyboardEvent } from 'rea
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import {
+	apiArgs,
 	formatMetric,
+	SEARCH_ANY_KINDS,
+	SEARCH_KINDS,
 	SEARCH_METRICS,
 	SEARCH_REPORTS,
 	SHARE_SEARCH_REPORTS,
@@ -96,8 +100,30 @@ function kindName(kind: SearchKind): string {
 		countries: __('Countries', 'seoprostats'),
 		devices: __('Devices', 'seoprostats'),
 		appearance: __('Appearance', 'seoprostats'),
+		days: __('Days', 'seoprostats'),
 	};
 	return names[kind];
+}
+
+/** Rows a page of the tables shows. */
+const PER_PAGE = 50;
+
+/** A days row's first column: Day, Week or Month, as the chart's grain. */
+function daysHeading(grain: SearchAnswer['grain'] | undefined): string {
+	return grain === 'week' ? __('Week', 'seoprostats') : grain === 'month' ? __('Month', 'seoprostats') : __('Day', 'seoprostats');
+}
+
+/** A table's first column heading. */
+function kindHeading(kind: SearchKind, grain: SearchAnswer['grain'] | undefined): string {
+	const headings: Record<SearchKind, string> = {
+		queries: __('Query', 'seoprostats'),
+		pages: __('Page', 'seoprostats'),
+		countries: __('Country', 'seoprostats'),
+		devices: __('Device', 'seoprostats'),
+		appearance: __('Search appearance', 'seoprostats'),
+		days: daysHeading(grain),
+	};
+	return headings[kind];
 }
 
 /** A metric's value; position "–" without impressions. */
@@ -254,9 +280,14 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	const setKind = (tab: SearchKind) => update({ tab });
 	const id = useId();
 	// Countries, devices and search appearances exist for the whole site only, and from Google only (not Bing, so not Combined).
-	const kinds: SearchKind[] = page || query || engine !== 'google' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices', 'appearance'];
+	const kinds: SearchKind[] = page || query || engine !== 'google' ? [...SEARCH_ANY_KINDS] : [...SEARCH_KINDS];
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
-	const search = useSearch(state, shown, page, query);
+	// Days page through the chart's points; back to the newest when the period, filters, engine, page or query change.
+	const scope = JSON.stringify({ ...apiArgs(state), engine, page, query, shown });
+	const [at, setAt] = useState({ scope, offset: 0 });
+	const offset = shown === 'days' && at.scope === scope ? at.offset : 0;
+	const setOffset = (next: number) => setAt({ scope, offset: next });
+	const search = useSearch(state, shown, page, query, PER_PAGE, offset);
 	const markers = useMarkers(state, page);
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
@@ -480,6 +511,25 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
 						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
 						{answer && rows.length > 0 && <SearchNote engine={answered} kind={shown} />}
+						{answer?.kind === 'days' && answer.points.length > PER_PAGE && (
+							<nav className="spst-changes__pager" aria-label={sprintf(/* translators: %s: a table, e.g. "Days". */ __('Pages of %s', 'seoprostats'), kindName('days'))}>
+								<span className="spst-muted">
+									{sprintf(
+										/* translators: 1: first row shown, 2: last row shown, 3: number of rows. */
+										__('%1$s–%2$s of %3$s', 'seoprostats'),
+										formatMetric(offset + 1, 'number', locale),
+										formatMetric(Math.min(offset + PER_PAGE, answer.points.length), 'number', locale),
+										formatMetric(answer.points.length, 'number', locale)
+									)}
+								</span>
+								<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
+									{__('Newer', 'seoprostats')}
+								</Button>
+								<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
+									{__('Older', 'seoprostats')}
+								</Button>
+							</nav>
+						)}
 					</CardBody>
 				</Card>
 			)}
@@ -505,7 +555,8 @@ function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewSta
 }
 
 function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }) {
-	const search = useSearch(state, kind, page, query);
+	// Paper has no pages: every day (week or month) of the period.
+	const search = useSearch(state, kind, page, query, kind === 'days' ? 1000 : PER_PAGE);
 	return (
 		<section className="spst-print-tab">
 			<h3 className="spst-print-tab__title">{kindName(kind)}</h3>
@@ -517,6 +568,9 @@ function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; k
 
 /** Why the rows add up to less than the totals, by engine. */
 function SearchNote({ engine, kind }: { engine: SearchEngineChoice; kind?: SearchKind }) {
+	if (kind === 'days') {
+		return <p className="spst-note">{__('Each row is a point of the chart, newest first; together they make the period’s totals.', 'seoprostats')}</p>;
+	}
 	if (kind === 'appearance') {
 		return <p className="spst-note">{__('One search can show several appearances, so these figures do not add up to the site’s totals. Search appearances are counted by page.', 'seoprostats')}</p>;
 	}
@@ -572,7 +626,7 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 					<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
 						<thead>
 							<tr>
-								<th scope="col">{kind === 'queries' ? __('Query', 'seoprostats') : kind === 'pages' ? __('Page', 'seoprostats') : kind === 'countries' ? __('Country', 'seoprostats') : kind === 'appearance' ? __('Search appearance', 'seoprostats') : __('Device', 'seoprostats')}</th>
+								<th scope="col">{kindHeading(kind, answer?.grain)}</th>
 								{METRIC_ORDER.map((key) => (
 									<th key={key} scope="col" className="num">
 										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
@@ -582,7 +636,7 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 						</thead>
 						<tbody>
 							{rows.map((row) => (
-								<Row key={row.id} row={row} kind={kind} top={top} page={page} query={query} choose={choose} />
+								<Row key={row.id} row={row} kind={kind} grain={answer?.grain ?? 'day'} top={top} page={page} query={query} choose={choose} />
 							))}
 						</tbody>
 					</table>
@@ -595,15 +649,17 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 interface RowProps {
 	row: SearchRow;
 	kind: SearchKind;
+	/** The chart's grain, for days rows. */
+	grain: SearchAnswer['grain'];
 	top: number;
 	page: string;
 	query: string;
 	choose: (next: { page?: string; query?: string }) => void;
 }
 
-function Row({ row, kind, top, page, query, choose }: RowProps) {
+function Row({ row, kind, grain, top, page, query, choose }: RowProps) {
 	const before = row.compare;
-	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : row.label}</span>;
+	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? longLabel(row.from ?? row.value, grain) : row.label}</span>;
 	if (kind === 'queries') {
 		name = (
 			<Button variant="link" aria-pressed={query === row.value} onClick={() => choose({ query: query === row.value ? '' : row.value })}>
@@ -643,7 +699,7 @@ function Row({ row, kind, top, page, query, choose }: RowProps) {
 	}
 	return (
 		<tr className={(kind === 'pages' && page === (row.path ?? row.value)) || (kind === 'queries' && query === row.value) ? 'is-selected' : ''}>
-			<td className="spst-table__bar-cell">
+			<td className={`spst-table__bar-cell${kind === 'days' ? ' spst-nowrap' : ''}`}>
 				<span className="spst-table__bar" style={{ width: `${(row.clicks / top) * 100}%` }} aria-hidden="true" />
 				{name}
 			</td>

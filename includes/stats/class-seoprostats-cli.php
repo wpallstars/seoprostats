@@ -749,13 +749,14 @@ final class SEOProStats_CLI {
     /**
      * Search (Google Search Console's imported days): clicks, impressions,
      * CTR and average position, then search queries, pages, countries,
-     * devices or search appearances. The period is cut at the newest day with search data
-     * (about three days ago); visit filters do not apply, page filters do.
+     * devices, search appearances or the chart's days (weeks or months).
+     * The period is cut at the newest day with search data (about three
+     * days ago); visit filters do not apply, page filters do.
      *
      * ## OPTIONS
      *
      * [<kind>]
-     * : queries, pages, countries, devices or appearance (countries, devices and appearance for the whole site, Google only).
+     * : queries, pages, countries, devices, appearance (countries, devices and appearance for the whole site, Google only) or days (the chart's points by day, week or month, newest first).
      * ---
      * default: queries
      * options:
@@ -764,6 +765,7 @@ final class SEOProStats_CLI {
      *   - countries
      *   - devices
      *   - appearance
+     *   - days
      * ---
      *
      * [--page=<path>]
@@ -809,6 +811,12 @@ final class SEOProStats_CLI {
      * default: 10
      * ---
      *
+     * [--offset=<offset>]
+     * : Rows skipped (for the next rows).
+     * ---
+     * default: 0
+     * ---
+     *
      * [--data=<data>]
      * : live or demo.
      * ---
@@ -827,6 +835,7 @@ final class SEOProStats_CLI {
      * ## EXAMPLES
      *
      *     wp seoprostats search --range=90d --compare=prev
+     *     wp seoprostats search days --range=30d --limit=100
      *     wp seoprostats search queries --page=/pricing/
      *     wp seoprostats search pages --query="seo pro stats" --format=json
      *     wp seoprostats search --engine=bing
@@ -883,6 +892,7 @@ final class SEOProStats_CLI {
             'countries'  => 'label',
             'devices'    => 'label',
             'appearance' => 'label',
+            'days'       => 'label',
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array($first[$answer['kind']], 'clicks', 'impressions', 'ctr', 'position', 'share'));
     }

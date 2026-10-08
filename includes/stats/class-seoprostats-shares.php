@@ -158,7 +158,7 @@ final class SEOProStats_Shares {
         if ($report !== 'rankings') {
             $out['report'] = $report;
         }
-        $kinds = $engine === 'google' ? SEOProStats_Search::KINDS : array('queries', 'pages');
+        $kinds = $engine === 'google' ? SEOProStats_Search::KINDS : SEOProStats_Search::ANY_KINDS;
         if (in_array($view['tab'] ?? '', $kinds, true) && $view['tab'] !== 'queries') {
             $out['tab'] = $view['tab'];
         }

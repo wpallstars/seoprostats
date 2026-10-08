@@ -373,8 +373,11 @@ export interface ChartData<P extends { t: string } = { t: string }> {
 }
 
 /** Rows of the search report. */
-export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices', 'appearance'] as const;
+export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices', 'appearance', 'days'] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
+
+/** The kinds every engine, page and query has; the others are Google's whole site only. */
+export const SEARCH_ANY_KINDS: readonly SearchKind[] = ['queries', 'pages', 'days'];
 
 /** The Search section's reports; the first is the default. */
 export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'targets', 'plan', 'experiments'] as const;
@@ -433,13 +436,16 @@ export interface SearchPoint extends SearchMetrics {
 }
 
 export interface SearchRow extends SearchMetrics {
-	/** Query or page dictionary ID, country code (alpha-3) or device code. */
+	/** Query or page dictionary ID, country code (alpha-3), device code, appearance or a days row's first day. */
 	id: string;
-	/** The query, page path, country (alpha-2; '' unknown) or device. */
+	/** The query, page path, country (alpha-2; '' unknown), device, appearance or a days row's first day. */
 	value: string;
 	label: string;
 	/** clicks ÷ all clicks. */
 	share: number;
+	/** Present only for days rows: the days covered (YYYY-MM-DD, both included), as the chart's grain. */
+	from?: string;
+	to?: string;
 	/** Present only for pages rows. */
 	path?: string;
 	url?: string;

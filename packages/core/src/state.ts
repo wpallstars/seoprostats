@@ -22,6 +22,7 @@ import {
 	LINKS_KINDS,
 	QUEUE_FILTERS,
 	RANGE_KEYS,
+	SEARCH_ANY_KINDS,
 	SEARCH_ENGINE_CHOICES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
@@ -223,7 +224,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
 		}
 		// Only Google has countries, devices and search appearances (not Bing, so not Combined).
-		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
+		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_ANY_KINDS;
 		const tab = oneOf(tabs, params.get('tab'), 'queries');
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
 		set('tab', tab === 'queries' ? undefined : tab);

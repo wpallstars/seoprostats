@@ -671,6 +671,11 @@
 	isolation: isolate;
 }
 
+/* Dates stay on one line; the table scrolls on narrow screens instead. */
+.spst-table td.spst-nowrap {
+	white-space: nowrap;
+}
+
 .spst-table__bar {
 	position: absolute;
 	inset: 4px auto 4px 0;

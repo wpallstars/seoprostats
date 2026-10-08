@@ -243,9 +243,9 @@ function engineArg(scope: SearchScope, combined = false): Args {
 }
 
 /** Search (an engine's imported days): totals, points and rows of one kind; optionally one page's or one query's. */
-export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50) {
+export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(offset ? { offset } : {}), ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
 	return useQuery({
 		queryKey: ['search', args],
 		queryFn: () => get<SearchAnswer>('search', args),
