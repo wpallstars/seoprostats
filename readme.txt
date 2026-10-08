@@ -91,13 +91,17 @@ What WordPress says about each published page: its title and description (from R
 
 Yes, under Search → Audit. The links in each published page's text to your other pages are read with the audit, and three lists show what to fix: orphan pages that no other page links to, pages that convert from search but that few pages link to, and missing links, where a page shows for a search but does not link to the page that gets that search's clicks. Only links in the text count, not menus or widgets. Each row is also in Search → Plan. Scripts and AI agents read it through the REST API (links), wp seoprostats links, and on WordPress 6.9 and later the ability seoprostats/links.
 
+= Does it show pages search engines are not showing? =
+
+Yes, under Search → Audit → Indexation. It lists published pages with no search impressions in the newest 28 days of search data, published before them, and the other addresses in WordPress's own sitemap, such as category, tag and author archives, listed that long with none. Each says whether search never showed it or stopped showing it, and when. Pages set to noindex or with a canonical address elsewhere are left out. The sitemap is read from WordPress once a day, with no outside request, and the search engines are not asked about each page. Each row is also in Search → Plan. Scripts and AI agents read it through the REST API (indexation), wp seoprostats indexation, and on WordPress 6.9 and later the ability seoprostats/indexation.
+
 = What does Search → Content show? =
 
 Which pages earn their search traffic. For each page: its search clicks, position and click-through rate, beside the visits from search that started on it, their bounce rate and time, and how many reached a goal you pick. A page that ranks but whose visitors leave needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Sort by clicks, visits or conversions. Scripts and AI agents read it through the REST API (content), wp seoprostats content, and on WordPress 6.9 and later the ability seoprostats/content.
 
 = What should I work on next? =
 
-Search → Plan puts what Opportunities, Audit and Internal links find into one list, best first. Each item says why it is listed, what to do, and how its score is made: the clicks it could bring in 28 days, times how well the page's visits from search convert (with a goal), times how sure the estimate is, divided by the effort. Accept an item, mark it done once the change is live (that starts an experiment on the page, so the change is measured), or dismiss it for 90 days. Pages with an experiment running get no new items, so one change is measured at a time. Scripts and AI agents use it through the REST API (queue), wp seoprostats queue, and on WordPress 6.9 and later the abilities seoprostats/queue and seoprostats/queue-update.
+Search → Plan puts what Opportunities, Audit, Internal links and Indexation find into one list, best first. Each item says why it is listed, what to do, and how its score is made: the clicks it could bring in 28 days, times how well the page's visits from search convert (with a goal), times how sure the estimate is, divided by the effort. Accept an item, mark it done once the change is live (that starts an experiment on the page, so the change is measured), or dismiss it for 90 days. Pages with an experiment running get no new items, so one change is measured at a time. Scripts and AI agents use it through the REST API (queue), wp seoprostats queue, and on WordPress 6.9 and later the abilities seoprostats/queue and seoprostats/queue-update.
 
 = Can it tell whether a change worked? =
 

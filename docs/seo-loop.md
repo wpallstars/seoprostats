@@ -182,7 +182,9 @@ or agent has acted on are stored.
 | `decay` | Opportunities → losing clicks | lost clicks, with the cause: investigate, then update | clicks | 3 |
 | `overlap` | Opportunities → overlapping pages | pages share a query: make one the clear answer, or leave it | clicks (all its pages) | 3 |
 | `audit` | Audit (one item per page and finding) | what the content audit found: fix it | impressions (noindex, canonical), CTR (title, description), else clicks | 1 (thin 3) |
-| later kinds | orphans, not indexed, refresh, targets | each feature below | | |
+| `links` | Internal links (one item per page and list) | orphans, converting pages with few links in, missing links | clicks | 1 (converting 2) |
+| `index` | Indexation (one item per page and list) | published or in the sitemap, never or no longer shown by search | impressions | 2 (sitemap 1) |
+| later kinds | refresh, targets | each feature below | | |
 
 Each item names its page (and query where it has one), the numbers behind
 it and a sentence saying why.
@@ -403,6 +405,47 @@ in the site's own sitemaps (WordPress's sitemap providers, read in cron,
 no fetch) that never had impressions. Engine URL inspection (Search
 Console's has a daily quota) is a later opt-in step for chosen pages only.
 Queue kind `index`.
+
+Built (GH#79), schema v12:
+
+- `page_facts` gains `published` (when the post was published, key
+  `published`), written with the audit's facts; after the update every
+  page is read again (`state()['published']` holds when). `sitemap`:
+  `path_id` primary key, `source` (1 category and tag archives, 2 author
+  archives, 3 another plugin's provider), `first_seen` and `seen`, keys
+  `first_seen` and `seen`.
+- Reading the sitemaps: the daily cron asks WordPress's sitemap providers
+  for their addresses (no request), all but posts, which are the audit's
+  pages: at most 5,000 addresses in 20 seconds. New addresses are first
+  seen now; after a complete read, addresses no longer listed go. With
+  WordPress's sitemaps off (an SEO plugin makes its own) nothing is read
+  and the report says so (`read.sitemap.enabled`). The first report on
+  live data reads them briefly when the cron has not run yet.
+- Lists, over the engine's newest N days of imported data (`days`, 7 to
+  365, default 28): `pages`, published at least N days before the end
+  with no impressions in them, by `page_facts`'s `published` key (the
+  newest 5,000); noindex pages and canonicals elsewhere are left out and
+  counted (`skipped`); `sitemap`, addresses first listed at least N days
+  before the end, by the `first_seen` key (the newest 5,000), with none.
+  `gsc_pages` is read by `path_day` for those pages only: which had
+  impressions in the window, then the last day of the others' (`state`
+  `lost` with `last_impression`, or `never`). Never shown first, then the
+  newest; the lists are cached and paged from the cache.
+- Queue kind `index` (code 8), one item per page and list (the list in
+  place of a query): potential clicks are a shown page's clicks per 28
+  days in the window (`typical`) × 0.5 (sitemap 0.2), so no items without
+  search data; confidence 0.3, not weighed by impressions (there are
+  none); effort 2 (sitemap 1); done measures impressions.
+- REST `GET /indexation` (`kind`, `days`, `engine`, page filters, `limit`,
+  `offset`); WP-CLI `wp seoprostats indexation [run] [--kind=<kind>]
+  [--days=<n>]` (`run` reads the sitemaps now); ability
+  `seoprostats/indexation`. Dashboard: Search → Audit, **Indexation**
+  under Internal links, with a list switch that counts each list; Plan
+  shows the items as "Indexation: <list>". Shared Search reports carry it.
+- Demo data: the indexing checklist page, published 45 days ago, has no
+  search data; the sitemap has two category archives and an author page
+  listed for 120 days with none, and a category listed 10 days ago, too
+  new to list.
 
 ## 7. Refresh planner
 

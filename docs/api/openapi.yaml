@@ -154,8 +154,8 @@ paths:
         - name: report
           in: path
           required: true
-          schema: {type: string, enum: [stats, timeseries, breakdown, markers, realtime, search, opportunities, audit, links, content, goals, funnels, properties, clicks, changes]}
-          description: Overview allows stats/timeseries/breakdown/markers/realtime; Search allows search/markers/opportunities/audit/links/content, for the engines of its saved Search sections only; Goals allows goals; Funnels allows funnels; Properties allows properties/breakdown; Clicks allows clicks/breakdown; Changes allows changes/breakdown. The section must be saved in this share. Other query arguments are those of the report's own route, checked the same way; markers and changes are a public projection (no users, notes, old/new values, or plugin, theme and setting names).
+          schema: {type: string, enum: [stats, timeseries, breakdown, markers, realtime, search, opportunities, audit, links, indexation, content, goals, funnels, properties, clicks, changes]}
+          description: Overview allows stats/timeseries/breakdown/markers/realtime; Search allows search/markers/opportunities/audit/links/indexation/content, for the engines of its saved Search sections only; Goals allows goals; Funnels allows funnels; Properties allows properties/breakdown; Clicks allows clicks/breakdown; Changes allows changes/breakdown. The section must be saved in this share. Other query arguments are those of the report's own route, checked the same way; markers and changes are a public projection (no users, notes, old/new values, or plugin, theme and setting names).
         - name: X-Seoprostats-Unlock
           in: header
           schema: {type: string}
@@ -640,7 +640,9 @@ paths:
         (`links`: one item per page and list in `finding`, from `/links`:
         an orphan, a converting page with few links in, or a missing link,
         on the page it should go to with the page that should link in
-        `figures.link_from`) when the list is read.
+        `figures.link_from`) and indexation (`index`: one item per page
+        or sitemap address search has not shown, from `/indexation`, its
+        list in `finding`) when the list is read.
         Each item's score is potential clicks per 28 days ×
         value × confidence ÷ effort, and every part is given so an agent
         can rank by its own rule:
@@ -653,15 +655,19 @@ paths:
           `figures.share`; links: the page's impressions, or for a missing
           link those of the searches on the page that should link, × the
           site's CTR at the page's position × the list's share in
-          `rules.links_share`), scaled to 28 days;
+          `rules.links_share`; index: `/indexation`'s `typical`, a shown
+          page's clicks, × the list's share in `rules.index_share`, so
+          none without search data), scaled to 28 days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
         - confidence: the kind's own × √(impressions per 28 days ÷
-          `rules.full_impressions`), the root at most 1;
+          `rules.full_impressions`), the root at most 1; index items have
+          no impressions, so theirs is the kind's own;
         - effort: the kind's (`rules.effort`; an audit finding's in
-          `rules.audit_effort` and a links list's in `rules.links_effort`
-          when it differs) unless someone set another.
+          `rules.audit_effort`, a links list's in `rules.links_effort` and
+          an indexation list's in `rules.index_effort` when it differs)
+          unless someone set another.
 
         Only items someone acted on are stored. New items on a page with
         a running experiment are left out (`left_out`); dismissed items
@@ -1454,6 +1460,84 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LinksAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /indexation:
+    get:
+      operationId: getIndexation
+      summary: Indexation — published pages and sitemap addresses search has not shown in its newest days.
+      description: |
+        Reads only what the site already has: no request to a search
+        engine.
+
+        - `pages`: published pages (read by the content audit, with when
+          each was published) with no impressions in the engine's newest
+          `days` days of imported search data, published at least `days`
+          days before those days end. Pages that ask not to be indexed
+          (`noindex`) or name another page as canonical are left out and
+          counted in `skipped`.
+        - `sitemap`: other addresses in WordPress's own sitemaps (category,
+          tag and author archives, and other plugins' providers; not posts,
+          which are `pages`), listed for at least `days` days, with no
+          impressions in those days. The daily cron reads the sitemaps (at
+          most `rules.max_urls` addresses); `read.sitemap` says when, and
+          `enabled` is false when WordPress's sitemaps are off (an SEO
+          plugin makes its own), leaving this list empty.
+
+        `state` is `never` (no impressions on record) or `lost` (shown
+        before, with `last_impression`, not since); never shown first,
+        then the newest. At most the newest `rules.max_rows` pages and
+        addresses are checked. The period is always the engine's newest
+        `days` days, whatever `range` asks; `range` in the answer gives
+        it. `typical` is a shown page's clicks per 28 days in it, which
+        the queue uses for the clicks a page could earn. `counts` gives
+        every list's rows whatever `kind` is asked for. Each row also
+        becomes a `/queue` item (kind `index`). Page filters apply; other
+        filters are listed in `ignored`.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: kind
+          in: query
+          description: Which list.
+          schema:
+            $ref: '#/components/schemas/IndexationKind'
+        - name: days
+          in: query
+          description: Days without impressions (and since publishing or first listed).
+          schema:
+            type: integer
+            minimum: 7
+            maximum: 365
+            default: 28
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: One indexation list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IndexationAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2764,17 +2848,18 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap, audit, links]
+              enum: [ctr, missing, striking, decay, overlap, audit, links, index]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
             finding:
-              description: audit, the finding (one item per page and finding); links, the list (one item per page and list). Null for other kinds.
+              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list). Null for other kinds.
               oneOf:
                 - $ref: '#/components/schemas/AuditFinding'
                 - $ref: '#/components/schemas/LinksKind'
+                - $ref: '#/components/schemas/IndexationKind'
                 - type: 'null'
             found:
               type: boolean
@@ -2848,7 +2933,7 @@ components:
                   $ref: '#/components/schemas/AuditFinding'
                 share:
                   type: number
-                  description: audit and links; the share of the page's expected clicks the finding or list puts at stake.
+                  description: audit and links, the share of the page's expected clicks the finding or list puts at stake; index, the share of a shown page's clicks (typical) the page could earn.
                 facts:
                   $ref: '#/components/schemas/AuditFacts'
                 same:
@@ -2857,10 +2942,13 @@ components:
                   items:
                     type: string
                 list:
-                  $ref: '#/components/schemas/LinksKind'
+                  description: links and index; the list.
+                  oneOf:
+                    - $ref: '#/components/schemas/LinksKind'
+                    - $ref: '#/components/schemas/IndexationKind'
                 links_in:
                   type: integer
-                  description: links, orphans and converting; other pages linking to the page.
+                  description: links, orphans and converting, and index, pages; other pages linking to the page.
                 from:
                   type: array
                   description: links, orphans and converting; pages linking to it (up to five).
@@ -2892,6 +2980,31 @@ components:
                     type: object
                 query_count:
                   type: integer
+                state:
+                  type: string
+                  enum: [never, lost]
+                  description: index; as IndexationRow's.
+                last_impression:
+                  type: [string, 'null']
+                  description: index.
+                age:
+                  type: integer
+                  description: index; days since published or first listed.
+                typical:
+                  type: number
+                  description: index; a shown page's clicks per 28 days.
+                published:
+                  type: string
+                  description: index, pages.
+                words:
+                  type: integer
+                  description: index, pages.
+                first_seen:
+                  type: string
+                  description: index, sitemap.
+                source:
+                  type: string
+                  description: index, sitemap; as IndexationRow's.
             metric:
               type: string
               enum: [clicks, impressions, ctr, position]
@@ -4195,6 +4308,141 @@ components:
                 oneOf:
                   - $ref: '#/components/schemas/LinksPageRow'
                   - $ref: '#/components/schemas/LinksMissingRow'
+            total:
+              type: integer
+            more:
+              type: boolean
+
+    IndexationKind:
+      type: string
+      enum: [pages, sitemap]
+      default: pages
+
+    IndexationRow:
+      description: A published page (pages) or sitemap address (sitemap) search has not shown in the period.
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - type: object
+          required: [state, last_impression, age]
+          properties:
+            state:
+              type: string
+              enum: [never, lost]
+              description: never, no impressions on record; lost, shown before the period and not since.
+            last_impression:
+              type: [string, 'null']
+              format: date
+              description: The last day with impressions; null when never shown.
+            age:
+              type: integer
+              description: Days from publishing (pages) or first listed (sitemap) to the end of the period.
+            published:
+              type: string
+              format: date-time
+              description: pages; when it was published, in the site's time zone.
+            words:
+              type: integer
+              description: pages.
+            links_in:
+              type: integer
+              description: pages; other pages whose text links to it.
+            first_seen:
+              type: string
+              format: date-time
+              description: sitemap; when the address was first read in a sitemap.
+            source:
+              type: string
+              enum: [taxonomies, users, other]
+              description: sitemap; the sitemap provider (category and tag archives, author archives, or another plugin's).
+
+    IndexationAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [engine, engines, range, days, through, first, connected, ignored, kind, rules, read, typical, skipped, counts, rows, total, more]
+          properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+            through:
+              type: string
+              description: The newest day with search data; empty without any.
+            first:
+              type: string
+            connected:
+              type: boolean
+            ignored:
+              type: array
+              items:
+                type: string
+            kind:
+              $ref: '#/components/schemas/IndexationKind'
+            rules:
+              type: object
+              required: [days, max_rows, max_urls]
+              properties:
+                days:
+                  type: integer
+                max_rows:
+                  type: integer
+                  description: Pages and addresses checked at most per list, newest first.
+                max_urls:
+                  type: integer
+                  description: Sitemap addresses kept at most.
+            read:
+              type: object
+              required: [pages, published, complete, sitemap]
+              properties:
+                pages:
+                  type: integer
+                  description: Published pages the content audit has read.
+                published:
+                  type: integer
+                  description: Those with their published time.
+                complete:
+                  type: boolean
+                sitemap:
+                  type: object
+                  required: [read, enabled, complete, addresses]
+                  properties:
+                    read:
+                      type: [string, 'null']
+                      format: date-time
+                    enabled:
+                      type: boolean
+                      description: Whether WordPress's sitemaps were on when read.
+                    complete:
+                      type: boolean
+                      description: Whether every provider was read within the limits.
+                    addresses:
+                      type: integer
+            typical:
+              type: number
+              description: A shown page's clicks per 28 days, on average, in the period.
+            skipped:
+              type: object
+              required: [noindex, canonical]
+              description: Published pages without impressions left out, as they ask not to be shown.
+              properties:
+                noindex:
+                  type: integer
+                canonical:
+                  type: integer
+            counts:
+              type: object
+              description: Rows per list, whatever kind is asked for.
+              additionalProperties:
+                type: integer
+            rows:
+              type: array
+              description: Never shown first, then the newest.
+              items:
+                $ref: '#/components/schemas/IndexationRow'
             total:
               type: integer
             more:
