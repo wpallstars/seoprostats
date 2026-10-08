@@ -22,6 +22,12 @@ import { valueLabel } from '../labels';
 /** Most countries a breakdown answers with. */
 const COUNTRIES = 100;
 
+/** About half the hover box's width, in pixels. */
+const TIP_HALF = 80;
+
+/** Above this distance from the map's top, in pixels, the hover box goes below the pointer. */
+const TIP_FLIP = 56;
+
 interface Props {
 	state: ViewState;
 	update: (patch: Partial<ViewState>) => void;
@@ -33,8 +39,12 @@ interface Tip {
 	y: number;
 }
 
-export function WorldMap({ state, update }: Props) {
-	const hidden = shareAccess.hidden.includes('country');
+/** Nothing when a shared report hides countries, so they are never asked for. */
+export function WorldMap(props: Props) {
+	return shareAccess.hidden.includes('country') ? null : <MapCard {...props} />;
+}
+
+function MapCard({ state, update }: Props) {
 	const query = useBreakdown(state, 'country', COUNTRIES);
 	const [tip, setTip] = useState<Tip | null>(null);
 	const rows = query.data?.rows;
@@ -42,15 +52,13 @@ export function WorldMap({ state, update }: Props) {
 	const shades = useMemo(() => mapShades(Object.fromEntries((rows ?? []).map((row) => [row.value, row.visits]))), [rows]);
 	const max = Math.max(0, ...(rows ?? []).map((row) => row.visits));
 
-	if (hidden) {
-		return null;
-	}
-
 	const name = (code: string) => valueLabel('country', code, byCode.get(code)?.label ?? code);
 	const move = (code: string) => (event: MouseEvent<SVGPathElement>) => {
 		const box = event.currentTarget.ownerSVGElement?.parentElement?.getBoundingClientRect();
 		if (box) {
-			setTip({ code, x: event.clientX - box.left, y: event.clientY - box.top });
+			// Kept inside the map, so countries at its edges do not push it out.
+			const x = Math.min(Math.max(event.clientX - box.left, TIP_HALF), Math.max(TIP_HALF, box.width - TIP_HALF));
+			setTip({ code, x, y: event.clientY - box.top });
 		}
 	};
 	const tipRow = tip ? byCode.get(tip.code) : undefined;
@@ -89,7 +97,7 @@ export function WorldMap({ state, update }: Props) {
 								})}
 							</svg>
 							{tip && (
-								<div className="spst-chart-tip spst-map__tip" style={{ left: tip.x, top: tip.y }} aria-hidden="true">
+								<div className={`spst-chart-tip spst-map__tip${tip.y < TIP_FLIP ? ' is-below' : ''}`} style={{ left: tip.x, top: tip.y }} aria-hidden="true">
 									<strong>{name(tip.code)}</strong>
 									<br />
 									{tipRow

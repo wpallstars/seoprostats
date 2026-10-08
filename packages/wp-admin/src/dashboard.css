@@ -486,7 +486,22 @@
 	grid-column: 1 / -1;
 }
 
-/* World map: visits by country, shaded in the accent (DESIGN.md → World map). */
+/* World map: visits by country, shaded in the accent (DESIGN.md → World map).
+ * The card is as tall as Locations beside it, so the map sits in the middle. */
+.spst-map.components-card > div:first-child {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.spst-map .spst-card__body.components-card__body {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	justify-content: center;
+	min-height: 0;
+}
+
 .spst-map__plot {
 	position: relative;
 }
@@ -526,6 +541,10 @@
 
 .spst-map__tip {
 	transform: translate(-50%, calc(-100% - 12px));
+}
+
+.spst-map__tip.is-below {
+	transform: translate(-50%, 16px);
 }
 
 .spst-map__legend {
