@@ -51,28 +51,6 @@ the branch you run it from is missing or has commits that are not pushed.
   Testing, step 4, on a free port), which no one else overwrites:
   `rsync -a --delete --delete-excluded --exclude-from=.distignore ./ "<site>/wp-content/plugins/{slug}/"`.
 
-For SEO Pro Stats, `scripts/demo-site.sh` builds the current commit's release
-zip and installs it on a disposable Docker WordPress, listening only on
-`127.0.0.1`. It never overwrites the shared preview site:
-
-```bash
-scripts/demo-site.sh up --live-search --post /blog/speed-up-wordpress/
-scripts/demo-site.sh down
-```
-
-`up` makes 400 days of demo data (usually about 4.5 minutes), prints the URL,
-a random throwaway admin login and the created IDs, and leaves the site running.
-`--ref REF` builds another committed ref; uncommitted files are not installed.
-`--live-search` copies demo search tables into this site's live tables, so the
-editor's Search queries panel and `/coverage?post=<id>` have queries. `--post`
-creates the specified demo post under `/blog/`, with its demo text and focus
-keywords (a local-only mu-plugin uses the focus-keywords filter). Omit both
-options for demo reports alone. Log in with the printed password, then open
-the printed editor or Statistics link. Keep that login out of shared logs.
-A second `up` refuses to replace an existing site; `down` removes its containers,
-volume and network. A failed setup cleans up automatically. Requires Docker,
-openssl and the release build tools.
-
 ## Set up
 
 Needs PHP 7.4 or later, Composer 2, Node.js (syntax checks, and the build
@@ -113,9 +91,16 @@ Every pull request and every push to `main` runs these in GitHub Actions
 | Release build | `scripts/preflight-release.sh --offline` | Versions, headers, `readme.txt`, presets (where the plugin has them) and the contents of both zips. |
 | Plugin Check | `scripts/plugin-check.sh` | The WordPress.org review tool, on both zips. |
 | Smoke test | `scripts/smoke-test.sh --wp 6.2 --php 7.4` and `scripts/smoke-test.sh` | Installs the GitHub zip on a site with 10,000 posts, loads the site and admin screens with default settings and with every feature on, runs cron, uninstalls. Lists each page's queries. Fails on any PHP message, a failed page, a full table scan or large sort in the plugin's own queries, or leftover options, cron events or tables (`{prefix}_*`). |
-| Shop test (when present) | `scripts/shop-test.sh` and `scripts/shop-test.sh --php 7.4 --wp 6.2` | Paid orders through WooCommerce's Store API, EDD, FluentCart and simulated ThriveCart webhooks on a disposable Docker site. Checks counts, amounts, currencies, visit joins, duplicates, exclusions, doctor and PHP messages. Run whenever purchases code or supported shops change and before the next release. |
 
 `scripts/lint.sh` with no arguments runs the first seven.
+
+<!-- spst-own:start -->
+Shop test: `scripts/shop-test.sh` and `scripts/shop-test.sh --php 7.4 --wp 6.2`
+place paid orders through WooCommerce's Store API, EDD, FluentCart and
+simulated ThriveCart webhooks on a disposable Docker site. It checks counts,
+amounts, currencies, visit joins, duplicates, exclusions, doctor and PHP
+messages. Run it whenever purchases code or supported shops change and
+before the next release.
 
 The shop test defaults to PHP 8.2 and latest WordPress and shop versions.
 `--ref REF` builds that Git ref; `--zip FILE` tests an existing GitHub build;
@@ -127,6 +112,29 @@ code requires an unavailable core API (FluentCart's `register_block_template`
 on older WordPress). Failed downloads or activation still fail. Needs
 Docker, curl, jq and unzip. No real payment gateways or ThriveCart account
 are contacted. The test fixture is development-only and never ships.
+
+For SEO Pro Stats, `scripts/demo-site.sh` builds the current commit's release
+zip and installs it on a disposable Docker WordPress, listening only on
+`127.0.0.1`. It never overwrites the shared preview site:
+
+```bash
+scripts/demo-site.sh up --live-search --post /blog/speed-up-wordpress/
+scripts/demo-site.sh down
+```
+
+`up` makes 400 days of demo data (usually about 4.5 minutes), prints the URL,
+a random throwaway admin login and the created IDs, and leaves the site running.
+`--ref REF` builds another committed ref; uncommitted files are not installed.
+`--live-search` copies demo search tables into this site's live tables, so the
+editor's Search queries panel and `/coverage?post=<id>` have queries. `--post`
+creates the specified demo post under `/blog/`, with its demo text and focus
+keywords (a local-only mu-plugin uses the focus-keywords filter). Omit both
+options for demo reports alone. Log in with the printed password, then open
+the printed editor or Statistics link. Keep that login out of shared logs.
+A second `up` refuses to replace an existing site; `down` removes its containers,
+volume and network. A failed setup cleans up automatically. Requires Docker,
+openssl and the release build tools.
+<!-- spst-own:end -->
 
 The scripts work out which plugin they are in from its main file
 (`scripts/lib/plugin.sh`): the PHP file at the top of the repository with a
