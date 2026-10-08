@@ -9,6 +9,7 @@
 import { Button, ExternalLink } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import type { ChangeSource, Marker } from '@seoprostats/core';
+import { shareAccess } from '../api';
 import { boot } from '../boot';
 import { groupLabel, sourceUrl } from '../changelog';
 import { momentLabel, timeLabel } from '../dates';
@@ -47,6 +48,8 @@ function measurable(change: Marker): boolean {
 
 export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Props) {
 	const actions = boot.canManage && (!!onDelete || !!onExperiment);
+	// A shared report does not say who made a change.
+	const who = !shareAccess.token;
 	return (
 		<TableScroll label={__('Changes', 'seoprostats')}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -55,7 +58,7 @@ export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExp
 						<th scope="col">{__('When', 'seoprostats')}</th>
 						<th scope="col">{__('Change', 'seoprostats')}</th>
 						<th scope="col">{__('Page', 'seoprostats')}</th>
-						<th scope="col">{__('By', 'seoprostats')}</th>
+						{who && <th scope="col">{__('By', 'seoprostats')}</th>}
 						{actions && (
 							<th scope="col">
 								<span className="screen-reader-text">{__('Actions', 'seoprostats')}</span>
@@ -99,10 +102,12 @@ export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExp
 									change.path ?? <span className="spst-muted">{__('Whole site', 'seoprostats')}</span>
 								)}
 							</td>
-							<td>
-								{change.user ?? <span className="spst-muted">–</span>}
-								<span className="spst-meta">{sourceLabel(change.source)}</span>
-							</td>
+							{who && (
+								<td>
+									{change.user ?? <span className="spst-muted">–</span>}
+									<span className="spst-meta">{sourceLabel(change.source)}</span>
+								</td>
+							)}
 							{actions && (
 								<td className="spst-actions">
 									{onExperiment && measurable(change) && (

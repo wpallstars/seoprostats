@@ -275,7 +275,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
                     <CheckboxControl __nextHasNoMarginBottom label={__('Hide realtime visitors', 'seoprostats')} checked={realtime} onChange={setRealtime} />
                     <CheckboxControl __nextHasNoMarginBottom label={__('Hide site search terms and referrer addresses', 'seoprostats')} checked={sensitive} onChange={setSensitive} />
                     <div className="spst-form__row">
-                        <TextControl __nextHasNoMarginBottom __next40pxDefaultSize label={__('Only the last N days', 'seoprostats')} help={__('0: any period.', 'seoprostats')} type="number" min={0} max={3650} value={days} onChange={setDays} />
+                        <TextControl __nextHasNoMarginBottom __next40pxDefaultSize label={__('Days readers can look back', 'seoprostats')} help={__('0 for no limit.', 'seoprostats')} type="number" min={0} max={3650} value={days} onChange={setDays} />
                         <TextControl __nextHasNoMarginBottom __next40pxDefaultSize label={__('Expires (optional)', 'seoprostats')} type="date" value={expires} onChange={setExpires} />
                     </div>
                     <TextControl

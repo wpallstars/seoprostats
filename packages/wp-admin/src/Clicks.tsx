@@ -12,7 +12,7 @@ import { useEffect, useId, useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, type ClickKind, type ClickRow, type ClickTotals, type ClickPageInfo } from '@seoprostats/core';
-import { errorMessage, useBreakdown, useClicks } from './api';
+import { errorMessage, shareAccess, useBreakdown, useClicks } from './api';
 import { locale } from './boot';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
@@ -89,10 +89,13 @@ function emptyText(kind: ClickKind): string {
 		case 'forms':
 			return __('No forms sent in this period.', 'seoprostats');
 		default:
-			return __(
-				'No clicks in this period. Clicks are counted when "Count clicks and form submits" is on (Settings → Tracking), and kept for the months set in Settings → Data.',
-				'seoprostats',
-			);
+			// A shared report's readers cannot change the settings.
+			return shareAccess.token
+				? __('No clicks in this period.', 'seoprostats')
+				: __(
+						'No clicks in this period. Clicks are counted when "Count clicks and form submits" is on (Settings → Tracking), and kept for the months set in Settings → Data.',
+						'seoprostats',
+					);
 	}
 }
 

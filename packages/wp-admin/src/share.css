@@ -67,6 +67,22 @@
 .spst-share .components-modal__frame { background: var(--spst-background, #fff); color: var(--spst-text); }
 .spst-share .components-select-control__input { background: var(--spst-background); color: var(--spst-text); }
 .spst-share-dark { background: #1d2327; }
+/* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
+.spst-share .spst-report {
+    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
+    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 76%, #000);
+}
+.spst-share .spst-report.is-dark {
+    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 85%, #fff);
+    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 70%, #fff);
+}
+.spst-share .is-dark .components-button:not(.is-primary):hover:not(:disabled) { background: var(--spst-hover); }
+/* Dark fields and notices: WordPress paints them white. */
+.spst-share .is-dark .components-input-control__container { background: var(--spst-background); color: var(--spst-text); }
+.spst-share .is-dark .components-input-control__container select,
+.spst-share .is-dark .components-input-control__container input { color: var(--spst-text); }
+.spst-share .is-dark .components-input-control__backdrop { border-color: var(--spst-border) !important; }
+.spst-share .is-dark .components-notice { background: var(--spst-hover); color: var(--spst-text); }
 @media (max-width: 480px) { .spst-report { padding: 12px; } .spst-share .spst-controls .components-base-control { min-width: 0; } }
 /* Paper: light whatever the screen, darker greys for contrast, no controls, cards kept whole. */
 @page { margin: 14mm 12mm; }
@@ -107,6 +123,16 @@
     .spst-share tr { break-inside: avoid; }
     .spst-share .spst-table-scroll { overflow: visible !important; }
     .spst-share a { color: #000; text-decoration: underline; }
+    .spst-share a.spst-share-head__brand { text-decoration: none; }
+    /* The chart was drawn for the screen's width: fit it to the page. The dated list replaces the changes lane. */
+    .spst-share .spst-chart__plot .uplot,
+    .spst-share .spst-chart__plot .u-wrap { width: 100% !important; height: auto !important; }
+    .spst-share .spst-chart__plot canvas { width: 100% !important; height: auto !important; }
+    .spst-share .spst-chart__plot { min-height: 0 !important; }
+    .spst-share .spst-chart__plot .u-over,
+    .spst-share .spst-chart__plot .u-under,
+    .spst-share .spst-chart-lane,
+    .spst-share .spst-chart-guide { display: none !important; }
     .spst-share .striped tr:nth-child(odd) { background: #f6f7f7; }
     .spst-share-foot { break-inside: avoid; color: #2c3338; }
 }
