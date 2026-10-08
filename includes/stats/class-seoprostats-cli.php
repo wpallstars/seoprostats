@@ -2098,11 +2098,13 @@ final class SEOProStats_CLI {
     /**
      * The decision queue: one ranked list of search work, made from
      * Opportunities (low CTR, missing from the page, striking distance,
-     * losing clicks, overlapping pages). Each item says why it is listed and how its score is
+     * losing clicks, overlapping pages), the content audit, internal links,
+     * indexation and the refresh planner (update, leave, protect or merge a
+     * page losing clicks). Each item says why it is listed and how its score is
      * made: potential clicks per 28 days × value (how well the page's
      * visits from search convert) × confidence ÷ effort. Pages with a
      * running experiment are left out. Done opens an experiment on the
-     * page; dismissed items stay hidden for 90 days.
+     * page (not for a page left as it is); dismissed items stay hidden for 90 days.
      *
      * ## OPTIONS
      *
@@ -2131,6 +2133,9 @@ final class SEOProStats_CLI {
      * ---
      * default: open
      * ---
+     *
+     * [--kind=<kind>]
+     * : For list: only items of this kind: ctr, missing, striking, decay, overlap, audit, links, index or refresh.
      *
      * [--engine=<engine>]
      * : google or bing.
@@ -2196,6 +2201,7 @@ final class SEOProStats_CLI {
      *
      *     wp seoprostats queue
      *     wp seoprostats queue --status=done --format=json
+     *     wp seoprostats queue --kind=refresh --range=30d
      *     wp seoprostats queue accept 3f9c0a1b2d4e5f60
      *     wp seoprostats queue done 3f9c0a1b2d4e5f60 --note="New title and description"
      *     wp seoprostats queue effort 3f9c0a1b2d4e5f60 3
@@ -2242,8 +2248,9 @@ final class SEOProStats_CLI {
             return;
         }
         $status = isset($assoc['status']) ? (string) $assoc['status'] : 'open';
-        $answer = $this->on_data($assoc, static function () use ($req, $engine, $status, $goal) {
-            return SEOProStats_Queue::report($req, $engine, $status, $goal);
+        $kind   = isset($assoc['kind']) ? (string) $assoc['kind'] : '';
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $status, $goal, $kind) {
+            return SEOProStats_Queue::report($req, $engine, $status, $goal, $kind);
         });
         if (is_wp_error($answer)) {
             WP_CLI::error($answer->get_error_message());
@@ -2280,7 +2287,8 @@ final class SEOProStats_CLI {
         return array(
             'key'        => $item['key'],
             'status'     => $item['status'] . ($item['found'] ? '' : ' *'),
-            'kind'       => $item['kind'],
+            // With the audit finding, links or indexation list, or refresh proposal.
+            'kind'       => $item['kind'] . (isset($item['finding']) && $item['finding'] !== '' ? ': ' . $item['finding'] : ''),
             'page'       => $item['path'],
             'query'      => (string) $item['query'],
             'score'      => $item['score'],

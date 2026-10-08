@@ -610,6 +610,16 @@ function DecayTable({ rows, open, refreshing, label }: DecayTableProps) {
 														place(q.position)
 													)}
 												</span>
+												{q.rival && (
+													<span className="spst-meta">
+														{sprintf(
+															/* translators: 1: another page's path, 2: its average position now. */
+															__('Overtaken by %1$s (position %2$s)', 'seoprostats'),
+															q.rival.path,
+															place(q.rival.position)
+														)}
+													</span>
+												)}
 											</li>
 										))}
 									</ul>

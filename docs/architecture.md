@@ -362,8 +362,15 @@ reports; only those someone accepted, did, dismissed or gave an effort
 or note are stored in `queue`. New items on a page with a running
 experiment are left out (an overlap item when any of its pages has one);
 done opens an experiment on the item's page (an overlap's: all its pages)
-with the kind's measure. `GET /queue`, `wp seoprostats queue` and the
-`seoprostats/queue` ability read it; `POST /queue/{key}`, the queue
+with the kind's measure. The refresh planner (`SEOProStats_Refresh`;
+design: `docs/seo-loop.md` → Refresh planner) turns a losing page whose
+content facts the audit has into a `refresh` item in place of its `decay`
+item: update, leave, protect or merge, from the cause, the content's age
+and words (`page_facts` by its primary key), its conversions and the page
+that overtook it for a query (losing clicks' `rival`); proposals only,
+and done on leave opens no experiment. `GET /queue`, `wp seoprostats
+queue` and the `seoprostats/queue` ability read it (`kind` for one kind);
+`POST /queue/{key}`, the queue
 actions of the command and `seoprostats/queue-update` (`manage_options`)
 act on an item. The dashboard has it under Search → Plan.
 
@@ -644,7 +651,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `incidents` | outage, slowdown or collection gap | `kind`, `started`, `ended`, `meta` |
 | `imports` | import run of an outside source (schema v7) | `id`, `source`, `status` (1 running, 2 done, 3 failed, 4 undone), `started`, `finished`, `day_from`, `day_to`, `rows_added`, `meta` (property, days, error); imported rows carry its id so it can be undone |
 | `experiments` | a change's hypothesis, measured before and after against unchanged pages (schema v8; `docs/seo-loop.md`) | `id`, `created`, `user_id`, `name`, `start`, `days`, `review` (the after window's last day), `engine`, `metric` (1 clicks, 2 impressions, 3 CTR, 4 position, 5 visits, 6 conversions), `direction`, `threshold` (percent, or tenths of a place), `change_id`, `path_id` (0: several pages, in `meta`), `status` (1 running, 2 decided, 3 cancelled), `result` (1 keep, 2 revise, 3 undo, 4 inconclusive), `decided`, `meta` (pages, goal, hypothesis, note, the change row it wrote, the measurement decided on) |
-| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay, 5 overlap, 6 audit, 7 links, 8 index; an audit item's key has its finding in place of a query, a links or index item's its list), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
+| `queue` | a decision queue item someone acted on (schema v9; `docs/seo-loop.md`) | `id`, `ikey` (8-byte hash of kind, engine, page and query; unique), `kind` (1 CTR, 2 missing, 3 striking, 4 decay, 5 overlap, 6 audit, 7 links, 8 index, 9 refresh; an audit item's key has its finding in place of a query, a links or index item's its list, a refresh item's its proposal), `engine`, `path_id`, `query_id`, `status` (0 new with an effort or note, 1 accepted, 2 done, 3 dismissed), `effort` (0: the kind's), `experiment_id`, `created`, `updated`, `user_id`, `note`, `meta` (the item as it was when acted on) |
 | `page_facts` | content audit facts of a published page (schema v10; `docs/seo-loop.md`) | `path_id` (primary key), `post_id`, `checked`, `modified`, `title_len`, `seo_title_len`, `desc_len`, `title_hash`, `desc_hash` (8-byte keys of the shown title and description; zeros for none), `h1`, `words`, `images`, `images_no_alt`, `noindex`, `canonical_away`, `flags` (the page's own findings as bits, `SEOProStats_Audit::FLAGS`), `links_in` (other pages whose text links to it; schema v11), `published` (when the post was published; 0 not read yet; schema v12) |
 | `page_links` | a link in a published page's text to another of the site's pages (schema v11; `docs/seo-loop.md`) | `from_path`, `to_path` (primary key), `text_id` (the first link's text, `DICT_LABEL`), `links` (how many links) |
 | `sitemap` | an address in the site's own sitemaps other than its posts (schema v12; `docs/seo-loop.md`) | `path_id` (primary key), `source` (1 category and tag archives, 2 author archives, 3 another provider), `first_seen` (when first listed), `seen` (the read that last listed it) |
@@ -964,7 +971,10 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
   `path_day`) gives the queries that lost most, and the cause: `gone` (no
   impressions now), `position` (a place and a tenth lower or more), else
   whichever fell more of impressions (`demand`) and CTR (`ctr`), with a
-  sentence (`why`). The change log by `path_ts` (`SEOProStats_Changes::
+  sentence (`why`). For those queries, `gsc_pairs` by `query_day` (every
+  page, both periods) gives each its `rival`: another page with at least
+  10% of its impressions that ranks better now and did not before. The
+  change log by `path_ts` (`SEOProStats_Changes::
   on_pages()`) adds what changed on each page in both periods, and
   `updates_between()` (`kind_ts`) the search engine updates, so cause and
   effect sit together. Changes and editor links are added after the

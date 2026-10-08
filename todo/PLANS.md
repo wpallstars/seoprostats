@@ -141,8 +141,8 @@ long-term record.
 - [x] Indexation: published pages and sitemap addresses without
       impressions; under Search → Audit and plan items (GH#79, after
       GH#77).
-- [ ] Refresh planner: update, leave, protect or merge pages losing
-      clicks (GH#80, after GH#77).
+- [x] Refresh planner: update, leave, protect or merge pages losing
+      clicks; plan items in place of losing clicks (GH#80, after GH#77).
 - [ ] Search targets: chosen queries and their pages, positions and wrong
       pages (GH#81, after GH#75).
 - [ ] Loop export and agent recipes (GH#82, after GH#75).

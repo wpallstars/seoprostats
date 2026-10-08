@@ -184,7 +184,8 @@ or agent has acted on are stored.
 | `audit` | Audit (one item per page and finding) | what the content audit found: fix it | impressions (noindex, canonical), CTR (title, description), else clicks | 1 (thin 3) |
 | `links` | Internal links (one item per page and list) | orphans, converting pages with few links in, missing links | clicks | 1 (converting 2) |
 | `index` | Indexation (one item per page and list) | published or in the sitemap, never or no longer shown by search | impressions | 2 (sitemap 1) |
-| later kinds | refresh, targets | each feature below | | |
+| `refresh` | Refresh planner (one item per losing page with content facts, in place of `decay`) | update, leave, protect or merge, with the reason | clicks (merge: both pages); leave: none | 3 (leave 1) |
+| later kinds | targets | each feature below | | |
 
 Each item names its page (and query where it has one), the numbers behind
 it and a sentence saying why.
@@ -455,6 +456,47 @@ conversions and the cause from losing clicks give a proposal: **update**
 **protect** (it converts; change carefully), or **merge** (an overlapping
 page holds the query). Proposals, never actions; queue kind `refresh`
 replaces `decay` for pages it covers.
+
+Built (GH#80), no schema change (`SEOProStats_Refresh`):
+
+- Losing clicks (`decay`) gives each of its queries that lost most a
+  `rival`: another page of the site with at least 10% of the query's
+  impressions now that ranks better than the losing page now and did not
+  before (or was not shown then), the one with most clicks. `gsc_pairs`
+  is read by `query_day` for those queries only, every page, both periods.
+- A losing page whose content facts the audit has (`page_facts`, read by
+  its primary key) gets a queue item of kind `refresh` (code 9) in place
+  of its `decay` item, its proposal in `finding` (the key's query), the
+  first that holds of: `leave` (the cause is demand: fewer people search,
+  the position held); `protect` (its visits from search convert at 2× the
+  site's rate or more, smoothed as the queue's value, with at least 3
+  conversions); `merge` (a query it lost has a rival; both pages in
+  `figures.pages`, so done measures both); else `update`, with what to do
+  from the cause and
+  the content's age: changed within the periods compared (see what the
+  change removed), old (over 365 days), or neither.
+- `why` gives the clicks lost and the cause, then the conversions
+  (protect), the rival with its positions (merge) and the content's age
+  and words; `figures` has the content facts (`modified`, `age`, `old`,
+  `changed`, `published`, `words`, `links_in`), `visits` and
+  `conversions` (null without goals), `lost_queries` with their rivals and
+  for merge `rival`. The thresholds are in `rules.refresh`.
+- Score: potential clicks are those lost × the proposal's share (leave
+  0.2, as fewer searches come back with demand, not a change; else 1),
+  scaled to 28 days; confidence 0.8, weighed by impressions as decay's;
+  effort 3 (leave 1). Done measures clicks, except leave: the page stays
+  as it is, so done opens no experiment. Only a running experiment on the
+  losing page itself holds a refresh item back (as its decay item), not
+  one on a merge's other page: the loss stays in view.
+- Nothing changes content. `GET /queue`, `wp seoprostats queue` and the
+  ability `seoprostats/queue` take `kind` (e.g. `refresh`); the CLI shows
+  the kind with its proposal. Dashboard: Plan shows "Refresh: <proposal>"
+  with the facts behind it; Opportunities → losing clicks shows which
+  page overtook each query.
+- Demo data: the three losing pages get three proposals: the getting
+  started guide (fewer searches) leave, the features page (chosen less)
+  update, and the update post (ranks lower, the rankings guide overtook
+  it for "why did my rankings drop") merge.
 
 ## 8. Search targets
 

@@ -610,6 +610,12 @@ final class SEOProStats_API {
                     'enum'        => SEOProStats_Queue::FILTERS,
                     'default'     => 'open',
                 ),
+                'kind'   => array(
+                    'description' => __('Only items of this kind, e.g. refresh for the refresh planner\'s proposals; every kind when left out.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), array_values(SEOProStats_Queue::KINDS)),
+                    'default'     => '',
+                ),
                 'limit'  => array('maximum' => SEOProStats_Queue::MAX_LIMIT, 'default' => SEOProStats_Queue::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
             ),
@@ -1618,8 +1624,9 @@ final class SEOProStats_API {
         $engine = (string) $request->get_param('engine');
         $status = (string) $request->get_param('status');
         $goal   = (string) $request->get_param('goal');
-        return self::report($request, static function ($req) use ($engine, $status, $goal) {
-            return SEOProStats_Queue::report($req, $engine, $status, $goal);
+        $kind   = (string) $request->get_param('kind');
+        return self::report($request, static function ($req) use ($engine, $status, $goal, $kind) {
+            return SEOProStats_Queue::report($req, $engine, $status, $goal, $kind);
         });
     }
 

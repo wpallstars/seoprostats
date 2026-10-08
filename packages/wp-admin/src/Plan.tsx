@@ -1,9 +1,10 @@
 /**
  * Search → Plan: one ranked list of what to do next, made from what
  * Opportunities finds (low CTR, missing from the page, striking distance,
- * losing clicks, overlapping pages) and the content audit's findings
- * (./Audit). Each item says why it is listed, what to do, and how
- * its score is made:
+ * losing clicks, overlapping pages), the content audit's findings
+ * (./Audit), internal links, indexation and the refresh planner's
+ * proposals for pages losing clicks (update, leave, protect or merge).
+ * Each item says why it is listed, what to do, and how its score is made:
  *
  *     potential clicks per 28 days × value × confidence ÷ effort
  *
@@ -30,6 +31,7 @@ import {
 	INDEXATION_KINDS,
 	LINKS_KINDS,
 	QUEUE_FILTERS,
+	REFRESH_PROPOSALS,
 	type AuditFinding,
 	type IndexationKind,
 	type LinksKind,
@@ -39,6 +41,7 @@ import {
 	type QueueItem,
 	type QueueKind,
 	type QueueStatus,
+	type RefreshProposal,
 	type SearchEngine,
 } from '@seoprostats/core';
 import { errorMessage, updateQueueItem, useQueue } from './api';
@@ -69,8 +72,25 @@ export function kindName(kind: QueueKind): string {
 		audit: __('Content audit', 'seoprostats'),
 		links: __('Internal links', 'seoprostats'),
 		index: __('Indexation', 'seoprostats'),
+		refresh: __('Refresh', 'seoprostats'),
 	};
 	return names[kind];
+}
+
+/** A refresh proposal's name. */
+export function proposalName(proposal: RefreshProposal): string {
+	const names: Record<RefreshProposal, string> = {
+		update: __('Update', 'seoprostats'),
+		leave: __('Leave', 'seoprostats'),
+		protect: __('Protect', 'seoprostats'),
+		merge: __('Merge', 'seoprostats'),
+	};
+	return names[proposal];
+}
+
+/** A refresh item's proposal, or null. */
+function refreshProposal(item: QueueItem): RefreshProposal | null {
+	return item.kind === 'refresh' && item.finding && (REFRESH_PROPOSALS as readonly string[]).includes(item.finding) ? (item.finding as RefreshProposal) : null;
 }
 
 /** An audit item's finding, or null. */
@@ -88,12 +108,13 @@ function indexList(item: QueueItem): IndexationKind | null {
 	return item.kind === 'index' && item.finding && (INDEXATION_KINDS as readonly string[]).includes(item.finding) ? (item.finding as IndexationKind) : null;
 }
 
-/** An item's kind, with the finding for an audit item and the list for an internal links or indexation one. */
+/** An item's kind, with the finding for an audit item, the list for an internal links or indexation one and the proposal for a refresh one. */
 function itemKind(item: QueueItem): string {
 	const finding = auditFinding(item);
 	const list = linksList(item);
 	const index = indexList(item);
-	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : '';
+	const proposal = refreshProposal(item);
+	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : proposal ? proposalName(proposal) : '';
 	return detail
 		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
@@ -461,12 +482,15 @@ function Actions(props: ActProps) {
 	const { item } = props;
 	const { busy, act } = useAct(props);
 	const done = () => {
-		const question = sprintf(
-			/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
-			__('Mark it done? An experiment starts now on %2$s and measures %1$s over the days before and after. Mark it done once the change is live.', 'seoprostats'),
-			metricLabel(item.metric),
-			item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path
-		);
+		const question =
+			refreshProposal(item) === 'leave'
+				? __('Mark it done? The page stays as it is, so no experiment starts.', 'seoprostats')
+				: sprintf(
+						/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
+						__('Mark it done? An experiment starts now on %2$s and measures %1$s over the days before and after. Mark it done once the change is live.', 'seoprostats'),
+						metricLabel(item.metric),
+						item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path
+					);
 		// eslint-disable-next-line no-alert -- a plain confirmation, as WordPress uses.
 		if (window.confirm(question)) {
 			void act('done');
@@ -498,6 +522,69 @@ function Actions(props: ActProps) {
 	);
 }
 
+/** A position, or a dash when there is none. */
+const place = (value: number | null | undefined) => (value === null || value === undefined ? '–' : decimal(value));
+
+/** A refresh item's facts: how proposals are chosen, the content, conversions and the searches lost most. */
+function RefreshFacts({ answer, item }: { answer: QueueAnswer; item: QueueItem }) {
+	const f = item.figures;
+	const rules = answer.rules.refresh;
+	return (
+		<>
+			<li>
+				{sprintf(
+					/* translators: 1: times the site's conversion rate, 2: conversions. */
+					__('Proposals: leave when fewer people search; protect when its visits from search convert at %1$s× the site’s rate or more, with at least %2$s conversions; merge when another page of the site overtook it for a search it lost; else update. Proposals only: nothing changes the page.', 'seoprostats'),
+					decimal(rules?.protect_value ?? 2),
+					number(rules?.protect_conversions ?? 3)
+				)}
+			</li>
+			<li>
+				{f.age !== null && f.age !== undefined
+					? sprintf(
+							/* translators: 1: a day, 2: days ago, 3: words, 4: pages linking to it. */
+							__('Content: changed %1$s (%2$s days ago), %3$s words, %4$s pages link to it.', 'seoprostats'),
+							f.modified ? longLabel(f.modified.slice(0, 10), 'day') : '–',
+							number(f.age),
+							number(f.words ?? 0),
+							number(f.links_in ?? 0)
+						) + (f.old ? ` ${sprintf(/* translators: %s: days. */ __('Old: over %s days.', 'seoprostats'), number(rules?.old_days ?? 365))}` : f.changed ? ` ${__('Changed within the periods compared.', 'seoprostats')}` : '')
+					: __('Content: when it last changed is not known yet.', 'seoprostats')}
+			</li>
+			{f.visits !== null && f.visits !== undefined && (
+				<li>
+					{sprintf(
+						/* translators: 1: visits from search, 2: conversions. */
+						__('Visits from search: %1$s, conversions: %2$s.', 'seoprostats'),
+						number(f.visits),
+						number(f.conversions ?? 0)
+					)}
+				</li>
+			)}
+			{(f.lost_queries ?? []).map((q) => (
+				<li key={q.query}>
+					{sprintf(
+						/* translators: 1: a search query, 2: clicks lost, 3: position before, 4: position now. */
+						__('“%1$s”: %2$s clicks lost, position %3$s → %4$s', 'seoprostats'),
+						q.query,
+						number(q.lost),
+						place(q.then_position),
+						place(q.position)
+					)}
+					{q.rival &&
+						` · ${sprintf(
+							/* translators: 1: another page's path, 2: its position now, 3: its position before. */
+							__('overtaken by %1$s (position %2$s, was %3$s)', 'seoprostats'),
+							q.rival.path,
+							place(q.rival.position),
+							place(q.rival.then_position)
+						)}`}
+				</li>
+			))}
+		</>
+	);
+}
+
 /** The score's parts, the item's figures, and (administrators) its effort and note. */
 function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } & ActProps) {
 	const { busy, act } = useAct({ item, state, goal, onError });
@@ -506,8 +593,17 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const finding = auditFinding(item);
 	const list = linksList(item);
 	const index = indexList(item);
+	const proposal = refreshProposal(item);
 	const kindEffort =
-		(finding ? answer.rules.audit_effort?.[finding] : list ? answer.rules.links_effort?.[list] : index ? answer.rules.index_effort?.[index] : undefined) ?? answer.rules.effort[item.kind];
+		(finding
+			? answer.rules.audit_effort?.[finding]
+			: list
+				? answer.rules.links_effort?.[list]
+				: index
+					? answer.rules.index_effort?.[index]
+					: proposal
+						? answer.rules.refresh_effort?.[proposal]
+						: undefined) ?? answer.rules.effort[item.kind];
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
@@ -560,7 +656,15 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 													decimal(f.typical ?? 0),
 													`${number((f.share ?? 0) * 100)}%`
 												)
-											: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+											: item.kind === 'refresh'
+												? sprintf(
+														/* translators: 1: clicks before, 2: clicks now, 3: share, e.g. 20%. */
+														__('Potential clicks: those lost (%1$s → %2$s clicks) × %3$s (what this proposal can win back), scaled to 28 days.', 'seoprostats'),
+														number(f.then_clicks ?? 0),
+														number(f.clicks),
+														`${number((f.share ?? 0) * 100)}%`
+													)
+												: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null
@@ -587,12 +691,15 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 						: __('Effort: the kind’s, from 1 (least) to 5.', 'seoprostats')}
 				</li>
 				<li>
-					{sprintf(
-						/* translators: %s: a measure, e.g. "CTR". */
-						__('Done opens an experiment measuring %s.', 'seoprostats'),
-						metricLabel(item.metric)
-					)}
+					{proposal === 'leave'
+						? __('Done records that the page stays as it is; no experiment starts.', 'seoprostats')
+						: sprintf(
+								/* translators: %s: a measure, e.g. "CTR". */
+								__('Done opens an experiment measuring %s.', 'seoprostats'),
+								metricLabel(item.metric)
+							)}
 				</li>
+				{proposal && <RefreshFacts answer={answer} item={item} />}
 			</ul>
 			{boot.canManage && item.status !== 'done' && (
 				<div className="spst-changes__filters spst-plan__edit">
