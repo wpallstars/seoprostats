@@ -288,9 +288,37 @@ hash. If the original visit has been pruned, it drops the refund instead
 of inventing a visit. Refunds revise the original purchase period, not the
 day money was returned. Purchase goal revenue and property revenue subtract
 the positive Refund amounts per currency; purchase completions are unchanged.
-Renewals are not recorded yet: subscription extension payloads still need
-verification; ThriveCart's account webhook documents
-`order.subscription_payment`, not `order.rebill_success`.
+Paid renewals from WooCommerce Subscriptions (the paid renewal order in
+`woocommerce_subscription_renewal_payment_complete`), FluentCart's
+`fluent_cart/order_paid_done` and ThriveCart's `order.subscription_payment`
+are daily counters, **not events or visits**. EDD Recurring is not supported
+until its extension's dispatch contract can be verified. Initial purchases,
+failed payments and disabled collection do not increment counters. Existing
+ThriveCart authentication and test-mode opt-in apply to renewal webhooks too.
+
+The existing non-autoloaded state holds `renewals[day][currency]` with
+`count` and integer-cent `amount`. Days are the site-local **reception day**:
+delayed callbacks are not backdated, since not every provider supplies a
+confirmed payment timestamp. A provider-namespaced payment identity is
+SHA-256 hashed into private `renewal_ids`; raw order/invoice/customer details
+are not retained in counters or exposed in reports. WooCommerce and
+FluentCart use unique renewal order IDs; ThriveCart requires its account,
+order and renewal-specific invoice identity, never its product/subscription
+ID. Receipt and increment share one option update under the existing lock.
+At most the current day and preceding 399 days survive the next accepted
+renewal; reads exclude older days even while idle. At 10,000 unexpired
+receipts new payments fail closed rather than evicting live identities and
+double-counting retries; doctor warns about that capacity. After the 400-day
+receipt horizon a replay can count again. Uninstall deletes the state.
+
+`GET /goals` adds `renewals = {scope, days, totals}` with main-unit amounts
+and separate currency totals for the requested full days. `range=all`
+includes retained renewal days even before the first recorded visit.
+Visit-filtered, demo, realtime and 24-hour requests return
+`scope: unavailable` and empty arrays, never unfilterable live amounts.
+Renewals do not join comparison goals or Purchase revenue/completions.
+Doctor reports retained counts and amounts per currency independently of
+the goal definitions. No visitor-page queries or option writes are added.
 
 ### Changes
 

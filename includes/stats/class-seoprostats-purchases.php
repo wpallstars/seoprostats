@@ -456,6 +456,10 @@ final class SEOProStats_Purchases {
     private static function fluentcart_renewal_locked($data) {
         $order = self::fluentcart_order($data);
         $fields = self::fluentcart_fields($order);
+        $transaction = self::fluentcart_fields($data['transaction'] ?? null);
+        if (($transaction['payment_mode'] ?? '') === 'test') {
+            return;
+        }
         if (!$order || empty($fields['id']) || ($fields['type'] ?? '') !== 'renewal' || ($fields['payment_status'] ?? '') !== 'paid' || !isset($fields['total_paid'], $fields['currency']) || !is_numeric($fields['total_paid'])) {
             return;
         }
@@ -833,8 +837,8 @@ final class SEOProStats_Purchases {
             return 'test';
         }
         if ($data['event'] === 'order.subscription_payment') {
-            $total = isset($data['order']['total']) ? $data['order']['total'] : null;
-            if (!is_numeric($total) || !isset($data['account'], $data['invoice_id']) || !is_string($data['account']) || !is_scalar($data['invoice_id']) || $data['account'] === '' || (string) $data['invoice_id'] === '') {
+            $total = is_array($data['order']) && isset($data['order']['total']) ? $data['order']['total'] : null;
+            if (!is_numeric($total) || empty($data['order_id']) || !isset($data['account'], $data['invoice_id']) || !is_string($data['account']) || !is_scalar($data['invoice_id']) || trim($data['account']) === '' || trim((string) $data['invoice_id']) === '') {
                 return 'failed';
             }
             return self::renewal('thrivecart:' . $data['account'] . ':' . $data['order_id'] . ':' . $data['invoice_id'], (float) $total / 100, $data['currency']);
@@ -949,10 +953,22 @@ final class SEOProStats_Purchases {
     /**
      * Counts for WP-CLI doctor: ThriveCart orders without a known page load.
      *
-     * @return array{thrivecart_not_joined:int}
+     * @return array<string,mixed>
      */
     public static function status() {
         $state = get_option(self::STATE_OPTION, array());
-        return array('thrivecart_not_joined' => is_array($state) && isset($state['not_joined']) ? (int) $state['not_joined'] : 0);
+        $report = self::renewals(array('range' => 'all', 'filters' => array()));
+        $today = new DateTimeImmutable('today', wp_timezone());
+        $first = $today->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $day = $today->format('Y-m-d');
+        $ids = is_array($state) && isset($state['renewal_ids']) && is_array($state['renewal_ids']) ? $state['renewal_ids'] : array();
+        $ids = array_filter($ids, static function ($date) use ($first, $day) {
+            return is_string($date) && $date >= $first && $date <= $day;
+        });
+        return array(
+            'thrivecart_not_joined' => is_array($state) && isset($state['not_joined']) ? (int) $state['not_joined'] : 0,
+            'renewals' => $report['totals'],
+            'renewal_receipts' => count($ids),
+        );
     }
 }

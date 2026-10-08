@@ -933,6 +933,11 @@ paths:
         counting refunds as conversions or completions. Property revenue for
         Purchase or all events also subtracts refunds; an explicit Refund
         report shows positive returned amounts.
+        `renewals` contains site-wide daily paid renewal counts and amounts
+        (main currency units, by site-local callback reception day, up to
+        400 days). It is separate from Purchase revenue and completions.
+        Visit-filtered, demo, realtime and 24h requests return unavailable
+        scope and empty arrays. No renewal comparison is implied.
       parameters:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
@@ -3980,6 +3985,28 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/GoalRow'
+            renewals:
+              type: object
+              required: [scope, days, totals]
+              properties:
+                scope:
+                  type: string
+                  enum: [site, unavailable]
+                days:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: '#/components/schemas/RenewalTotal'
+                      - type: object
+                        required: [day]
+                        properties:
+                          day:
+                            type: string
+                            format: date
+                totals:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/RenewalTotal'
             compare:
               type: object
               description: The comparison period's answer; each goal row then has `change` (visits, completions, conversion_rate).
@@ -3992,6 +4019,21 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/GoalRow'
+
+    RenewalTotal:
+      type: object
+      required: [currency, count, amount]
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        count:
+          type: integer
+          minimum: 0
+        amount:
+          type: number
+          minimum: 0
+          description: Paid renewal amount in main currency units, never summed across currencies.
 
     FunnelStepRow:
       allOf:
