@@ -2365,6 +2365,16 @@ paths:
                   type: string
                   format: date
                   description: Last day to import; default its last day.
+                settings:
+                  type: array
+                  items:
+                    type: string
+                  description: >-
+                    The settings to carry over when the import finishes, by
+                    key (the dry run's `settings[].key`); a key's related
+                    settings follow it. Only those the dry run would change
+                    are filled in. An empty list carries none; without it,
+                    every one the dry run would change.
       responses:
         '200':
           description: The dry run (`dry_run`), or the job started.
@@ -6080,10 +6090,11 @@ components:
                 type: string
               change:
                 type: boolean
-                description: Whether the import fills it in (only settings still at their default).
+                description: Whether the import fills it in (only settings still at their default); the import's `settings` can leave it out.
               reason:
                 type: string
                 enum: ['', set, same]
+                description: Why it would not change, when it would not; `same` (already its value) before `set` (changed from the default).
         plugin:
           $ref: '#/components/schemas/MigratePlugin'
 

@@ -339,7 +339,7 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
             $out[] = array(
                 'key'   => 'tracking_skip_roles',
                 'label' => 'Filtering & Exceptions',
-                'from'  => $roles ? implode(', ', $roles) : __('None', 'seoprostats'),
+                'from'  => self::role_names($roles),
                 'value' => $roles,
             );
         }

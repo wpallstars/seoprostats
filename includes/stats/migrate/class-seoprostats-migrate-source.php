@@ -265,6 +265,21 @@ abstract class SEOProStats_Migrate_Source {
     }
 
     /**
+     * Roles by name, for a setting's value in the dry run ('None' for none).
+     *
+     * @param string[] $slugs Role slugs.
+     * @return string
+     */
+    protected static function role_names(array $slugs) {
+        $names = wp_roles()->get_names();
+        $out   = array();
+        foreach ($slugs as $slug) {
+            $out[] = isset($names[$slug]) ? translate_user_role((string) $names[$slug]) : (string) $slug;
+        }
+        return $out ? implode(', ', $out) : __('None', 'seoprostats');
+    }
+
+    /**
      * A Unix time as a site-local day.
      *
      * @param int $time Unix time.

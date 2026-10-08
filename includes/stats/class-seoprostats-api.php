@@ -1027,6 +1027,11 @@ final class SEOProStats_API {
                     'type'        => 'string',
                     'default'     => '',
                 ),
+                'settings' => array(
+                    'description' => __('The settings to carry over, by key (the dry run lists them); an empty list carries none. Default: every one the dry run would change.', 'seoprostats'),
+                    'type'        => 'array',
+                    'items'       => array('type' => 'string'),
+                ),
             ),
         ));
         register_rest_route($ns, $source . '/cleanup', array(
@@ -1072,6 +1077,9 @@ final class SEOProStats_API {
             'to'     => (string) $request->get_param('to'),
             'prefer' => (string) $request->get_param('prefer'),
         );
+        if ($request->has_param('settings') && is_array($request->get_param('settings'))) {
+            $args['settings'] = array_map('strval', $request->get_param('settings'));
+        }
         if ($request->get_param('dry_run')) {
             return self::with_status(SEOProStats_Migrate::plan($source, $args), 400);
         }

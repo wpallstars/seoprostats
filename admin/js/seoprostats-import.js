@@ -152,6 +152,96 @@
 		os: __('Operating systems', 'seoprostats')
 	};
 
+	// What a setting would be after the import: its new value when it is
+	// carried over, else why it stays.
+	function settingAfter(s, ticked) {
+		if (!s.change) {
+			return s.reason === 'same' ? __('Already the same', 'seoprostats') : __('Stays: you changed it', 'seoprostats');
+		}
+		/* translators: %s: the setting's value now */
+		return ticked ? s.to : sprintf(__('Stays: %s', 'seoprostats'), s.now);
+	}
+
+	// The settings the import would carry over, a row each: a checkbox
+	// (when there is an import to carry them), our setting with the
+	// plugin's own name for it, its value, ours now and ours after.
+	function settingsTable(plan, choose) {
+		var wrap = el('div', '', 'spst-import__scroll');
+		var t = el('table', '', 'widefat striped spst-import__settings');
+		var thead = el('thead');
+		var head = el('tr');
+		if (choose) {
+			var corner = el('td', '', 'check-column');
+			corner.appendChild(el('span', __('Carry over', 'seoprostats'), 'screen-reader-text'));
+			head.appendChild(corner);
+		}
+		[__('Setting', 'seoprostats'), plan.name, __('SEO Pro Stats now', 'seoprostats'), __('After the import', 'seoprostats')].forEach(function (label) {
+			var th = el('th', label);
+			th.scope = 'col';
+			head.appendChild(th);
+		});
+		thead.appendChild(head);
+		t.appendChild(thead);
+
+		var tbody = el('tbody');
+		plan.settings.forEach(function (s, i) {
+			var r = el('tr');
+			var id = 'spst-setting-' + plan.source + '-' + i;
+			var after = el('td', settingAfter(s, s.change));
+			var name = el('td', '', 'spst-import__setting');
+			if (choose) {
+				var check = el('th', '', 'check-column');
+				check.scope = 'row';
+				var box = el('input');
+				box.type = 'checkbox';
+				box.id = id;
+				box.value = s.key;
+				box.checked = !!s.change;
+				box.disabled = !s.change;
+				box.setAttribute('data-spst-field', 'setting');
+				box.addEventListener('change', function () {
+					after.textContent = settingAfter(s, box.checked);
+					r.classList.toggle('is-kept', !box.checked);
+				});
+				check.appendChild(box);
+				r.appendChild(check);
+				var label = el('label', s.label);
+				label.htmlFor = id;
+				name.appendChild(label);
+			} else {
+				name.appendChild(el('strong', s.label));
+			}
+			/* translators: 1: plugin name, 2: that plugin's name for the setting */
+			name.appendChild(el('span', sprintf(__('%1$s: %2$s', 'seoprostats'), plan.name, s.theirs), 'description'));
+			r.appendChild(name);
+			r.appendChild(el('td', s.from));
+			r.appendChild(el('td', s.now));
+			r.appendChild(after);
+			if (!s.change) {
+				r.classList.add('is-kept');
+			}
+			tbody.appendChild(r);
+		});
+		t.appendChild(tbody);
+		wrap.appendChild(t);
+		return wrap;
+	}
+
+	// The settings ticked in the dry run (null: no settings table, so the
+	// import carries over all it would change, which is none).
+	function chosenSettings(card) {
+		var box = card.querySelector('[data-spst-plan]');
+		var boxes = box.querySelectorAll('[data-spst-field="setting"]');
+		if (!boxes.length) {
+			return null;
+		}
+		return Array.prototype.filter.call(boxes, function (b) {
+			return b.checked && !b.disabled;
+		}).map(function (b) {
+			return b.value;
+		});
+	}
+
 	// The dry run's answer, with the choice of plugin for shared days and
 	// the Import button.
 	function drawPlan(card, plan) {
@@ -233,17 +323,16 @@
 		});
 		box.setAttribute('data-spst-prefer', choice);
 
-		// Settings: only ours still at their default are filled in.
+		// Settings: only ours still at their default are filled in, and only
+		// those ticked.
 		if (plan.settings && plan.settings.length) {
 			box.appendChild(el('h4', __('Settings', 'seoprostats')));
-			box.appendChild(table(
-				[__('Its setting', 'seoprostats'), __('Its value', 'seoprostats'), __('SEO Pro Stats now', 'seoprostats'), __('After the import', 'seoprostats')],
-				plan.settings.map(function (s) {
-					var after = s.change ? s.to : (s.reason === 'same' ? __('Already the same', 'seoprostats') : __('Kept: you changed it', 'seoprostats'));
-					return [s.theirs + ' → ' + s.label, s.from, s.now, after];
-				})
-			));
-			box.appendChild(el('p', __('Only settings still at their default are filled in. Its own settings are never changed.', 'seoprostats'), 'description'));
+			box.appendChild(settingsTable(plan, !!days));
+			box.appendChild(el('p', days
+				/* translators: %s: plugin name */
+				? sprintf(__('Tick the settings to carry over with the import. Only SEO Pro Stats settings still at their default can be filled in; %s\'s own settings are never changed.', 'seoprostats'), plan.name)
+				/* translators: %s: plugin name */
+				: sprintf(__('Settings are carried over with an import; there are no days to import now. %s\'s own settings are never changed.', 'seoprostats'), plan.name), 'description'));
 		}
 
 		if (days) {
@@ -378,10 +467,15 @@
 		},
 
 		import: function (card, button, source) {
+			var data = { prefer: chosen(card) };
+			var settings = chosenSettings(card);
+			if (settings !== null) {
+				data.settings = settings;
+			}
 			request(card, button, {
 				path: base + 'migrate/' + source,
 				method: 'POST',
-				data: { prefer: chosen(card) }
+				data: data
 			}, function () {
 				reload(__('The import has started.', 'seoprostats'));
 			});

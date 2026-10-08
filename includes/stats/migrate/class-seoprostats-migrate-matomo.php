@@ -305,7 +305,7 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
                 $out[] = array(
                     'key'   => 'tracking_skip_roles',
                     'label' => 'Exclude these roles from tracking',
-                    'from'  => implode(', ', $roles),
+                    'from'  => self::role_names($roles),
                     'value' => $roles,
                 );
             }

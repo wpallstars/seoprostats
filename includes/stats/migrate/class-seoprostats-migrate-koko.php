@@ -230,7 +230,7 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
                 $out[] = array(
                     'key'   => 'tracking_skip_roles',
                     'label' => 'Exclude pageviews from these user roles',
-                    'from'  => implode(', ', $roles),
+                    'from'  => self::role_names($roles),
                     'value' => $roles,
                 );
             }
