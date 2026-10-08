@@ -57,6 +57,8 @@ function seoprostats_uninstall_site() {
     delete_option(SEOProStats_Collection::MIGRATE_NOTICES);
     delete_option('seoprostats_migrate');
     delete_option('seoprostats_migrate_lock');
+    // Our copy of Jetpack Stats' daily counts (SEOProStats_Migrate_Jetpack::SERIES_OPTION).
+    delete_option('seoprostats_migrate_jetpack');
     delete_option('seoprostats_imported');
     delete_option('seoprostats_imported_demo');
 

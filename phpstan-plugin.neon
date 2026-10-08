@@ -29,3 +29,14 @@ parameters:
 				- class.notFound
 				- function.notFound
 			path: includes/stats/class-seoprostats-purchases.php
+		# Jetpack Stats import: Jetpack's classes (its connection Client and
+		# Manager, Modules, Jetpack_Options) have no stubs in the dev
+		# dependencies, so PHPStan does not know them and reads
+		# method_exists() on its Client as always false. Each use is guarded
+		# by class_exists() (and that method_exists()), in place or in
+		# client_ready(), and runs only while Jetpack is active.
+		-
+			identifiers:
+				- class.notFound
+				- function.impossibleType
+			path: includes/stats/migrate/class-seoprostats-migrate-jetpack.php

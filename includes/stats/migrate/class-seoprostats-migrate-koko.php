@@ -98,6 +98,8 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
 
     /**
      * {@inheritDoc}
+     *
+     * @return array<string,array<int,array{0:string,1:int|string,2:array<string,int>}>> Day => rows (its tables, never an error).
      */
     public function days($from, $to) {
         $out = array();

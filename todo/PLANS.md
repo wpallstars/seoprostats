@@ -199,10 +199,14 @@ generic import.
       each step: import, check, deactivate and delete, remove leftovers;
       shown until the plugin and its data are gone (GH#110, after
       GH#109).
-- [ ] Jetpack Stats (from WordPress.com, by the site's Jetpack
+- [x] Jetpack Stats (from WordPress.com, by the site's Jetpack
       connection): daily views and visitors, top pages, referrers,
       countries. Built from Jetpack's open-source code without a test
-      site; invited users with Jetpack test it (GH#111, after GH#109).
+      site (GH#111, after GH#109).
+- [ ] Jetpack Stats checked on connected sites by invited users with
+      Jetpack (`wp seoprostats migrate run jetpack --dry-run --requests`):
+      the visits window's end day, the site's days, and the answers'
+      fields (GH#111 follow-up).
 - [x] Koko Analytics and Statify, checked against real installs
       (GH#112).
 - [x] WP Statistics and Independent Analytics, checked against real

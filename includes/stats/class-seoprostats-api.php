@@ -1107,8 +1107,9 @@ final class SEOProStats_API {
         // Google's own status (401, 403) is not this request's.
         if (empty($data['status']) || strpos((string) $answer->get_error_code(), 'seoprostats_google_') === 0) {
             $data['status'] = $status;
+            // Only when changed: add_data() keeps the old data in additional_data.
+            $answer->add_data($data);
         }
-        $answer->add_data($data);
         return $answer;
     }
 

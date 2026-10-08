@@ -5867,6 +5867,12 @@ components:
                 type: integer
               error:
                 type: string
+              notice:
+                type: string
+                description: Why it waits for a remote source (Jetpack Stats on WordPress.com busy or not answering); '' when it does not.
+              wait:
+                type: integer
+                description: Unix time until which it waits for that source (0 when it does not).
         started:
           type: integer
         finished:
@@ -5962,6 +5968,9 @@ components:
                     type: string
                   'on':
                     type: boolean
+              unavailable:
+                type: string
+                description: Why its history cannot be imported now, though the plugin is in use (Jetpack Stats not connected to WordPress.com, too old, or its history still being looked up); '' when nothing stops it. The dry run and import answer with it as their error (409).
         job:
           $ref: '#/components/schemas/MigrateJob'
         own_from:
