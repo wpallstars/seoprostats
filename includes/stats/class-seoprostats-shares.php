@@ -36,6 +36,8 @@ final class SEOProStats_Shares {
     const SEARCH_REPORTS = array('rankings', 'opportunities', 'audit', 'content');
     /** Sections whose data only page filters can narrow (search data and the change log have no visits). */
     const PAGE_ONLY = array('search', 'changes');
+    /** Breakdowns left out when a report hides site search terms and referrer addresses. */
+    const SENSITIVE_DIMENSIONS = array('search', 'no_results', 'source', 'utm_term');
 
     /** @return array Stored shares, bounded to 50. */
     public static function all() {
@@ -194,6 +196,47 @@ final class SEOProStats_Shares {
      */
     public static function section_key(array $view) {
         return $view['view'] === 'search' ? 'search:' . ($view['engine'] ?? 'google') : $view['view'];
+    }
+
+    /**
+     * The sections with something to show on the live data, in tab order
+     * (section_key() names): a new report starts with these. Each check
+     * reads at most one row, or the stored goal and funnel definitions.
+     *
+     * @return string[]
+     */
+    public static function sections_with_data() {
+        global $wpdb;
+        $any = static function ($name) use ($wpdb) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; one row by the first index entry.
+            return (bool) $wpdb->get_var($wpdb->prepare('SELECT 1 FROM %i LIMIT 1', SEOProStats_Schema::table($name)));
+        };
+        $before = SEOProStats_Schema::use_set('live');
+        try {
+            $out = array();
+            if ($any('daily') || $any('sessions')) {
+                $out[] = 'overview';
+            }
+            foreach (SEOProStats_Search::ENGINES as $engine => $code) {
+                if (SEOProStats_Search::bounds($code)['to'] !== '') {
+                    $out[] = 'search:' . $engine;
+                }
+            }
+            if (SEOProStats_Goals::goals()) {
+                $out[] = 'goals';
+            }
+            if (SEOProStats_Goals::funnels()) {
+                $out[] = 'funnels';
+            }
+            foreach (array('props' => 'properties', 'clicks' => 'clicks', 'changes' => 'changes') as $table => $section) {
+                if ($any($table)) {
+                    $out[] = $section;
+                }
+            }
+            return $out;
+        } finally {
+            SEOProStats_Schema::use_set($before);
+        }
     }
 
     /**

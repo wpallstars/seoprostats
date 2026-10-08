@@ -67,6 +67,23 @@
 .spst-share .components-modal__frame { background: var(--spst-background, #fff); color: var(--spst-text); }
 .spst-share .components-select-control__input { background: var(--spst-background); color: var(--spst-text); }
 .spst-share-dark { background: #1d2327; }
+/* Dialogs open outside the report: the same accent (set on the page). */
+.spst-share .spst-modal {
+    --spst-accent: var(--spst-share-accent, #2271b1);
+    --wp-admin-theme-color: var(--spst-share-accent, #2271b1);
+    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent, #2271b1) 88%, #000);
+    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent, #2271b1) 76%, #000);
+}
+.spst-share .spst-modal .components-button.is-primary { background: var(--spst-accent); color: #fff; }
+.spst-share-dark .spst-modal .components-button.is-primary { color: #1d2327; }
+.spst-print-dialog .spst-fieldset { display: grid; gap: 8px; }
+/* Getting ready to print: every tab of the chosen sections, one section after another. */
+.spst-share-preparing { margin-bottom: 16px; }
+.spst-share-preparing .components-notice { margin: 0; }
+.spst-share-print + .spst-share-print { margin-top: 32px; }
+.spst-share-print__title { margin: 0 0 12px; font-size: 20px; color: var(--spst-text); }
+.spst-print-tab + .spst-print-tab { margin-top: 16px; }
+.spst-print-tab__title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--spst-muted); text-transform: none; }
 /* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
 .spst-share .spst-report {
     --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
@@ -112,8 +129,19 @@
     .spst-share .spst-subnav,
     .spst-share .spst-engines,
     .spst-share .spst-actions,
+    .spst-share-preparing,
+    .spst-share .spst-chip__remove,
+    .spst-share .spst-filters .components-button,
+    .spst-share form.spst-properties__event,
+    .spst-share .components-modal__screen-overlay,
     .spst-share button.spst-clearable__clear { display: none !important; }
     .spst-share-head { break-after: avoid; }
+    /* Each printed section starts a page. A panel of several tabs runs on across pages: its short lists stay whole, long tables break between rows, and a tab's name stays with its first rows. */
+    .spst-share-print + .spst-share-print { break-before: page; margin-top: 0; }
+    .spst-share-print__title { break-after: avoid; }
+    .spst-share .spst-card.is-print-all { break-inside: auto; }
+    .spst-share .spst-print-tab .spst-rows { break-inside: avoid; }
+    .spst-share .spst-print-tab__title { color: #2c3338; break-after: avoid; }
     .spst-share-changes { display: block; margin-top: 24px; break-before: auto; }
     .spst-share-changes h2, .spst-share h2, .spst-share h3 { break-after: avoid; }
     .spst-share .spst-card, .spst-share .components-card, .spst-share .spst-summary { break-inside: avoid; box-shadow: none !important; border: 1px solid var(--spst-border); margin-bottom: 12px; }

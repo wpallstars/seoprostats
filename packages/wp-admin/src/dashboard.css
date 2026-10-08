@@ -1202,15 +1202,32 @@ code.spst-meta {
 
 .spst-share-sections__item {
 	display: flex;
-	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
 	gap: 8px;
 	margin: 0;
-	padding: 4px 4px 4px 12px;
+	padding: 4px;
 	border: 1px solid #dcdcde;
 	border-radius: 2px;
+	background: #fff;
 	counter-increment: spst-section;
+}
+
+/* The one being moved (keyboard or pointer). */
+.spst-share-sections__item.is-moving {
+	border-color: var(--spst-accent);
+	background: var(--spst-accent-soft);
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.spst-share-sections.is-dragging,
+.spst-share-sections.is-dragging * {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.spst-share-sections__name {
+	flex: 1;
+	min-width: 0;
 }
 
 .spst-share-sections__name::before {
@@ -1218,9 +1235,40 @@ code.spst-meta {
 	color: #646970;
 }
 
-.spst-share-sections__tools {
+/* The drag handle: a 32px target, grabbed by mouse, pen or touch, or Space from the keyboard. */
+.spst-share-sections__handle {
 	display: inline-flex;
-	gap: 4px;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 0;
+	border-radius: 2px;
+	background: none;
+	color: #50575e;
+	fill: currentColor;
+	cursor: grab;
+	touch-action: none;
+}
+
+.spst-share-sections__handle:hover:not(:disabled) {
+	color: var(--spst-accent);
+	background: var(--spst-accent-soft);
+}
+
+.spst-share-sections__handle:focus-visible {
+	outline: 2px solid var(--spst-accent);
+	outline-offset: 0;
+}
+
+.spst-share-sections__handle[aria-pressed="true"] {
+	color: var(--spst-accent);
+}
+
+.spst-share-sections__handle:disabled {
+	cursor: default;
+	opacity: 0.4;
 }
 
 /* Share: a logo from the Media Library. */

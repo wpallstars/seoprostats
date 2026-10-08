@@ -10,9 +10,10 @@ import { type KeyboardEvent } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { formatNumber, formatPercent, hasFilterValue, toggleFilterValue, type Dimension, type ViewCard, type ViewState } from '@seoprostats/core';
-import { errorMessage, useBreakdown } from '../api';
+import { errorMessage, shareAccess, useBreakdown } from '../api';
 import { locale } from '../boot';
 import { dimensionLabel, metricLabel, valueLabel } from '../labels';
+import { usePrintAll } from '../printAll';
 
 export interface Tab {
 	dimension: Dimension;
@@ -148,8 +149,12 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 	);
 }
 
-export function BreakdownCard({ card, title, tabs, state, update, wide = false }: Props) {
-	const active = state.tabs?.[card] ?? tabs[0]?.dimension ?? 'channel';
+export function BreakdownCard({ card, title, tabs: all, state, update, wide = false }: Props) {
+	const printAll = usePrintAll();
+	// A shared report that hides some breakdowns shows no tab for them (and no card when none are left).
+	const tabs = all.filter((tab) => !shareAccess.hidden.includes(tab.dimension));
+	const chosen = state.tabs?.[card];
+	const active = tabs.some((tab) => tab.dimension === chosen) ? chosen! : (tabs[0]?.dimension ?? 'channel');
 	const setActive = (dimension: Dimension) => update({ tabs: { ...state.tabs, [card]: dimension } });
 	const id = `spst-card-${tabs[0]?.dimension ?? 'x'}`;
 
@@ -169,6 +174,29 @@ export function BreakdownCard({ card, title, tabs, state, update, wide = false }
 		setActive(target.dimension);
 		document.getElementById(`${id}-${target.dimension}`)?.focus();
 	};
+
+	if (!tabs.length) {
+		return null;
+	}
+
+	// Paper: every tab, each under its name.
+	if (printAll && tabs.length > 1) {
+		return (
+			<Card className={`spst-card is-print-all${wide ? ' is-wide' : ''}`} size="small">
+				<CardHeader className="spst-card__header">
+					<h2 className="spst-card__title">{title}</h2>
+				</CardHeader>
+				<CardBody className="spst-card__body">
+					{tabs.map((tab) => (
+						<section key={tab.dimension} className="spst-print-tab">
+							<h3 className="spst-print-tab__title">{tab.title}</h3>
+							<Rows dimension={tab.dimension} state={state} update={update} />
+						</section>
+					))}
+				</CardBody>
+			</Card>
+		);
+	}
 
 	return (
 		<Card className={`spst-card${wide ? ' is-wide' : ''}`} size="small">

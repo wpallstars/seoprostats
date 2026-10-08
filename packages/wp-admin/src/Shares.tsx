@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { Button, CheckboxControl, Modal, Notice, SelectControl, TextControl, TextareaControl } from '@wordpress/components';
 import { addQueryArgs } from '@wordpress/url';
@@ -53,6 +53,8 @@ interface SharesAnswer {
     logos: Record<string, string>;
     /** Search engines with data: a Search section for each. */
     engines: SearchEngine[];
+    /** Sections with live data (shareSectionKey() names), in tab order: a new report starts with these. */
+    sections?: string[];
 }
 
 const path = '/seoprostats/v1/shares';
@@ -133,6 +135,173 @@ function LogoField({ label, help, id, url, choose, clear }: { label: string; hel
     );
 }
 
+/** Six dots: a handle to drag (WordPress's own drag handle, drawn here). */
+function DragHandleIcon() {
+    return (
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            {[8, 15].flatMap((x) => [7, 12, 17].map((y) => <circle key={`${x}-${y}`} cx={x + 0.5} cy={y} r="1.5" />))}
+        </svg>
+    );
+}
+
+/**
+ * The sections in order. Drag one by its handle (mouse, pen or touch); or
+ * Tab to the handle, press Space, move it with the arrow keys (Home, End)
+ * and press Space again; Escape puts it back. Each move is announced.
+ */
+function SectionOrder({ views, setViews }: { views: ViewState[]; setViews: (views: ViewState[]) => void }) {
+    const help = useId();
+    const list = useRef<HTMLOListElement>(null);
+    const handles = useRef(new Map<string, HTMLButtonElement>());
+    // Picked up from the keyboard: the section and where it was.
+    const [held, setHeld] = useState<{ key: string; from: number } | null>(null);
+    // Dragged with a pointer.
+    const [dragging, setDragging] = useState<string | null>(null);
+    const [said, setSaid] = useState('');
+    const keys = views.map(shareSectionKey);
+    const count = views.length;
+    const moveTo = (key: string, to: number) => {
+        const from = keys.indexOf(key);
+        if (from < 0 || to < 0 || to >= count || from === to) {
+            return;
+        }
+        const next = [...views];
+        const [item] = next.splice(from, 1);
+        next.splice(to, 0, item!);
+        setViews(next);
+    };
+    /* translators: 1: a report section, such as Overview, 2: its place in the list, 3: the number of sections. */
+    const at = (name: string, place: number) => sprintf(__('%1$s, position %2$d of %3$d.', 'seoprostats'), name, place + 1, count);
+    // React may move the focused handle in the page: keep the focus on the one held.
+    useLayoutEffect(() => {
+        if (held) {
+            handles.current.get(held.key)?.focus();
+        }
+    }, [views, held]);
+
+    const onKey = (event: KeyboardEvent<HTMLButtonElement>, key: string) => {
+        const place = keys.indexOf(key);
+        const name = sectionLabel(views[place]!);
+        if (event.key === ' ' || event.key === 'Enter') {
+            event.preventDefault();
+            if (held?.key === key) {
+                setHeld(null);
+                setSaid(`${sprintf(/* translators: %s: a report section. */ __('%s dropped.', 'seoprostats'), name)} ${at(name, place)}`);
+            } else {
+                setHeld({ key, from: place });
+                setSaid(`${sprintf(/* translators: %s: a report section. */ __('%s picked up.', 'seoprostats'), name)} ${at(name, place)} ${__('Move it with the up and down arrow keys, then press Space to drop it, or Escape to cancel.', 'seoprostats')}`);
+            }
+            return;
+        }
+        if (held?.key !== key) {
+            return;
+        }
+        if (event.key === 'Escape') {
+            // Not the dialog's Escape: only the move is cancelled.
+            event.preventDefault();
+            event.stopPropagation();
+            moveTo(key, held.from);
+            setHeld(null);
+            setSaid(`${sprintf(/* translators: %s: a report section. */ __('Moving %s cancelled.', 'seoprostats'), name)} ${at(name, held.from)}`);
+            return;
+        }
+        const to = ({ ArrowUp: place - 1, ArrowDown: place + 1, Home: 0, End: count - 1 } as Record<string, number>)[event.key];
+        if (to === undefined) {
+            return;
+        }
+        event.preventDefault();
+        if (to >= 0 && to < count && to !== place) {
+            moveTo(key, to);
+            setSaid(at(name, to));
+        }
+    };
+
+    // While dragging, the page follows the pointer (the list's items move under it, so not the handle's own events).
+    useEffect(() => {
+        if (!dragging) {
+            return;
+        }
+        // Its place: how many other sections' middles are above the pointer.
+        const follow = (event: globalThis.PointerEvent) => {
+            const from = keys.indexOf(dragging);
+            let to = 0;
+            Array.from(list.current?.children ?? []).forEach((item, i) => {
+                const box = item.getBoundingClientRect();
+                if (i !== from && event.clientY > box.top + box.height / 2) {
+                    to++;
+                }
+            });
+            moveTo(dragging, to);
+        };
+        const drop = () => {
+            setDragging(null);
+            const place = keys.indexOf(dragging);
+            const name = sectionLabel(views[place]!);
+            setSaid(`${sprintf(/* translators: %s: a report section. */ __('%s dropped.', 'seoprostats'), name)} ${at(name, place)}`);
+        };
+        window.addEventListener('pointermove', follow);
+        window.addEventListener('pointerup', drop);
+        window.addEventListener('pointercancel', drop);
+        return () => {
+            window.removeEventListener('pointermove', follow);
+            window.removeEventListener('pointerup', drop);
+            window.removeEventListener('pointercancel', drop);
+        };
+    });
+
+    return (
+        <>
+            <p id={help} className="spst-note">
+                {__('Drag a section by its handle to change the order. With the keyboard: Tab to the handle, press Space, move it with the arrow keys, and press Space again.', 'seoprostats')}
+            </p>
+            <ol ref={list} className={`spst-share-sections${dragging ? ' is-dragging' : ''}`}>
+                {views.map((view, index) => {
+                    const key = keys[index]!;
+                    const name = sectionLabel(view);
+                    return (
+                        <li key={key} className={`spst-share-sections__item${held?.key === key || dragging === key ? ' is-moving' : ''}`}>
+                            <button
+                                type="button"
+                                ref={(el) => {
+                                    if (el) {
+                                        handles.current.set(key, el);
+                                    } else {
+                                        handles.current.delete(key);
+                                    }
+                                }}
+                                className="spst-share-sections__handle"
+                                aria-label={sprintf(/* translators: %s: a report section, such as Overview. */ __('Move %s', 'seoprostats'), name)}
+                                aria-describedby={help}
+                                aria-pressed={held?.key === key}
+                                disabled={count < 2}
+                                onKeyDown={(event) => onKey(event, key)}
+                                onBlur={() => window.requestAnimationFrame(() => setHeld((was) => (was?.key === key && document.activeElement !== handles.current.get(key) ? null : was)))}
+                                onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+                                    if (event.button !== 0 || count < 2) {
+                                        return;
+                                    }
+                                    // No text selection or scrolling while dragging.
+                                    event.preventDefault();
+                                    setHeld(null);
+                                    setDragging(key);
+                                }}
+                            >
+                                <DragHandleIcon />
+                            </button>
+                            <span className="spst-share-sections__name">{name}</span>
+                            <Button size="small" variant="tertiary" isDestructive disabled={count === 1} accessibleWhenDisabled onClick={() => setViews(views.filter((_, i) => i !== index))}>
+                                {__('Remove', 'seoprostats')}
+                                <span className="screen-reader-text"> {name}</span>
+                            </Button>
+                        </li>
+                    );
+                })}
+            </ol>
+            <p className="screen-reader-text" aria-live="assertive" aria-atomic="true">{said}</p>
+        </>
+    );
+}
+
 export function ShareEditor({ state, share, close, saved }: { state: ViewState; share?: SharedReport; close: () => void; saved: (share: SharedReport) => void }) {
     const first = shareView(state) ?? { ...state, view: 'overview' as const };
     const [name, setName] = useState(share?.name ?? '');
@@ -150,17 +319,34 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
     const [engines, setEngines] = useState<SearchEngine[]>(['google']);
     const [error, setError] = useState('');
     const [busy, setBusy] = useState(false);
+    // A section's view: the one on screen when it is that section; else its defaults, with the period and filters on screen.
+    const sectionView = (key: string): ViewState | null => {
+        if (shareSectionKey(first) === key) {
+            return first;
+        }
+        const [view, engine] = key.split(':') as [View, SearchEngine | undefined];
+        if (!VIEWS.includes(view)) {
+            return null;
+        }
+        const next = { ...switchView(first, view), ...(engine && engine !== 'google' ? { engine } : {}) };
+        return shareView(next) ?? next;
+    };
     useEffect(() => {
         void apiFetch<SharesAnswer>({ path })
             .then((answer) => {
-                // A new report starts from the settings' branding.
+                // A new report starts from the settings' branding, and with every section that has data (the one on screen first).
                 if (!share) {
                     setBranding(answer.defaults);
+                    const keys = [shareSectionKey(first), ...(answer.sections ?? []).filter((key) => key !== shareSectionKey(first))].slice(0, MAX_SECTIONS);
+                    const start = keys.map(sectionView).filter((view): view is ViewState => !!view);
+                    // Only while the list is as it opened: never undo a choice made meanwhile.
+                    setViews((was) => (was.length === 1 && shareSectionKey(was[0]!) === shareSectionKey(first) ? start : was));
                 }
                 setLogos(answer.logos ?? {});
                 setEngines(answer.engines?.length ? answer.engines : ['google']);
             })
             .catch((e: unknown) => setError(errorMessage(e, __('The branding from the settings could not be loaded.', 'seoprostats'))));
+        // Once per editor: first and sectionView follow the view it opened with.
     }, [share]);
 
     const brand = <K extends keyof ShareBranding>(key: K, value: ShareBranding[K]) => setBranding((was) => ({ ...was, [key]: value }));
@@ -170,19 +356,10 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
     const offered = VIEWS.flatMap((view): Section[] => (view === 'search' ? engines.map((engine) => ({ view, engine })) : [{ view }]))
         .filter((section) => !chosen.has(shareSectionKey(section)));
     const add = (key: string) => {
-        const section = offered.find((s) => shareSectionKey(s) === key);
-        if (!section || views.length >= MAX_SECTIONS) {
-            return;
+        const next = offered.some((s) => shareSectionKey(s) === key) && views.length < MAX_SECTIONS ? sectionView(key) : null;
+        if (next) {
+            setViews([...views, next]);
         }
-        // The view on screen when it is this section; else its defaults, with the period and filters on screen.
-        const next = shareSectionKey(first) === key ? first : { ...switchView(first, section.view), ...(section.engine && section.engine !== 'google' ? { engine: section.engine } : {}) };
-        setViews([...views, shareView(next) ?? next]);
-    };
-    const move = (from: number, to: number) => {
-        const next = [...views];
-        const [item] = next.splice(from, 1);
-        next.splice(to, 0, item!);
-        setViews(next);
     };
     const lockable = share?.locked_filters.length ? share.locked_filters : first.filters;
     const pageOnlyClash = locked.some((f) => f.dimension !== 'page') && views.some((v) => PAGE_ONLY.includes(v.view));
@@ -228,21 +405,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
 
                 <fieldset className="spst-fieldset">
                     <legend>{__('Sections, in this order', 'seoprostats')}</legend>
-                    <ol className="spst-share-sections">
-                        {views.map((view, index) => (
-                            <li key={shareSectionKey(view)} className="spst-share-sections__item">
-                                <span className="spst-share-sections__name">{sectionLabel(view)}</span>
-                                <span className="spst-share-sections__tools">
-                                    <Button size="small" icon="arrow-up-alt2" label={__('Move up', 'seoprostats')} disabled={index === 0} accessibleWhenDisabled onClick={() => move(index, index - 1)} />
-                                    <Button size="small" icon="arrow-down-alt2" label={__('Move down', 'seoprostats')} disabled={index === views.length - 1} accessibleWhenDisabled onClick={() => move(index, index + 1)} />
-                                    <Button size="small" variant="tertiary" isDestructive disabled={views.length === 1} accessibleWhenDisabled onClick={() => setViews(views.filter((_, i) => i !== index))}>
-                                        {__('Remove', 'seoprostats')}
-                                        <span className="screen-reader-text"> {sectionLabel(view)}</span>
-                                    </Button>
-                                </span>
-                            </li>
-                        ))}
-                    </ol>
+                    <SectionOrder views={views} setViews={setViews} />
                     {offered.length > 0 && views.length < MAX_SECTIONS && (
                         <SelectControl
                             __nextHasNoMarginBottom

@@ -43,7 +43,7 @@ paths:
       summary: Administrator-only shared reports and branding defaults; never hashes or full links.
       responses:
         '200':
-          description: Shares (at most 50), with id, created, expires, last_opened, opens, revoked and protected; defaults holds the branding for new shares; logos maps each logo's attachment id to its image address; engines lists the search engines with data (a shared report can have a Search section for each).
+          description: Shares (at most 50), with id, created, expires, last_opened, opens, revoked and protected; defaults holds the branding for new shares; logos maps each logo's attachment id to its image address; engines lists the search engines with data (a shared report can have a Search section for each); sections lists the section keys (overview, search:google, search:bing, goals, funnels, properties, clicks, changes) that have live data, in tab order, which a new report starts with.
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
@@ -133,7 +133,7 @@ paths:
                 password: {type: string, maxLength: 256, default: ''}
       responses:
         '200':
-          description: Public share fields, views, branding, home/site_name/logo_url/agency_logo_url and a one-hour signed unlock grant. Keep the grant in sessionStorage only. No password or bearer hashes, owner IDs or user information. Private/no-store, noindex/nofollow, no-referrer headers.
+          description: Public share fields, views, branding, home/site_name/logo_url/agency_logo_url, hidden_dimensions (the breakdowns this report leaves out, so readers see no empty tabs for them) and a one-hour signed unlock grant. Keep the grant in sessionStorage only. No password or bearer hashes, owner IDs or user information. Private/no-store, noindex/nofollow, no-referrer headers.
         '403':
           description: Uniform unavailable response for unknown, revoked, expired, password-protected or throttled shares (five unlock attempts per minute per secret).
 

@@ -32,6 +32,7 @@ import {
 	SEARCH_REPORTS,
 	SHARE_SEARCH_REPORTS,
 	type Marker,
+	type SearchAnswer,
 	type SearchEngine,
 	type SearchKind,
 	type SearchMetricKey,
@@ -41,6 +42,7 @@ import {
 } from '@seoprostats/core';
 import { errorMessage, useMarkers, useSearch } from './api';
 import { locale } from './boot';
+import { usePrintAll } from './printAll';
 import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
@@ -233,8 +235,8 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
 	useReportEngines(answer, onEngines);
+	const printAll = usePrintAll();
 	const rows = answer?.kind === shown ? answer.rows : [];
-	const top = Math.max(...rows.map((r) => r.clicks), 1);
 	const totals = answer?.totals;
 	const change = answer?.compare?.change;
 	const then = answer?.compare?.totals;
@@ -420,73 +422,130 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 			</Card>
 			{changes.modal}
 
-			<Card className="spst-card is-wide spst-section" size="small">
-				<CardHeader className="spst-card__header">
-					<h2 className="spst-card__title" id={id}>
-						{__('Top searches', 'seoprostats')}
-					</h2>
-					<div className="spst-tabs" role="tablist" aria-labelledby={id}>
-						{kinds.map((k) => (
-							<button
-								key={k}
-								type="button"
-								role="tab"
-								id={`${id}-${k}`}
-								aria-selected={shown === k}
-								aria-controls={`${id}-panel`}
-								tabIndex={shown === k ? 0 : -1}
-								className={`spst-tab${shown === k ? ' is-active' : ''}`}
-								onClick={() => setKind(k)}
-								onKeyDown={onTabKey}
-							>
-								{kindName(k)}
-							</button>
-						))}
-					</div>
-				</CardHeader>
-				<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
-					{!answer && !search.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-					{answer && answer.kind === shown && !rows.length && (
-						<div className="spst-empty">
-							<p>{answer.through ? __('No searches of this kind in this period.', 'seoprostats') : __('No search data yet.', 'seoprostats')}</p>
+			{printAll ? (
+				<PrintedSearches state={state} kinds={kinds} page={page} query={query} choose={choose} />
+			) : (
+				<Card className="spst-card is-wide spst-section" size="small">
+					<CardHeader className="spst-card__header">
+						<h2 className="spst-card__title" id={id}>
+							{__('Top searches', 'seoprostats')}
+						</h2>
+						<div className="spst-tabs" role="tablist" aria-labelledby={id}>
+							{kinds.map((k) => (
+								<button
+									key={k}
+									type="button"
+									role="tab"
+									id={`${id}-${k}`}
+									aria-selected={shown === k}
+									aria-controls={`${id}-panel`}
+									tabIndex={shown === k ? 0 : -1}
+									className={`spst-tab${shown === k ? ' is-active' : ''}`}
+									onClick={() => setKind(k)}
+									onKeyDown={onTabKey}
+								>
+									{kindName(k)}
+								</button>
+							))}
 						</div>
+					</CardHeader>
+					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
+						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+						{answer && rows.length > 0 && <SearchNote engine={engine} />}
+					</CardBody>
+				</Card>
+			)}
+		</>
+	);
+}
+
+/** Paper: every kind of the top searches, each under its name. */
+function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }) {
+	return (
+		<Card className="spst-card is-wide spst-section is-print-all" size="small">
+			<CardHeader className="spst-card__header">
+				<h2 className="spst-card__title">{__('Top searches', 'seoprostats')}</h2>
+			</CardHeader>
+			<CardBody className="spst-card__body">
+				{kinds.map((kind) => (
+					<PrintedKind key={kind} state={state} kind={kind} page={page} query={query} choose={choose} />
+				))}
+				<SearchNote engine={state.engine ?? 'google'} />
+			</CardBody>
+		</Card>
+	);
+}
+
+function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }) {
+	const search = useSearch(state, kind, page, query);
+	return (
+		<section className="spst-print-tab">
+			<h3 className="spst-print-tab__title">{kindName(kind)}</h3>
+			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+		</section>
+	);
+}
+
+/** Why the rows add up to less than the totals, by engine. */
+function SearchNote({ engine }: { engine: SearchEngine }) {
+	return (
+		<p className="spst-note">
+			{engine === 'bing'
+				? __(
+						'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
+						'seoprostats'
+					)
+				: __(
+						'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
+						'seoprostats'
 					)}
-					{rows.length > 0 && (
-						<TableScroll label={kindName(shown)}>
-							<table className={`widefat striped spst-table${search.isFetching ? ' is-refreshing' : ''}`}>
-								<thead>
-									<tr>
-										<th scope="col">{shown === 'queries' ? __('Query', 'seoprostats') : shown === 'pages' ? __('Page', 'seoprostats') : shown === 'countries' ? __('Country', 'seoprostats') : __('Device', 'seoprostats')}</th>
-										{METRIC_ORDER.map((key) => (
-											<th key={key} scope="col" className="num">
-												{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
-											</th>
-										))}
-									</tr>
-								</thead>
-								<tbody>
-									{rows.map((row) => (
-										<Row key={row.id} row={row} kind={shown} top={top} page={page} query={query} choose={choose} />
-									))}
-								</tbody>
-							</table>
-						</TableScroll>
-					)}
-					{answer && rows.length > 0 && (
-						<p className="spst-note">
-							{engine === 'bing'
-								? __(
-										'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
-										'seoprostats'
-									)
-								: __(
-										'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
-										'seoprostats'
-									)}
-						</p>
-					)}
-				</CardBody>
-			</Card>
+		</p>
+	);
+}
+
+interface SearchTableProps {
+	answer: SearchAnswer | undefined;
+	kind: SearchKind;
+	failed: boolean;
+	fetching: boolean;
+	page: string;
+	query: string;
+	choose: RowProps['choose'];
+}
+
+/** One kind of top searches: loading, empty, or its table. */
+function SearchTable({ answer, kind, failed, fetching, page, query, choose }: SearchTableProps) {
+	const rows = answer?.kind === kind ? answer.rows : [];
+	const top = Math.max(...rows.map((r) => r.clicks), 1);
+	return (
+		<>
+			{!answer && !failed && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
+			{answer && answer.kind === kind && !rows.length && (
+				<div className="spst-empty">
+					<p>{answer.through ? __('No searches of this kind in this period.', 'seoprostats') : __('No search data yet.', 'seoprostats')}</p>
+				</div>
+			)}
+			{rows.length > 0 && (
+				<TableScroll label={kindName(kind)}>
+					<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
+						<thead>
+							<tr>
+								<th scope="col">{kind === 'queries' ? __('Query', 'seoprostats') : kind === 'pages' ? __('Page', 'seoprostats') : kind === 'countries' ? __('Country', 'seoprostats') : __('Device', 'seoprostats')}</th>
+								{METRIC_ORDER.map((key) => (
+									<th key={key} scope="col" className="num">
+										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
+									</th>
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((row) => (
+								<Row key={row.id} row={row} kind={kind} top={top} page={page} query={query} choose={choose} />
+							))}
+						</tbody>
+					</table>
+				</TableScroll>
+			)}
 		</>
 	);
 }

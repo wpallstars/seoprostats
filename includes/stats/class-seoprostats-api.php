@@ -951,8 +951,14 @@ final class SEOProStats_API {
                         }
                     }
                 }
-                // Search sections: one for each engine with data.
-                return array('shares' => $shares, 'defaults' => $defaults, 'logos' => (object) array_filter($logos), 'engines' => SEOProStats_Search::engines());
+                // Search sections: one for each engine with data. A new report starts with the sections that have data.
+                return array(
+                    'shares'   => $shares,
+                    'defaults' => $defaults,
+                    'logos'    => (object) array_filter($logos),
+                    'engines'  => SEOProStats_Search::engines(),
+                    'sections' => SEOProStats_Shares::sections_with_data(),
+                );
             }),
             array('methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
                 return SEOProStats_Shares::save((array) $request->get_json_params());
@@ -1035,6 +1041,8 @@ final class SEOProStats_API {
         $logo = $share['branding']['logo'] ?: (int) get_theme_mod('custom_logo');
         $answer['logo_url'] = SEOProStats_Shares::local_logo($logo) ?: SEOProStats_Shares::local_logo((int) get_option('site_icon'));
         $answer['agency_logo_url'] = SEOProStats_Shares::local_logo($share['branding']['agency_logo']);
+        // Breakdowns this report leaves out: the reader shows no tab for them, rather than an empty one.
+        $answer['hidden_dimensions'] = $share['hide_sensitive'] ? SEOProStats_Shares::SENSITIVE_DIMENSIONS : array();
         return $answer;
     }
 
@@ -1120,7 +1128,7 @@ final class SEOProStats_API {
         if ($report === 'realtime' && ($share['hide_realtime'] || $share['locked_filters'])) {
             return rest_ensure_response(array('visitors' => 0));
         }
-        if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], array('search', 'no_results', 'source', 'utm_term'), true)) {
+        if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], SEOProStats_Shares::SENSITIVE_DIMENSIONS, true)) {
             return rest_ensure_response(array('dimension' => $req['dimension'], 'rows' => array(), 'total' => 0, 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
         }
         if ($report === 'markers' || $report === 'changes') {
