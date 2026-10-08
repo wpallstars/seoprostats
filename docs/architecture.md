@@ -1197,7 +1197,7 @@ days, comparison, chart metric, filters); and the section's own choices:
 | Search | `report` (rankings, opportunities, content), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query`; with Content, `sort` (clicks, visits, conversions) and `goal` (a goal's ID) | rankings, queries, clicks, none; clicks, the first goal |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
-| Changes | `page` (else the page the reports are filtered to) | none |
+| Changes | `page` (else the page the reports are filtered to), `group` (content, seo, product, site, search, note) | none, all changes |
 
 Only applied choices count: text in a box is a draft until Apply or Enter.
 Changing section keeps the shared values and leaves the other section's
@@ -1206,6 +1206,13 @@ or for pages, queries, properties and events, as trimmed text without
 control characters, at most 2048 characters; anything unknown or invalid
 takes the default, and defaults are left out, so older addresses keep
 working and addresses stay short.
+
+In Changes, a valid `page` in the address wins over the report's page
+filter; without it, the page filter is the fallback, as in older addresses.
+Any page (or applying an empty box) removes both `page` and the report's
+page filters, keeping the other filters. There is no sentinel value.
+The box follows the applied page on Back and Forward, including no page;
+the group follows the address too, with unknown groups showing all changes.
 
 This is also the format of a shared read-only dashboard (Phase 6 of
 `todo/PLANS.md`): `ViewState` with the pure `parseHash()`, `buildHash()`

@@ -72,21 +72,20 @@ function NoteModal({ page, onClose }: { page: string; onClose: () => void }) {
 export function Changes({ state, update }: ViewProps) {
 	const data = useDataSet();
 	// The address's page (a chart's changes, opened here), else the one the reports are filtered to.
-	const initial = state.page ?? filteredPage(state.filters);
-	const [page, setPagePlain] = useState(initial);
-	const [typed, setTyped] = useState(initial);
+	const page = state.page ?? filteredPage(state.filters);
+	const group = state.group ?? '';
+	const [typed, setTyped] = useState(page);
 	const setPage = (next: string) => {
-		setPagePlain(next);
-		update({ page: next || undefined });
+		update({
+			page: next || undefined,
+			// With no address page, the report filter is the fallback. Clear it too for Any page.
+			...(!next ? { filters: state.filters.filter((f) => f.dimension !== 'page') } : {}),
+		});
 	};
-	// Back and forward bring the address's page back.
+	// Back and forward bring the applied page back, including the empty default.
 	useEffect(() => {
-		if (state.page !== undefined) {
-			setPagePlain(state.page);
-			setTyped(state.page);
-		}
-	}, [state.page]);
-	const [group, setGroup] = useState<ChangeGroup | ''>('');
+		setTyped(page);
+	}, [page]);
 	const [offset, setOffset] = useState(0);
 	const [adding, setAdding] = useState(false);
 	const [error, setError] = useState('');
@@ -149,7 +148,7 @@ export function Changes({ state, update }: ViewProps) {
 							{ value: '', label: __('All changes', 'seoprostats') },
 							...CHANGE_GROUPS.map((g) => ({ value: g, label: groupLabel(g) })),
 						]}
-						onChange={(value: string) => setGroup(value as ChangeGroup | '')}
+						onChange={(value: string) => update({ group: (value || undefined) as ChangeGroup | undefined })}
 					/>
 					<form
 						className="spst-properties__event"
