@@ -335,7 +335,8 @@
 	border: 0;
 }
 
-.spst-chart-lane__marker {
+.spst-chart-lane__marker,
+.spst-change-dots {
 	position: absolute;
 	top: 4px;
 	display: inline-flex;
@@ -357,13 +358,29 @@
 	cursor: pointer;
 }
 
-.spst-chart-lane__marker:hover {
+.spst-chart-lane__marker:hover,
+.spst-change-dots:hover {
 	background: var(--spst-hover);
 }
 
-.spst-chart-lane__marker:focus-visible {
+.spst-chart-lane__marker:focus-visible,
+.spst-change-dots:focus-visible {
 	outline: 2px solid var(--spst-accent);
 	outline-offset: 1px;
+}
+
+/* A table row's changes: the lane's marker, in the cell's flow. */
+.spst-change-dots {
+	position: static;
+	top: auto;
+	transform: none;
+	vertical-align: middle;
+}
+
+.spst-table .spst-table__changes {
+	width: 1%;
+	text-align: center;
+	white-space: nowrap;
 }
 
 /* A search engine update's rollout, under its marker. */

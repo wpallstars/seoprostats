@@ -58,7 +58,7 @@
 .spst-share .components-button.is-primary { background: var(--spst-accent); color: #fff; }
 .spst-share .is-dark .components-button.is-primary { color: #1d2327; }
 .spst-share input, .spst-share select { background: var(--spst-background); color: var(--spst-text); max-width: 100%; }
-.spst-share .spst-chart-lane__marker { background: var(--spst-background); }
+.spst-share .spst-chart-lane__marker, .spst-share .spst-change-dots { background: var(--spst-background); }
 .spst-share .widefat { border-collapse: collapse; width: 100%; color: var(--spst-text); }
 .spst-share .widefat th, .spst-share .widefat td { padding: 8px; text-align: start; border-bottom: 1px solid var(--spst-border); }
 .spst-share .striped tr:nth-child(odd) { background: var(--spst-hover); }
