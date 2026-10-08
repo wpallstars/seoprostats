@@ -138,8 +138,9 @@ long-term record.
 - [x] Internal links: orphans, converting pages with few links in,
       missing links to a query's page; under Search → Audit and plan
       items (GH#78, after GH#77).
-- [ ] Indexation: published pages and sitemap addresses without
-      impressions (GH#79, after GH#77).
+- [x] Indexation: published pages and sitemap addresses without
+      impressions; under Search → Audit and plan items (GH#79, after
+      GH#77).
 - [ ] Refresh planner: update, leave, protect or merge pages losing
       clicks (GH#80, after GH#77).
 - [ ] Search targets: chosen queries and their pages, positions and wrong

@@ -1341,6 +1341,149 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Indexation: pages search engines do not seem to show.
+     *
+     * Pages: published pages (read by the content audit) with no search
+     * impressions in the engine's newest days, published before them;
+     * never shown, or shown before and not since. Sitemap: other
+     * addresses in the site's own sitemaps (category, tag and author
+     * archives, and other plugins'), listed that long, with none. Pages
+     * that ask not to be indexed or name another page as canonical are
+     * left out. The sitemaps are read by the daily cron; `run` reads them
+     * now. Engine URL inspection is not used.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : list (the pages) or run (read the site's sitemaps now).
+     * ---
+     * default: list
+     * options:
+     *   - list
+     *   - run
+     * ---
+     *
+     * [--kind=<kind>]
+     * : pages or sitemap.
+     * ---
+     * default: pages
+     * options:
+     *   - pages
+     *   - sitemap
+     * ---
+     *
+     * [--days=<days>]
+     * : Days without search impressions, and since publishing or first listing (7 to 365).
+     * ---
+     * default: 28
+     * ---
+     *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools).
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats.
+     *
+     * [--limit=<limit>]
+     * : Most rows (20 when left out).
+     *
+     * [--data=<data>]
+     * : live or demo (list).
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats indexation
+     *     wp seoprostats indexation --kind=sitemap
+     *     wp seoprostats indexation --days=56 --limit=100
+     *     wp seoprostats indexation run
+     *     wp seoprostats indexation --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function indexation($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
+        $action = isset($args[0]) ? (string) $args[0] : 'list';
+        if ($action === 'run') {
+            if (!SEOProStats_Schema::maybe_upgrade()) {
+                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+            }
+            $done = SEOProStats_Indexation::read_sitemaps(120);
+            if (!$done['enabled']) {
+                WP_CLI::warning(__('WordPress’s sitemaps are off (an SEO plugin may make its own); no addresses were read.', 'seoprostats'));
+                return;
+            }
+            /* translators: %d: sitemap addresses */
+            WP_CLI::success(sprintf(__('Read %d sitemap addresses besides the posts.', 'seoprostats'), $done['addresses']) . ($done['complete'] ? '' : ' ' . __('Not every sitemap was read (time or address limit).', 'seoprostats')));
+            return;
+        }
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $kind   = isset($assoc['kind']) ? (string) $assoc['kind'] : 'pages';
+        $days   = isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Indexation::DAYS;
+        $req    = $this->request(array_diff_key($assoc, array('days' => 1)) + array('limit' => '20'));
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $kind, $days) {
+            return SEOProStats_Indexation::report($req, $engine, $kind, $days);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        $read = $answer['read'];
+        /* translators: 1: pages with their published time, 2: published pages read by the audit, 3: sitemap addresses */
+        WP_CLI::log(sprintf(__('Published times read on %1$d of %2$d pages; %3$d other sitemap addresses.', 'seoprostats'), $read['published'], $read['pages'], $read['sitemap']['addresses']) . ($read['sitemap']['read'] && !$read['sitemap']['enabled'] ? ' ' . __('WordPress’s sitemaps are off.', 'seoprostats') : ''));
+        WP_CLI::log(implode(', ', array_map(static function ($name, $n) {
+            return $name . ' ' . $n;
+        }, array_keys($answer['counts']), $answer['counts'])));
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No pages.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $line = array(
+                'path'            => $row['path'],
+                'state'           => $row['state'],
+                'last_impression' => $row['last_impression'] === null ? '–' : $row['last_impression'],
+                'days'            => $row['age'],
+            );
+            if ($answer['kind'] === 'pages') {
+                $line += array(
+                    'published' => substr((string) $row['published'], 0, 10),
+                    'words'     => $row['words'],
+                    'links_in'  => $row['links_in'],
+                );
+            } else {
+                $line += array(
+                    'first_seen' => substr((string) $row['first_seen'], 0, 10),
+                    'source'     => $row['source'],
+                );
+            }
+            $rows[] = $line;
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * Query coverage of one page: the Google Search Console queries it
      * shows for, each with how far the page's own words cover it (title,
      * heading, text, partial or none), the words it lacks and whether it

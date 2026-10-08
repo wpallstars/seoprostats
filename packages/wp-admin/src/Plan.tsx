@@ -27,9 +27,11 @@ import {
 	formatNumber,
 	formatPlaces,
 	AUDIT_FINDINGS,
+	INDEXATION_KINDS,
 	LINKS_KINDS,
 	QUEUE_FILTERS,
 	type AuditFinding,
+	type IndexationKind,
 	type LinksKind,
 	type QueueAction,
 	type QueueAnswer,
@@ -47,6 +49,7 @@ import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
 import { findingName } from './Audit';
 import { linksName } from './Links';
+import { indexationName } from './Indexation';
 import { metricLabel, resultLabel } from './Experiments';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -65,6 +68,7 @@ export function kindName(kind: QueueKind): string {
 		overlap: __('Overlapping pages', 'seoprostats'),
 		audit: __('Content audit', 'seoprostats'),
 		links: __('Internal links', 'seoprostats'),
+		index: __('Indexation', 'seoprostats'),
 	};
 	return names[kind];
 }
@@ -79,11 +83,17 @@ function linksList(item: QueueItem): LinksKind | null {
 	return item.kind === 'links' && item.finding && (LINKS_KINDS as readonly string[]).includes(item.finding) ? (item.finding as LinksKind) : null;
 }
 
-/** An item's kind, with the finding for an audit item and the list for an internal links one. */
+/** An indexation item's list, or null. */
+function indexList(item: QueueItem): IndexationKind | null {
+	return item.kind === 'index' && item.finding && (INDEXATION_KINDS as readonly string[]).includes(item.finding) ? (item.finding as IndexationKind) : null;
+}
+
+/** An item's kind, with the finding for an audit item and the list for an internal links or indexation one. */
 function itemKind(item: QueueItem): string {
 	const finding = auditFinding(item);
 	const list = linksList(item);
-	const detail = finding ? findingName(finding) : list ? linksName(list) : '';
+	const index = indexList(item);
+	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : '';
 	return detail
 		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
@@ -495,7 +505,9 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const p = item.parts;
 	const finding = auditFinding(item);
 	const list = linksList(item);
-	const kindEffort = (finding ? answer.rules.audit_effort?.[finding] : list ? answer.rules.links_effort?.[list] : undefined) ?? answer.rules.effort[item.kind];
+	const index = indexList(item);
+	const kindEffort =
+		(finding ? answer.rules.audit_effort?.[finding] : list ? answer.rules.links_effort?.[list] : index ? answer.rules.index_effort?.[index] : undefined) ?? answer.rules.effort[item.kind];
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
@@ -541,7 +553,14 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 													: __('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what links in could add), scaled to 28 days.', 'seoprostats'),
 												`${number((f.share ?? 0) * 100)}%`
 											)
-										: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
+										: item.kind === 'index'
+											? sprintf(
+													/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
+													__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s.', 'seoprostats'),
+													decimal(f.typical ?? 0),
+													`${number((f.share ?? 0) * 100)}%`
+												)
+											: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
 				</li>
 				<li>
 					{answer.site_rate !== null
@@ -549,12 +568,18 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 						: __('Value: 1, as there is no goal or no visits from search.', 'seoprostats')}
 				</li>
 				<li>
-					{sprintf(
-						/* translators: 1: the kind's confidence, 2: impressions for full confidence. */
-						__('Confidence: the kind’s %1$s, less when there are fewer than %2$s impressions per 28 days.', 'seoprostats'),
-						decimal(answer.rules.confidence[item.kind]),
-						number(answer.rules.full_impressions)
-					)}
+					{item.kind === 'index'
+						? sprintf(
+								/* translators: %s: the kind's confidence. */
+								__('Confidence: the kind’s %s; with no impressions there is nothing to weigh it by.', 'seoprostats'),
+								decimal(answer.rules.confidence[item.kind])
+							)
+						: sprintf(
+								/* translators: 1: the kind's confidence, 2: impressions for full confidence. */
+								__('Confidence: the kind’s %1$s, less when there are fewer than %2$s impressions per 28 days.', 'seoprostats'),
+								decimal(answer.rules.confidence[item.kind]),
+								number(answer.rules.full_impressions)
+							)}
 				</li>
 				<li>
 					{item.effort_set

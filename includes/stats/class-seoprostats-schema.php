@@ -38,8 +38,10 @@ final class SEOProStats_Schema {
      * v10: page_facts (the content audit's facts about each published page).
      * v11: page_links (links between the site's own pages) and
      *      page_facts.links_in (pages linking to each).
+     * v12: page_facts.published (when each page was published) and
+     *      sitemap (the addresses in the site's own sitemaps).
      */
-    const VERSION = 11;
+    const VERSION = 12;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -104,7 +106,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap');
     }
 
     /**
@@ -583,6 +585,7 @@ final class SEOProStats_Schema {
             // title and description (zeros for none). flags: the page's
             // own findings, SEOProStats_Audit::FLAGS. links_in: other pages
             // whose content links to it (SEOProStats_Links), at most 65535.
+            // published: when the post was published (0: not read yet).
             'page_facts' => "CREATE TABLE {$t['page_facts']} (
   path_id int unsigned NOT NULL,
   post_id bigint unsigned NOT NULL DEFAULT 0,
@@ -601,13 +604,15 @@ final class SEOProStats_Schema {
   canonical_away tinyint unsigned NOT NULL DEFAULT 0,
   flags smallint unsigned NOT NULL DEFAULT 0,
   links_in smallint unsigned NOT NULL DEFAULT 0,
+  published int unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (path_id),
   KEY post_id (post_id),
   KEY checked (checked),
   KEY flags (flags),
   KEY title_hash (title_hash),
   KEY desc_hash (desc_hash),
-  KEY links_in (links_in)
+  KEY links_in (links_in),
+  KEY published (published)
 ) $charset;",
 
             // Links in the content of published pages to the site's own
@@ -621,6 +626,21 @@ final class SEOProStats_Schema {
   links smallint unsigned NOT NULL DEFAULT 1,
   PRIMARY KEY  (from_path,to_path),
   KEY to_path (to_path)
+) $charset;",
+
+            // Addresses in the site's own sitemaps other than its published
+            // posts (SEOProStats_Indexation): term and author archives and
+            // other providers', read by the daily cron. source: codes in
+            // SEOProStats_Indexation::SOURCES. first_seen: when first
+            // listed; seen: the read that last listed it.
+            'sitemap' => "CREATE TABLE {$t['sitemap']} (
+  path_id int unsigned NOT NULL,
+  source tinyint unsigned NOT NULL DEFAULT 0,
+  first_seen int unsigned NOT NULL,
+  seen int unsigned NOT NULL,
+  PRIMARY KEY  (path_id),
+  KEY first_seen (first_seen),
+  KEY seen (seen)
 ) $charset;",
         );
     }

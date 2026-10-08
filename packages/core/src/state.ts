@@ -17,6 +17,7 @@ import {
 	CLICK_KINDS,
 	COMPARE_KEYS,
 	CONTENT_SORTS,
+	INDEXATION_KINDS,
 	LINKS_KINDS,
 	QUEUE_FILTERS,
 	RANGE_KEYS,
@@ -28,6 +29,7 @@ import {
 	type CompareKey,
 	type ContentSort,
 	type Dimension,
+	type IndexationKind,
 	type LinksKind,
 	type MetricKey,
 	type QueueFilter,
@@ -105,6 +107,8 @@ export interface ViewState {
 	finding?: AuditFinding;
 	/** Search → Audit: the internal links list shown (orphans when left out). */
 	links?: LinksKind;
+	/** Search → Audit: the indexation list shown (pages when left out). */
+	index?: IndexationKind;
 	/** Search: the engine (Google when left out); kept across its reports. */
 	engine?: SearchEngine;
 	/** Search → Content: the order of the pages. */
@@ -126,7 +130,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -190,6 +194,8 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			set('finding', finding !== null && (AUDIT_FINDINGS as readonly string[]).includes(finding) ? (finding as AuditFinding) : undefined);
 			const links = oneOf(LINKS_KINDS, params.get('links'), 'orphans');
 			set('links', links === 'orphans' ? undefined : links);
+			const index = oneOf(INDEXATION_KINDS, params.get('index'), 'pages');
+			set('index', index === 'pages' ? undefined : index);
 			set('goal', text(params.get('goal')));
 		}
 		if (report === 'experiments') {

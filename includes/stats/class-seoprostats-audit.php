@@ -14,7 +14,9 @@
  * the last run stopped; every page is read again after the SEO plugin is
  * switched. A post's row goes when it is deleted or no longer published.
  * The links in the same text are written with the facts
- * (SEOProStats_Links): page_links, and page_facts.links_in.
+ * (SEOProStats_Links): page_links, and page_facts.links_in. Each row
+ * keeps when its post was published (page_facts.published), for
+ * indexation (SEOProStats_Indexation).
  *
  * Findings: title or description missing or long, the same title or
  * description as another page (by the hash keys), no H1 or several, a
@@ -204,6 +206,12 @@ final class SEOProStats_Audit {
             $state['since']  = $state['links'];
             $state['cursor'] = 0;
         }
+        if (!$state['published']) {
+            // Published times came with an update (indexation): every page is read again for them.
+            $state['published'] = time();
+            $state['since']     = $state['published'];
+            $state['cursor']    = 0;
+        }
         $types = self::post_types();
         $old   = max((int) $state['since'], time() - self::STALE_DAYS * DAY_IN_SECONDS);
         $stop  = !$types;
@@ -282,8 +290,9 @@ final class SEOProStats_Audit {
             $text = SEOProStats_Coverage::text_of_post($post_id, isset($seo[$post_id]) ? $seo[$post_id] : null);
             if ($text) {
                 $facts[$path] = self::facts($text, $path) + array(
-                    'post_id'  => $post_id,
-                    'modified' => self::time($post->post_modified_gmt),
+                    'post_id'   => $post_id,
+                    'modified'  => self::time($post->post_modified_gmt),
+                    'published' => (int) get_post_time('U', true, $post),
                 );
             }
         }
@@ -294,7 +303,7 @@ final class SEOProStats_Audit {
      * Write facts by page path (one row per page), replacing the posts'
      * rows at other addresses.
      *
-     * @param array<string,array<string,mixed>> $facts From facts(), with post_id and modified, by path.
+     * @param array<string,array<string,mixed>> $facts From facts(), with post_id, modified and published, by path.
      * @return int Rows written.
      */
     public static function write(array $facts) {
@@ -317,20 +326,20 @@ final class SEOProStats_Audit {
             }
             $keep[(int) $f['post_id']][] = $path_id;
             $links[$path_id]             = isset($f['links']) ? (array) $f['links'] : array();
-            array_push($args, $path_id, (int) $f['post_id'], $now, (int) $f['modified'], (int) $f['title_len'], (int) $f['seo_title_len'], (int) $f['desc_len'], (string) $f['title_hash'], (string) $f['desc_hash'], (int) $f['h1'], (int) $f['words'], (int) $f['images'], (int) $f['images_no_alt'], (int) $f['noindex'], (int) $f['canonical_away'], (int) $f['flags']);
+            array_push($args, $path_id, (int) $f['post_id'], $now, (int) $f['modified'], (int) $f['title_len'], (int) $f['seo_title_len'], (int) $f['desc_len'], (string) $f['title_hash'], (string) $f['desc_hash'], (int) $f['h1'], (int) $f['words'], (int) $f['images'], (int) $f['images_no_alt'], (int) $f['noindex'], (int) $f['canonical_away'], (int) $f['flags'], isset($f['published']) ? max(0, (int) $f['published']) : 0);
             ++$n;
         }
         if (!$n) {
             return 0;
         }
-        $groups = implode(', ', array_fill(0, $n, '(%d, %d, %d, %d, %d, %d, %d, UNHEX(%s), UNHEX(%s), %d, %d, %d, %d, %d, %d, %d)'));
+        $groups = implode(', ', array_fill(0, $n, '(%d, %d, %d, %d, %d, %d, %d, UNHEX(%s), UNHEX(%s), %d, %d, %d, %d, %d, %d, %d, %d)'));
         $update = array();
-        foreach (array('post_id', 'checked', 'modified', 'title_len', 'seo_title_len', 'desc_len', 'title_hash', 'desc_hash', 'h1', 'words', 'images', 'images_no_alt', 'noindex', 'canonical_away', 'flags') as $col) {
+        foreach (array('post_id', 'checked', 'modified', 'title_len', 'seo_title_len', 'desc_len', 'title_hash', 'desc_hash', 'h1', 'words', 'images', 'images_no_alt', 'noindex', 'canonical_away', 'flags', 'published') as $col) {
             $update[] = "$col = VALUES($col)";
         }
         $update = implode(', ', $update);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $groups holds only placeholder groups and $update fixed column names.
-        $wpdb->query($wpdb->prepare("INSERT INTO %i (path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, title_hash, desc_hash, h1, words, images, images_no_alt, noindex, canonical_away, flags) VALUES $groups ON DUPLICATE KEY UPDATE $update", array_merge(array($table), $args)));
+        $wpdb->query($wpdb->prepare("INSERT INTO %i (path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, title_hash, desc_hash, h1, words, images, images_no_alt, noindex, canonical_away, flags, published) VALUES $groups ON DUPLICATE KEY UPDATE $update", array_merge(array($table), $args)));
 
         // A post's rows at its old addresses go (a changed slug or parent), with their links.
         $gone = array();
@@ -917,15 +926,15 @@ final class SEOProStats_Audit {
 
     /**
      * Pages not read yet on live data (the daily cron has not run since
-     * the update, or links came since): a first few pages now, for the
-     * audit and internal links reports.
+     * the update, or links or published times came since): a first few
+     * pages now, for the audit, internal links and indexation reports.
      */
     public static function first_read() {
         if (SEOProStats_Schema::set() !== 'live') {
             return;
         }
         $state = self::state();
-        if (!$state['last'] || !$state['links']) {
+        if (!$state['last'] || !$state['links'] || !$state['published']) {
             self::load();
             self::batch(self::CHUNK, 5);
         }
@@ -934,32 +943,37 @@ final class SEOProStats_Audit {
     /**
      * Progress of the current data set.
      *
-     * @return array{cursor:int,plugin:string,since:int,version:int,last:int,links:int}
+     * @return array{cursor:int,plugin:string,since:int,version:int,last:int,links:int,published:int}
      */
     public static function state() {
         $state = get_option(SEOProStats_Schema::option(self::OPTION), array());
         $state = is_array($state) ? $state : array();
         return array(
-            'cursor'  => isset($state['cursor']) ? (int) $state['cursor'] : 0,
-            'plugin'  => isset($state['plugin']) ? (string) $state['plugin'] : '',
-            'since'   => isset($state['since']) ? (int) $state['since'] : 0,
-            'version' => isset($state['version']) ? (int) $state['version'] : 0,
-            'last'    => isset($state['last']) ? (int) $state['last'] : 0,
-            'links'   => isset($state['links']) ? (int) $state['links'] : 0,
+            'cursor'    => isset($state['cursor']) ? (int) $state['cursor'] : 0,
+            'plugin'    => isset($state['plugin']) ? (string) $state['plugin'] : '',
+            'since'     => isset($state['since']) ? (int) $state['since'] : 0,
+            'version'   => isset($state['version']) ? (int) $state['version'] : 0,
+            'last'      => isset($state['last']) ? (int) $state['last'] : 0,
+            'links'     => isset($state['links']) ? (int) $state['links'] : 0,
+            'published' => isset($state['published']) ? (int) $state['published'] : 0,
         );
     }
 
     /**
      * Note that facts were written, so cached reports are made again.
      *
-     * @param int $links_from When every page's links were read from (the
-     *                        demo, written at once); 0 to leave it.
+     * @param int $all_from When every page's links and published times
+     *                      were read from (the demo, written at once); 0
+     *                      to leave them.
      */
-    public static function touch($links_from = 0) {
+    public static function touch($all_from = 0) {
         $state            = self::state();
         $state['version'] = time();
-        if ($links_from && !$state['links']) {
-            $state['links'] = (int) $links_from;
+        if ($all_from && !$state['links']) {
+            $state['links'] = (int) $all_from;
+        }
+        if ($all_from && !$state['published']) {
+            $state['published'] = (int) $all_from;
         }
         update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
     }

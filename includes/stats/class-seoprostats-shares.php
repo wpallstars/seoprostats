@@ -25,7 +25,7 @@ final class SEOProStats_Shares {
      */
     const REPORTS = array(
         'overview'   => array('stats', 'timeseries', 'breakdown', 'markers', 'realtime'),
-        'search'     => array('search', 'markers', 'opportunities', 'audit', 'links', 'content'),
+        'search'     => array('search', 'markers', 'opportunities', 'audit', 'links', 'indexation', 'content'),
         'goals'      => array('goals'),
         'funnels'    => array('funnels'),
         'properties' => array('properties', 'breakdown'),
@@ -66,7 +66,7 @@ final class SEOProStats_Shares {
         if (!is_array($view) || !isset($view['view']) || !in_array($view['view'], self::SECTIONS, true)) {
             return self::invalid();
         }
-        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page', 'query', 'key', 'event', 'engine', 'report', 'tab', 'chart', 'sort', 'goal', 'finding', 'links') as $key) {
+        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page', 'query', 'key', 'event', 'engine', 'report', 'tab', 'chart', 'sort', 'goal', 'finding', 'links', 'index') as $key) {
             if (isset($view[$key]) && (!is_string($view[$key]) || strlen($view[$key]) > 2048 || preg_match('/[\x00-\x1f\x7f]/', $view[$key]) || $view[$key] !== trim($view[$key]))) {
                 return self::invalid();
             }
@@ -179,6 +179,9 @@ final class SEOProStats_Shares {
             }
             if (in_array($view['links'] ?? '', array_diff(SEOProStats_Links::KINDS, array('orphans')), true)) {
                 $out['links'] = $view['links'];
+            }
+            if (in_array($view['index'] ?? '', array_diff(SEOProStats_Indexation::KINDS, array('pages')), true)) {
+                $out['index'] = $view['index'];
             }
         }
         if (in_array($report, array('content', 'audit'), true) && ($view['goal'] ?? '') !== '') {
