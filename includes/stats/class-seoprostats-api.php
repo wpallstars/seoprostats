@@ -1457,7 +1457,11 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function goals($request) {
-        return self::report($request, array('SEOProStats_Conversions', 'goals'));
+        return self::report($request, static function ($req) {
+            $answer = SEOProStats_Conversions::goals($req);
+            $answer['renewals'] = SEOProStats_Purchases::renewals($req);
+            return $answer;
+        });
     }
 
     /**

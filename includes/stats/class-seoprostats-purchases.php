@@ -54,6 +54,10 @@ final class SEOProStats_Purchases {
     /** ThriveCart order IDs remembered, so a retried webhook counts once. */
     const KEEP_ORDERS = 500;
 
+    /** Renewal days and private payment hashes retained. Fail closed at capacity. */
+    const KEEP_RENEWAL_DAYS = 400;
+    const KEEP_RENEWAL_IDS = 10000;
+
     /** The passthrough field ThriveCart sends back. */
     const PASSTHROUGH = 'spst';
 
@@ -87,6 +91,7 @@ final class SEOProStats_Purchases {
         add_action('woocommerce_order_status_processing', array(__CLASS__, 'woo_paid'), 10, 1);
         add_action('woocommerce_order_status_completed', array(__CLASS__, 'woo_paid'), 10, 1);
         add_action('woocommerce_order_refunded', array(__CLASS__, 'woo_refunded'), 10, 2);
+        add_action('woocommerce_subscription_renewal_payment_complete', array(__CLASS__, 'woo_renewal'), 10, 2);
 
         // Easy Digital Downloads 3: checkout; paid.
         add_action('edd_built_order', array(__CLASS__, 'edd_checkout'), 10, 1);
@@ -97,6 +102,7 @@ final class SEOProStats_Purchases {
         add_action('fluent_cart/order_created', array(__CLASS__, 'fluentcart_checkout'), 10, 1);
         add_action('fluent_cart/order_paid', array(__CLASS__, 'fluentcart_paid'), 10, 1);
         add_action('fluent_cart/order_refunded', array(__CLASS__, 'fluentcart_refunded'), 10, 1);
+        add_action('fluent_cart/order_paid_done', array(__CLASS__, 'fluentcart_renewal'), 10, 1);
     }
 
     /**
@@ -326,6 +332,138 @@ final class SEOProStats_Purchases {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- release the lock on every exit, including an exception.
             $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $key));
         }
+    }
+
+    /**
+     * A paid renewal is a counter, never a visitor event. Caller holds the lock.
+     * Amounts are integer cents; days are the site-local reception date.
+     * Receipt and counter share one option write, unlike the event buffer.
+     *
+     * @param string $identity Provider-namespaced payment identity, hashed only.
+     * @param float  $amount   Amount in main units.
+     * @param string $currency Currency code.
+     * @return string recorded, duplicate or failed.
+     */
+    private static function renewal($identity, $amount, $currency) {
+        $currency = strtoupper(trim($currency));
+        if (!self::enabled() || $identity === '' || !is_finite($amount) || $amount <= 0 || $amount > PHP_INT_MAX / 100 || !preg_match('/^[A-Z]{3}$/', $currency)) {
+            return 'failed';
+        }
+        $cents = (int) round($amount * 100);
+        if ($cents <= 0) {
+            return 'failed';
+        }
+        $today = new DateTimeImmutable('today', wp_timezone());
+        $day   = $today->format('Y-m-d');
+        $first = $today->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $state = get_option(self::STATE_OPTION, array());
+        $state = is_array($state) ? $state : array();
+        $days  = isset($state['renewals']) && is_array($state['renewals']) ? $state['renewals'] : array();
+        $ids   = isset($state['renewal_ids']) && is_array($state['renewal_ids']) ? $state['renewal_ids'] : array();
+        $days  = array_filter($days, static function ($date) use ($first, $day) {
+            return is_string($date) && $date >= $first && $date <= $day;
+        }, ARRAY_FILTER_USE_KEY);
+        $ids = array_filter($ids, static function ($date) use ($first, $day) {
+            return is_string($date) && $date >= $first && $date <= $day;
+        });
+        $key = hash('sha256', $identity);
+        if (isset($ids[$key])) {
+            return 'duplicate';
+        }
+        if (count($ids) >= self::KEEP_RENEWAL_IDS) {
+            return 'failed'; // Never evict an unexpired identity and count its retry again.
+        }
+        $row = isset($days[$day][$currency]) ? $days[$day][$currency] : array('count' => 0, 'amount' => 0);
+        if ($row['amount'] > PHP_INT_MAX - $cents || $row['count'] >= PHP_INT_MAX) {
+            return 'failed';
+        }
+        $days[$day][$currency] = array('count' => $row['count'] + 1, 'amount' => $row['amount'] + $cents);
+        $ids[$key] = $day;
+        $state['renewals'] = $days;
+        $state['renewal_ids'] = $ids;
+        return update_option(self::STATE_OPTION, $state, false) ? 'recorded' : 'failed';
+    }
+
+    /**
+     * Retained site-wide renewal totals, never visit-filtered or demo data.
+     * Sub-day ranges cannot be resolved from daily counters and are suppressed.
+     *
+     * @param array<string,mixed> $req Validated report request.
+     * @return array<string,mixed>
+     */
+    public static function renewals(array $req) {
+        $out = array('scope' => 'site', 'days' => array(), 'totals' => array());
+        if (SEOProStats_Schema::set() === 'demo' || !empty($req['filters']) || in_array($req['range'], array('realtime', '24h'), true)) {
+            $out['scope'] = 'unavailable';
+            return $out;
+        }
+        $range = SEOProStats_Query::range($req);
+        $first = (new DateTimeImmutable('today', wp_timezone()))->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $from  = $req['range'] === 'all' ? $first : max($first, $range['start']->format('Y-m-d'));
+        $to    = $range['end']->format('Y-m-d');
+        $state = get_option(self::STATE_OPTION, array());
+        $days  = is_array($state) && isset($state['renewals']) && is_array($state['renewals']) ? $state['renewals'] : array();
+        ksort($days);
+        $totals = array();
+        foreach ($days as $day => $currencies) {
+            if ($day < $from || $day >= $to || !is_array($currencies)) {
+                continue;
+            }
+            foreach ($currencies as $currency => $row) {
+                if (!is_array($row) || !isset($row['count'], $row['amount'])) {
+                    continue;
+                }
+                $out['days'][] = array('day' => $day, 'currency' => $currency, 'count' => (int) $row['count'], 'amount' => $row['amount'] / 100);
+                if (!isset($totals[$currency])) {
+                    $totals[$currency] = array('currency' => $currency, 'count' => 0, 'amount' => 0);
+                }
+                $totals[$currency]['count'] += (int) $row['count'];
+                $totals[$currency]['amount'] += $row['amount'] / 100;
+            }
+        }
+        ksort($totals);
+        $out['totals'] = array_values($totals);
+        return $out;
+    }
+
+    /**
+     * Subscriptions Core passes the subscription and the paid renewal WC_Order.
+     *
+     * @param mixed $subscription Subscription (not used as a payment identity).
+     * @param mixed $order        Paid renewal order.
+     */
+    public static function woo_renewal($subscription, $order) {
+        if ($order instanceof WC_Order) {
+            self::locked('woo_renewal_locked', array($order->get_id()));
+        }
+    }
+
+    /** @param int $id Renewal order ID. */
+    private static function woo_renewal_locked($id) {
+        $order = function_exists('wc_get_order') ? wc_get_order($id) : null;
+        if (!$order instanceof WC_Order || !$order->is_paid() || !function_exists('wcs_order_contains_renewal') || !wcs_order_contains_renewal($order)) {
+            return;
+        }
+        self::renewal('woocommerce:' . $id, (float) $order->get_total(), (string) $order->get_currency());
+    }
+
+    /** @param array<string,mixed> $data Paid-order-done payload. */
+    public static function fluentcart_renewal($data) {
+        self::locked('fluentcart_renewal_locked', array($data));
+    }
+
+    /** @param array<string,mixed> $data Paid-order-done payload. */
+    private static function fluentcart_renewal_locked($data) {
+        $order = self::fluentcart_order($data);
+        $fields = self::fluentcart_fields($order);
+        $transaction = self::fluentcart_fields($data['transaction'] ?? null);
+        if (($transaction['payment_mode'] ?? '') === 'test') {
+            return;
+        }
+        if (!$order || empty($fields['id']) || ($fields['type'] ?? '') !== 'renewal' || ($fields['payment_status'] ?? '') !== 'paid' || !isset($fields['total_paid'], $fields['currency']) || !is_numeric($fields['total_paid'])) {
+            return;
+        }
+        self::renewal('fluentcart:' . $fields['id'], (float) $fields['total_paid'] / 100, (string) $fields['currency']);
     }
 
     // ------------------------------------------------------------------
@@ -665,6 +803,8 @@ final class SEOProStats_Purchases {
             'refund'      => $request->get_param('refund'),
             'webhook_id'  => $request->get_param('webhook_id'),
             'event_id'    => $request->get_param('event_id'),
+            'invoice_id'  => $request->get_param('invoice_id'),
+            'account'     => $request->get_param('thrivecart_account'),
         ));
         return new WP_REST_Response(array('ok' => true, 'result' => $result), 200);
     }
@@ -685,7 +825,7 @@ final class SEOProStats_Purchases {
      * @return string
      */
     private static function thrivecart_order_locked(array $data) {
-        if (!self::enabled() || !in_array($data['event'], array('order.success', 'order.refund'), true)) {
+        if (!self::enabled() || !in_array($data['event'], array('order.success', 'order.refund', 'order.subscription_payment'), true)) {
             return 'ignored';
         }
         /**
@@ -695,6 +835,13 @@ final class SEOProStats_Purchases {
          */
         if ($data['mode'] === 'test' && !apply_filters('seoprostats_thrivecart_test_orders', false)) {
             return 'test';
+        }
+        if ($data['event'] === 'order.subscription_payment') {
+            $total = is_array($data['order']) && isset($data['order']['total']) ? $data['order']['total'] : null;
+            if (!is_numeric($total) || empty($data['order_id']) || !isset($data['account'], $data['invoice_id']) || !is_string($data['account']) || !is_scalar($data['invoice_id']) || trim($data['account']) === '' || trim((string) $data['invoice_id']) === '') {
+                return 'failed';
+            }
+            return self::renewal('thrivecart:' . $data['account'] . ':' . $data['order_id'] . ':' . $data['invoice_id'], (float) $total / 100, $data['currency']);
         }
         $order_id = preg_replace('/[^\w.-]/', '', $data['order_id']);
         if ($data['event'] === 'order.refund') {
@@ -806,10 +953,22 @@ final class SEOProStats_Purchases {
     /**
      * Counts for WP-CLI doctor: ThriveCart orders without a known page load.
      *
-     * @return array{thrivecart_not_joined:int}
+     * @return array<string,mixed>
      */
     public static function status() {
         $state = get_option(self::STATE_OPTION, array());
-        return array('thrivecart_not_joined' => is_array($state) && isset($state['not_joined']) ? (int) $state['not_joined'] : 0);
+        $report = self::renewals(array('range' => 'all', 'filters' => array()));
+        $today = new DateTimeImmutable('today', wp_timezone());
+        $first = $today->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $day = $today->format('Y-m-d');
+        $ids = is_array($state) && isset($state['renewal_ids']) && is_array($state['renewal_ids']) ? $state['renewal_ids'] : array();
+        $ids = array_filter($ids, static function ($date) use ($first, $day) {
+            return is_string($date) && $date >= $first && $date <= $day;
+        });
+        return array(
+            'thrivecart_not_joined' => is_array($state) && isset($state['not_joined']) ? (int) $state['not_joined'] : 0,
+            'renewals' => $report['totals'],
+            'renewal_receipts' => count($ids),
+        );
     }
 }

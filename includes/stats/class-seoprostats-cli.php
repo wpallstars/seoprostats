@@ -3556,8 +3556,15 @@ final class SEOProStats_CLI {
         if (!SEOProStats_Purchases::enabled()) {
             $add('purchases', true, 'off (SEO Pro Stats → Settings → Tracking)');
         } else {
-            $joined = SEOProStats_Purchases::status()['thrivecart_not_joined'];
+            $purchases = SEOProStats_Purchases::status();
+            $joined = $purchases['thrivecart_not_joined'];
             $add('purchases', true, ($shops ? 'recorded from ' . implode(', ', $shops) : 'no supported shop active') . ($joined ? sprintf('; %d ThriveCart orders without a known page load', $joined) : ''));
+            $renewals = array();
+            foreach ($purchases['renewals'] as $row) {
+                $renewals[] = sprintf('%d / %.2f %s', $row['count'], $row['amount'], $row['currency']);
+            }
+            $full = $purchases['renewal_receipts'] >= SEOProStats_Purchases::KEEP_RENEWAL_IDS;
+            $add('renewals', !$full, ($renewals ? implode('; ', $renewals) : 'none recorded') . '; last 400 days; EDD Recurring not verified' . ($full ? '; receipt capacity reached: new renewals are not counted' : ''), 'warn');
         }
         return $out;
     }

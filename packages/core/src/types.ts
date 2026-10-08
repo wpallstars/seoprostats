@@ -229,6 +229,12 @@ export interface GoalsAnswer extends Answer {
 	range: Range;
 	visits: number;
 	goals: GoalRow[];
+	/** Site-wide daily counters; unavailable for visit-filtered, demo or sub-day requests. */
+	renewals?: {
+		scope: 'site' | 'unavailable';
+		days: (Revenue & { day: string })[];
+		totals: Revenue[];
+	};
 	compare?: { range: Range; visits: number; goals: GoalRow[] };
 }
 

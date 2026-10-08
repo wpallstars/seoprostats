@@ -51,7 +51,9 @@ Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events th
 
 Paid orders from WooCommerce, Easy Digital Downloads and FluentCart are recorded by themselves as a Purchase event with the order's total in its currency, on the visit that placed it, once per order; ThriveCart orders too once its secret word and webhook are set under Settings → Tracking. No order numbers or customer details are kept, and Settings → Tracking can switch it off.
 
-Refunds of newly recorded orders count once on the original visit and purchase date. Purchase goal and property revenue subtract them per currency without adding purchase completions. Older purchases without a saved visit cannot be adjusted; subscription renewals are still left out. ThriveCart refunds need a delivery ID and a remembered order (last 500).
+Refunds of newly recorded orders count once on the original visit and purchase date. Purchase goal and property revenue subtract them per currency without adding purchase completions. Older purchases without a saved visit cannot be adjusted. ThriveCart refunds need a delivery ID and a remembered order (last 500).
+
+Paid subscription renewals from WooCommerce Subscriptions, FluentCart and ThriveCart count separately by reception day in the site's timezone, without making visits or increasing Purchase completions. GET /goals and wp seoprostats doctor show counts and amounts per currency, retained for 400 days. At 10,000 retained payment hashes, doctor warns and new counts stop rather than risking duplicates. Filtered, demo and sub-day reports do not expose these site-wide totals. EDD Recurring is not yet supported; its extension contract remains unverified.
 
 = Does it record what people click? =
 
