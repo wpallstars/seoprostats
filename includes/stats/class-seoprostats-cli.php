@@ -773,12 +773,13 @@ final class SEOProStats_CLI {
      * : Only this search query (* for any text).
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools; no countries or devices).
+     * : google (Search Console), bing (Bing Webmaster Tools; no countries or devices) or all (Combined: every engine with data added up; no countries or devices).
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
@@ -829,6 +830,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats search queries --page=/pricing/
      *     wp seoprostats search pages --query="seo pro stats" --format=json
      *     wp seoprostats search --engine=bing
+     *     wp seoprostats search --engine=all
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -929,12 +931,13 @@ final class SEOProStats_CLI {
      * ---
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools).
+     * : google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up).
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
@@ -1812,12 +1815,13 @@ final class SEOProStats_CLI {
      * : ID of the goal counted (wp seoprostats goals); the first when left out.
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools) for the search figures.
+     * : google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up) for the search figures.
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
@@ -3557,8 +3561,15 @@ final class SEOProStats_CLI {
         if (!SEOProStats_Purchases::enabled()) {
             $add('purchases', true, 'off (SEO Pro Stats → Settings → Tracking)');
         } else {
-            $joined = SEOProStats_Purchases::status()['thrivecart_not_joined'];
+            $purchases = SEOProStats_Purchases::status();
+            $joined = $purchases['thrivecart_not_joined'];
             $add('purchases', true, ($shops ? 'recorded from ' . implode(', ', $shops) : 'no supported shop active') . ($joined ? sprintf('; %d ThriveCart orders without a known page load', $joined) : ''));
+            $renewals = array();
+            foreach ($purchases['renewals'] as $row) {
+                $renewals[] = sprintf('%d / %.2f %s', $row['count'], $row['amount'], $row['currency']);
+            }
+            $full = $purchases['renewal_receipts'] >= SEOProStats_Purchases::KEEP_RENEWAL_IDS;
+            $add('renewals', !$full, ($renewals ? implode('; ', $renewals) : 'none recorded') . '; last 400 days; EDD Recurring not verified' . ($full ? '; receipt capacity reached: new renewals are not counted' : ''), 'warn');
         }
         return $out;
     }

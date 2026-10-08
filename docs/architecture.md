@@ -288,9 +288,37 @@ hash. If the original visit has been pruned, it drops the refund instead
 of inventing a visit. Refunds revise the original purchase period, not the
 day money was returned. Purchase goal revenue and property revenue subtract
 the positive Refund amounts per currency; purchase completions are unchanged.
-Renewals are not recorded yet: subscription extension payloads still need
-verification; ThriveCart's account webhook documents
-`order.subscription_payment`, not `order.rebill_success`.
+Paid renewals from WooCommerce Subscriptions (the paid renewal order in
+`woocommerce_subscription_renewal_payment_complete`), FluentCart's
+`fluent_cart/order_paid_done` and ThriveCart's `order.subscription_payment`
+are daily counters, **not events or visits**. EDD Recurring is not supported
+until its extension's dispatch contract can be verified. Initial purchases,
+failed payments and disabled collection do not increment counters. Existing
+ThriveCart authentication and test-mode opt-in apply to renewal webhooks too.
+
+The existing non-autoloaded state holds `renewals[day][currency]` with
+`count` and integer-cent `amount`. Days are the site-local **reception day**:
+delayed callbacks are not backdated, since not every provider supplies a
+confirmed payment timestamp. A provider-namespaced payment identity is
+SHA-256 hashed into private `renewal_ids`; raw order/invoice/customer details
+are not retained in counters or exposed in reports. WooCommerce and
+FluentCart use unique renewal order IDs; ThriveCart requires its account,
+order and renewal-specific invoice identity, never its product/subscription
+ID. Receipt and increment share one option update under the existing lock.
+At most the current day and preceding 399 days survive the next accepted
+renewal; reads exclude older days even while idle. At 10,000 unexpired
+receipts new payments fail closed rather than evicting live identities and
+double-counting retries; doctor warns about that capacity. After the 400-day
+receipt horizon a replay can count again. Uninstall deletes the state.
+
+`GET /goals` adds `renewals = {scope, days, totals}` with main-unit amounts
+and separate currency totals for the requested full days. `range=all`
+includes retained renewal days even before the first recorded visit.
+Visit-filtered, demo, realtime and 24-hour requests return
+`scope: unavailable` and empty arrays, never unfilterable live amounts.
+Renewals do not join comparison goals or Purchase revenue/completions.
+Doctor reports retained counts and amounts per currency independently of
+the goal definitions. No visitor-page queries or option writes are added.
 
 ### Changes
 
@@ -813,7 +841,7 @@ widget follows the same choice and says when it shows demo data.
 off. Each has at most 10 ordered saved `ViewState` objects, name, note,
 locked filters, last-N-days boundary, expiry, visibility switches, branding
 and open counters. Every dashboard tab can be a section, each once; Search
-once per engine with data (Google, Bing), showing Rankings, Opportunities,
+once per engine with data (Google, Bing; not Combined), showing Rankings, Opportunities,
 Audit and Content (not Targets, Plan or Experiments, the owner's chosen
 searches, work list and notes). Search data and the change log have no visits, so a share with
 Search or Changes can lock only pages. PHP validates against the report engine's range/filter rules and the UI's
@@ -961,7 +989,23 @@ points are by week (`grain` `week`, each point the week's last day,
 lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
-number of days, so days not imported yet never look like a drop. Totals
+number of days, so days not imported yet never look like a drop.
+Rankings, Opportunities and Content also take `engine=all`, **Combined**
+(`SEOProStats_Search::ALL`, not a stored engine code): every engine with
+data (`with_data()`), read with `engine IN (…)` (`engine_where()`; each
+engine is still a range of the primary key `(engine, day, …)`), clicks,
+impressions and `pos_impr` added up, so CTR and position are over all of
+them and a query or page shared by engines (one dictionary id) is one
+row. Its period ends at the earliest of the engines' newest days
+(`span()`), so one engine's lag never looks like a drop; with a weekly
+engine it is whole weeks, and a page's or query's points are by week,
+each day added to the week it falls in, the weeks ending on the period's
+last day. It has no countries or devices. Each engine's days are its own
+(Google's in Pacific time, Bing's in UTC) and are added as they are.
+While fewer than two engines have data, `all` answers as the one with
+data (`report_engine()`), and the dashboard offers Combined only with two
+or more. The other Search reports (Audit, Targets, Plan, Experiments)
+read one engine: Google when Combined is chosen. Totals
 and the points (daily, monthly past 120 days) come from `gsc_totals` for
 the site, `gsc_pages` by `path_day` for a page or pattern, `gsc_queries`
 by `query_day` for a query, and `gsc_pairs` for both; each read names

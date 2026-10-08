@@ -933,6 +933,11 @@ paths:
         counting refunds as conversions or completions. Property revenue for
         Purchase or all events also subtracts refunds; an explicit Refund
         report shows positive returned amounts.
+        `renewals` contains site-wide daily paid renewal counts and amounts
+        (main currency units, by site-local callback reception day, up to
+        400 days). It is separate from Purchase revenue and completions.
+        Visit-filtered, demo, realtime and 24h requests return unavailable
+        scope and empty arrays. No renewal comparison is implied.
       parameters:
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
@@ -1276,8 +1281,9 @@ paths:
         impressions; lower is better, and 0 means no impressions.
         Both engines leave out rare searches, so rows add up to less
         than the totals. Demo data has made-up search days for both.
+        `engine=all` (Combined) adds both up.
       parameters:
-        - $ref: '#/components/parameters/engine'
+        - $ref: '#/components/parameters/combinedEngine'
         - name: kind
           in: query
           schema:
@@ -1385,7 +1391,7 @@ paths:
         never reads every query of every day. Page filters apply; other
         filters are listed in `ignored`.
       parameters:
-        - $ref: '#/components/parameters/engine'
+        - $ref: '#/components/parameters/combinedEngine'
         - name: kind
           in: query
           schema:
@@ -1894,7 +1900,7 @@ paths:
       summary: Content performance — each page's search clicks with its visits from search and their conversions.
       description: |
         Per page, the search engine's clicks, impressions, CTR and
-        position (`engine`: Google or Bing) beside the visits from
+        position (`engine`: Google, Bing or all, Combined) beside the visits from
         organic search (any engine) that
         started on the page, with their bounce rate, views per visit and
         time, and how many of those visits reached a goal: `goal`, or the
@@ -1913,7 +1919,7 @@ paths:
         the comparison has as many days. Page filters apply; other
         filters are listed in `ignored`.
       parameters:
-        - $ref: '#/components/parameters/engine'
+        - $ref: '#/components/parameters/combinedEngine'
         - name: sort
           in: query
           description: Order of the pages, most first.
@@ -2377,6 +2383,27 @@ components:
       schema:
         type: string
         enum: [google, bing]
+        default: google
+    combinedEngine:
+      name: engine
+      in: query
+      description: |
+        Search engine: google (Search Console), bing (Bing Webmaster Tools)
+        or all (Combined). Bing gives no devices or countries, and its pages
+        and queries by week: the period is widened at its start to whole
+        weeks, and a page's or query's points are by week. Combined adds up
+        every engine with data (clicks, impressions and position ×
+        impressions, so CTR and position are over all of them; a query or
+        page shown on more than one engine is one row); its period ends at
+        the earliest of the engines' newest days (`through`), in whole weeks
+        when one engine is weekly (a page's or query's points then by week,
+        ending on the period's last day), with no devices or countries. Each
+        engine's days are its own (Google's in Pacific time, Bing's in UTC).
+        While fewer than two engines have data, all answers as the one with
+        data (`engine` in the answer says which).
+      schema:
+        type: string
+        enum: [google, bing, all]
         default: google
     changePage:
       name: page
@@ -3985,6 +4012,28 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/GoalRow'
+            renewals:
+              type: object
+              required: [scope, days, totals]
+              properties:
+                scope:
+                  type: string
+                  enum: [site, unavailable]
+                days:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: '#/components/schemas/RenewalTotal'
+                      - type: object
+                        required: [day]
+                        properties:
+                          day:
+                            type: string
+                            format: date
+                totals:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/RenewalTotal'
             compare:
               type: object
               description: The comparison period's answer; each goal row then has `change` (visits, completions, conversion_rate).
@@ -3997,6 +4046,21 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/GoalRow'
+
+    RenewalTotal:
+      type: object
+      required: [currency, count, amount]
+      properties:
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        count:
+          type: integer
+          minimum: 0
+        amount:
+          type: number
+          minimum: 0
+          description: Paid renewal amount in main currency units, never summed across currencies.
 
     FunnelStepRow:
       allOf:
@@ -4330,12 +4394,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
+          required: [engine, engines, combined, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             range:
               $ref: '#/components/schemas/Range'
             through:
@@ -4681,12 +4747,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
+          required: [engine, engines, combined, kind, range, days, cut, through, first, connected, ignored, rules, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             kind:
               type: string
               enum: [striking, ctr, decay, missing, overlap]
@@ -5210,8 +5278,8 @@ components:
 
     SearchEngine:
       type: string
-      enum: [google, bing]
-      description: The search engine answered for.
+      enum: [google, bing, all]
+      description: The search engine answered for; all (Combined) only in the search, opportunities and content answers.
 
     SearchEngines:
       type: array
@@ -5219,6 +5287,10 @@ components:
       items:
         type: string
         enum: [google, bing]
+
+    SearchCombined:
+      type: boolean
+      description: Whether engine=all (Combined) adds anything up, two or more engines having data; without, all answers as the one engine with data.
 
     ContentMetrics:
       description: Search figures (the chosen engine's) with the visits from organic search that started on the page.
@@ -5277,12 +5349,14 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
+          required: [engine, engines, combined, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
             engines:
               $ref: '#/components/schemas/SearchEngines'
+            combined:
+              $ref: '#/components/schemas/SearchCombined'
             range:
               $ref: '#/components/schemas/Range'
             through:

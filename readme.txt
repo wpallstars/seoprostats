@@ -51,7 +51,9 @@ Yes. Under SEO Pro Stats → Goals, an administrator adds the pages or events th
 
 Paid orders from WooCommerce, Easy Digital Downloads and FluentCart are recorded by themselves as a Purchase event with the order's total in its currency, on the visit that placed it, once per order; ThriveCart orders too once its secret word and webhook are set under Settings → Tracking. No order numbers or customer details are kept, and Settings → Tracking can switch it off.
 
-Refunds of newly recorded orders count once on the original visit and purchase date. Purchase goal and property revenue subtract them per currency without adding purchase completions. Older purchases without a saved visit cannot be adjusted; subscription renewals are still left out. ThriveCart refunds need a delivery ID and a remembered order (last 500).
+Refunds of newly recorded orders count once on the original visit and purchase date. Purchase goal and property revenue subtract them per currency without adding purchase completions. Older purchases without a saved visit cannot be adjusted. ThriveCart refunds need a delivery ID and a remembered order (last 500).
+
+Paid subscription renewals from WooCommerce Subscriptions, FluentCart and ThriveCart count separately by reception day in the site's timezone, without making visits or increasing Purchase completions. GET /goals and wp seoprostats doctor show counts and amounts per currency, retained for 400 days. At 10,000 retained payment hashes, doctor warns and new counts stop rather than risking duplicates. Filtered, demo and sub-day reports do not expose these site-wide totals. EDD Recurring is not yet supported; its extension contract remains unverified.
 
 = Does it record what people click? =
 
@@ -73,16 +75,11 @@ SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and
 
 = Can it show search result types? =
 
-Search → Rankings → Appearance shows Google result types, such as video,
-product snippets and review snippets, with clicks, impressions, CTR,
-position and comparison changes. It is for the whole site and Google
-only, not Bing. One search can show several appearances, so these figures
-do not add up to the site's totals. REST kind=appearance, wp seoprostats
-search appearance and the seoprostats/search ability return the same rows.
+Yes. Search → Rankings → Appearance shows Google's result types, such as video, product snippets, review snippets and forums, with clicks, impressions, CTR and position against the previous period. It is for the whole site and Google only, not Bing. One search can show several appearances, so these figures do not add up to the site's totals. Scripts and AI agents read the same rows with REST kind=appearance, wp seoprostats search appearance and the seoprostats/search ability.
 
 = Can it show Bing too? =
 
-Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI).
+Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI). A Combined button (engine=all) adds Google and Bing up on Rankings, Opportunities and Content, with the period ending at the earlier of their newest days.
 
 = What does Search → Opportunities show? =
 

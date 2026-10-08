@@ -1,6 +1,7 @@
 /**
  * Search → Opportunities: where search effort pays, from the chosen
- * engine's imported days (Search Console or Bing), in five cards.
+ * engine's imported days (Search Console or Bing, or both added up:
+ * Combined), in five cards.
  *
  * - Striking distance: a page's query at position 4–20; the clicks it
  *   could gain in the top three.

@@ -229,6 +229,12 @@ export interface GoalsAnswer extends Answer {
 	range: Range;
 	visits: number;
 	goals: GoalRow[];
+	/** Site-wide daily counters; unavailable for visit-filtered, demo or sub-day requests. */
+	renewals?: {
+		scope: 'site' | 'unavailable';
+		days: (Revenue & { day: string })[];
+		totals: Revenue[];
+	};
 	compare?: { range: Range; visits: number; goals: GoalRow[] };
 }
 
@@ -382,11 +388,30 @@ export type SearchReport = (typeof SEARCH_REPORTS)[number];
 export const SEARCH_ENGINES = ['google', 'bing'] as const;
 export type SearchEngine = (typeof SEARCH_ENGINES)[number];
 
+/**
+ * The engine choices: an engine, or `all` (Combined), every engine with
+ * data added up. Combined is for Rankings, Opportunities and Content
+ * (COMBINED_REPORTS); it has no countries or devices, and with an engine
+ * by week its period is whole weeks.
+ */
+export const SEARCH_ENGINE_CHOICES = [...SEARCH_ENGINES, 'all'] as const;
+export type SearchEngineChoice = (typeof SEARCH_ENGINE_CHOICES)[number];
+
+/** The Search reports that can show Combined; the others show one engine (Google for Combined). */
+export const COMBINED_REPORTS = ['rankings', 'opportunities', 'content'] as const;
+
+/** The one engine a report of one engine reads: Google for Combined. */
+export function singleEngine(engine: SearchEngineChoice | undefined): SearchEngine {
+	return engine && engine !== 'all' ? engine : 'google';
+}
+
 /** What every search answer says about its engine. */
-export interface SearchEngineAnswer {
-	engine: SearchEngine;
+export interface SearchEngineAnswer<E extends SearchEngineChoice = SearchEngine> {
+	engine: E;
 	/** Engines with search data or connected; Google always. */
 	engines: SearchEngine[];
+	/** Rankings, Opportunities and Content: whether Combined adds anything up (two or more engines with data). */
+	combined?: boolean;
 }
 
 export interface SearchMetrics {
@@ -423,7 +448,7 @@ export interface SearchRow extends SearchMetrics {
 	compare?: SearchMetrics & { change: SearchChange };
 }
 
-export interface SearchAnswer extends Answer, SearchEngineAnswer {
+export interface SearchAnswer extends Answer, SearchEngineAnswer<SearchEngineChoice> {
 	/** The range cut at the newest day with search data. */
 	range: Range;
 	/** Newest and first day with search data (YYYY-MM-DD); '' with none. */
@@ -547,7 +572,7 @@ export interface OpportunityOverlap extends OpportunityPage, SearchMetrics {
 	potential: number;
 }
 
-export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer {
+export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer<SearchEngineChoice> {
 	kind: OpportunityKind;
 	/** The period read: cut at the newest search day and to its newest 91 days. */
 	range: Range;
@@ -648,7 +673,7 @@ export interface ContentRow extends ContentMetrics, OpportunityPage {
 	compare?: ContentMetrics & { change: ContentChange };
 }
 
-export interface ContentAnswer extends Answer, SearchEngineAnswer {
+export interface ContentAnswer extends Answer, SearchEngineAnswer<SearchEngineChoice> {
 	/** The range cut at the newest day with search data. */
 	range: Range;
 	through: string;

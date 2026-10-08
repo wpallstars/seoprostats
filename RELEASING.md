@@ -56,10 +56,12 @@ expected in the GitHub zip too.
    `main` to every site, and the shared updater skips tags with letters.
 2. On the pull request's branch: `scripts/preflight-release.sh` (no errors) and
    `scripts/plugin-check.sh` (no errors).
+   <!-- spst-own:start -->
    When `scripts/shop-test.sh` exists, run it before release if purchases
    code or a supported shop has changed since the last check, including
    `scripts/shop-test.sh --php 7.4 --wp 6.2`. Keep the tested shop versions
    and any compatibility skips in the pull request's verification results.
+   <!-- spst-own:end -->
 3. Merge, then straight away:
 
    ```bash

@@ -179,22 +179,35 @@ long-term record.
       in `docs/` (GH#82).
 - [ ] Optional location database (DB-IP Lite) with our own reader.
 
-## Phase 7: move from other statistics plugins (depends on 6's import)
+## Phase 7: move from other statistics plugins (GH#108)
 
-Bring a site's history across when it switches, on top of the Phase 6
-import (import id, undo, daily aggregates where only totals exist).
+Bring a site's history and settings across when it switches, then help
+remove the old plugin and its leftovers. Sources are found by their data
+(tables, options), not only by the plugin being installed. Imported days
+go in `daily` with an import id (undo). Each day is filled by one source
+only: never over days we recorded ourselves, and where several sources
+share days, the owner picks which one fills them. Other statistics
+plugins may keep running beside SEO Pro Stats (none goes in `REPLACES`).
+It brings its own import engine, so it does not wait for Phase 6's
+generic import.
 
+- [ ] Engine, detection, dry run, overlap choice, check after import,
+      Remove leftover data (confirmed, only while the plugin is
+      inactive), Settings → Import tab, REST, WP-CLI, abilities, and
+      Burst Statistics as the first source (GH#109).
+- [ ] Notices on the Plugins screen and SEO Pro Stats's screens through
+      each step: import, check, deactivate and delete, remove leftovers;
+      shown until the plugin and its data are gone (GH#110, after
+      GH#109).
 - [ ] Jetpack Stats (from WordPress.com, by the site's Jetpack
       connection): daily views and visitors, top pages, referrers,
-      search terms, countries.
-- [ ] Plugins that keep their data in the site's own database (WP
-      Statistics, Koko Analytics, Independent Analytics, Slimstat,
-      Statify, Matomo for WordPress and other popular ones): read their
-      tables directly, for each its version's table layout, checked
-      against a real install first.
-- [ ] Detection: offer the import when one of these is active or has
-      left its tables; dry run with counts and date range before writing;
-      imported days never overlap days we recorded ourselves.
+      countries. Built from Jetpack's open-source code without a test
+      site; invited users with Jetpack test it (GH#111, after GH#109).
+- [ ] Plugins that keep their data in the site's own database, each
+      table layout checked against a real install first: Koko Analytics
+      and Statify (GH#112), WP Statistics and Independent Analytics
+      (GH#113), Slimstat and Matomo for WordPress (GH#114); all after
+      GH#109.
 
 ## Later
 

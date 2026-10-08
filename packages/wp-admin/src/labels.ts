@@ -11,19 +11,19 @@ import { locale } from './boot';
 
 /** API values stay open-ended; only presentation names are known here. */
 export function appearanceLabel(value: string): string {
-    const names: Record<string, string> = {
-        AMP_BLUE_LINK: __('AMP blue link', 'seoprostats'),
-        AMP_TOP_STORIES: __('AMP top stories', 'seoprostats'),
-        AMP_IMAGE_RESULT: __('AMP image result', 'seoprostats'),
-        VIDEO: __('Video', 'seoprostats'),
-        PRODUCT_SNIPPETS: __('Product snippets', 'seoprostats'),
-        MERCHANT_LISTINGS: __('Merchant listings', 'seoprostats'),
-        REVIEW_SNIPPET: __('Review snippets', 'seoprostats'),
-        FORUMS: __('Forums', 'seoprostats'),
-        AMP_STORY: __('AMP story', 'seoprostats'),
-    };
-    const sentence = value.replace(/_/g, ' ').toLowerCase();
-    return names[value] ?? sentence.charAt(0).toUpperCase() + sentence.slice(1);
+	const names: Record<string, string> = {
+		AMP_BLUE_LINK: __('AMP blue link', 'seoprostats'),
+		AMP_TOP_STORIES: __('AMP top stories', 'seoprostats'),
+		AMP_IMAGE_RESULT: __('AMP image result', 'seoprostats'),
+		VIDEO: __('Video', 'seoprostats'),
+		PRODUCT_SNIPPETS: __('Product snippets', 'seoprostats'),
+		MERCHANT_LISTINGS: __('Merchant listings', 'seoprostats'),
+		REVIEW_SNIPPET: __('Review snippets', 'seoprostats'),
+		FORUMS: __('Forums', 'seoprostats'),
+		AMP_STORY: __('AMP story', 'seoprostats'),
+	};
+	const sentence = value.replace(/_/g, ' ').toLowerCase();
+	return names[value] ?? sentence.charAt(0).toUpperCase() + sentence.slice(1);
 }
 
 export function viewLabel(view: View): string {

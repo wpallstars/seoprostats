@@ -42,6 +42,7 @@ import {
 	type QueueKind,
 	type QueueStatus,
 	type RefreshProposal,
+	singleEngine,
 	type SearchEngine,
 	type TargetFinding,
 } from '@seoprostats/core';
@@ -175,7 +176,7 @@ type PlanProps = SearchReportProps & {
 export function Plan({ state, update, open, onEngines }: PlanProps) {
 	const status: QueueFilter = state.status ?? 'open';
 	const goal = state.goal ?? '';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first items when the period, filters, engine, state or goal change.
 	const scope = JSON.stringify([apiArgs(state), engine, status, goal]);
 	const [at, setAt] = useState({ scope, offset: 0 });

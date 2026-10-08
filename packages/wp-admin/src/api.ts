@@ -12,6 +12,7 @@ import { addQueryArgs } from '@wordpress/url';
 import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
 	apiArgs,
+	singleEngine,
 	type AuditAnswer,
 	type AuditFinding,
 	type BreakdownAnswer,
@@ -231,15 +232,20 @@ export function useClicks(scope: Scope, kind: ClickKind, page: string, limit = 5
 /** A search report's scope: the engine too (Google when left out). */
 type SearchScope = Scope & Pick<ViewState, 'engine'>;
 
-/** The engine argument: Google is the default, so it is left out. */
-function engineArg(scope: SearchScope): Args {
-	return scope.engine && scope.engine !== 'google' ? { engine: scope.engine } : {};
+/**
+ * The engine argument: Google is the default, so it is left out. Combined
+ * (all) goes to Rankings, Opportunities and Content only (`combined`); the
+ * other reports read one engine, Google for Combined.
+ */
+function engineArg(scope: SearchScope, combined = false): Args {
+	const engine = combined ? (scope.engine ?? 'google') : singleEngine(scope.engine);
+	return engine !== 'google' ? { engine } : {};
 }
 
 /** Search (an engine's imported days): totals, points and rows of one kind; optionally one page's or one query's. */
 export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
 	return useQuery({
 		queryKey: ['search', args],
 		queryFn: () => get<SearchAnswer>('search', args),
@@ -251,7 +257,7 @@ export function useSearch(scope: SearchScope, kind: SearchKind, page: string, qu
 /** Search opportunities of one kind (decay always against an earlier period: the previous one unless a year ago is chosen). */
 export function useOpportunities(scope: SearchScope, kind: OpportunityKind, limit = 10, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs({ ...scope, compare: scope.compare === 'year' ? 'year' : 'prev' }), ...engineArg(scope), kind, limit, offset }, data);
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: scope.compare === 'year' ? 'year' : 'prev' }), ...engineArg(scope, true), kind, limit, offset }, data);
 	return useQuery({
 		queryKey: ['opportunities', args],
 		queryFn: () => get<OpportunitiesAnswer>('opportunities', args),
@@ -332,7 +338,7 @@ export async function deleteTargets(data: DataSet, queries: string[], all = fals
 /** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first). */
 export function useContent(scope: SearchScope, sort: ContentSort, goal: string, limit = 25, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
 	return useQuery({
 		queryKey: ['content', args],
 		queryFn: () => get<ContentAnswer>('content', args),

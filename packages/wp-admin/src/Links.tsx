@@ -25,6 +25,7 @@ import {
 	type LinksMissingRow,
 	type LinksPageRow,
 	type LinksRow,
+	singleEngine,
 	type SearchEngine,
 } from '@seoprostats/core';
 import { errorMessage, useLinks } from './api';
@@ -59,7 +60,7 @@ function isMissing(row: LinksRow): row is LinksMissingRow {
 export function Links({ state, update, open }: LinksProps) {
 	const kind: LinksKind = state.links ?? 'orphans';
 	const goal = state.goal ?? '';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, filters, engine, list or goal change.
 	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, kind, goal]);
 	const [at, setAt] = useState({ scope, offset: 0 });
