@@ -314,25 +314,43 @@ final class SEOProStats_Search_Import {
             $queue = array_values(array_unique(array_merge(array_filter(array_map('strval', array_column(array_column($found, 'keys'), 0))), array_values(SEOProStats_Query::texts(array_map('intval', (array) $ids))))));
             SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
         }
+        // One import for the run, as for Bing's pages with their queries: one entry in the list, undone together.
+        $import = 0;
+        $rows   = 0;
+        $days   = array();
         while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
             $value = (string) $queue[0];
-            $data = $class::appearances($token, $property, $from, $to, $value);
+            $data  = $class::appearances($token, $property, $from, $to, $value);
             if (is_wp_error($data)) {
+                if ($import) {
+                    self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
+                }
                 return self::failed($source, $data);
             }
-            $import = self::start($source, $property, $from);
             if (!$import) {
-                return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
+                $import = self::start($source, $property, $from);
+                if (!$import) {
+                    return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
+                }
             }
             $added = self::replace_appearance($value, $data, $from, $to, $import);
-            self::finish($import, is_wp_error($added) ? self::FAILED : self::DONE, array($from, $to), is_wp_error($added) ? 0 : $added, is_wp_error($added) ? $added->get_error_message() : '');
             if (is_wp_error($added)) {
+                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
                 return self::failed($source, $added);
             }
-            $result['rows'] += $added;
-            $result['import'] = $import;
+            $rows += $added;
+            $got   = array_map('strval', array_column(array_column($data, 'keys'), 0));
+            $days  = array_values(array_unique(array_merge($days, array_filter($got, function ($day) use ($from, $to) {
+                return $day >= $from && $day <= $to;
+            }))));
             array_shift($queue);
-            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue, 'last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
+            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        }
+        if ($import) {
+            self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
+            SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
+            $result['rows']  += $rows;
+            $result['import'] = $import;
         }
         if (!$queue) {
             SEOProStats_Connections::update_state($source, array('appearance_from' => null, 'appearance_to' => null, 'appearance_queue' => null));
