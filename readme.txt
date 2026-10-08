@@ -115,7 +115,7 @@ Search → Experiments checks it. Write down a change and what it should do, suc
 
 = Can I A/B test part of a page? =
 
-Yes. In the block editor, select a block or several and choose A/B test in the block toolbar. Variant A holds your blocks and Variant B starts as a copy to change; pick the variant to edit from the test's toolbar, and set its name, status, goals and each variant's weight in the sidebar. Once running, each page load shows one variant, picked in the browser before the page is drawn, with no cookies or browser storage; search engines, visitors without JavaScript and page caches see Variant A. Tests start in posts and pages. Results by variant come in a later version.
+Yes. In the block editor, select a block or several and choose A/B test in the block toolbar. Variant A holds your blocks and Variant B starts as a copy to change; pick the variant to edit from the test's toolbar, and set its name, status, goals and each variant's weight in the sidebar. Once running, each page load shows one variant, picked in the browser before the page is drawn, with no cookies or browser storage; search engines, visitors without JavaScript and page caches see Variant A. Tests start in posts and pages. Each pageview records the variants it showed, and clicks inside a variant count for it; results by variant come in a later version. To show a visitor the same variant on every page of a visit, turn on Settings → Tracking → Show each visit one variant of an A/B test (off by default): it keeps the variant in the browser tab's session storage until the tab closes, which privacy law treats like a cookie, so it may need consent.
 
 = Can an AI agent run the SEO work week by week? =
 

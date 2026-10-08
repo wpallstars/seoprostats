@@ -85,10 +85,10 @@ batched and as `text/plain` so no CORS preflight:
 
 | Type | When | What |
 |---|---|---|
-| `pv` pageview | load, SPA navigation (`pushState`, `replaceState`, `popstate`; hash routes when enabled) | path and allowed query parameters, referrer, UTM tags, screen width, time zone, language, page properties (`data-props`); the page as loaded also sends its context (`data-ctx`: not found, site search with its words and result count, the post or other single item shown, logged in) |
+| `pv` pageview | load, SPA navigation (`pushState`, `replaceState`, `popstate`; hash routes when enabled) | path and allowed query parameters, referrer, UTM tags, screen width, time zone, language, page properties (`data-props`); the page as loaded also sends its context (`data-ctx`: not found, site search with its words and result count, the post or other single item shown, logged in), and the A/B test variants it shows (`ab`: up to 20 `test:variant` from `data-spst-ab`) |
 | `eng` engagement | page hidden or left | visible seconds, deepest scroll %, for the pageview it follows |
 | `e` event | `seoprostats('Name', {props, revenue})`, outbound links, affiliate links, file downloads, `data-sps-event` attributes | name, up to 30 properties (300 characters each, scalars only), revenue as `{amount, currency}` |
-| `c` click / `f` form | clicks on things made to be clicked (links, buttons, `role=button`…), images and elements shown with a pointer; form submits (autocapture, Settings → Tracking) | `tag#id.class` selector (names with three digits in a row left out), visible label (60 characters), destination (a path here, origin and path elsewhere, `mailto:`/`tel:` without the address), flags (dead, outbound, affiliate, file); a form's name, destination and field count. Never field values. |
+| `c` click / `f` form | clicks on things made to be clicked (links, buttons, `role=button`…), images and elements shown with a pointer; form submits (autocapture, Settings → Tracking) | `tag#id.class` selector (names with three digits in a row left out), visible label (60 characters), destination (a path here, origin and path elsewhere, `mailto:`/`tel:` without the address), flags (dead, outbound, affiliate, file), the A/B test variant it is inside (`ab`); a form's name, destination and field count. Never field values. |
 | `v` vitals | sampled page loads, on leave | LCP, INP, CLS, FCP, TTFB and the element or script behind each |
 | `x` error | uncaught errors and rejections | type, message, top 20 stack frames without query strings; at most 10 per page |
 
@@ -109,7 +109,10 @@ The tracker stores nothing in the browser (no cookies, `localStorage` or
 `sessionStorage`, which privacy law treats like cookies). It keeps a random
 ID for each page load in memory and sends it with the pageview, its
 engagement and its events, so they can be joined. Visits are made on the
-server (Processing → Sessions).
+server (Processing → Sessions). The one opt-in exception is not the
+tracker's: Settings → Tracking → one A/B test variant per visit (off by
+default) lets the A/B test swap script keep the variant shown in the
+tab's `sessionStorage` (A/B tests below).
 
 The tracker skips: logged-in users with a role that is not counted (by
 default every role that can edit posts), feeds, previews, the customizer,
@@ -652,7 +655,7 @@ mirrors `search-console`.
 
 ### A/B tests
 
-`SEOProStats_AB_Tests` (schema v16) shows each visitor one version of a
+`SEOProStats_AB_Tests` (schema v16, exposures v17) shows each visitor one version of a
 part of a page, to learn which does better. They are **A/B tests**
 everywhere (blocks, table, routes, commands); **Experiments** are another
 feature (a change and its expected effect, above).
@@ -692,10 +695,29 @@ feature (a change and its expected effect, above).
   (`SEOProStats_AB_Tests::script()`, under 1 KB). As the page is
   parsed, before paint, it picks a variant by weight for that page load,
   swaps it in for the control and sets `data-spst-ab="<test>:<variant>"` on
-  the wrapper for collection (part 2). Crawlers, visitors without
-  JavaScript, feeds and page caches see one variant; nothing is stored
-  in the browser, and no query, option or remote request runs. Draft,
-  paused and ended tests print only the control or winner.
+  the wrapper for collection. Crawlers, visitors without JavaScript,
+  feeds and page caches see one variant; by default nothing is stored in
+  the browser, and no query, option or remote request runs. Draft, paused
+  and ended tests print only the control or winner.
+- **One variant per visit** (Settings → Tracking, `tracking_ab_visit`,
+  off by default). Off, each page load picks again. On, the script first
+  reads `sessionStorage` key `spst-ab-<test>` and shows that variant if it
+  is still offered (a control weighted 0 is not), else picks by weight;
+  it then stores the variant shown. The value lasts until the tab closes
+  and holds only the variant slug. The setting is disclosed as browser
+  storage, which privacy law treats like cookies; it is in the page
+  cache's tracker settings, so cached pages are cleared when it changes.
+- **Exposures** (`ab_exposures`, schema v17). Each pageview sends the
+  pairs of the variants it shows (`ab`); each click inside a variant
+  sends its own pair. The processor keeps a pair only when its test and
+  variant are in `ab_tests` (one primary-key query per batch, so a forged
+  hit cannot add either), then writes one row per page load and test
+  (primary key `(pkey, test_id)`, `INSERT IGNORE`, so a resumed batch adds
+  nothing) with the visit, day and time, and adds clicks inside the
+  variant to that row. Visits come from the visits table, so reports
+  count visitors and conversions per variant by joining `session_id`.
+  Rows are pruned with pageviews (visit retention) and dropped with the
+  other tables. Nothing new runs on visitor pages.
 - **Without the plugin**, the saved markup has every variant one after
   the other, so a page shows them all while SEO Pro Stats is inactive.
   Picking a winner (part 4) replaces the test with its blocks.
@@ -1082,6 +1104,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `sitemap` | an address in the site's own sitemaps other than its posts (schema v12; `docs/seo-loop.md`) | `path_id` (primary key), `source` (1 category and tag archives, 2 author archives, 3 another provider), `first_seen` (when first listed), `seen` (the read that last listed it) |
 | `targets` | a search the site chose to win and the page meant for it (schema v13; `docs/seo-loop.md`) | `query_id` (primary key, `DICT_QUERY`), `path_id` (0: none chosen), `priority` (0–100), `status` (1 candidate, 2 targeted, 3 live, 4 won, 5 retired), `source` (1 list, 2 aidevops, 3 demo), `created`, `updated`, `user_id` |
 | `ab_tests` | an A/B test in a post, read when the post is saved (schema v16; A/B tests above) | `test_id` (primary key, the block's `testId`), `post_id`, `name`, `variants` (JSON: slug, label, weight), `goals` (JSON goal ids), `status` (0 draft, 1 running, 2 paused, 3 ended), `winner` (a variant slug), `created`, `updated`, `started` (first ran), `ended`, `removed` (when it left its post; 0 while in it) |
+| `ab_exposures` | a page load × A/B test it showed (schema v17; A/B tests above) | `pkey` (the pageview's page-load ID), `test_id` (`DICT_AB_TEST`), `variant_id` (`DICT_AB_VARIANT`; primary key `(pkey, test_id)`), `session_id`, `day`, `ts`, `clicks` (clicks inside the variant) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -1108,6 +1131,8 @@ v9); `page_facts` has `post_id`, `checked`, `flags`, `title_hash` and
 `desc_hash` (schema v10), and `links_in`, and `page_links` `to_path`
 (schema v11), and `published`, and `sitemap` `first_seen` and `seen`
 (schema v12); `ab_tests` has `post_id` and `status` (schema v16);
+`ab_exposures` has `(test_id, day, variant_id, session_id)` for a test's
+results and `ts` for retention (schema v17);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →

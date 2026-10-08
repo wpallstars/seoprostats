@@ -443,6 +443,8 @@ final class SEOProStats_Rollup {
         if (isset($jobs['visits'])) {
             $out[] = array(SEOProStats_Schema::table('props'), 'ts', $jobs['visits'], SEOProStats_Schema::OWNER_PAGEVIEW);
             $out[] = array(SEOProStats_Schema::table('pageviews'), 'ts', $jobs['visits'], 0);
+            // A/B test variants shown go with their pageviews.
+            $out[] = array(SEOProStats_Schema::table('ab_exposures'), 'ts', $jobs['visits'], 0);
             $out[] = array(SEOProStats_Schema::table('sessions'), 'started', $jobs['visits'], 0);
         }
         if (isset($jobs['events'])) {

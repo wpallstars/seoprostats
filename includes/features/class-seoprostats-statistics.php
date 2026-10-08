@@ -137,6 +137,13 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Record site search words', 'seoprostats'),
                 'description' => __('What people search for on the site, to show what they look for and what it does not have. Emails and long numbers are hidden. Off: searches and searches with no results are still counted, without their words.', 'seoprostats'),
             ),
+            'tracking_ab_visit'       => array(
+                'type'        => 'bool',
+                'default'     => false,
+                'parent'      => self::KEY,
+                'label'       => __('Show each visit one variant of an A/B test', 'seoprostats'),
+                'description' => __('Off: each page load picks a variant again and nothing is stored in the browser. On: the variant a visitor saw first is kept in the browser tab\'s session storage (spst-ab- and the test) until the tab is closed, so pages seen again show the same one. Privacy law treats browser storage like cookies, so this may need the visitor\'s consent.', 'seoprostats'),
+            ),
             'tracking_affiliate'      => array(
                 'type'        => 'lines',
                 'default'     => "/go/*\n/recommends/*",
@@ -517,6 +524,16 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function search_terms() {
         return (bool) SEOProStats_Settings::get('tracking_search');
+    }
+
+    /**
+     * Whether a running A/B test keeps showing a visit the variant it
+     * showed first, by keeping it in the tab's sessionStorage (opt-in).
+     *
+     * @return bool
+     */
+    public static function ab_one_variant() {
+        return (bool) SEOProStats_Settings::get('tracking_ab_visit');
     }
 
     /**

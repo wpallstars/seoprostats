@@ -107,6 +107,9 @@ const FIELDS = 'input,select,textarea,label,option,[contenteditable],[role=check
 /** Milliseconds a click waits for the page to react before it counts as dead. */
 const DEAD_MS = 1000;
 
+/** A running A/B test's wrapper, marked "test:variant" by its swap script (SEOProStats_AB_Tests). */
+const AB = '[data-spst-ab]';
+
 const win = window;
 const doc = document;
 const nav = navigator;
@@ -293,6 +296,11 @@ function startPage(referrer: string, props?: unknown, context?: unknown): void {
 	}
 	if (context && typeof context === 'object') {
 		hit.x = context;
+	}
+	// The A/B test variants this page shows (up to 20).
+	const ab = Array.from(doc.querySelectorAll(AB), (el) => el.getAttribute('data-spst-ab')).slice(0, 20);
+	if (ab.length) {
+		hit.ab = ab;
 	}
 	push(hit);
 }
@@ -482,6 +490,11 @@ function clicked(e: MouseEvent): void {
 	const el = cfg.c ? clickable(e.target) : null;
 	if (el && pageId) {
 		const hit: Hit = { t: 'c', p: pageId, s: selector(el), l: text(el), h: to.to, f: to.flags };
+		// Inside an A/B test variant: which one.
+		const test = el.closest(AB);
+		if (test) {
+			hit.ab = test.getAttribute('data-spst-ab');
+		}
 		// A link that leaves the page reacts by itself; anything else may do nothing.
 		const leaves = link && to.to && !/^#|^javascript:/i.test(link.getAttribute('href') || '');
 		if (leaves || sent) {

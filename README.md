@@ -113,7 +113,15 @@ and nothing is stored: no cookie or browser storage. Search engines,
 visitors without JavaScript, feeds and page caches see Variant A (or the
 winner). Draft, paused and ended tests show Variant A or the winner only.
 Saving a post keeps a list of its tests; a test taken out of a post is
-kept as removed, so its results stay. Results come in a later version.
+kept as removed, so its results stay.
+
+Each pageview records the variants it showed, and clicks inside a
+variant count for it; results by variant come in a later version. To show
+a visitor the same variant on every page of a visit, turn on **Settings →
+Tracking → Show each visit one variant of an A/B test** (off by default).
+It keeps the variant in the browser tab's session storage until the tab is
+closed. Privacy law treats browser storage like cookies, so this may need
+your visitors' consent.
 While SEO Pro Stats is switched off, a page shows all of a test's
 variants one after another.
 
@@ -380,6 +388,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: A/B tests of blocks, part 2: what each visitor saw. Each pageview sends the A/B test variants it shows and each click inside a variant says which, into a new `ab_exposures` table (schema v17): one row per page load and test, with its visit and clicks, only for tests and variants the site has. Kept as long as visits. New opt-in setting, **Settings → Tracking → Show each visit one variant of an A/B test**: off, each page load picks again and nothing is stored; on, the variant is kept in the tab's session storage, which may need consent.
 - New: A/B tests of blocks, part 1: the blocks, the editor and the site. Choose **A/B test** on any block or selection in the block editor; Variant A holds it and Variant B starts as a copy. Pick the variant to edit from the test's toolbar, and set the name, status, goals and each variant's label and weight in the sidebar. A running test shows each page load one variant, picked by weight before the page is drawn, with no cookie, storage or query; search engines, visitors without JavaScript and page caches see Variant A. Saving a post keeps its tests in a new `ab_tests` table (schema v16). Results come in later parts.
 - New: Settings → Import also reads Jetpack Stats (Jetpack or the standalone Jetpack Stats plugin), built from Jetpack 16.3's published code and to be tested by people who use it. Its history is on WordPress.com: while Jetpack is active, connected and has Stats on, SEO Pro Stats looks up the daily views and visitors in the background, then imports each day's views of posts and pages, referrers and countries, in cron and WP-CLI only, without filling Jetpack's caches, waiting and trying again when WordPress.com is busy. The Import tab and `wp seoprostats migrate list` say when Jetpack needs connecting or updating; `wp seoprostats migrate run jetpack --dry-run --requests` lists each request for problem reports (never tokens or statistics). After importing, switch off Stats in Jetpack; Remove leftover data lists only its statistics caches.
 - New: Settings → Import also reads Slimstat (from version 5.5.0) and Matomo for WordPress (5.13.1), which keep raw rows, often millions: each day is read with grouped queries on their time index, and the dry run estimates their counts from three days when their tables are large (from table statistics, without counting), so it answers in seconds. Slimstat: its pageviews and archived pageviews by its local timestamps, without crawlers and wp-admin pages, each visit counted as one visitor. Matomo: its raw visit logs (not its reporting API, which needs it active and starts archiving), visits by their last action's time, campaign name and keyword as campaign tags. Both bring pages, entry and exit pages, referrers, channels, search landing pages, countries, devices, browsers and systems. Their excluded roles and IP addresses (and Slimstat's Do Not Track and retention) fill ours where still at the default; Remove leftover data lists exactly what each leaves, now including roles a plugin added (Matomo's four).
