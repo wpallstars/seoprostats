@@ -1484,6 +1484,207 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Search targets: the searches the site chose to win and the page
+     * meant for each, with how search treats them now.
+     *
+     * List gives each target's clicks, impressions and position on any
+     * page, the page search shows most for it, and its state: ranking (the
+     * page meant for it), wrong_page (another page), no_page (none chosen)
+     * or not_shown (no impressions). The period is cut at the newest day
+     * with search data and to its newest 91 days.
+     *
+     * Import reads a list from a file (or - for standard input): CSV or
+     * tab-separated text (a header row naming query, page, priority and
+     * status, or those columns in that order), JSON, or the aidevops search
+     * targets table (TOON: phrase, target_url, priority, status). Targets
+     * are added or updated by query; rows without search text, with an
+     * address that is not on this site, or with a priority or status that
+     * cannot be read are skipped and listed.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : list, import or delete.
+     * ---
+     * default: list
+     * options:
+     *   - list
+     *   - import
+     *   - delete
+     * ---
+     *
+     * [<what>...]
+     * : For import: the file (- for standard input). For delete: the searches.
+     *
+     * [--replace]
+     * : For import: delete the targets that are not in the list.
+     *
+     * [--all]
+     * : For delete: delete every target.
+     *
+     * [--yes]
+     * : For delete --all: do not ask.
+     *
+     * [--status=<status>]
+     * : For list: all, open (candidate, targeted and live), candidate, targeted, live, won or retired.
+     * ---
+     * default: all
+     * ---
+     *
+     * [--range=<range>]
+     * : As for stats.
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--compare=<compare>]
+     * : As for stats: previous or year adds the position and clicks then.
+     *
+     * [--engine=<engine>]
+     * : google (Search Console) or bing (Bing Webmaster Tools).
+     * ---
+     * default: google
+     * options:
+     *   - google
+     *   - bing
+     * ---
+     *
+     * [--limit=<limit>]
+     * : Most rows (100 when left out).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats targets
+     *     wp seoprostats targets --status=open --range=90d
+     *     wp seoprostats targets import targets.csv
+     *     wp seoprostats targets import - < keywords.toon
+     *     wp seoprostats targets delete "privacy friendly analytics"
+     *     wp seoprostats targets --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function targets($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
+        $action = isset($args[0]) ? (string) $args[0] : 'list';
+        $what   = array_slice($args, 1);
+        if ($action === 'import') {
+            $this->targets_import($what, $assoc);
+            return;
+        }
+        if ($action === 'delete') {
+            $all = !empty($assoc['all']);
+            if ($all) {
+                WP_CLI::confirm(__('Delete every search target?', 'seoprostats'), $assoc);
+            }
+            $done = $this->on_data($assoc, static function () use ($what, $all) {
+                return SEOProStats_Targets::delete($what, $all);
+            });
+            if (is_wp_error($done)) {
+                WP_CLI::error($done->get_error_message());
+            }
+            /* translators: 1: targets deleted, 2: targets left */
+            WP_CLI::success(sprintf(__('Deleted %1$d targets; %2$d left.', 'seoprostats'), $done['deleted'], $done['total']));
+            return;
+        }
+        if ($action !== 'list') {
+            WP_CLI::error(__('The action is list, import or delete.', 'seoprostats'));
+        }
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $status = isset($assoc['status']) ? (string) $assoc['status'] : 'all';
+        $req    = $this->request(array_diff_key($assoc, array('status' => 1)) + array('range' => '30d', 'limit' => (string) SEOProStats_Targets::LIMIT));
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $status) {
+            return SEOProStats_Targets::report($req, $engine, $status);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        WP_CLI::log(implode(', ', array_map(static function ($name, $n) {
+            return $name . ' ' . $n;
+        }, array_keys($answer['counts']), $answer['counts'])));
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No targets. Import a list with: wp seoprostats targets import <file>', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $rows[] = array(
+                'query'       => $row['query'],
+                'priority'    => $row['priority'],
+                'status'      => $row['status'],
+                'state'       => $row['state'],
+                'page'        => $row['page'] ? $row['page']['path'] : '–',
+                'shown'       => $row['shown'] ? $row['shown']['path'] : '–',
+                'position'    => $row['position'] === null ? '–' : $row['position'],
+                'clicks'      => $row['clicks'],
+                'impressions' => $row['impressions'],
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * wp seoprostats targets import: read the list and import it.
+     *
+     * @param string[]             $what  The file (- for standard input).
+     * @param array<string,string> $assoc Options.
+     */
+    private function targets_import(array $what, array $assoc) {
+        $file = isset($what[0]) ? (string) $what[0] : '';
+        if ($file === '') {
+            WP_CLI::error(__('Name the file to import, or - for standard input.', 'seoprostats'));
+        }
+        if ($file === '-') {
+            $text = (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the list piped in.
+        } elseif (is_readable($file) && is_file($file)) {
+            $text = (string) file_get_contents($file, false, null, 0, SEOProStats_Targets::MAX_BYTES + 1); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
+        } else {
+            /* translators: %s: file name */
+            WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
+        }
+        $replace = !empty($assoc['replace']);
+        $done    = $this->on_data($assoc, static function () use ($text, $replace) {
+            $parsed = SEOProStats_Targets::parse($text);
+            if (is_wp_error($parsed)) {
+                return $parsed;
+            }
+            $done = SEOProStats_Targets::import($parsed['rows'], $parsed['format'] === 'toon' ? 'aidevops' : 'list', $replace);
+            return is_wp_error($done) ? $done : array('format' => $parsed['format']) + $done;
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        foreach ($done['skipped'] as $skip) {
+            /* translators: 1: row number, 2: search query, 3: why it is skipped */
+            WP_CLI::warning(sprintf(__('Row %1$d (%2$s) skipped: %3$s', 'seoprostats'), $skip['row'], $skip['query'] !== '' ? $skip['query'] : '–', $skip['message']));
+        }
+        /* translators: 1: format, 2: added, 3: updated, 4: deleted, 5: skipped, 6: total */
+        WP_CLI::success(sprintf(__('Read %1$s: %2$d added, %3$d updated, %4$d deleted, %5$d skipped; %6$d targets.', 'seoprostats'), $done['format'], $done['added'], $done['updated'], $done['removed'], count($done['skipped']), $done['total']));
+    }
+
+    /**
      * Query coverage of one page: the Google Search Console queries it
      * shows for, each with how far the page's own words cover it (title,
      * heading, text, partial or none), the words it lacks and whether it

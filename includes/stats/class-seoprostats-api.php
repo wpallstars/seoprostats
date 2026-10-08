@@ -89,6 +89,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
     }
 
     /**
@@ -414,6 +415,7 @@ final class SEOProStats_API {
         ));
         self::experiment_routes($read, $manage, $data);
         self::queue_routes($read, $manage, $base, $engine);
+        self::target_routes($read, $manage, $base, $engine);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
@@ -657,6 +659,76 @@ final class SEOProStats_API {
                     'description' => __('For done: the smallest change that counts: percent (default 10), or places for position (default 1).', 'seoprostats'),
                     'type'        => 'number',
                     'minimum'     => 0,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * Register the search target routes: the report with view_seoprostats;
+     * import and delete with manage_options.
+     *
+     * @param array<string,mixed> $read   Read route base.
+     * @param callable            $manage Write permission callback.
+     * @param array<string,mixed> $base   Report arguments.
+     * @param array<string,mixed> $engine The engine argument.
+     */
+    private static function target_routes(array $read, $manage, array $base, array $engine) {
+        $ns   = SEOProStats_Collection::REST_NAMESPACE;
+        $list = $base + array('engine' => $engine);
+        $list['range'] = array('default' => '30d') + $list['range'];
+        register_rest_route($ns, '/targets', array(
+            $read + array(
+                'callback' => array(__CLASS__, 'targets'),
+                'args'     => $list + array(
+                    'status' => array(
+                        'description' => __('Targets in this status: all, open (candidate, targeted and live), candidate, targeted, live, won or retired.', 'seoprostats'),
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Targets::FILTERS,
+                        'default'     => 'all',
+                    ),
+                    'limit'  => array('maximum' => SEOProStats_Targets::MAX_LIMIT, 'default' => SEOProStats_Targets::LIMIT) + self::args(true)['limit'],
+                    'offset' => self::args(true)['offset'],
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'targets_import'),
+                'args'                => array('data' => $base['data']) + array(
+                    'targets' => array(
+                        'description' => __('Targets as a list of objects: query (or phrase), page (a path such as /pricing/ or an address on this site; or target_url), priority (0–100, or high, medium, low; 50 when left out) and status (candidate, targeted, live, won or retired; targeted when left out). Or give text.', 'seoprostats'),
+                        'type'        => 'array',
+                        'items'       => array('type' => 'object'),
+                    ),
+                    'text'    => array(
+                        'description' => __('Targets as text: CSV or tab-separated (a header row naming query, page, priority and status, or those columns in that order), JSON, or the aidevops search targets table (TOON). Or give targets.', 'seoprostats'),
+                        'type'        => 'string',
+                        'default'     => '',
+                    ),
+                    'replace' => array(
+                        'description' => __('Delete the targets that are not in this import.', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
+                ),
+            ),
+            array(
+                'methods'             => WP_REST_Server::DELETABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'targets_delete'),
+                'args'                => array('data' => $base['data']) + array(
+                    'queries' => array(
+                        'description' => __('The searches whose targets to delete.', 'seoprostats'),
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'default'     => array(),
+                    ),
+                    'all'     => array(
+                        'description' => __('Delete every target.', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
                 ),
             ),
         ));
@@ -1643,6 +1715,64 @@ final class SEOProStats_API {
         $input  = (array) $request->get_params();
         return self::report($request, static function ($req) use ($key, $input, $engine, $goal) {
             return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
+        });
+    }
+
+    /**
+     * GET /targets: the site's search targets, each with how search
+     * treats it now: position, clicks and the page that ranks.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets($request) {
+        $engine = (string) $request->get_param('engine');
+        $status = (string) $request->get_param('status');
+        return self::report($request, static function ($req) use ($engine, $status) {
+            return SEOProStats_Targets::report($req, $engine, $status);
+        });
+    }
+
+    /**
+     * POST /targets: import targets (added or updated by query), with the
+     * rows skipped and why.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets_import($request) {
+        $rows    = $request->get_param('targets');
+        $text    = (string) $request->get_param('text');
+        $replace = (bool) $request->get_param('replace');
+        return self::define($request, static function () use ($rows, $text, $replace) {
+            $format = 'list';
+            if (!is_array($rows) || !$rows) {
+                if (trim($text) === '') {
+                    return new WP_Error('seoprostats_targets_empty', __('Give the targets as a list or as text.', 'seoprostats'), array('status' => 400));
+                }
+                $parsed = SEOProStats_Targets::parse($text);
+                if (is_wp_error($parsed)) {
+                    return $parsed;
+                }
+                $rows   = $parsed['rows'];
+                $format = $parsed['format'];
+            }
+            $done = SEOProStats_Targets::import($rows, $format === 'toon' ? 'aidevops' : 'list', $replace);
+            return is_wp_error($done) ? $done : array('format' => $format) + $done;
+        });
+    }
+
+    /**
+     * DELETE /targets: delete targets by their searches, or every target.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets_delete($request) {
+        $queries = array_map('strval', (array) $request->get_param('queries'));
+        $all     = (bool) $request->get_param('all');
+        return self::define($request, static function () use ($queries, $all) {
+            return SEOProStats_Targets::delete($queries, $all);
         });
     }
 
