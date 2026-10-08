@@ -756,8 +756,11 @@ widget follows the same choice and says when it shows demo data.
 `SEOProStats_Shares` keeps up to 50 shares in `seoprostats_shares`, autoload
 off. Each has at most 10 ordered saved `ViewState` objects, name, note,
 locked filters, last-N-days boundary, expiry, visibility switches, branding
-and open counters. The first allow list is Overview, Goals and Clicks.
-PHP validates against the report engine's range/filter rules and the UI's
+and open counters. Every dashboard tab can be a section, each once; Search
+once per engine with data (Google, Bing), showing Rankings, Opportunities,
+Audit and Content (not Plan or Experiments, the owner's work list and
+notes). Search data and the change log have no visits, so a share with
+Search or Changes can lock only pages. PHP validates against the report engine's range/filter rules and the UI's
 section choices; core `shareView()` canonicalizes with the hash reader.
 Tokens have 128 random bits; only SHA-256 hashes are stored and matched
 with `hash_equals`. Creation and renewal return the link once. Passwords
@@ -783,13 +786,17 @@ counters or serialized transient windows; no visitor identity is stored.
 
 Public GET routes are separate from ordinary reports and map a section to
 an explicit report allow list. They reconstruct live requests from safe
-query inputs, AND locked filters with viewer filters, enforce the date
+query inputs checked against the read's own route arguments, keep a Search
+section to its engine, AND locked filters with viewer filters, enforce the date
 boundary on both current and comparison ranges, bound paging and strip
 editor URLs after the shared report cache. Realtime is suppressed for
 locked shares; sensitive breakdowns and realtime referrers can be hidden.
-The markers lane is a minimal projection without user identities, old/new
-values, private notes or metadata. Page locks filter its rows; visitor
-locks omit it because changes have no campaign/country attribution.
+The markers lane and the Changes section are a minimal projection without
+user identities, old/new values, private notes, or plugin, theme and
+setting names; a page's or product's title and a search engine update's
+name, announcement and span stay, as they are public. Page locks filter
+its rows; visitor locks omit it because changes have no campaign/country
+attribution.
 
 Branding uses same-host raster Media Library attachments, with no remote
 fetches. Defaults are settings; each share stores its overrides. The shell

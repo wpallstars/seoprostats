@@ -939,7 +939,20 @@ final class SEOProStats_API {
         $manage = array(__CLASS__, 'can_manage');
         register_rest_route($ns, '/shares', array(
             array('methods' => 'GET', 'permission_callback' => $manage, 'callback' => static function () {
-                return array('shares' => array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all())), 'defaults' => SEOProStats_Shares::branding(array()));
+                $shares   = array_values(array_map(array('SEOProStats_Shares', 'summary'), SEOProStats_Shares::all()));
+                $defaults = SEOProStats_Shares::branding(array());
+                // Logo previews for the editor: id => image address.
+                $logos = array();
+                foreach (array_merge(array($defaults), array_column($shares, 'branding')) as $brand) {
+                    foreach (array('logo', 'agency_logo') as $key) {
+                        $id = (int) ($brand[$key] ?? 0);
+                        if ($id && !isset($logos[$id])) {
+                            $logos[$id] = SEOProStats_Shares::local_logo($id);
+                        }
+                    }
+                }
+                // Search sections: one for each engine with data.
+                return array('shares' => $shares, 'defaults' => $defaults, 'logos' => (object) array_filter($logos), 'engines' => SEOProStats_Search::engines());
             }),
             array('methods' => 'POST', 'permission_callback' => $manage, 'callback' => static function ($request) {
                 return SEOProStats_Shares::save((array) $request->get_json_params());
@@ -962,13 +975,11 @@ final class SEOProStats_API {
             'methods' => 'POST', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_open'),
             'args' => array('password' => array('type' => 'string', 'maxLength' => 256, 'default' => '')),
         ));
-        register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})/(?P<section>overview|goals|clicks)/(?P<report>stats|timeseries|breakdown|markers|realtime|goals|clicks)', array(
+        // Each read's own arguments are checked against its normal route (share_report()).
+        register_rest_route($ns, '/share/(?P<token>[a-f0-9]{32})/(?P<section>' . implode('|', SEOProStats_Shares::SECTIONS) . ')/(?P<report>' . implode('|', array_unique(array_merge(...array_values(SEOProStats_Shares::REPORTS)))) . ')', array(
             'methods' => 'GET', 'permission_callback' => '__return_true', 'callback' => array(__CLASS__, 'share_report'),
             'args' => self::args(false) + array(
                 'page' => array('type' => 'string', 'maxLength' => 2048),
-                'kind' => array('type' => 'string', 'enum' => array('elements', 'dead', 'links', 'downloads', 'forms', 'pages')),
-                'dimension' => array('type' => 'string', 'enum' => array_keys(SEOProStats_Query::DIMENSIONS)),
-                'grain' => array('type' => 'string', 'enum' => SEOProStats_Query::GRAINS),
                 'limit' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 100),
                 'offset' => array('type' => 'integer', 'minimum' => 0, 'maximum' => 1000),
             ),
@@ -1044,16 +1055,57 @@ final class SEOProStats_API {
         if (!in_array($section, array_column($share['views'], 'view'), true) || !in_array($report, SEOProStats_Shares::REPORTS[$section], true) || !SEOProStats_Shares::quota($share, 'reads', 120)) {
             return SEOProStats_Shares::denied();
         }
-        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind')));
+        if (in_array($section, SEOProStats_Shares::PAGE_ONLY, true) && !SEOProStats_Shares::page_locks_only($share['locked_filters'])) {
+            return SEOProStats_Shares::denied();
+        }
+        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind', 'engine', 'query', 'key', 'event', 'kinds', 'sort', 'goal', 'finding')));
         $filters = SEOProStats_Shares::filters($args['filters'] ?? array());
         if (is_wp_error($filters)) {
             return $filters;
         }
         $args['filters'] = array_merge($filters, $share['locked_filters']);
         $args['data'] = 'live';
-        $args['limit'] = min(100, max(1, (int) ($args['limit'] ?? 10)));
+        if (isset($args['limit'])) {
+            $args['limit'] = min(100, max(1, (int) $args['limit']));
+        }
         $args['offset'] = min(1000, max(0, (int) ($args['offset'] ?? 0)));
-        $req = SEOProStats_Query::request($args);
+        // The read's own route checks its arguments, as when an administrator asks.
+        $routes  = rest_get_server()->get_routes('seoprostats/v1');
+        $handler = $routes['/seoprostats/v1/' . $report][0] ?? null;
+        if (!$handler) {
+            return SEOProStats_Shares::denied();
+        }
+        $safe = new WP_REST_Request('GET', '/seoprostats/v1/' . $report);
+        $safe->set_query_params($args);
+        $safe->set_attributes(array('args' => $handler['args']));
+        $defaults = array();
+        foreach ($handler['args'] as $name => $spec) {
+            if (is_array($spec) && array_key_exists('default', $spec)) {
+                $defaults[$name] = $spec['default'];
+            }
+        }
+        $safe->set_default_params($defaults);
+        $checked = $safe->has_valid_params();
+        if (is_wp_error($checked)) {
+            return $checked;
+        }
+        $checked = $safe->sanitize_params();
+        if (is_wp_error($checked)) {
+            return $checked;
+        }
+        // A Search section is one engine's.
+        if ($section === 'search' && $report !== 'markers') {
+            $engines = array();
+            foreach ($share['views'] as $view) {
+                if ($view['view'] === 'search') {
+                    $engines[] = $view['engine'] ?? 'google';
+                }
+            }
+            if (!in_array((string) ($safe->get_param('engine') ?: 'google'), $engines, true)) {
+                return SEOProStats_Shares::denied();
+            }
+        }
+        $req = SEOProStats_Query::request(array_merge($args, array('limit' => min(100, (int) ($safe->get_param('limit') ?: 10)))));
         if (is_wp_error($req)) {
             return $req;
         }
@@ -1071,12 +1123,8 @@ final class SEOProStats_API {
         if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], array('search', 'no_results', 'source', 'utm_term'), true)) {
             return rest_ensure_response(array('dimension' => $req['dimension'], 'rows' => array(), 'total' => 0, 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
         }
-        if ($report === 'markers') {
-            return self::share_markers($req, $share, $args['page'] ?? '');
-        }
-        $safe = new WP_REST_Request('GET');
-        foreach ($args as $key => $value) {
-            $safe->set_param($key, $value);
+        if ($report === 'markers' || $report === 'changes') {
+            return self::share_changes($req, $share, $report, (string) $safe->get_param('page'), (string) $safe->get_param('kinds'), (int) $safe->get_param('limit'), (int) $safe->get_param('offset'));
         }
         $answer = call_user_func(array(__CLASS__, $report), $safe);
         if (is_wp_error($answer)) {
@@ -1091,25 +1139,34 @@ final class SEOProStats_API {
     }
 
     /**
-     * A minimal chart projection, never users, settings or arbitrary notes.
-     * Visit-level locks cannot scope site changes, so omit that lane.
+     * The timeline (markers, oldest first) or the change log (changes,
+     * newest first, a page of it) as a minimal projection: never users,
+     * notes, settings, plugin or theme names, or before and after values.
+     * Visit-level locks cannot scope site changes, so then there are none.
      *
-     * @param array $req Checked report request.
-     * @param array $share Share.
-     * @param string $page Chart page.
+     * @param array  $req    Checked report request.
+     * @param array  $share  Share.
+     * @param string $report markers or changes.
+     * @param string $page   Only this page's (and site-wide) changes.
+     * @param string $kinds  Change log: only these groups (comma-separated).
+     * @param int    $limit  Change log: most rows.
+     * @param int    $offset Change log: rows to skip.
      * @return WP_REST_Response|WP_Error
      */
-    private static function share_markers(array $req, array $share, $page) {
-        $answer = array('range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req)), 'markers' => array(), 'total' => 0);
-        foreach ($share['locked_filters'] as $filter) {
-            if ($filter['dimension'] !== 'page') {
-                return rest_ensure_response($answer);
-            }
+    private static function share_changes(array $req, array $share, $report, $page, $kinds, $limit, $offset) {
+        $list   = $report === 'markers' ? 'markers' : 'changes';
+        $answer = array('range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req)), $list => array(), 'total' => 0);
+        if ($list === 'changes') {
+            $answer += array('limit' => $limit, 'offset' => $offset);
         }
-        $changes = SEOProStats_Changes::list_changes($req, array('page' => $page, 'limit' => 1000, 'order' => 'asc'));
+        if (!SEOProStats_Shares::page_locks_only($share['locked_filters'])) {
+            return rest_ensure_response($answer);
+        }
+        $changes = SEOProStats_Changes::list_changes($req, array('page' => $page, 'kinds' => $kinds, 'limit' => SEOProStats_Changes::MAX_LIMIT, 'order' => $list === 'markers' ? 'asc' : 'desc', 'running' => $list === 'markers'));
         if (is_wp_error($changes)) {
             return $changes;
         }
+        $rows = array();
         foreach ($changes['changes'] as $change) {
             if ($change['group'] === 'note') {
                 continue;
@@ -1136,12 +1193,19 @@ final class SEOProStats_API {
             if ($allowed) {
                 $safe = array_intersect_key($change, array_flip(array('id', 't', 'kind', 'group', 'path', 'source')));
                 $safe['label'] = ucfirst(str_replace('_', ' ', $change['kind']));
+                // A published page's or product's name, or a search engine update's: public already.
+                $safe['title'] = ($change['path'] && $change['group'] !== 'site') || $change['group'] === 'search' ? (string) ($change['title'] ?? '') : '';
+                $safe['old'] = '';
+                $safe['new'] = '';
+                $safe['object'] = array('type' => $change['group'] === 'search' ? (string) ($change['object']['type'] ?? '') : '', 'id' => 0);
                 $safe['user'] = null;
-                $safe['meta'] = array();
-                $answer['markers'][] = $safe;
+                // A search engine update's name, engine, announcement and end (it rolls out over a span).
+                $safe['meta'] = $change['group'] === 'search' ? array_intersect_key((array) ($change['meta'] ?? array()), array_flip(array('name', 'engine', 'url', 'ended'))) : array();
+                $rows[] = $safe;
             }
         }
-        $answer['total'] = count($answer['markers']);
+        $answer['total'] = count($rows);
+        $answer[$list] = $list === 'markers' ? $rows : array_slice($rows, $offset, $limit);
         return rest_ensure_response($answer);
     }
 

@@ -30,6 +30,7 @@ import {
 	formatMetric,
 	SEARCH_METRICS,
 	SEARCH_REPORTS,
+	SHARE_SEARCH_REPORTS,
 	type Marker,
 	type SearchEngine,
 	type SearchKind,
@@ -125,9 +126,11 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 }
 
 /** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
-export function Search(props: ViewProps) {
-	const { state, update } = props;
-	const report: SearchReport = state.report ?? 'rankings';
+export function Search(props: ViewProps & { shared?: boolean }) {
+	const { state, update, shared = false } = props;
+	// A shared report: its section is one engine, without the owner's Plan and Experiments.
+	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
+	const report: SearchReport = reports.includes(state.report ?? 'rankings') ? (state.report ?? 'rankings') : 'rankings';
 	const engine: SearchEngine = state.engine ?? 'google';
 	const id = useId();
 	// The engines with data, as the last answer listed them (every report's answer does).
@@ -148,13 +151,13 @@ export function Search(props: ViewProps) {
 	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-		const at = SEARCH_REPORTS.indexOf(report);
+		const at = reports.indexOf(report);
 		const next = event.key === 'ArrowRight' ? at + 1 : event.key === 'ArrowLeft' ? at - 1 : null;
 		if (next === null) {
 			return;
 		}
 		event.preventDefault();
-		const target = SEARCH_REPORTS[(next + SEARCH_REPORTS.length) % SEARCH_REPORTS.length] ?? 'rankings';
+		const target = reports[(next + reports.length) % reports.length] ?? 'rankings';
 		show(target);
 		document.getElementById(`${id}-${target}`)?.focus();
 	};
@@ -178,7 +181,7 @@ export function Search(props: ViewProps) {
 		<>
 			<div className="spst-subnav">
 			<div className="spst-tabs" role="tablist" aria-label={__('Search', 'seoprostats')}>
-				{SEARCH_REPORTS.map((t) => (
+				{reports.map((t) => (
 					<button
 						key={t}
 						type="button"
@@ -195,15 +198,15 @@ export function Search(props: ViewProps) {
 					</button>
 				))}
 			</div>
-			<EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />
+			{!shared && <EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />}
 			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
 				{report === 'rankings' && <Rankings {...reportProps} />}
 				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
 				{report === 'audit' && <Audit {...reportProps} open={open} />}
 				{report === 'content' && <Content {...reportProps} open={open} />}
-				{report === 'plan' && <Plan {...reportProps} open={open} />}
-				{report === 'experiments' && <Experiments {...reportProps} />}
+				{!shared && report === 'plan' && <Plan {...reportProps} open={open} />}
+				{!shared && report === 'experiments' && <Experiments {...reportProps} />}
 			</div>
 		</>
 	);

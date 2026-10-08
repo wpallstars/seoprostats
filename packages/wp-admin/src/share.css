@@ -27,10 +27,31 @@
     --spst-good: #68de7c;
     --spst-bad: #ff8085;
 }
-.spst-share-brand, .spst-share-nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
-.spst-share-brand a { display: flex; align-items: center; gap: 12px; }
-.spst-share-brand img { max-width: 160px; max-height: 64px; object-fit: contain; }
-.spst-share-brand h1 { font-size: 24px; }
+/* The head: logo and title on the left, light or dark and print on the right. */
+.spst-share-head { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--spst-border); }
+.spst-share-head__brand { display: flex; align-items: center; gap: 16px; min-width: 0; color: var(--spst-text) !important; text-decoration: none; }
+.spst-share-head__brand img { max-width: 160px; max-height: 64px; object-fit: contain; }
+.spst-share-head__titles { display: grid; gap: 2px; min-width: 0; }
+.spst-share-head h1 { margin: 0; font-size: 24px; line-height: 1.25; color: var(--spst-text); }
+.spst-share-head__subtitle { color: var(--spst-muted); font-size: 14px; }
+.spst-share-head__tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* A click leaves no ring; the keyboard still shows where focus is. */
+.spst-share .components-button:focus:not(:focus-visible) { box-shadow: none; outline: none; }
+.spst-share .components-button.is-secondary:focus:not(:focus-visible) { box-shadow: inset 0 0 0 1px var(--spst-accent); }
+.spst-share-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+.spst-share-note { margin: 0 0 16px; max-width: 72ch; color: var(--spst-text); white-space: pre-line; }
+.spst-share-locks { margin: 0 0 16px; color: var(--spst-muted); }
+/* Changes as a dated list: for paper only (on screen, the chart's markers). */
+.spst-share-changes { display: none; }
+.spst-share-changes h2 { margin: 0 0 8px; font-size: 16px; }
+.spst-share-changes ol { margin: 0; padding: 0; list-style: none; }
+.spst-share-changes li { display: grid; grid-template-columns: 9.5em 8em 1fr; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--spst-border); break-inside: avoid; }
+.spst-share-changes time, .spst-share-changes__group { color: var(--spst-muted); }
+.spst-share-changes code { margin-inline-start: 8px; font-size: 12px; background: none; padding: 0; }
+.spst-share-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--spst-border); color: var(--spst-muted); }
+.spst-share-foot img { max-width: 120px; max-height: 48px; object-fit: contain; }
+.spst-share-foot p { margin: 0; }
+.spst-share-foot__credit { margin-inline-start: auto !important; font-size: 12px; }
 .spst-share a { color: var(--spst-accent); }
 .spst-share .components-card, .spst-share .spst-card { background: var(--spst-background); color: var(--spst-text); }
 .spst-share .components-button { color: var(--spst-accent); }
@@ -46,10 +67,46 @@
 .spst-share .components-modal__frame { background: var(--spst-background, #fff); color: var(--spst-text); }
 .spst-share .components-select-control__input { background: var(--spst-background); color: var(--spst-text); }
 .spst-share-dark { background: #1d2327; }
-.spst-share footer { margin-top: 32px; border-top: 1px solid var(--spst-border); padding-top: 16px; }
 @media (max-width: 480px) { .spst-report { padding: 12px; } .spst-share .spst-controls .components-base-control { min-width: 0; } }
+/* Paper: light whatever the screen, darker greys for contrast, no controls, cards kept whole. */
+@page { margin: 14mm 12mm; }
 @media print {
-    .spst-share .spst-toolbar, .spst-share .spst-share-nav, .spst-share header button, .spst-share .spst-filter-add { display: none !important; }
-    .spst-share .spst-report { --spst-text: #1d2327; --spst-muted: #50575e; --spst-background: #fff; color-scheme: light; }
-    .spst-share .spst-card { break-inside: avoid; }
+    .spst-share, .spst-share-dark { background: #fff !important; }
+    .spst-share .spst-report,
+    .spst-share .spst-report.is-dark {
+        color-scheme: light;
+        --spst-text: #000;
+        --spst-muted: #2c3338;
+        --spst-subtle: #3c434a;
+        --spst-border: #8c8f94;
+        --spst-hover: #f6f7f7;
+        --spst-background: #fff;
+        --spst-grid: rgba(0, 0, 0, 0.25);
+        --spst-good: #00701f;
+        --spst-bad: #b32d2e;
+        min-height: 0;
+        padding: 0;
+        color: #000;
+        background: #fff;
+    }
+    .spst-share .spst-toolbar,
+    .spst-share .spst-share-nav,
+    .spst-share .spst-share-head__tools,
+    .spst-share .spst-filter-add,
+    .spst-share .spst-subnav,
+    .spst-share .spst-engines,
+    .spst-share .spst-actions,
+    .spst-share button.spst-clearable__clear { display: none !important; }
+    .spst-share-head { break-after: avoid; }
+    .spst-share-changes { display: block; margin-top: 24px; break-before: auto; }
+    .spst-share-changes h2, .spst-share h2, .spst-share h3 { break-after: avoid; }
+    .spst-share .spst-card, .spst-share .components-card, .spst-share .spst-summary { break-inside: avoid; box-shadow: none !important; border: 1px solid var(--spst-border); margin-bottom: 12px; }
+    .spst-share .spst-grid, .spst-share .spst-cards { gap: 12px; }
+    .spst-share table { break-inside: auto; }
+    .spst-share thead { display: table-header-group; }
+    .spst-share tr { break-inside: avoid; }
+    .spst-share .spst-table-scroll { overflow: visible !important; }
+    .spst-share a { color: #000; text-decoration: underline; }
+    .spst-share .striped tr:nth-child(odd) { background: #f6f7f7; }
+    .spst-share-foot { break-inside: avoid; color: #2c3338; }
 }
