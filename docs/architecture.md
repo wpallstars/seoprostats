@@ -658,8 +658,35 @@ Pro Stats was installed (`SEOProStats_Migrate`, loaded only on the tab,
 its routes, WP-CLI, its cron hooks, and the notices below for a plugin
 past its import step, without a query). One adapter per plugin extends
 `SEOProStats_Migrate_Source` (`includes/stats/migrate/`); the
-`seoprostats_migrate_sources` filter adds more. The first is Burst
-Statistics (`burst-statistics`, read from version 3.7.2).
+`seoprostats_migrate_sources` filter adds more. Built in: Burst
+Statistics (`burst-statistics`, read from version 3.7.2), Koko Analytics
+(`koko-analytics`, read from 2.5.3 and its older table layouts) and
+Statify (`statify`, read from 2.0.3).
+
+What each plugin keeps sets what can be imported:
+
+| Plugin | Keeps | Imported | Not kept, so empty for its days |
+|---|---|---|---|
+| Burst Statistics | A row per pageview and per visit | Visitors, visits, pageviews, bounces, time on page, scroll; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Events |
+| Koko Analytics | Counts per day: the site, each page, each referrer | Visitors and pageviews of the site and of each page; referrers as sources and channels (its unique hits as visitors, its hits as pageviews) | Visits, bounces, time, entry and exit pages, campaigns, countries, devices, browsers, systems |
+| Statify | A row per pageview: day, page, referrer | Pageviews of the site, each page and each referring host and its channel | Visitors, visits and everything else |
+
+Koko Analytics counts a visitor once a day, as SEO Pro Stats does, by a
+cookie or a fingerprint that changes daily (its setting), so its visitors
+compare directly. Its page and referrer counts are per day and not tied
+to each other, so it has no search landing pages. Its older layouts are
+read too: page counts by post ID (before its 1.9.991 schema, or rows its
+own command had not moved yet), whose address is looked up from the post
+as it did, and referrers in `referrer_urls` with `visitors` and
+`pageviews` columns (before its 2.2.5 schema). Statify keeps only what
+its "Period of data saving" allows (14 days unless changed), and its
+referrers are whole addresses, counted here by host. Visits stay 0 for
+both rather than an estimate, so visit-based rates leave their days out
+instead of showing made-up numbers: bounce rate and visit duration have
+nothing from them to divide, and pages per visit counts only the
+pageviews of daily rows with visits (`visit_pageviews` in
+`SEOProStats_Query`), so a range that reaches into those days is not
+inflated.
 
 - **Detection** comes from the plugin's data, not only from the plugin:
   its tables and options are looked for whether it is active, inactive
@@ -705,9 +732,13 @@ Statistics (`burst-statistics`, read from version 3.7.2).
   visits for its days (visitors too in WP-CLI and REST, each day's added
   up, since no visitor is known across days) beside the imported ones, a link to the Overview
   for those days, and a note on the timeline on its last day.
-- **Settings** it has an equivalent for (Burst: Do Not Track, excluded
-  roles, excluded IP addresses) are filled in only where ours are still
-  at their default. Its own options are never written.
+- **Settings** it has an equivalent for are filled in only where ours
+  are still at their default: Burst's Do Not Track, excluded roles and
+  excluded IP addresses; Koko Analytics's excluded user roles and IP
+  addresses (only roles it leaves out: its default counts everyone);
+  Statify's "Logged in users" (skip all: every role; skip
+  administrators: the administrator role; track all is not carried
+  over). Its own options are never written.
 - **Undo** (`DELETE /imports/{id}`, `wp seoprostats migrate undo`)
   deletes the import's rows by its days through the primary key and its
   id, in batches, and its timeline note. Settings it filled in stay.
@@ -723,8 +754,19 @@ EXISTS`, and is refused while the plugin is active on the site or the
 network, or for people who cannot delete plugins and manage options. On
 multisite it acts on this site only and lists what the network shares
 without deleting it. It cannot be undone; imported days stay, and one
-timeline note records it. Burst keeps its tables, options and upload
-folder when deleted and has no setting to remove them.
+timeline note records it. None of the three has a setting to remove its
+data when deleted:
+
+- **Burst Statistics** keeps its tables, options and upload folder.
+- **Koko Analytics** removes some options and keeps its tables, its
+  migration option, its widget option, its upload folder (a buffer of
+  hits not yet counted) and a user meta key for its review notice. On
+  deactivation it removes its cron hooks and its endpoint file beside
+  `wp-config.php`, which is outside wp-content and so not in the list.
+  The capabilities it gave the administrator role stay in the roles.
+- **Statify** removes its option and table when deleted through
+  WordPress, so its history goes with it; leftovers remain only when its
+  files were removed another way, or while it is just deactivated.
 
 **Notices** (`SEOProStats_Migrate_Notices`) give one next step per plugin
 found, with its link, from finding its data until the plugin and its data
