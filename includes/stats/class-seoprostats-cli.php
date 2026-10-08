@@ -3520,6 +3520,9 @@ final class SEOProStats_CLI {
             }
         });
         if (is_wp_error($job)) {
+            if ($requests) {
+                $this->migrate_log($source, $json);
+            }
             WP_CLI::error($job->get_error_message());
             return;
         }
