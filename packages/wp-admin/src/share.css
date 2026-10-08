@@ -136,11 +136,13 @@
     .spst-share .components-modal__screen-overlay,
     .spst-share button.spst-clearable__clear { display: none !important; }
     .spst-share-head { break-after: avoid; }
-    /* Each printed section starts a page. A panel of several tabs runs on across pages: its short lists stay whole, long tables break between rows, and a tab's name stays with its first rows. */
+    /* Each printed section starts a page. A panel of several tabs runs on across pages: a tab with a short list stays whole (its name with it), long tables break between rows. */
     .spst-share-print + .spst-share-print { break-before: page; margin-top: 0; }
     .spst-share-print__title { break-after: avoid; }
     .spst-share .spst-card.is-print-all { break-inside: auto; }
-    .spst-share .spst-print-tab .spst-rows { break-inside: avoid; }
+    /* A grid row keeps the height its card had before the page breaks moved its tabs down: stack the cards instead, so none runs into the next. */
+    .spst-share-print .spst-grid { display: block; }
+    .spst-share .spst-print-tab:has(.spst-rows) { break-inside: avoid; }
     .spst-share .spst-print-tab__title { color: #2c3338; break-after: avoid; }
     .spst-share-changes { display: block; margin-top: 24px; break-before: auto; }
     .spst-share-changes h2, .spst-share h2, .spst-share h3 { break-after: avoid; }
