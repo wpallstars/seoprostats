@@ -1046,7 +1046,7 @@ export interface TargetRow {
 	then_clicks: number | null;
 	/** The page meant for it; null when none is chosen yet. */
 	page: TargetPage | null;
-	/** The page search shows most for it; null when not shown. */
+	/** The page search shows most for it; null when not shown or search gave no page. */
 	shown: TargetPage | null;
 	/** Pages search showed for it. */
 	pages: number;

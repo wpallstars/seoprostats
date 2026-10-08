@@ -653,7 +653,14 @@ paths:
         when another page of the site now ranks better for a query it
         lost most on and did not before, both pages in `figures.pages`,
         though only an experiment on the losing page holds it back;
-        else `update`. Proposals only: nothing changes the content) when
+        else `update`. Proposals only: nothing changes the content) and
+        search targets (`target`, from `/targets`' open targets: `finding`
+        `wrong_page` when search shows another page than the one meant
+        for it, on the page meant for it with both pages in
+        `figures.pages`, so an experiment on either holds it back and done
+        measures both; `striking` for a target of priority
+        `rules.target.high_priority` or more at positions 4–20 with its
+        page or none chosen, in place of the plain `striking` item) when
         the list is read.
         Each item's score is potential clicks per 28 days ×
         value × confidence ÷ effort, and every part is given so an agent
@@ -670,7 +677,11 @@ paths:
           `rules.links_share`; index: `/indexation`'s `typical`, a shown
           page's clicks, × the list's share in `rules.index_share`, so
           none without search data; refresh: the clicks lost × the
-          proposal's share in `rules.refresh_share`), scaled to 28 days;
+          proposal's share in `rules.refresh_share`; target: wrong_page,
+          the search's impressions × the site's CTR at its position ×
+          `rules.target.share`, striking, as striking distance's, both ×
+          the target's priority ÷ `rules.target.priority`), scaled to 28
+          days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
@@ -703,7 +714,7 @@ paths:
           description: Only items of this kind; every kind when left out.
           schema:
             type: string
-            enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh]
+            enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target]
         - name: goal
           in: query
           description: ID of the goal whose conversions give a page its value; the first goal when left out.
@@ -765,8 +776,9 @@ paths:
         Give the same period, engine and goal as the list the key came
         from: an item not yet stored must be in that list now. done
         opens an experiment on the item's page, starting now, with the
-        kind's measure (ctr: CTR; missing, decay and refresh: clicks;
-        striking: position), expected up (position: a better place); the
+        kind's measure (ctr: CTR; missing, decay, refresh and a target's
+        wrong_page: clicks; striking and a target's striking: position),
+        expected up (position: a better place); the
         item then shows the experiment's result. done on a refresh item
         whose proposal is leave opens no experiment: the page stays as it
         is. restore forgets what was done with
@@ -1560,6 +1572,184 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IndexationAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /targets:
+    get:
+      operationId: getTargets
+      summary: Search targets — the searches the site chose to win, the page meant for each, and how search treats them now.
+      description: |
+        Each target (at most `rules.max_targets`), highest priority
+        first, then most impressions, with the query's clicks,
+        impressions, CTR and position on any page in the period, the
+        page search shows most for it (`shown`, with its share of the
+        query's impressions) and the page meant for it (`page`, with its
+        own figures), as one `state`:
+
+        - `ranking`: the page meant for it is the page shown most (or
+          search gave no page for the query);
+        - `wrong_page`: another page is;
+        - `no_page`: no page is chosen yet;
+        - `not_shown`: no impressions in the period.
+
+        `band` places the position: `top` (1–3), `striking`
+        (`rules.striking_from`–`rules.striking_to`) or `beyond`.
+        `statuses` counts every target by status; `counts` counts the
+        targets of the `status` asked for by state. Open targets
+        (candidate, targeted, live) also become `/queue` items (kind
+        `target`). As `/opportunities`, the period is cut at the newest
+        search day and to its newest 91 days, and the comparison
+        (`then_position`, `then_clicks`) has as many days. Reads `targets`
+        by its primary key, then `gsc_queries` and `gsc_pairs` by
+        `query_day` for the targets' queries only.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: status
+          in: query
+          description: Targets in this status; open is candidate, targeted and live.
+          schema:
+            $ref: '#/components/schemas/TargetFilter'
+        - name: range
+          in: query
+          description: Period, in the site time zone.
+          schema:
+            type: string
+            default: 30d
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/compare'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: The targets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetsAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+    post:
+      operationId: importTargets
+      summary: Import search targets, added or updated by query, with the rows skipped and why (manage_options).
+      description: |
+        Give `targets` as a list of objects, or `text`: CSV or
+        tab-separated text (a header row naming the columns, or query,
+        page, priority and status in that order), JSON (a list, or an
+        object with `targets`), or the aidevops search targets table
+        (TOON: its first table with a `phrase` or `query` column).
+
+        Columns: `query` (or `phrase`, `keyword`, `search`, `question`),
+        `page` (or `address`, `url`, `target_url`, `path`, `target`: a
+        path such as `/pricing/` or an address on this site; empty for
+        none chosen yet), `priority` (0–100, or high 80, medium 50, low
+        20; 50 when left out) and `status` (candidate, targeted, live,
+        won or retired; `active` is targeted; targeted when left out).
+        Queries are stored lower case. Each row is checked: no query
+        text, an address not on this site, a priority or status that
+        cannot be read, a search already in an earlier row, or a new
+        target past the most kept skips the row with its number and
+        reason, never a guess. At most 5,000 rows and 1 MB of text.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      query:
+                        type: string
+                      page:
+                        type: string
+                      priority:
+                        type: [integer, string]
+                      status:
+                        type: string
+                text:
+                  type: string
+                replace:
+                  type: boolean
+                  default: false
+                  description: Delete the targets that are not in this import.
+      responses:
+        '200':
+          description: What the import did.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetsImportAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+    delete:
+      operationId: deleteTargets
+      summary: Delete search targets by their searches, or every target (manage_options). Search data stays.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                queries:
+                  type: array
+                  items:
+                    type: string
+                all:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: How many were deleted and how many are left.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, total]
+                properties:
+                  deleted:
+                    type: integer
+                  total:
+                    type: integer
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2870,19 +3060,21 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh]
+              enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
             finding:
-              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page). Null for other kinds.
+              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page); target, wrong_page or striking (one item per target and finding). Null for other kinds.
               oneOf:
                 - $ref: '#/components/schemas/AuditFinding'
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
                 - $ref: '#/components/schemas/RefreshProposal'
+                - type: string
+                  enum: [wrong_page, striking]
                 - type: 'null'
             found:
               type: boolean
@@ -2935,7 +3127,7 @@ components:
                   description: overlap; whether the leading page changed between the halves of the period.
                 pages:
                   type: array
-                  description: overlap; the pages sharing the query, most impressions first. refresh, merge; this page, then the one that overtook it (with its share of the query). Done measures them all.
+                  description: overlap; the pages sharing the query, most impressions first. refresh, merge; this page, then the one that overtook it (with its share of the query). target, wrong_page; the page meant for it, then the page search shows most. Done measures them all.
                   items:
                     type: object
                     required: [path_id, path, clicks, impressions, position, share]
@@ -3083,6 +3275,11 @@ components:
                 source:
                   type: string
                   description: index, sitemap; as IndexationRow's.
+                priority:
+                  type: integer
+                  description: target; the target's priority (0–100).
+                target_status:
+                  $ref: '#/components/schemas/TargetStatus'
             metric:
               type: string
               enum: [clicks, impressions, ctr, position]
@@ -3202,7 +3399,7 @@ components:
               description: The site's conversion rate of visits from search for the goal.
             rules:
               type: object
-              description: The constants the score uses, and the refresh planner's thresholds in refresh (old_days, protect_value, protect_conversions).
+              description: The constants the score uses, the refresh planner's thresholds in refresh (old_days, protect_value, protect_conversions), and search targets' in target (share, priority, high_priority, statuses).
             left_out:
               type: integer
               description: New items left out because their page has a running experiment.
@@ -3232,6 +3429,192 @@ components:
               type: integer
             more:
               type: boolean
+
+    TargetStatus:
+      type: string
+      enum: [candidate, targeted, live, won, retired]
+
+    TargetFilter:
+      type: string
+      enum: [all, open, candidate, targeted, live, won, retired]
+      default: all
+
+    TargetPage:
+      description: A page of a target with its figures for the target's query.
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - type: object
+          required: [clicks, impressions, position, share]
+          properties:
+            clicks:
+              type: integer
+            impressions:
+              type: integer
+            position:
+              type: [number, 'null']
+            share:
+              type: [number, 'null']
+              description: Its share of the query's impressions; null when search did not show it.
+
+    TargetRow:
+      type: object
+      required: [query, priority, status, source, state, band, clicks, impressions, ctr, position, then_position, then_clicks, page, shown, pages, updated]
+      properties:
+        query:
+          type: string
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 100
+        status:
+          $ref: '#/components/schemas/TargetStatus'
+        source:
+          type: string
+          enum: [list, aidevops, demo]
+        state:
+          type: string
+          enum: [ranking, wrong_page, no_page, not_shown]
+        band:
+          type: [string, 'null']
+          enum: [top, striking, beyond, null]
+        clicks:
+          type: integer
+        impressions:
+          type: integer
+        ctr:
+          type: number
+        position:
+          type: [number, 'null']
+        then_position:
+          type: [number, 'null']
+          description: With a comparison period, the query's position then.
+        then_clicks:
+          type: [integer, 'null']
+          description: With a comparison period, the query's clicks then.
+        page:
+          description: The page meant for it; null when none is chosen yet.
+          oneOf:
+            - $ref: '#/components/schemas/TargetPage'
+            - type: 'null'
+        shown:
+          description: The page search shows most for it; null when not shown or search gave no page.
+          oneOf:
+            - $ref: '#/components/schemas/TargetPage'
+            - type: 'null'
+        pages:
+          type: integer
+          description: Pages search showed for it.
+        updated:
+          type: string
+          format: date-time
+
+    TargetsAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [engine, engines, range, days, cut, through, first, compare, connected, rules, statuses, status, counts, rows, total, more]
+          properties:
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            engines:
+              $ref: '#/components/schemas/SearchEngines'
+            range:
+              $ref: '#/components/schemas/Range'
+            days:
+              type: integer
+            cut:
+              type: boolean
+              description: Whether the period was cut at the newest search day or to its newest 91 days.
+            through:
+              type: string
+              description: Newest day with search data (YYYY-MM-DD); empty with none.
+            first:
+              type: string
+              description: Oldest day with search data (YYYY-MM-DD); empty with none.
+            compare:
+              type: [object, 'null']
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+            connected:
+              type: boolean
+            rules:
+              type: object
+              properties:
+                priority:
+                  type: integer
+                  description: The priority when none is given, and the one a queue item's clicks are scaled against.
+                high_priority:
+                  type: integer
+                  description: The least priority a striking queue item needs.
+                striking_from:
+                  type: integer
+                striking_to:
+                  type: integer
+                max_targets:
+                  type: integer
+            statuses:
+              type: object
+              description: Every target, by status.
+              additionalProperties:
+                type: integer
+            status:
+              $ref: '#/components/schemas/TargetFilter'
+            counts:
+              type: object
+              description: The targets of the status asked for, by state.
+              properties:
+                ranking:
+                  type: integer
+                wrong_page:
+                  type: integer
+                no_page:
+                  type: integer
+                not_shown:
+                  type: integer
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/TargetRow'
+            total:
+              type: integer
+            more:
+              type: boolean
+
+    TargetsImportAnswer:
+      type: object
+      required: [format, added, updated, removed, skipped, total]
+      properties:
+        format:
+          type: string
+          enum: [list, csv, json, toon]
+        added:
+          type: integer
+        updated:
+          type: integer
+        removed:
+          type: integer
+          description: With replace, the targets deleted.
+        skipped:
+          type: array
+          items:
+            type: object
+            required: [row, query, reason, message]
+            properties:
+              row:
+                type: integer
+                description: 1 for the first data row.
+              query:
+                type: string
+              reason:
+                type: string
+                enum: [query, address, priority, status, duplicate, limit]
+              message:
+                type: string
+                description: Why, in the site's language.
+        total:
+          type: integer
+          description: Targets now.
 
     GoalStep:
       type: object

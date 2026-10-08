@@ -143,8 +143,8 @@ long-term record.
       GH#77).
 - [x] Refresh planner: update, leave, protect or merge pages losing
       clicks; plan items in place of losing clicks (GH#80, after GH#77).
-- [ ] Search targets: chosen queries and their pages, positions and wrong
-      pages (GH#81, after GH#75).
+- [x] Search targets: chosen queries and their pages, positions and wrong
+      pages; imports, Search → Targets and plan items (GH#81, after GH#75).
 - [ ] Loop export and agent recipes (GH#82, after GH#75).
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.
