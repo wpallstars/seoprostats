@@ -45,8 +45,9 @@ final class SEOProStats_Schema {
      * v15: daily.import_id (days imported from another statistics plugin,
      *      SEOProStats_Migrate; 0: summarised from the site's own visits).
      * v16: ab_tests (A/B tests of blocks, read from posts when they are saved).
+     * v17: ab_exposures (the A/B test variants each page load showed).
      */
-    const VERSION = 16;
+    const VERSION = 17;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -72,6 +73,8 @@ final class SEOProStats_Schema {
     const DICT_SEARCH   = 15;
     const DICT_QUERY    = 16;
     const DICT_APPEARANCE = 17;
+    const DICT_AB_TEST    = 18;
+    const DICT_AB_VARIANT = 19;
 
     /** Search engines of the gsc_* rows. */
     const ENGINE_GOOGLE = 1;
@@ -112,7 +115,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures');
     }
 
     /**
@@ -705,6 +708,25 @@ final class SEOProStats_Schema {
   PRIMARY KEY  (test_id),
   KEY post_id (post_id),
   KEY status (status)
+) $charset;",
+
+            // One row per page load and A/B test it showed: the variant,
+            // written by the processor from the pageview's test:variant
+            // pairs (only tests and variants in ab_tests). test_id and
+            // variant_id are dict ids (DICT_AB_TEST, DICT_AB_VARIANT);
+            // pkey is the pageview's. clicks: clicks inside the variant.
+            // Kept as long as pageviews (by ts). Reports read test_day.
+            'ab_exposures' => "CREATE TABLE {$t['ab_exposures']} (
+  pkey binary(8) NOT NULL,
+  test_id int unsigned NOT NULL,
+  variant_id int unsigned NOT NULL,
+  session_id bigint unsigned NOT NULL,
+  day date NOT NULL,
+  ts int unsigned NOT NULL,
+  clicks smallint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (pkey,test_id),
+  KEY test_day (test_id,day,variant_id,session_id),
+  KEY ts (ts)
 ) $charset;",
         );
     }

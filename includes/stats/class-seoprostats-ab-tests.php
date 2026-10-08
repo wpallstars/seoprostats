@@ -175,7 +175,7 @@ final class SEOProStats_AB_Tests {
         }
         $out = '<div ' . get_block_wrapper_attributes($extra) . '>' . $html($shown);
         if ($swap) {
-            $out .= $others . '<script>' . self::script() . '</script>';
+            $out .= $others . '<script>' . self::script(SEOProStats_Statistics::ab_one_variant()) . '</script>';
         }
         return $out . '</div>';
     }
@@ -203,18 +203,26 @@ final class SEOProStats_AB_Tests {
     /**
      * The script after a running test's variants. Reads the weights from
      * the markup, picks a variant at random by weight, swaps it in for the
-     * control and marks the wrapper. No brackets or ampersands, so content
-     * filters leave it alone.
+     * control and marks the wrapper. With $visit (Settings → Tracking, one
+     * variant per visit) it first looks for the variant this tab showed
+     * before in sessionStorage (spst-ab-<test>) and keeps the one shown
+     * there; otherwise nothing is stored. No brackets or ampersands, so
+     * content filters leave it alone.
      *
+     * @param bool $visit Keep the visit's variant in sessionStorage.
      * @return string
      */
-    public static function script() {
-        return '(function(s){var w=s.parentNode,c=w.childNodes,a=+w.getAttribute("data-spst-weight"),t=a,p=w.getAttribute("data-spst-control"),m=null,i,e,r;'
-            . 'for(i=0;i<c.length;i++){e=c.item(i);if(e.nodeName==="TEMPLATE")t+=+e.getAttribute("data-spst-weight")}'
-            . 'r=Math.random()*t-a;'
-            . 'for(i=0;i<c.length;i++){if(r<0)break;e=c.item(i);if(e.nodeName==="TEMPLATE"){m=e;r-=+e.getAttribute("data-spst-weight")}}'
+    public static function script($visit = false) {
+        return '(function(s,o){var w=s.parentNode,c=w.childNodes,a=+w.getAttribute("data-spst-weight"),t=a,p=w.getAttribute("data-spst-control"),k="spst-ab-"+w.getAttribute("data-spst-test"),m=null,v=null,i,e,r;'
+            . 'if(o)try{v=sessionStorage.getItem(k)}catch(x){}'
+            // A control weighted 0 is never kept.
+            . 'if(!a)if(v===p)v=null;'
+            . 'for(i=0;i<c.length;i++){e=c.item(i);if(e.nodeName==="TEMPLATE"){t+=+e.getAttribute("data-spst-weight");if(e.getAttribute("data-spst-variant")===v)m=e}}'
+            . 'if(v!==p)if(!m){r=Math.random()*t-a;'
+            . 'for(i=0;i<c.length;i++){if(r<0)break;e=c.item(i);if(e.nodeName==="TEMPLATE"){m=e;r-=+e.getAttribute("data-spst-weight")}}}'
             . 'if(m){p=m.getAttribute("data-spst-variant");for(i=c.length-1;i>=0;i--){e=c.item(i);if(e.nodeName!=="TEMPLATE"){if(e!==s)w.removeChild(e)}}w.insertBefore(m.content.cloneNode(true),w.firstChild)}'
-            . 'w.setAttribute("data-spst-ab",w.getAttribute("data-spst-test")+":"+p)})(document.currentScript);';
+            . 'if(o)try{sessionStorage.setItem(k,p)}catch(x){}'
+            . 'w.setAttribute("data-spst-ab",w.getAttribute("data-spst-test")+":"+p)})(document.currentScript,' . ($visit ? '1' : '0') . ');';
     }
 
     /**

@@ -58,6 +58,9 @@ final class SEOProStats_Processor {
     /** A visit ends after this long without a hit. */
     const VISIT_GAP = 1800;
 
+    /** Most A/B tests one pageview may name. */
+    const AB_MAX = 20;
+
     /** Click and tracking IDs: kept out of stored paths (SEOProStats_Channels::CLICK_IDS says which are ads). */
     const CLICK_IDS = array('gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'li_fat_id', 'yclid', '_ga', '_gl', 'mc_cid', 'mc_eid', '_hsenc', '_hsmi', 'igshid');
 
@@ -324,6 +327,14 @@ final class SEOProStats_Processor {
             $texts[SEOProStats_Schema::DICT_LABEL][]    = $c['label'];
             $texts[SEOProStats_Schema::DICT_TARGET][]   = $c['target'];
         }
+        // A/B test variants shown: only tests and variants in ab_tests.
+        $known = self::ab_known($visits, $clicks);
+        foreach ($known as $test => $variants) {
+            $texts[SEOProStats_Schema::DICT_AB_TEST][] = (string) $test;
+            foreach (array_keys($variants) as $variant) {
+                $texts[SEOProStats_Schema::DICT_AB_VARIANT][] = (string) $variant;
+            }
+        }
         $ids = array();
         foreach ($texts as $kind => $values) {
             $ids[$kind] = SEOProStats_Dict::ids($kind, $values);
@@ -334,7 +345,9 @@ final class SEOProStats_Processor {
         $counts      = self::write_facts($visits, $session_ids, $ids);
         $done['pageviews'] += $counts[0];
         $done['events']    += $counts[1];
+        self::write_exposures($visits, $session_ids, $ids, $known);
         $written            = self::write_clicks($clicks, $ids);
+        self::write_ab_clicks($clicks, $ids, $known);
         $done['clicks']    += $written;
         $done['skipped']   += count($clicks) - $written;
         self::write_pages($visits, $ids);
@@ -535,7 +548,145 @@ final class SEOProStats_Processor {
             'search'   => $search,
             'post'     => $flags === 0 ? self::int_in($ctx, 'i', 0, PHP_INT_MAX) : 0,
             'login'    => empty($ctx['l']) ? 0 : 1,
+            'ab'       => $h['type'] === 'pv' && isset($hit['ab']) ? self::ab_pairs($hit['ab'], self::AB_MAX) : array(),
         );
+    }
+
+    /**
+     * A/B test variants a hit names: "test:variant" texts (a list for a
+     * pageview, one for a click), checked, the first of each test kept.
+     *
+     * @param mixed $value Hit field ab.
+     * @param int   $max   Most pairs.
+     * @return array<string,string> Test id => variant slug.
+     */
+    private static function ab_pairs($value, $max) {
+        $out = array();
+        foreach (array_slice(is_array($value) ? array_values($value) : array($value), 0, $max) as $pair) {
+            if (is_string($pair) && preg_match('/^([a-z0-9]{6,32}):([a-z0-9-]{1,64})$/', $pair, $m) && !isset($out[$m[1]])) {
+                $out[$m[1]] = $m[2];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The batch's A/B tests that are in ab_tests, with their variants: a
+     * forged hit cannot add tests or variants. One query by primary key.
+     *
+     * @param array<string,array<string,mixed>> $visits Visits.
+     * @param array<int,array<string,mixed>>    $clicks Clicks.
+     * @return array<string,array<string,bool>> Test id => variant slug => true.
+     */
+    private static function ab_known(array $visits, array $clicks) {
+        global $wpdb;
+        $tests = array();
+        foreach ($visits as $visit) {
+            foreach ($visit['hits'] as $h) {
+                foreach ($h['ab'] as $test => $variant) {
+                    $tests[$test] = true;
+                }
+            }
+        }
+        foreach ($clicks as $c) {
+            foreach ($c['ab'] as $test => $variant) {
+                $tests[$test] = true;
+            }
+        }
+        if (!$tests) {
+            return array();
+        }
+        $tests   = array_slice(array_map('strval', array_keys($tests)), 0, 1000);
+        $holders = implode(', ', array_fill(0, count($tests), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; fixed placeholders.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT test_id, variants FROM %i WHERE test_id IN ($holders)", array_merge(array(SEOProStats_Schema::table('ab_tests')), $tests)));
+        $out  = array();
+        foreach ((array) $rows as $row) {
+            $variants = json_decode((string) $row->variants, true);
+            foreach (is_array($variants) ? $variants : array() as $variant) {
+                if (is_array($variant) && isset($variant['slug']) && is_string($variant['slug'])) {
+                    $out[(string) $row->test_id][$variant['slug']] = true;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Each pageview's A/B test variants into ab_exposures (a page load
+     * seen again, as in a resumed batch, is skipped).
+     *
+     * @param array<string,array<string,mixed>> $visits      Visits.
+     * @param array<string,int>                 $session_ids Visit key => id.
+     * @param array<int,array<string,int>>      $ids         Dictionary ids by kind.
+     * @param array<string,array<string,bool>>  $known       From ab_known().
+     */
+    private static function write_exposures(array $visits, array $session_ids, array $ids, array $known) {
+        global $wpdb;
+        if (!$known) {
+            return;
+        }
+        $rows = array();
+        foreach ($visits as $key => $visit) {
+            if (!isset($session_ids[$key])) {
+                continue;
+            }
+            foreach ($visit['hits'] as $h) {
+                foreach ($h['ab'] as $test => $variant) {
+                    if (!isset($known[$test][$variant])) {
+                        continue;
+                    }
+                    $test_id    = self::id($ids, SEOProStats_Schema::DICT_AB_TEST, (string) $test);
+                    $variant_id = self::id($ids, SEOProStats_Schema::DICT_AB_VARIANT, $variant);
+                    if ($test_id && $variant_id) {
+                        $rows[] = array($h['pkey'], $test_id, $variant_id, $session_ids[$key], self::day($h['ts']), $h['ts']);
+                    }
+                }
+            }
+        }
+        foreach (array_chunk($rows, self::BATCH) as $chunk) {
+            $args = array(SEOProStats_Schema::table('ab_exposures'));
+            foreach ($chunk as $row) {
+                array_push($args, ...$row);
+            }
+            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, %d, %s, %d)'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, test_id, variant_id, session_id, day, ts) VALUES $groups", $args));
+        }
+    }
+
+    /**
+     * Clicks inside an A/B test variant, counted on its page load's
+     * exposure (by primary key; none when the page load showed another).
+     *
+     * @param array<int,array<string,mixed>>   $clicks From click().
+     * @param array<int,array<string,int>>     $ids    Dictionary ids by kind.
+     * @param array<string,array<string,bool>> $known  From ab_known().
+     */
+    private static function write_ab_clicks(array $clicks, array $ids, array $known) {
+        global $wpdb;
+        $counts = array();
+        foreach ($clicks as $c) {
+            foreach ($c['ab'] as $test => $variant) {
+                if (isset($known[$test][$variant])) {
+                    $at          = $c['pkey'] . ':' . $test . ':' . $variant;
+                    $counts[$at] = (isset($counts[$at]) ? $counts[$at] : 0) + 1;
+                }
+            }
+        }
+        $table = SEOProStats_Schema::table('ab_exposures');
+        foreach ($counts as $at => $count) {
+            list($pkey, $test, $variant) = explode(':', (string) $at, 3);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
+            $wpdb->query($wpdb->prepare(
+                'UPDATE %i SET clicks = LEAST(65535, clicks + %d) WHERE pkey = UNHEX(%s) AND test_id = %d AND variant_id = %d',
+                $table,
+                $count,
+                $pkey,
+                self::id($ids, SEOProStats_Schema::DICT_AB_TEST, $test),
+                self::id($ids, SEOProStats_Schema::DICT_AB_VARIANT, $variant)
+            ));
+        }
     }
 
     /**
@@ -813,6 +964,8 @@ final class SEOProStats_Processor {
             'target'   => $target,
             'flags'    => $type === 'f' ? 0 : self::int_in($hit, 'f', 0, 15),
             'fields'   => $type === 'f' ? self::int_in($hit, 'n', 0, 255) : 0,
+            // The A/B test variant it was inside (clicks only).
+            'ab'       => $type === 'c' && isset($hit['ab']) ? self::ab_pairs($hit['ab'], 1) : array(),
         );
     }
 

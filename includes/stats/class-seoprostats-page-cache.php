@@ -29,7 +29,7 @@ final class SEOProStats_Page_Cache {
     const OPTION = 'seoprostats_page_cache';
 
     /** Settings that change what logged-out visitors' pages print. */
-    const TRACKER_SETTINGS = array('tracking', 'tracking_params', 'tracking_hosts', 'tracking_clicks', 'tracking_search', 'tracking_affiliate', 'tracking_file', 'privacy_signals', 'exclusions', 'exclude_paths');
+    const TRACKER_SETTINGS = array('tracking', 'tracking_params', 'tracking_hosts', 'tracking_clicks', 'tracking_search', 'tracking_ab_visit', 'tracking_affiliate', 'tracking_file', 'privacy_signals', 'exclusions', 'exclude_paths');
 
     /**
      * One-off WP-Cron event that purges for a new tracker build. A cron
