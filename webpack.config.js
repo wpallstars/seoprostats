@@ -18,6 +18,7 @@ module.exports = {
 		widget: './packages/wp-admin/src/widget.tsx',
 		share: './packages/wp-admin/src/share.tsx',
 		editor: './packages/wp-admin/src/editor.tsx',
+		'ab-test': './packages/wp-admin/src/ab-test/index.tsx',
 	},
 	output: {
 		...base.output,
