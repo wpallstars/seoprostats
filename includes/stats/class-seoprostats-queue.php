@@ -841,6 +841,10 @@ final class SEOProStats_Queue {
         } else {
             return null;
         }
+        // An item is on a page: none when search gave no page for the query and none is chosen.
+        if (!is_array($page) || ($finding === 'wrong_page' && !is_array($row['shown']))) {
+            return null;
+        }
         $scale = self::SCALE_DAYS / max(1, (int) $days);
         $parts = array(
             'clicks'     => round($clicks * $weight * $scale, 1),

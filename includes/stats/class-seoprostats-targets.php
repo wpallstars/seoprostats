@@ -18,7 +18,8 @@
  * position on any page, the page search shows most for it, and the page
  * meant for it with its own figures, as one state:
  *
- * - ranking: the page meant for it is the page search shows most;
+ * - ranking: the page meant for it is the page search shows most (or
+ *   search gave no page for the query);
  * - wrong_page: another page is;
  * - no_page: no page is chosen yet (the page search shows is given);
  * - not_shown: no impressions in the period.
@@ -265,7 +266,8 @@ final class SEOProStats_Targets {
         } elseif (!$meant) {
             $state = 'no_page';
         } else {
-            $state = $shown_id === $meant ? 'ranking' : 'wrong_page';
+            // Without pages for the query (search can leave them out), no other page is known to rank.
+            $state = $shown_id && $shown_id !== $meant ? 'wrong_page' : 'ranking';
         }
         $then_metrics = $then ? SEOProStats_Search::metrics($then['c'], $then['i'], $then['p']) : null;
         return array(
