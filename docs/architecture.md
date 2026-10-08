@@ -580,7 +580,10 @@ engine/day prefix, for the whole site and Google only (empty for Bing or a
 page/query scope). Totals and chart points remain the site's figures, not
 appearance sums: one search can show several appearances. The admin names
 known values and uses sentence case for unknown ones. Demo search version
-5 adds four made-up appearances scaled from its Google days.
+6 makes five appearances (`SEARCH_APPEARANCES`) from its Google days, each
+with its own share of impressions, CTR against the site's and places from
+the site's position; `TRANSLATED_RESULT` has no name in the admin, so it
+shows the sentence-case label.
 
 Each run that imports writes an `imports` row, and its rows carry its
 id: undoing it (`DELETE /imports/{id}`, `wp seoprostats search-console

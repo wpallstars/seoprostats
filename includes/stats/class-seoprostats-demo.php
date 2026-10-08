@@ -392,7 +392,21 @@ final class SEOProStats_Demo {
     const AUDIT_VERSION = 2;
 
     /** Search data made by this version of the demo; older demo search days are made again. */
-    const SEARCH_VERSION = 5;
+    const SEARCH_VERSION = 6;
+
+    /**
+     * Demo search appearances: share of the site's impressions, CTR as a
+     * multiple of the site's, and places from the site's average position.
+     * TRANSLATED_RESULT has no name in the dashboard, so it shows how an
+     * unknown appearance is labelled.
+     */
+    const SEARCH_APPEARANCES = array(
+        'PRODUCT_SNIPPETS'  => array(0.35, 1.3, -1.6),
+        'VIDEO'             => array(0.22, 0.6, 2.4),
+        'REVIEW_SNIPPET'    => array(0.18, 1.6, -0.9),
+        'FORUMS'            => array(0.08, 0.9, 4.2),
+        'TRANSLATED_RESULT' => array(0.03, 0.5, 6.5),
+    );
 
     /** Changes behind SEARCH_EVENTS, as CHANGES. */
     const SEARCH_CHANGES = array(
@@ -1201,12 +1215,20 @@ final class SEOProStats_Demo {
                 $total[$n] += (int) $row[$n + 2];
             }
         }
-        $weights = array('VIDEO' => 0.22, 'PRODUCT_SNIPPETS' => 0.35, 'REVIEW_SNIPPET' => 0.18, 'FORUMS' => 0.08);
-        $appearance_ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, array_keys($weights));
-        foreach ($weights as $value => $weight) {
-            $id = $appearance_ids[SEOProStats_Dict::clean($value)];
-            $scale = $weight * (0.8 + 0.4 * self::noise($date . $value));
-            $rows['appearance'][$value] = array($id, (int) round($total[0] * $scale), (int) round($total[1] * $scale), (int) round($total[2] * $scale));
+        // Each appearance's share of impressions, CTR against the site's and
+        // places from the site's position, so they differ as real ones do.
+        // Positions here are × 100, as pos_impr stores them.
+        $site_ctr       = $total[1] ? $total[0] / $total[1] : 0;
+        $site_position  = $total[1] ? $total[2] / $total[1] : 0;
+        $appearance_ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, array_keys(self::SEARCH_APPEARANCES));
+        foreach (self::SEARCH_APPEARANCES as $value => $shape) {
+            $impressions = (int) round($total[1] * $shape[0] * (0.8 + 0.4 * self::noise($date . $value)));
+            if ($impressions < 1) {
+                continue;
+            }
+            $clicks   = min($impressions, (int) round($impressions * $site_ctr * $shape[1] * (0.9 + 0.2 * self::noise($date . $value . 'ctr'))));
+            $position = max(100.0, $site_position + 100 * $shape[2]);
+            $rows['appearance'][$value] = array($appearance_ids[SEOProStats_Dict::clean($value)], $clicks, $impressions, (int) round($position * $impressions));
         }
         $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
         foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
