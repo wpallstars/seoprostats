@@ -204,7 +204,7 @@ generic import.
       countries. Built from Jetpack's open-source code without a test
       site (GH#111, after GH#109).
 - [ ] Jetpack Stats checked on connected sites by invited users with
-      Jetpack (`wp seoprostats migrate run jetpack --dry-run --debug`):
+      Jetpack (`wp seoprostats migrate run jetpack --dry-run --requests`):
       the visits window's end day, the site's days, and the answers'
       fields (GH#111 follow-up).
 - [x] Koko Analytics and Statify, checked against real installs

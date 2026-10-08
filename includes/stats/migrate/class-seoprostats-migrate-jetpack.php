@@ -3,7 +3,7 @@
  * Jetpack Stats (the jetpack plugin, or the standalone jetpack-stats),
  * built from Jetpack's open-source code without a connected test site.
  * People who use Jetpack Stats test it; `wp seoprostats migrate run
- * jetpack --dry-run --debug` shows them what to report.
+ * jetpack --dry-run --requests` shows them what to report.
  *
  * Its statistics are not on the site: WordPress.com keeps them and
  * serves them to the connected site. Read from Jetpack 16.3 (its stats
@@ -42,9 +42,10 @@
  *     country-views: views[] (country_code, views; A1, A2 and ZZ are
  *     unknown places).
  *
- * Not proven without a connected site, for testers to confirm: that a
- * visits window ends on its date (the windows here follow the days the
- * answer holds, so either way works), and that days are the site's own.
+ * Not proven without a connected site, for testers to confirm (their
+ * --requests output shows each visits answer's first and last day): that
+ * a visits window ends on its date (lookup() steps back correctly if it
+ * starts on it instead), and that days are the site's own.
  *
  * Imported per day: views as pageviews; visitors as visitors and as
  * visits (it has no visits); views of each post and page (its current
@@ -117,10 +118,10 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
     /** Its error codes for a site that is not (or no longer) connected. */
     const TOKEN_ERRORS = array('missing_token', 'no_possible_tokens', 'malformed_token', 'invalid_token', 'unknown_token', 'signature_mismatch', 'site_not_connected');
 
-    /** Requests kept for --debug. */
+    /** Requests kept for --requests. */
     const LOG_SIZE = 50;
 
-    /** @var array<int,array<string,string|int>> Requests made in this request, for --debug. */
+    /** @var array<int,array<string,string|int>> Requests made in this request, for --requests (static: SEOProStats_Migrate::source() makes a new adapter each time). */
     private static $log = array();
 
     /** @var array<int,string> Post paths by ID, this request. */
@@ -452,8 +453,9 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             $series['until']    = $series['days'] ? (string) max(array_keys($series['days'])) : '';
             $series['empty']    = 0;
         }
+        $today = (string) wp_date('Y-m-d');
         if ($series['next'] === '') {
-            $series['next'] = (string) wp_date('Y-m-d');
+            $series['next'] = $today;
         }
         $start = microtime(true);
         while ($series['next'] !== '' && SEOProStats_Feature::more_time($start, $budget)) {
@@ -466,17 +468,23 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             $rows  = self::visits_rows($answer);
             $found = false;
             foreach ($rows as $day => $counts) {
-                if ($day <= $series['next'] && ($counts[0] > 0 || $counts[1] > 0)) {
+                if ($day <= $today && ($counts[0] > 0 || $counts[1] > 0)) {
                     $series['days'][$day] = $counts;
                     $found                = true;
                 }
             }
             $series['empty'] = $found ? 0 : (int) $series['empty'] + 1;
             $series['wait']  = 0;
-            // The window's first day: the earliest the answer holds (else WINDOW days back).
-            $first = $rows ? (string) min(array_keys($rows)) : (new DateTimeImmutable($series['next'], $tz))->modify('-' . (self::WINDOW - 1) . ' days')->format('Y-m-d');
-            $first = min($first, $series['next']);
-            if (($series['until'] !== '' && $first <= $series['until']) || $series['empty'] >= self::EMPTY_WINDOWS || $first <= self::FLOOR) {
+            // Either way WordPress.com counts the window: ending on its date
+            // (the answer reaches back, and the next window ends the day
+            // before its earliest day), or starting on it (the answer holds
+            // nothing before it, and the next window, WINDOW days back, ends
+            // the day before this one's date). $covered is the earliest day
+            // this answer surely covered, for stopping.
+            $earliest = $rows ? (string) min(array_keys($rows)) : $series['next'];
+            $covered  = min($earliest, $series['next']);
+            $first    = $earliest < $series['next'] ? $earliest : (new DateTimeImmutable($series['next'], $tz))->modify('-' . (self::WINDOW - 1) . ' days')->format('Y-m-d');
+            if (($series['until'] !== '' && $covered <= $series['until']) || $series['empty'] >= self::EMPTY_WINDOWS || $first <= self::FLOOR) {
                 ksort($series['days']);
                 $series['next']     = '';
                 $series['until']    = '';
@@ -625,7 +633,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
 
     /**
      * One request to WordPress.com as the site, made as Jetpack makes it
-     * but not cached; noted for --debug (path, HTTP code, keys, counts;
+     * but not cached; noted for --requests (path, HTTP code, keys, counts;
      * never the token or the body).
      *
      * @param string               $resource Such as visits.
@@ -674,7 +682,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
     }
 
     /**
-     * Note a request for --debug: its path, HTTP code, error code, the
+     * Note a request for --requests: its path, HTTP code, error code, the
      * answer's top-level keys and its first day's lists with their counts.
      *
      * @param string $path  Endpoint with query.
@@ -696,7 +704,8 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             $rows = 'days[' . (string) key($data['days']) . '] ' . implode(', ', $parts);
         } elseif (is_array($data) && isset($data['data']) && is_array($data['data'])) {
             $fields = isset($data['fields']) && is_array($data['fields']) ? implode(',', array_map('strval', $data['fields'])) : '';
-            $rows   = 'data: ' . count($data['data']) . ' rows; fields: ' . $fields;
+            $days   = array_keys(self::visits_rows($data));
+            $rows   = 'data: ' . count($data['data']) . ' rows' . ($days ? ' (' . min($days) . ' – ' . max($days) . ')' : '') . '; fields: ' . $fields;
         }
         self::$log[] = array(
             'request' => $path,

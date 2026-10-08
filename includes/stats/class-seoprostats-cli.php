@@ -3335,8 +3335,8 @@ final class SEOProStats_CLI {
      * [--dry-run]
      * : run: only say what it would do (days, rows, overlap, settings). cleanup: only list (the default without --yes).
      *
-     * [--debug]
-     * : run: also list what the plugin's adapter asked for (Jetpack Stats: each WordPress.com request, its HTTP code, the answer's keys and counts; never tokens or the answers themselves), to paste into a problem report.
+     * [--requests]
+     * : run: also list what the plugin's adapter asked for (Jetpack Stats: each WordPress.com request, its HTTP code, the answer's keys and counts; never tokens or the answers themselves), to paste into a problem report. (Not --debug: that is WP-CLI's own.)
      *
      * [--prefer=<source>]
      * : run: when another plugin not imported yet has statistics on the same days, the one whose counts fill them (it imports first).
@@ -3365,7 +3365,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats migrate run burst-statistics --dry-run
      *     wp seoprostats migrate run burst-statistics
      *     wp seoprostats migrate run statify --prefer=koko-analytics
-     *     wp seoprostats migrate run jetpack --dry-run --debug
+     *     wp seoprostats migrate run jetpack --dry-run --requests
      *     wp seoprostats migrate undo --id=12
      *     wp seoprostats migrate cleanup burst-statistics --dry-run
      *
@@ -3489,23 +3489,23 @@ final class SEOProStats_CLI {
             'to'     => isset($assoc['to']) ? (string) $assoc['to'] : '',
             'prefer' => isset($assoc['prefer']) ? (string) $assoc['prefer'] : '',
         );
-        $debug = !empty($assoc['debug']);
+        $requests = !empty($assoc['requests']);
         if (!empty($assoc['dry-run'])) {
             $plan = SEOProStats_Migrate::plan($source, $run);
             if (is_wp_error($plan)) {
-                if ($debug) {
-                    $this->migrate_debug($source, $json);
+                if ($requests) {
+                    $this->migrate_log($source, $json);
                 }
                 WP_CLI::error($plan->get_error_message());
                 return;
             }
             if ($json) {
-                $print($debug ? $plan + array('debug' => $this->migrate_requests($source)) : $plan);
+                $print($requests ? $plan + array('requests' => $this->migrate_requests($source)) : $plan);
                 return;
             }
             $this->migrate_plan($plan);
-            if ($debug) {
-                $this->migrate_debug($source, false);
+            if ($requests) {
+                $this->migrate_log($source, false);
             }
             return;
         }
@@ -3552,13 +3552,13 @@ final class SEOProStats_CLI {
                 WP_CLI::warning($row['error']);
             }
         }
-        if ($debug) {
-            $this->migrate_debug($source, false);
+        if ($requests) {
+            $this->migrate_log($source, false);
         }
     }
 
     /**
-     * What an adapter asked for in this request (--debug).
+     * What an adapter asked for in this request (--requests).
      *
      * @param string $source Adapter key.
      * @return array<int,array<string,string|int>>
@@ -3569,22 +3569,22 @@ final class SEOProStats_CLI {
     }
 
     /**
-     * Print what an adapter asked for (--debug), to paste into a report.
+     * Print what an adapter asked for (--requests), to paste into a report.
      *
      * @param string $source Adapter key.
      * @param bool   $json   As JSON.
      */
-    private function migrate_debug($source, $json) {
+    private function migrate_log($source, $json) {
         $requests = $this->migrate_requests($source);
         if ($json) {
-            WP_CLI::line((string) wp_json_encode(array('debug' => $requests), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            WP_CLI::line((string) wp_json_encode(array('requests' => $requests), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             return;
         }
         if (!$requests) {
-            WP_CLI::log(__('Debug: the adapter made no requests.', 'seoprostats'));
+            WP_CLI::log(__('Requests: the adapter made none.', 'seoprostats'));
             return;
         }
-        WP_CLI::log(__('Debug: what the adapter asked for (no tokens or answers):', 'seoprostats'));
+        WP_CLI::log(__('Requests: what the adapter asked for (no tokens or answers):', 'seoprostats'));
         WP_CLI\Utils\format_items('table', $requests, array_keys($requests[0]));
     }
 

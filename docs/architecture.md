@@ -743,8 +743,9 @@ remote source (`SEOProStats_Migrate_Jetpack`; its docblock cites each
 endpoint, parameter and field from Jetpack's and the WordPress.com Stats
 screens' source). It is built from that source without a connected test
 site, and people who use it test it with `wp seoprostats migrate run
-jetpack --dry-run --debug` (each request, HTTP code, the answer's
-top-level keys and counts; never tokens or answers). It is read only
+jetpack --dry-run --requests` (each request, HTTP code, the answer's
+top-level keys and counts; never tokens or answers; not `--debug`, which
+WP-CLI keeps for itself). It is read only
 while Jetpack (or the standalone Jetpack Stats) is active, connected to
 WordPress.com and has Stats on, Jetpack's own two checks; otherwise the
 adapter's `unavailable()` says why ("connect Jetpack first", "update

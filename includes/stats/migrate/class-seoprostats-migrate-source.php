@@ -155,7 +155,7 @@ abstract class SEOProStats_Migrate_Source {
     }
 
     /**
-     * For people testing an adapter (wp seoprostats migrate run --debug):
+     * For people testing an adapter (wp seoprostats migrate run --requests):
      * what it asked for in this request, such as remote requests with
      * their HTTP codes and the shape of the answers. Never tokens, bodies
      * or visitors' data. Each entry is a list of field => value.
