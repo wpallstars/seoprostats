@@ -713,6 +713,108 @@ final class SEOProStats_Abilities {
         self::register_experiments($data, $engine);
         self::register_queue($data, $engine);
         self::register_targets($data, $engine);
+        self::register_loop($data, $engine);
+    }
+
+    /**
+     * The loop export ability.
+     *
+     * @param array<string,mixed> $data   The data property.
+     * @param array<string,mixed> $engine The engine property.
+     */
+    private static function register_loop(array $data, array $engine) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
+        wp_register_ability('seoprostats/loop', array(
+            'label'               => __('SEO loop export', 'seoprostats'),
+            'description'         => __('One answer per cycle of the SEO decision loop: summary (counts of open queue items, experiments due, running and recently decided, export rows); queue (the open items of seoprostats/queue, best first, each with its key, why, figures and score parts); experiments (due: running with search data through the review day, decide them with seoprostats/experiment-record; running; decided: in the last 90 days with their results, null and negative ones included, to weigh the next plan); export (the period\'s search figures per query and page in the aidevops export layout: query, page, clicks, impressions, ctr, position, most impressions first, with domain, source, start_date and end_date). params gives the period, engine and goal used: pass the same to seoprostats/queue-update. Read-only; nothing changes content.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'engine' => $engine,
+                    'range'  => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => SEOProStats_Loop::RANGE,
+                        'description' => __('The period, in the site time zone (at most its newest 91 days are read).', 'seoprostats'),
+                    ),
+                    'from'   => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'     => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'goal'   => array(
+                        'type'        => 'string',
+                        'description' => __('The goal whose conversions give a page its value in the queue; the first goal when left out.', 'seoprostats'),
+                    ),
+                    'limit'  => array(
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'maximum'     => SEOProStats_Loop::MAX_ITEMS,
+                        'default'     => SEOProStats_Loop::ITEMS,
+                        'description' => __('Most queue items.', 'seoprostats'),
+                    ),
+                    'rows'   => array(
+                        'type'        => 'integer',
+                        'minimum'     => 1,
+                        'maximum'     => SEOProStats_Loop::MAX_ROWS,
+                        'default'     => SEOProStats_Loop::ROWS,
+                        'description' => __('Most export rows.', 'seoprostats'),
+                    ),
+                    'data'   => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'loop'        => array('type' => 'integer'),
+                    'engine'      => array('type' => 'string'),
+                    'range'       => array('type' => 'object'),
+                    'through'     => array('type' => 'string'),
+                    'connected'   => array('type' => 'boolean'),
+                    'params'      => array('type' => 'object'),
+                    'summary'     => array('type' => 'object'),
+                    'queue'       => array('type' => 'object'),
+                    'experiments' => array('type' => 'object'),
+                    'export'      => array('type' => 'object'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'loop'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/loop.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function loop($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request(array_diff_key($input, array('rows' => true)) + array('range' => SEOProStats_Loop::RANGE, 'limit' => SEOProStats_Loop::ITEMS));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
+        $rows   = isset($input['rows']) ? (int) $input['rows'] : SEOProStats_Loop::ROWS;
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $engine, $goal, $rows) {
+            return SEOProStats_Loop::report((array) $req, $engine, $goal, $rows);
+        });
     }
 
     /**

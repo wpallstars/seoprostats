@@ -145,7 +145,10 @@ long-term record.
       clicks; plan items in place of losing clicks (GH#80, after GH#77).
 - [x] Search targets: chosen queries and their pages, positions and wrong
       pages; imports, Search → Targets and plan items (GH#81, after GH#75).
-- [ ] Loop export and agent recipes (GH#82, after GH#75).
+- [x] Loop export and agent recipes: `/loop`, `wp seoprostats loop`
+      (`--format=toon` for the aidevops export layout), the ability
+      `seoprostats/loop` and `docs/seo-loop-recipes.md` (GH#82, after
+      GH#75).
 - [ ] Backlinks from verified referrers; optional provider.
 - [ ] Referral spikes and mentions.
 

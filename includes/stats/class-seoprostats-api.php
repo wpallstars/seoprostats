@@ -90,6 +90,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
     }
 
     /**
@@ -585,7 +586,8 @@ final class SEOProStats_API {
     /**
      * Register the decision queue routes: read with view_seoprostats; act
      * on an item with manage_options. Both take the period the list is
-     * made from (range, from, to, page filters), the engine and the goal.
+     * made from (range, from, to, page filters), the engine and the goal,
+     * as does the loop export (GET /loop), which carries the queue.
      *
      * @param array<string,mixed> $read   Read route base.
      * @param callable            $manage Write permission callback.
@@ -659,6 +661,25 @@ final class SEOProStats_API {
                     'description' => __('For done: the smallest change that counts: percent (default 10), or places for position (default 1).', 'seoprostats'),
                     'type'        => 'number',
                     'minimum'     => 0,
+                ),
+            ),
+        ));
+        $loop          = $list;
+        $loop['range'] = array('default' => SEOProStats_Loop::RANGE) + $list['range'];
+        register_rest_route($ns, '/loop', $read + array(
+            'callback' => array(__CLASS__, 'loop'),
+            'args'     => $loop + array(
+                'limit' => array(
+                    'description' => __('Most queue items (open: new and accepted), best first.', 'seoprostats'),
+                    'maximum'     => SEOProStats_Loop::MAX_ITEMS,
+                    'default'     => SEOProStats_Loop::ITEMS,
+                ) + self::args(true)['limit'],
+                'rows'  => array(
+                    'description' => __('Most export rows (a search and a page each), most impressions first.', 'seoprostats'),
+                    'type'        => 'integer',
+                    'minimum'     => 1,
+                    'maximum'     => SEOProStats_Loop::MAX_ROWS,
+                    'default'     => SEOProStats_Loop::ROWS,
                 ),
             ),
         ));
@@ -1715,6 +1736,23 @@ final class SEOProStats_API {
         $input  = (array) $request->get_params();
         return self::report($request, static function ($req) use ($key, $input, $engine, $goal) {
             return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
+        });
+    }
+
+    /**
+     * GET /loop: one answer per cycle for an agent: the open queue items,
+     * the experiments due, running and recently decided, and the period's
+     * search figures per query and page in the aidevops export layout.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function loop($request) {
+        $engine = (string) $request->get_param('engine');
+        $goal   = (string) $request->get_param('goal');
+        $rows   = (int) $request->get_param('rows');
+        return self::report($request, static function ($req) use ($engine, $goal, $rows) {
+            return SEOProStats_Loop::report($req, $engine, $goal, $rows);
         });
     }
 
