@@ -348,6 +348,37 @@ final class SEOProStats_Source_Search_Console {
     }
 
     /**
+     * Discover appearances alone, or read one appearance by date. Each
+     * call is one request; the importer keeps the remaining queue.
+     *
+     * @param string $token Access token.
+     * @param string $property Property.
+     * @param string $from First final day.
+     * @param string $to Last final day.
+     * @param string $appearance Empty to discover, else the returned value.
+     * @return array<int,array<string,mixed>>|WP_Error API rows.
+     */
+    public static function appearances($token, $property, $from, $to, $appearance = '') {
+        $body = array(
+            'startDate' => $from,
+            'endDate' => $to,
+            'dimensions' => array($appearance === '' ? 'searchAppearance' : 'date'),
+            'aggregationType' => 'byPage',
+            'dataState' => 'final',
+            'rowLimit' => self::PAGE_ROWS,
+        );
+        if ($appearance !== '') {
+            $body['dimensionFilterGroups'] = array(array('filters' => array(array(
+                'dimension' => 'searchAppearance',
+                'operator' => 'equals',
+                'expression' => $appearance,
+            ))));
+        }
+        $answer = self::query($token, $property, $body);
+        return is_wp_error($answer) ? $answer : (isset($answer['rows']) && is_array($answer['rows']) ? $answer['rows'] : array());
+    }
+
+    /**
      * A Search Analytics query.
      *
      * @param string              $token    Access token.

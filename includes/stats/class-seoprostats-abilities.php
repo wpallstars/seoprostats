@@ -225,7 +225,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'enum'        => SEOProStats_Search::KINDS,
                         'default'     => 'queries',
-                        'description' => __('Rows: search queries, pages, countries or devices (countries and devices for the whole site only).', 'seoprostats'),
+                        'description' => __('Rows: search queries, pages, countries, devices or appearance (countries, devices and appearance for the whole site, Google only).', 'seoprostats'),
                     ),
                     'page'    => array(
                         'type'        => 'string',

@@ -222,7 +222,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const change = params.get('change') ?? '';
 			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
 		}
-		// Only Google has countries and devices (not Bing, so not Combined).
+		// Only Google has countries, devices and search appearances (not Bing, so not Combined).
 		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
 		const tab = oneOf(tabs, params.get('tab'), 'queries');
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');

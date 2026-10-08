@@ -49,6 +49,7 @@ import { errorMessage, useMarkers, useSearch } from './api';
 import { locale } from './boot';
 import { usePrintAll } from './printAll';
 import { longLabel } from './dates';
+import { appearanceLabel } from './labels';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
@@ -94,6 +95,7 @@ function kindName(kind: SearchKind): string {
 		pages: __('Pages', 'seoprostats'),
 		countries: __('Countries', 'seoprostats'),
 		devices: __('Devices', 'seoprostats'),
+		appearance: __('Appearance', 'seoprostats'),
 	};
 	return names[kind];
 }
@@ -151,9 +153,9 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 			setCombinable(combined);
 		}
 	}, []);
-	// Google is the default, so it is left out of the address; only Google has countries and devices.
+	// Google is the default, so it is left out of the address; only Google has countries, devices and search appearances.
 	const chooseEngine = (next: SearchEngineChoice) =>
-		update({ engine: next === 'google' ? undefined : next, tab: next !== 'google' && (state.tab === 'countries' || state.tab === 'devices') ? undefined : state.tab });
+		update({ engine: next === 'google' ? undefined : next, tab: next !== 'google' && state.tab !== 'queries' && state.tab !== 'pages' ? undefined : state.tab });
 	const names: Record<SearchReport, string> = {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
@@ -251,8 +253,8 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	useEffect(() => setTypedQuery(query), [query]);
 	const setKind = (tab: SearchKind) => update({ tab });
 	const id = useId();
-	// Countries and devices exist for the whole site only, and from Google only (not Bing, so not Combined).
-	const kinds: SearchKind[] = page || query || engine !== 'google' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
+	// Countries, devices and search appearances exist for the whole site only, and from Google only (not Bing, so not Combined).
+	const kinds: SearchKind[] = page || query || engine !== 'google' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices', 'appearance'];
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
 	const search = useSearch(state, shown, page, query);
 	const markers = useMarkers(state, page);
@@ -477,7 +479,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 					</CardHeader>
 					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
 						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
-						{answer && rows.length > 0 && <SearchNote engine={answered} />}
+						{answer && rows.length > 0 && <SearchNote engine={answered} kind={shown} />}
 					</CardBody>
 				</Card>
 			)}
@@ -508,12 +510,16 @@ function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; k
 		<section className="spst-print-tab">
 			<h3 className="spst-print-tab__title">{kindName(kind)}</h3>
 			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+			{kind === 'appearance' && <SearchNote engine={state.engine ?? 'google'} kind={kind} />}
 		</section>
 	);
 }
 
 /** Why the rows add up to less than the totals, by engine. */
-function SearchNote({ engine }: { engine: SearchEngineChoice }) {
+function SearchNote({ engine, kind }: { engine: SearchEngineChoice; kind?: SearchKind }) {
+	if (kind === 'appearance') {
+		return <p className="spst-note">{__('One search can show several appearances, so these figures do not add up to the site’s totals. Search appearances are counted by page.', 'seoprostats')}</p>;
+	}
 	if (engine === 'all') {
 		return (
 			<p className="spst-note">
@@ -566,7 +572,7 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 					<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
 						<thead>
 							<tr>
-								<th scope="col">{kind === 'queries' ? __('Query', 'seoprostats') : kind === 'pages' ? __('Page', 'seoprostats') : kind === 'countries' ? __('Country', 'seoprostats') : __('Device', 'seoprostats')}</th>
+								<th scope="col">{kind === 'queries' ? __('Query', 'seoprostats') : kind === 'pages' ? __('Page', 'seoprostats') : kind === 'countries' ? __('Country', 'seoprostats') : kind === 'appearance' ? __('Search appearance', 'seoprostats') : __('Device', 'seoprostats')}</th>
 								{METRIC_ORDER.map((key) => (
 									<th key={key} scope="col" className="num">
 										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
@@ -597,7 +603,7 @@ interface RowProps {
 
 function Row({ row, kind, top, page, query, choose }: RowProps) {
 	const before = row.compare;
-	let name = <span>{row.label}</span>;
+	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : row.label}</span>;
 	if (kind === 'queries') {
 		name = (
 			<Button variant="link" aria-pressed={query === row.value} onClick={() => choose({ query: query === row.value ? '' : row.value })}>
