@@ -2451,7 +2451,7 @@ paths:
                     type: boolean
                   removed:
                     type: object
-                    description: Items removed by kind (tables, options, transients, cron, user_meta, files).
+                    description: Items removed by kind (tables, options, transients, cron, user_meta, post_meta, files).
                     additionalProperties:
                       type: integer
                   left:
@@ -5788,6 +5788,11 @@ components:
             type: string
         user_meta:
           type: array
+          items:
+            type: string
+        post_meta:
+          type: array
+          description: Post meta keys, removed from every post.
           items:
             type: string
         files:

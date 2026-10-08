@@ -660,8 +660,13 @@ past its import step, without a query). One adapter per plugin extends
 `SEOProStats_Migrate_Source` (`includes/stats/migrate/`); the
 `seoprostats_migrate_sources` filter adds more. Built in: Burst
 Statistics (`burst-statistics`, read from version 3.7.2), Koko Analytics
-(`koko-analytics`, read from 2.5.3 and its older table layouts) and
-Statify (`statify`, read from 2.0.3).
+(`koko-analytics`, read from 2.5.3 and its older table layouts),
+Statify (`statify`, read from 2.0.3), WP Statistics (`wp-statistics`,
+read from 14.16.15 and its older layouts) and Independent Analytics
+(`independent`, read from 2.15.5; the key fits `imports.source`'s 20
+characters). Device, system and browser names, IP address lists, and
+sources, channels and campaign tags from referrers and first pages are
+worked out in the base class, the same for every adapter.
 
 What each plugin keeps sets what can be imported:
 
@@ -670,6 +675,8 @@ What each plugin keeps sets what can be imported:
 | Burst Statistics | A row per pageview and per visit | Visitors, visits, pageviews, bounces, time on page, scroll; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Events |
 | Koko Analytics | Counts per day: the site, each page, each referrer | Visitors and pageviews of the site and of each page; referrers as sources and channels (its unique hits as visitors, its hits as pageviews) | Visits, bounces, time, entry and exit pages, campaigns, countries, devices, browsers, systems |
 | Statify | A row per pageview: day, page, referrer | Pageviews of the site, each page and each referring host and its channel | Visitors, visits and everything else |
+| WP Statistics | A row per visitor and day (its pageviews, referrer, browser, system, device, country, first and last page), pageviews per page and day, and the day's totals | Each visitor row as one visit: visitors, visits, pageviews, bounces; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems. Days it purged: the site's visitors and pageviews, and its pages' pageviews | Time, scroll, events |
+| Independent Analytics | A row per visit and per pageview (UTC), with the page, referrer, country, device, browser and system in tables of their own; UTM tags with its Pro version | Visitors, visits, pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags (Pro), search landing pages, countries, devices, browsers, systems | Scroll, events |
 
 Koko Analytics counts a visitor once a day, as SEO Pro Stats does, by a
 cookie or a fingerprint that changes daily (its setting), so its visitors
@@ -687,6 +694,21 @@ nothing from them to divide, and pages per visit counts only the
 pageviews of daily rows with visits (`visit_pageviews` in
 `SEOProStats_Query`), so a range that reaches into those days is not
 inflated.
+
+WP Statistics has no visits: a visitor row is one visitor's day, so it
+is imported as one visit (a bounce when it has one pageview), and its
+first and last page (since 14.12.6) as the entry and exit. Its "Purge
+Old Data Daily" deletes visitor and page rows but keeps the day's
+totals: a day is read from its visitor rows when it has them, else from
+`summary_totals`, else from the `visit` table of layouts before 14.15,
+so purged days still bring their visitors and pageviews (layouts
+without a column read, such as `device`, or without first and last page
+are read for what they have). Its `historical` totals are not per day and
+are not read. Independent Analytics times are UTC and are read by the
+site's days; time on page is from each view to the next of the visit,
+as it measures it (a visit's last page has none). Its ad referrers
+(Google Ads by gclid) count as paid search; its Facebook Ads (fbclid on
+a Facebook referrer) as organic social, as the collector counts fbclid.
 
 - **Detection** comes from the plugin's data, not only from the plugin:
   its tables and options are looked for whether it is active, inactive
@@ -738,7 +760,13 @@ inflated.
   addresses (only roles it leaves out: its default counts everyone);
   Statify's "Logged in users" (skip all: every role; skip
   administrators: the administrator role; track all is not carried
-  over). Its own options are never written.
+  over); WP Statistics's excluded roles, excluded IP addresses (its
+  netmask ranges as prefix lengths), Do Not Track and "Purge Old Data
+  Daily" when not its default 180 days (off: our visits are kept; days:
+  months of visits); Independent Analytics's "Track logged-in users"
+  (off: every role; on: its ignored roles), ignored IP addresses and
+  "Automatically Delete Old Data" (keep forever: ours off; else its
+  months). Its own options are never written.
 - **Undo** (`DELETE /imports/{id}`, `wp seoprostats migrate undo`)
   deletes the import's rows by its days through the primary key and its
   id, in batches, and its timeline note. Settings it filled in stay.
@@ -748,14 +776,14 @@ seoprostats migrate cleanup`) is the owner's one exception to leaving
 other plugins' data alone (`AGENTS.md`). It lists the adapter's
 `leftovers()`: exactly what the plugin leaves on this site now (tables
 with this site's prefix, options, transients, cron hooks, user meta keys,
-files and folders in wp-content). It deletes exactly that list after
+post meta keys, files and folders in wp-content). It deletes exactly that list after
 confirmation (`--yes` in WP-CLI), one table at a time with `DROP TABLE IF
 EXISTS`, and is refused while the plugin is active on the site or the
 network, or for people who cannot delete plugins and manage options. On
 multisite it acts on this site only and lists what the network shares
 without deleting it. It cannot be undone; imported days stay, and one
-timeline note records it. None of the three has a setting to remove its
-data when deleted:
+timeline note records it. Only WP Statistics has a setting to remove
+its data when deleted:
 
 - **Burst Statistics** keeps its tables, options and upload folder.
 - **Koko Analytics** removes some options and keeps its tables, its
@@ -767,6 +795,26 @@ data when deleted:
 - **Statify** removes its option and table when deleted through
   WordPress, so its history goes with it; leftovers remain only when its
   files were removed another way, or while it is just deactivated.
+- **WP Statistics** keeps everything when deactivated. When deleted it
+  removes its options, transients, cron hooks, `wp_statistics` user and
+  post meta and its tables only when "Delete All Data on Plugin
+  Deletion" (Settings → Advanced Options → Danger Zone) is on, which is
+  off unless changed; its `uploads/wp-statistics/` folder (GeoIP
+  database) stays either way. Leftovers listed: its tables in every
+  layout (with `visit`, `useronline`, `search`, `historical` and its
+  add-ons'), its `wp_statistics` options and widget option, `wps_robotlist`,
+  its transients (its own, its caches' and its background jobs'), its
+  `wp_statistics_` cron hooks, user and post meta, the upload folder and
+  copies of its script an older version put in uploads.
+- **Independent Analytics** has no such setting: deleting it keeps
+  everything. Deactivation unschedules its `iawp_` cron hooks and deletes
+  its GeoIP database and its must-use plugin file. Its own "Delete all
+  data & deactivate plugin" removes its `iawp_` options and user meta,
+  all its tables, its `iawp_total_views` post meta and
+  `uploads/iawp-favicons/`. Leftovers listed: the same, its `iawp_`
+  transients, and its click-tracking files and GeoIP database in uploads
+  if any are left (on a network the GeoIP database is the main site's,
+  listed as shared). The capabilities it gave roles stay in the roles.
 
 **Notices** (`SEOProStats_Migrate_Notices`) give one next step per plugin
 found, with its link, from finding its data until the plugin and its data

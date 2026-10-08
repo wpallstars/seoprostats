@@ -41,6 +41,8 @@ final class SEOProStats_Migrate {
         'burst-statistics' => 'SEOProStats_Migrate_Burst',
         'koko-analytics'   => 'SEOProStats_Migrate_Koko',
         'statify'          => 'SEOProStats_Migrate_Statify',
+        'wp-statistics'    => 'SEOProStats_Migrate_WP_Statistics',
+        'independent'      => 'SEOProStats_Migrate_Independent_Analytics',
     );
 
     /** Cron hook of a running import. */
@@ -1213,7 +1215,7 @@ final class SEOProStats_Migrate {
      */
     private static function remove(array $list) {
         global $wpdb;
-        $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'files'), 0);
+        $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'post_meta', 'files'), 0);
         foreach ((array) $list['tables'] as $table) {
             // Only this site's tables (its prefix), one listed name at a time.
             if (strpos((string) $table, $wpdb->prefix) !== 0) {
@@ -1239,6 +1241,11 @@ final class SEOProStats_Migrate {
         foreach ((array) $list['user_meta'] as $meta_key) {
             if (delete_metadata('user', 0, (string) $meta_key, '', true)) {
                 $done['user_meta']++;
+            }
+        }
+        foreach (isset($list['post_meta']) ? (array) $list['post_meta'] : array() as $meta_key) {
+            if (delete_metadata('post', 0, (string) $meta_key, '', true)) {
+                $done['post_meta']++;
             }
         }
         $base = wp_normalize_path(trailingslashit(WP_CONTENT_DIR));

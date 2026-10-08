@@ -284,22 +284,6 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
     }
 
     /**
-     * Options that exist, of some exact names.
-     *
-     * @param string[] $names Option names.
-     * @return string[]
-     */
-    private static function options_exact(array $names) {
-        $out = array();
-        foreach ($names as $name) {
-            if (get_option($name, null) !== null) {
-                $out[] = $name;
-            }
-        }
-        return $out;
-    }
-
-    /**
      * A post's path, as its own migration worked it out: the home page
      * for 0, else the permalink's path and query, else ?p=ID.
      *
