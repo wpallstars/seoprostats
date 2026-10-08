@@ -71,6 +71,15 @@ Yes, once you connect it under Settings → Connections with a Google Cloud serv
 
 SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and average position against the previous period, a chart with the site's changes under it, and the search queries, pages, countries and devices. Choose a page to see its queries, or a query to see its pages. Scripts and AI agents read the same report through the REST API (search), wp seoprostats search, and on WordPress 6.9 and later the ability seoprostats/search. Demo data has made-up search data, so you can try it before connecting.
 
+= Can it show search result types? =
+
+Search → Rankings → Appearance shows Google result types, such as video,
+product snippets and review snippets, with clicks, impressions, CTR,
+position and comparison changes. It is for the whole site and Google
+only, not Bing. One search can show several appearances, so these figures
+do not add up to the site's totals. REST kind=appearance, wp seoprostats
+search appearance and the seoprostats/search ability return the same rows.
+
 = Can it show Bing too? =
 
 Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI).

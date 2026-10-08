@@ -291,6 +291,7 @@ final class SEOProStats_Search_Import {
             return self::run_pairs($source, $class, $token, $property, $start, $budget, $result);
         }
         global $wpdb;
+        require_once __DIR__ . '/class-seoprostats-query.php';
         $state = SEOProStats_Connections::get($source)['state'];
         $from = isset($state['appearance_from']) ? (string) $state['appearance_from'] : '';
         $to = isset($state['appearance_to']) ? (string) $state['appearance_to'] : '';

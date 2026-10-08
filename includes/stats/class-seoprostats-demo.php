@@ -392,7 +392,7 @@ final class SEOProStats_Demo {
     const AUDIT_VERSION = 2;
 
     /** Search data made by this version of the demo; older demo search days are made again. */
-    const SEARCH_VERSION = 4;
+    const SEARCH_VERSION = 5;
 
     /** Changes behind SEARCH_EVENTS, as CHANGES. */
     const SEARCH_CHANGES = array(
@@ -1195,6 +1195,19 @@ final class SEOProStats_Demo {
         global $wpdb;
         $date = $day->format('Y-m-d');
         $rows = self::search_rows($day, $today, $ids);
+        $total = array(0, 0, 0);
+        foreach ($rows['totals'] as $row) {
+            for ($n = 0; $n < 3; $n++) {
+                $total[$n] += (int) $row[$n + 2];
+            }
+        }
+        $weights = array('VIDEO' => 0.22, 'PRODUCT_SNIPPETS' => 0.35, 'REVIEW_SNIPPET' => 0.18, 'FORUMS' => 0.08);
+        $appearance_ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, array_keys($weights));
+        foreach ($weights as $value => $weight) {
+            $id = $appearance_ids[SEOProStats_Dict::clean($value)];
+            $scale = $weight * (0.8 + 0.4 * self::noise($date . $value));
+            $rows['appearance'][(string) $id] = array($id, (int) round($total[0] * $scale), (int) round($total[1] * $scale), (int) round($total[2] * $scale));
+        }
         $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
         foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
             $table = SEOProStats_Schema::table($name);

@@ -367,7 +367,7 @@ export interface ChartData<P extends { t: string } = { t: string }> {
 }
 
 /** Rows of the search report. */
-export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices'] as const;
+export const SEARCH_KINDS = ['queries', 'pages', 'countries', 'devices', 'appearance'] as const;
 export type SearchKind = (typeof SEARCH_KINDS)[number];
 
 /** The Search section's reports; the first is the default. */

@@ -536,6 +536,24 @@ dictionary kind (16). Positions are stored as position × impressions ×
 over any days. A day's rows are replaced in one transaction, by the
 primary key `(engine, day, …)`; days are Search Console's (Pacific time).
 
+Search appearances use the API's two-step query: discover values grouped
+by `searchAppearance` alone for the imported range, then group by `date`
+with an `equals` appearance filter, using `byPage` aggregation and final
+data. The connection keeps `appearance_from`, `appearance_to` and
+`appearance_queue` so requests resume under the same lock and time budget.
+Each appearance's range is replaced atomically and recorded as an import;
+undo deletes its rows by `import_id`. Reimport discovers both returned and
+previously stored values, so disappeared values are removed too.
+`gsc_appearance` (schema v14) has primary key `(engine, day, appearance_id)`;
+values use dictionary kind 17 without a fixed allowed list. The search
+retention applies, and uninstall drops live and demo tables with the others.
+The `appearance` report kind reads both periods through the primary key's
+engine/day prefix, for the whole site and Google only (empty for Bing or a
+page/query scope). Totals and chart points remain the site's figures, not
+appearance sums: one search can show several appearances. The admin names
+known values and uses sentence case for unknown ones. Demo search version
+5 adds four made-up appearances scaled from its Google days.
+
 Each run that imports writes an `imports` row, and its rows carry its
 id: undoing it (`DELETE /imports/{id}`, `wp seoprostats search-console
 undo`) deletes them by its days through the primary key. The job does

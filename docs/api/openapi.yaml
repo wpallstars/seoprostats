@@ -1245,11 +1245,16 @@ paths:
         Search data imported from Google Search Console or Bing Webmaster
         Tools (`/connections`), one `engine` at a time: totals of the
         period, a point per day (per month past 120 days), and rows of
-        one `kind`: search queries, pages, countries or devices, sorted
+        one `kind`: search queries, pages, countries, devices or appearance, sorted
         by clicks. `page` keeps the searches that showed that page (its
-        queries), `query` keeps one query (its pages); countries and
-        devices exist for the whole site only, so with either they are
+        queries), `query` keeps one query (its pages); countries, devices
+        and appearance exist for the whole site and Google only, so with either they are
         empty.
+
+        Appearance values are open-ended Search Console codes, counted by
+        page. One search may show several appearances, so these rows do
+        not add up to the site's totals. Totals and points remain the
+        whole site's figures, not sums of appearance rows.
 
         Bing gives its pages and queries by week, and no countries or
         devices: the period is widened at its start to the whole weeks its
@@ -1277,7 +1282,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [queries, pages, countries, devices]
+            enum: [queries, pages, countries, devices, appearance]
             default: queries
         - name: page
           in: query
@@ -4344,7 +4349,7 @@ components:
               description: Whether the engine's source is connected (demo data, always).
             kind:
               type: string
-              enum: [queries, pages, countries, devices]
+              enum: [queries, pages, countries, devices, appearance]
             page:
               type: string
             query:

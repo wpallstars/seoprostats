@@ -755,7 +755,7 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * [<kind>]
-     * : queries, pages, countries or devices (countries and devices for the whole site only).
+     * : queries, pages, countries, devices or appearance (countries, devices and appearance for the whole site, Google only).
      * ---
      * default: queries
      * options:
@@ -763,6 +763,7 @@ final class SEOProStats_CLI {
      *   - pages
      *   - countries
      *   - devices
+     *   - appearance
      * ---
      *
      * [--page=<path>]

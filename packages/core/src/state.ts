@@ -217,7 +217,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const change = params.get('change') ?? '';
 			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
 		}
-		// Bing has no countries or devices.
+        // Bing has no countries, devices or search appearances.
 		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
 		const tab = oneOf(tabs, params.get('tab'), 'queries');
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');

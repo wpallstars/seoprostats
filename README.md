@@ -71,6 +71,19 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ## Where to find it
 
+### Search appearance
+
+**Search → Rankings → Appearance** shows Google Search Console clicks,
+impressions, CTR and average position by result type, such as video,
+product snippets, review snippets and forums, with the comparison period.
+It appears for the whole site and Google only; the address keeps the tab.
+One search can show several appearances, so these figures do not add up
+to the site's totals. New types returned by Google are imported too.
+Imports resume in the background and can be undone; demo data includes
+made-up appearance days. Scripts and AI agents use REST `search?kind=appearance`,
+`wp seoprostats search appearance --data=demo --range=30d --compare=prev --format=json`,
+or the `seoprostats/search` ability with `kind: appearance`.
+
 ### Shared reports
 
 Administrators can choose **Share** after the period controls on any tab,
