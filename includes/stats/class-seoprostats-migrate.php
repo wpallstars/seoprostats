@@ -43,6 +43,8 @@ final class SEOProStats_Migrate {
         'statify'          => 'SEOProStats_Migrate_Statify',
         'wp-statistics'    => 'SEOProStats_Migrate_WP_Statistics',
         'independent'      => 'SEOProStats_Migrate_Independent_Analytics',
+        'slimstat'         => 'SEOProStats_Migrate_Slimstat',
+        'matomo'           => 'SEOProStats_Migrate_Matomo',
     );
 
     /** Cron hook of a running import. */
@@ -71,6 +73,13 @@ final class SEOProStats_Migrate {
 
     /** Days read for the dry run's row estimate. */
     const SAMPLE = 3;
+
+    /**
+     * Rows (SEOProStats_Migrate_Source::size()) above which the dry run
+     * estimates a plugin's counts from SAMPLE days instead of adding up
+     * every day, so it answers in seconds.
+     */
+    const LARGE = 250000;
 
     /** imports.status, as SEOProStats_Search_Import's. */
     const RUNNING = 1;
@@ -372,6 +381,7 @@ final class SEOProStats_Migrate {
         }
 
         // Plugins not imported yet with statistics on the same days.
+        $estimated       = false;
         $plan['overlap'] = array();
         $prefer          = isset($args['prefer']) ? (string) $args['prefer'] : '';
         foreach (self::sources() as $other_key => $class) {
@@ -387,8 +397,8 @@ final class SEOProStats_Migrate {
             if (!$shared) {
                 continue;
             }
-            $ours              = $source->totals(min($shared), max($shared));
-            $theirs            = $other->totals(min($shared), max($shared));
+            $ours              = self::range_totals($source, $shared, $estimated);
+            $theirs            = self::range_totals($other, $shared, $estimated);
             $plan['overlap'][] = array(
                 'source'    => $other_key,
                 'name'      => $class::NAME,
@@ -403,14 +413,49 @@ final class SEOProStats_Migrate {
         $plan['prefer'] = in_array($prefer, $choices, true) ? $prefer : $key;
         $plan['rows']   = self::estimate($source, $import);
         $plan['settings'] = self::settings_plan($source);
-        $plan['totals']   = $import ? $source->totals(min($import), max($import)) : array('pageviews' => 0, 'visits' => 0, 'visitors' => 0);
-        $plan['plugin']   = $source->plugin();
+        $plan['totals']    = self::range_totals($source, $import, $estimated);
+        $plan['estimated'] = $estimated;
+        $plan['plugin']    = $source->plugin();
         $plan['import']   = array(
             'days' => count($import),
             'from' => $import ? min($import) : '',
             'to'   => $import ? max($import) : '',
         );
         return $plan;
+    }
+
+    /**
+     * A plugin's own counts for some days, for the dry run: added up over
+     * their range, or, for a large source (LARGE), estimated from SAMPLE of
+     * the days (a quarter, half and three quarters through) so the dry run
+     * stays quick.
+     *
+     * @param SEOProStats_Migrate_Source $source    Adapter.
+     * @param string[]                   $days      Days, oldest first.
+     * @param bool                       $estimated Set to true when estimated.
+     * @return array{pageviews:int,visits:int,visitors:int}
+     */
+    private static function range_totals(SEOProStats_Migrate_Source $source, array $days, &$estimated) {
+        $out   = array('pageviews' => 0, 'visits' => 0, 'visitors' => 0);
+        $count = count($days);
+        if (!$count) {
+            return $out;
+        }
+        if ($count <= self::SAMPLE || $source->size() <= self::LARGE) {
+            return $source->totals(min($days), max($days));
+        }
+        // Days a quarter, half and three quarters through: the first and last are often part days (installed, today).
+        $estimated = true;
+        $sample    = array_values(array_unique(array($days[(int) floor($count / 4)], $days[(int) floor($count / 2)], $days[(int) floor($count * 3 / 4)])));
+        foreach ($sample as $day) {
+            foreach ($source->totals($day, $day) as $metric => $value) {
+                $out[$metric] += (int) $value;
+            }
+        }
+        foreach ($out as $metric => $value) {
+            $out[$metric] = (int) round($value * $count / count($sample));
+        }
+        return $out;
     }
 
     /**
@@ -1215,7 +1260,7 @@ final class SEOProStats_Migrate {
      */
     private static function remove(array $list) {
         global $wpdb;
-        $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'post_meta', 'files'), 0);
+        $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'post_meta', 'roles', 'files'), 0);
         foreach ((array) $list['tables'] as $table) {
             // Only this site's tables (its prefix), one listed name at a time.
             if (strpos((string) $table, $wpdb->prefix) !== 0) {
@@ -1246,6 +1291,12 @@ final class SEOProStats_Migrate {
         foreach (isset($list['post_meta']) ? (array) $list['post_meta'] : array() as $meta_key) {
             if (delete_metadata('post', 0, (string) $meta_key, '', true)) {
                 $done['post_meta']++;
+            }
+        }
+        foreach (isset($list['roles']) ? (array) $list['roles'] : array() as $role) {
+            if (get_role((string) $role)) {
+                remove_role((string) $role);
+                $done['roles']++;
             }
         }
         $base = wp_normalize_path(trailingslashit(WP_CONTENT_DIR));

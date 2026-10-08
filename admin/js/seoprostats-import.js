@@ -188,7 +188,7 @@
 		}
 
 		if (days) {
-			box.appendChild(el('h4', __('Counts', 'seoprostats')));
+			box.appendChild(el('h4', plan.estimated ? __('Counts (estimated from a few days: its tables are large)', 'seoprostats') : __('Counts', 'seoprostats')));
 			box.appendChild(table(
 				['', plan.name],
 				[
@@ -272,6 +272,7 @@
 		['cron', __('Scheduled tasks', 'seoprostats')],
 		['user_meta', __('User settings', 'seoprostats')],
 		['post_meta', __('Post data', 'seoprostats')],
+		['roles', __('User roles', 'seoprostats')],
 		['files', __('Files and folders (in wp-content)', 'seoprostats')]
 	];
 

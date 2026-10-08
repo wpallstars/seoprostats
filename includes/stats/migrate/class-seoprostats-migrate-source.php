@@ -90,11 +90,12 @@ abstract class SEOProStats_Migrate_Source {
     /**
      * Exactly what it leaves on this site now: tables (with this site's
      * prefix), options, transients (their option names), cron hooks, user
-     * meta keys, post meta keys (optional) and files or folders (relative
-     * to wp-content). network: the same lists for what is shared by the
-     * whole network (multisite), which cleanup only lists.
+     * meta keys, post meta keys (optional), user roles it added (optional)
+     * and files or folders (relative to wp-content). network: the same
+     * lists for what is shared by the whole network (multisite), which
+     * cleanup only lists.
      *
-     * @return array{tables:string[],options:string[],transients:string[],cron:string[],user_meta:string[],post_meta?:string[],files:string[],network:array<string,string[]>}
+     * @return array{tables:string[],options:string[],transients:string[],cron:string[],user_meta:string[],post_meta?:string[],roles?:string[],files:string[],network:array<string,string[]>}
      */
     abstract public function leftovers();
 
@@ -133,6 +134,18 @@ abstract class SEOProStats_Migrate_Source {
      */
     public function removal_step() {
         return null;
+    }
+
+    /**
+     * About how many rows its statistics tables hold, from the database's
+     * table statistics (no counting): 0 when unknown or small. Above
+     * SEOProStats_Migrate::LARGE the dry run estimates its counts from a
+     * few days instead of adding up every day.
+     *
+     * @return int
+     */
+    public function size() {
+        return 0;
     }
 
     /**
@@ -257,6 +270,23 @@ abstract class SEOProStats_Migrate_Source {
             self::$columns[$table] = $exists ? array_map('strval', (array) $wpdb->get_col($wpdb->prepare('SHOW COLUMNS FROM %i', $table))) : array();
         }
         return self::$columns[$table];
+    }
+
+    /**
+     * Rows in some tables, as the database's table statistics estimate them
+     * (information_schema; InnoDB's figure is approximate, never a count).
+     *
+     * @param string[] $tables Full names.
+     * @return int
+     */
+    protected static function table_rows(array $tables) {
+        global $wpdb;
+        if (!$tables) {
+            return 0;
+        }
+        $holders = implode(', ', array_fill(0, count($tables), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- table statistics, not the tables; $holders holds only placeholders, one per table.
+        return (int) $wpdb->get_var($wpdb->prepare("SELECT COALESCE(SUM(TABLE_ROWS), 0) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ($holders)", array_values($tables)));
     }
 
     /**
