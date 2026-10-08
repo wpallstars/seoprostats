@@ -2261,7 +2261,10 @@ paths:
         The job does not import those days again; `wp seoprostats
         search-console reimport --from=… --to=…` (or `bing reimport`)
         does. Undoing an import
-        already undone deletes nothing.
+        already undone deletes nothing. An import from another statistics
+        plugin (`/migrate`) deletes the days it added and its timeline
+        note; settings it filled in stay, and importing again fills the
+        days again.
       parameters:
         - name: id
           in: path
@@ -2288,6 +2291,187 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           description: There is no import with that ID.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: That import from another statistics plugin is still running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /migrate:
+    get:
+      operationId: getMigrate
+      summary: Other statistics plugins whose data is on the site, the import job and the imports so far.
+      description: |
+        A plugin is listed while its statistics or its leftovers are on the
+        site, whether it is active, inactive or deleted. The list is kept
+        for ten minutes (`fresh` looks again). While an import runs, each
+        read moves it on for a few seconds, as WP-Cron does.
+        For administrators who may change the settings.
+      parameters:
+        - name: fresh
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MigrateStatus'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /migrate/{source}:
+    parameters:
+      - $ref: '#/components/parameters/migrateSource'
+    post:
+      operationId: runMigrate
+      summary: The dry run, or start importing a plugin's history.
+      description: |
+        Days are whole days in the site's time zone. Only days before SEO
+        Pro Stats's own first day are imported, and a day another import
+        filled is skipped, so a second run adds nothing. When another
+        plugin not imported yet has statistics on the same days, `prefer`
+        names the one that fills them; it imports first. The import runs
+        in the background; `GET /migrate` shows its progress, then the
+        import with its check.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: false
+                  description: Only say what the import would do. Writes nothing.
+                prefer:
+                  type: string
+                  description: For days another plugin shares, the plugin that fills them.
+                from:
+                  type: string
+                  format: date
+                  description: First day to import; default its first day.
+                to:
+                  type: string
+                  format: date
+                  description: Last day to import; default its last day.
+      responses:
+        '200':
+          description: The dry run (`dry_run`), or the job started.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/MigratePlan'
+                  - type: object
+                    required: [job]
+                    properties:
+                      job:
+                        $ref: '#/components/schemas/MigrateJob'
+        '400':
+          description: A day is not written as YYYY-MM-DD.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: SEO Pro Stats cannot import from that plugin, or none of its statistics are on the site.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: An import is already running.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The statistics tables are being updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /migrate/{source}/cleanup:
+    parameters:
+      - $ref: '#/components/parameters/migrateSource'
+    post:
+      operationId: cleanupMigrate
+      summary: List, or remove, what a statistics plugin left behind.
+      description: |
+        Lists exactly what the plugin leaves on this site now (tables with
+        this site's prefix, options, transients, cron hooks, user meta
+        keys, files and folders in wp-content); `dry_run: false` deletes
+        exactly that list. Refused while the plugin is active on the site
+        or the network. On multisite, what the network shares is listed
+        and never deleted. It cannot be undone; imported days stay. Needs
+        the `delete_plugins` and `manage_options` capabilities.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dry_run:
+                  type: boolean
+                  default: true
+      responses:
+        '200':
+          description: The list, and after a real run what was removed and what is left.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source, name, plugin, leftovers, dry_run]
+                properties:
+                  source:
+                    type: string
+                  name:
+                    type: string
+                  plugin:
+                    $ref: '#/components/schemas/MigratePlugin'
+                  leftovers:
+                    $ref: '#/components/schemas/MigrateLeftovers'
+                  dry_run:
+                    type: boolean
+                  removed:
+                    type: object
+                    description: Items removed by kind (tables, options, transients, cron, user_meta, files).
+                    additionalProperties:
+                      type: integer
+                  left:
+                    $ref: '#/components/schemas/MigrateLeftovers'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          description: Not allowed to delete plugins and change the settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: SEO Pro Stats cannot import from that plugin.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The plugin is active; deactivate it first.
           content:
             application/json:
               schema:
@@ -2454,6 +2638,15 @@ components:
       schema:
         type: string
         enum: [search-console, bing]
+    migrateSource:
+      name: source
+      in: path
+      required: true
+      description: A statistics plugin SEO Pro Stats can import from (more can be added with the `seoprostats_migrate_sources` filter).
+      schema:
+        type: string
+        pattern: '^[a-z0-9-]+$'
+        example: burst-statistics
 
   responses:
     BadDefinition:
@@ -5560,6 +5753,317 @@ components:
           type: integer
         error:
           type: string
+
+    MigratePlugin:
+      type: object
+      description: The plugin's file and state on this site.
+      required: [file, state]
+      properties:
+        file:
+          type: string
+          description: Empty when it is not installed.
+        state:
+          type: string
+          enum: [active, network, inactive, missing]
+
+    MigrateLeftovers:
+      type: object
+      description: Exactly what the plugin leaves on this site now.
+      properties:
+        tables:
+          type: array
+          items:
+            type: string
+        options:
+          type: array
+          items:
+            type: string
+        transients:
+          type: array
+          items:
+            type: string
+        cron:
+          type: array
+          items:
+            type: string
+        user_meta:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          description: Relative to wp-content; folders end in /.
+          items:
+            type: string
+        network:
+          type: object
+          description: Multisite, shared by the whole network; listed, never deleted.
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    MigrateSkipped:
+      type: object
+      properties:
+        own:
+          type: integer
+          description: Days SEO Pro Stats has its own statistics for.
+        imported:
+          type: object
+          description: Days another import filled, by its plugin.
+          additionalProperties:
+            type: integer
+        empty:
+          type: integer
+        failed:
+          type: integer
+
+    MigrateCounts:
+      type: object
+      properties:
+        pageviews:
+          type: integer
+        visits:
+          type: integer
+        visitors:
+          type: integer
+
+    MigrateJob:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [none, running, done]
+        queue:
+          type: array
+          description: The plugins it imports, the preferred one first.
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              name:
+                type: string
+              id:
+                type: integer
+                description: Its imports row (0 before it starts).
+              total:
+                type: integer
+              done:
+                type: integer
+              rows:
+                type: integer
+              error:
+                type: string
+        started:
+          type: integer
+        finished:
+          type: integer
+
+    MigrateImport:
+      type: object
+      properties:
+        id:
+          type: integer
+        source:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+          enum: [running, done, failed, undone]
+        started:
+          type: integer
+        finished:
+          type: integer
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        days:
+          type: integer
+        rows:
+          type: integer
+        version:
+          type: string
+          description: The plugin's version as it recorded it.
+        skipped:
+          $ref: '#/components/schemas/MigrateSkipped'
+        check:
+          type: object
+          description: The plugin's own counts for the imported days beside the imported ones (visitors are counted once across the range by the plugin, per day once imported).
+          properties:
+            source:
+              $ref: '#/components/schemas/MigrateCounts'
+            imported:
+              $ref: '#/components/schemas/MigrateCounts'
+        settings:
+          type: object
+          description: Settings it filled in, by key, each [before, after] in words.
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        error:
+          type: string
+
+    MigrateStatus:
+      type: object
+      required: [sources, job, own_from, imports, can]
+      properties:
+        sources:
+          type: object
+          description: Plugins found, by key.
+          additionalProperties:
+            type: object
+            properties:
+              key:
+                type: string
+              name:
+                type: string
+              version:
+                type: string
+              from:
+                type: string
+                description: First day with statistics ('' when only leftovers are left).
+              to:
+                type: string
+              days:
+                type: integer
+              plugin:
+                $ref: '#/components/schemas/MigratePlugin'
+              leftovers:
+                type: boolean
+                description: Whether it left data behind (only looked at while it is not active).
+              uninstall_setting:
+                type: object
+                nullable: true
+                description: Its own "delete data when uninstalled" setting, if it has one.
+                properties:
+                  key:
+                    type: string
+                  label:
+                    type: string
+                  where:
+                    type: string
+                  'on':
+                    type: boolean
+        job:
+          $ref: '#/components/schemas/MigrateJob'
+        own_from:
+          type: string
+          format: date
+          description: SEO Pro Stats's own first day; only days before it are imported.
+        imports:
+          type: array
+          items:
+            $ref: '#/components/schemas/MigrateImport'
+        can:
+          type: object
+          properties:
+            import:
+              type: boolean
+            cleanup:
+              type: boolean
+
+    MigratePlan:
+      type: object
+      description: The dry run.
+      properties:
+        source:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        from:
+          type: string
+          format: date
+        to:
+          type: string
+          format: date
+        own_from:
+          type: string
+          format: date
+        days:
+          type: integer
+          description: Days with statistics in the range.
+        import:
+          type: object
+          description: The days it would add.
+          properties:
+            days:
+              type: integer
+            from:
+              type: string
+            to:
+              type: string
+        skipped:
+          $ref: '#/components/schemas/MigrateSkipped'
+        overlap:
+          type: array
+          description: Plugins not imported yet with statistics on the same days.
+          items:
+            type: object
+            properties:
+              source:
+                type: string
+              name:
+                type: string
+              from:
+                type: string
+              to:
+                type: string
+              days:
+                type: integer
+              pageviews:
+                type: object
+                description: Each plugin's pageviews over the shared days, by key.
+                additionalProperties:
+                  type: integer
+              suggested:
+                type: string
+                description: The one with more pageviews.
+        prefer:
+          type: string
+        rows:
+          type: object
+          description: Rows it would add by report (site, page, entry, exit, source, channel, country, device, browser, os, utm_*, landing), estimated from three of its days.
+          additionalProperties:
+            type: integer
+        totals:
+          $ref: '#/components/schemas/MigrateCounts'
+        settings:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              theirs:
+                type: string
+                description: Its own name for the setting.
+              from:
+                type: string
+                description: Its value, in words.
+              now:
+                type: string
+              to:
+                type: string
+              change:
+                type: boolean
+                description: Whether the import fills it in (only settings still at their default).
+              reason:
+                type: string
+                enum: ['', set, same]
+        plugin:
+          $ref: '#/components/schemas/MigratePlugin'
 
     Error:
       type: object

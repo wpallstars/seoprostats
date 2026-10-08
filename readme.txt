@@ -15,7 +15,7 @@ Privacy-friendly site statistics in WordPress: visits, pages, sources and goals,
 
 SEO Pro Stats is what wpallstars plugins are made from. It has no features of its own: it holds the parts every plugin needs, so a new plugin starts with them working.
 
-* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages), Data (how long visits are kept, who can see the statistics) and Connections (outside data, such as Google Search Console and Bing Webmaster Tools).
+* **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings, saved instantly, searchable, in tabs: Tracking (what is collected), Privacy (Do Not Track, excluded addresses and pages), Data (how long visits are kept, who can see the statistics), Connections (outside data, such as Google Search Console and Bing Webmaster Tools) and Import (history from another statistics plugin, such as Burst Statistics, and removing what it left behind).
 * **A Read Me tab** that shows the plugin's README.md, banner included.
 * **Features as classes**, off by default, with settings, hooks, one-off imports from the plugins they replace and clean uninstall.
 * **Release and check scripts**: lint, smoke test, release build, preflight and Plugin Check.
@@ -116,6 +116,14 @@ Search → Experiments checks it. Write down a change and what it should do, suc
 = Can an AI agent run the SEO work week by week? =
 
 Yes, with an Application Password. One answer, the loop (REST API loop, wp seoprostats loop, and on WordPress 6.9 and later the ability seoprostats/loop), gives the agent everything for a cycle: the open Plan items best first, the experiments due for a decision, those running and those decided lately with their results, and the period's search figures per search and page. The agent accepts an item, makes the change in WordPress, marks it done (which starts an experiment), and decides the experiment on its review day from the measurement; the results then shape the next plan. The plugin proposes and measures; it never changes a page by itself. The steps are in docs/seo-loop-recipes.md in the plugin's repository.
+
+= Can I bring my statistics history from another plugin? =
+
+Yes, from Burst Statistics so far. Open SEO Pro Stats → Settings → Import: the plugin is listed whenever its data is on the site, even after it is switched off or deleted. Check what would be imported (nothing changes), then Import: the days before SEO Pro Stats started are added to the reports in the background, with pages, referrers, channels, campaigns, countries, devices, browsers and operating systems. Days SEO Pro Stats counted itself are never replaced, and a day is never counted twice, so importing again adds nothing; when two plugins have the same days, you choose which fills them. The finished import shows the other plugin's own counts beside the imported ones, and Undo removes exactly what it added. Settings with an equivalent here (Do Not Track, excluded roles and IP addresses) are filled in only where you have not changed them. Only counts are read: no IP addresses or visitor IDs.
+
+= How do I remove the old statistics plugin and its data? =
+
+After importing, switch the old plugin off and delete it from the Plugins screen (the Import tab links there). Many statistics plugins leave their tables and settings behind when deleted. Once the plugin is not active, Settings → Import → Remove leftover data lists exactly what it left on this site (database tables, options, scheduled tasks and files) and deletes it when you confirm. It is refused while that plugin is active and cannot be undone, so back up the database first. The days already imported stay.
 
 = Can I see what it shows before my site has visits? =
 

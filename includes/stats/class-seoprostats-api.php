@@ -476,7 +476,7 @@ final class SEOProStats_API {
             'permission_callback' => $settings,
             'callback'            => array(__CLASS__, 'undo_import'),
         ));
-        self::migrate_routes($ns, $settings);
+        self::migrate_routes($settings);
 
         register_rest_route($ns, '/demo', array(
             array(
@@ -985,10 +985,10 @@ final class SEOProStats_API {
      * Routes of imports from other statistics plugins (SEOProStats_Migrate),
      * for administrators who may change the settings.
      *
-     * @param string   $ns       Namespace.
      * @param callable $settings Permission callback.
      */
-    private static function migrate_routes($ns, $settings) {
+    private static function migrate_routes($settings) {
+        $ns     = SEOProStats_Collection::REST_NAMESPACE;
         $source = '/migrate/(?P<source>[a-z0-9-]+)';
         register_rest_route($ns, '/migrate', array(
             'methods'             => WP_REST_Server::READABLE,

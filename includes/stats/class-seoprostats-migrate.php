@@ -80,7 +80,7 @@ final class SEOProStats_Migrate {
     /**
      * Adapters by key: the built-in ones and those added with the filter.
      *
-     * @return array<string,string> Key => class.
+     * @return array<string,class-string<SEOProStats_Migrate_Source>> Key => class.
      */
     public static function sources() {
         /**
@@ -205,7 +205,7 @@ final class SEOProStats_Migrate {
      */
     public static function own_from() {
         global $wpdb;
-        $days     = array(wp_date('Y-m-d'));
+        $days     = array((string) wp_date('Y-m-d'));
         $imported = SEOProStats_Rollup::imported()['through'];
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table: the primary key from the day after the imported ones, one entry.
         $own = (string) $wpdb->get_var($wpdb->prepare('SELECT day FROM %i WHERE day > %s AND dim = 0 AND import_id = 0 ORDER BY day LIMIT 1', SEOProStats_Schema::table('daily'), $imported !== '' ? $imported : '1000-01-01'));
@@ -217,7 +217,8 @@ final class SEOProStats_Migrate {
         if ($first > 0) {
             $days[] = (string) wp_date('Y-m-d', $first);
         }
-        return min($days);
+        sort($days);
+        return $days[0];
     }
 
     /**
@@ -468,7 +469,7 @@ final class SEOProStats_Migrate {
         if ($value === '') {
             return __('None', 'seoprostats');
         }
-        $lines = preg_split('~\R~', $value);
+        $lines = explode("\n", str_replace(array("\r\n", "\r"), "\n", $value));
         /* translators: %d: number of lines. */
         return count($lines) > 3 ? sprintf(_n('%d line', '%d lines', count($lines), 'seoprostats'), count($lines)) : implode(', ', $lines);
     }
@@ -677,8 +678,8 @@ final class SEOProStats_Migrate {
         $item['last']  = max($item['last'], $day);
         foreach ($rows as $row) {
             if ($row[0] === 0) {
-                foreach (array_keys($item['ours']) as $metric) {
-                    $item['ours'][$metric] += (int) $row[2][$metric];
+                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
+                    $item['ours'][$metric] += $row[2][$metric];
                 }
                 break;
             }
@@ -749,7 +750,7 @@ final class SEOProStats_Migrate {
                 $clean = SEOProStats_Dict::clean((string) $value);
                 $val   = isset($dict[$kinds[$name]][$clean]) ? (int) $dict[$kinds[$name]][$clean] : 0;
             } elseif ($name === 'country') {
-                $val = SEOProStats_Query::country_value((string) $value);
+                $val = SEOProStats_Rollup::country_value((string) $value);
             } else {
                 $val = (int) $value;
             }
@@ -816,7 +817,11 @@ final class SEOProStats_Migrate {
             }
             $count += (int) $result;
         }
-        $wpdb->query($ok ? 'COMMIT' : 'ROLLBACK');
+        if ($ok) {
+            $wpdb->query('COMMIT');
+        } else {
+            $wpdb->query('ROLLBACK');
+        }
         // phpcs:enable
         return $ok ? $count : false;
     }

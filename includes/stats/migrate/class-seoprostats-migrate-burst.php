@@ -130,7 +130,7 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
         $sums   = "COUNT(DISTINCT x.u) AS visitors, COUNT(*) AS visits, COALESCE(SUM(x.pv), 0) AS pageviews, $bounce AS bounces, COALESCE(SUM(x.ms), 0) AS engaged_ms";
         $base   = "FROM ($visit) x INNER JOIN %i s ON s.ID = x.sid";
 
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums, $bounce and the joins are fixed SQL. Only counts and names are read.
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums, $bounce and the joins are fixed SQL. Only counts and names are read.
         $site = $wpdb->get_row($wpdb->prepare("SELECT $sums $base", $ss), ARRAY_A);
         if (!$site || (int) $site['pageviews'] === 0) {
             return $rows;
@@ -254,7 +254,7 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
         }
         $ips = isset($burst['ip_blocklist']) ? trim((string) $burst['ip_blocklist']) : '';
         if ($ips !== '') {
-            $lines = array_values(array_filter(array_map('trim', preg_split('~[\s,]+~', $ips))));
+            $lines = array_values(array_filter(array_map('trim', explode(' ', str_replace(array("\r", "\n", "\t", ','), ' ', $ips)))));
             $out[] = array(
                 'key'   => 'exclude_ips',
                 'label' => 'Exclude IP addresses from being tracked',

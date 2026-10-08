@@ -650,6 +650,78 @@ on in the next; each run is an import (undo deletes its rows by its
 days and id). `wp seoprostats bing status|import|imports|undo|reimport`
 mirrors `search-console`.
 
+### Moving from other statistics plugins
+
+SEO Pro Stats → Settings → Import brings another statistics plugin's
+history across as whole days in `daily`, so the charts start before SEO
+Pro Stats was installed (`SEOProStats_Migrate`, loaded only on the tab,
+its routes, WP-CLI and its cron hook). One adapter per plugin extends
+`SEOProStats_Migrate_Source` (`includes/stats/migrate/`); the
+`seoprostats_migrate_sources` filter adds more. The first is Burst
+Statistics (`burst-statistics`, read from version 3.7.2).
+
+- **Detection** comes from the plugin's data, not only from the plugin:
+  its tables and options are looked for whether it is active, inactive
+  or deleted with its data left. A plugin is listed while it has
+  statistics or leftovers; the list is cached for ten minutes and
+  forgotten when any plugin is activated, deactivated or deleted.
+- **Reading** is aggregate only: per day, the site's totals and the top
+  1,000 values of each dimension the plugin has (pages, entry and exit
+  pages, referrer hosts, channels, campaign tags, search landing pages,
+  countries, devices, browsers and operating systems), in SQL that
+  returns counts and names. IP addresses (raw or hashed), visitor IDs,
+  user agent strings and form values never leave its tables. Texts go
+  through the dictionary as the processor stores them. A visit counts on
+  the day it began, as SEO Pro Stats's own do.
+- **No double counting.** Each day is filled by one source. Only days
+  before SEO Pro Stats's own first day (its first own `daily` day, the
+  first stored visit, or today) are imported; that first day counts only
+  from install time. A day another import filled (of this plugin or
+  another) is skipped, so a second run adds nothing. When plugins not
+  imported yet share days, the dry run shows the shared days and both
+  plugins' pageviews, and asks which fills them (default: the one with
+  more); that one imports first and the other fills only the days left.
+  To change the choice, undo and import again.
+- **Dry run** (`POST /migrate/{source}` with `dry_run`): the days, what
+  is skipped and why, the plugin's own counts, rows per dimension
+  (estimated from its first, middle and last day), the overlap and the
+  settings it would fill in. It writes nothing.
+- **Runs**: the tab and REST start a job (`seoprostats_migrate` option)
+  that the `seoprostats_migrate` cron hook moves on in 20-second
+  budgets under a lock, a day per step; each read of `GET /migrate` while
+  the tab polls moves it on for 10 seconds too. WP-CLI runs to the end.
+  Each day is written in one transaction. Each plugin's run is an
+  `imports` row (`source` = the adapter key; `meta`: version, days,
+  skipped days with reasons, the check, settings filled in, the
+  timeline note), and its rows carry its id in `daily.import_id`.
+- **Reports** read imported days like summarised ones: the
+  `seoprostats_imported` option holds the last imported day and when
+  imports last changed (report caches start again then), and the daily
+  summaries delete and rewrite only rows with `import_id = 0`.
+- **Check**: a finished import shows the plugin's own pageviews and
+  visits for its days beside the imported ones, a link to the Overview
+  for those days, and a note on the timeline on its last day.
+- **Settings** it has an equivalent for (Burst: Do Not Track, excluded
+  roles, excluded IP addresses) are filled in only where ours are still
+  at their default. Its own options are never written.
+- **Undo** (`DELETE /imports/{id}`, `wp seoprostats migrate undo`)
+  deletes the import's rows by its days through the primary key and its
+  id, in batches, and its timeline note. Settings it filled in stay.
+
+**Remove leftover data** (`POST /migrate/{source}/cleanup`, `wp
+seoprostats migrate cleanup`) is the owner's one exception to leaving
+other plugins' data alone (`AGENTS.md`). It lists the adapter's
+`leftovers()`: exactly what the plugin leaves on this site now (tables
+with this site's prefix, options, transients, cron hooks, user meta keys,
+files and folders in wp-content). It deletes exactly that list after
+confirmation (`--yes` in WP-CLI), one table at a time with `DROP TABLE IF
+EXISTS`, and is refused while the plugin is active on the site or the
+network, or for people who cannot delete plugins and manage options. On
+multisite it acts on this site only and lists what the network shares
+without deleting it. It cannot be undone; imported days stay, and one
+timeline note records it. Burst keeps its tables, options and upload
+folder when deleted and has no setting to remove them.
+
 ## Processing
 
 A cron job (every minute while buffer files exist; the dashboard also
@@ -713,7 +785,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `vitals` | measured page load | `id`, `ts`, `path_id`, `device`, `lcp`, `inp`, `cls`, `fcp`, `ttfb`, attribution ids |
 | `errors`, `error_groups` | error occurrence, distinct bug | fingerprint, message, sample stack; occurrence time, page, browser |
 | `bots` | crawler request | `id`, `ts`, `bot_id`, `path_id`, `status`, `verified` |
-| `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`, or `SEARCH_LANDING` (18): visits from organic search by entry page, for the content report), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views) (revenue summaries come with goals, per currency) |
+| `daily` | day × dimension × value | `day`, `dim` (0 the site, else a code in `SEOProStats_Rollup::DIMS`, or `SEARCH_LANDING` (18): visits from organic search by entry page, for the content report), `val` (the visit column's value or dict id; a country's two letters as a number), `visitors`, `visits`, `pageviews`, `bounces`, `engaged_ms`, `events`, `scroll` (pages: sums over their views), `import_id` (schema v15: the `imports` row of a day imported from another statistics plugin, 0 for the site's own; a day is one or the other, and the daily summaries never touch imported rows) (revenue summaries come with goals, per currency) |
 | `daily_vitals`, `daily_bots` | day × page × device × metric; day × bot | percentiles from the raw rows; requests, verified |
 | `gsc_pages`, `gsc_queries`, `gsc_pairs`, `gsc_totals` | engine × day × page / query / page and query / device and country (schema v7; Search Console and Bing Webmaster Tools above: Bing's pages, queries and pairs are weekly, on the week's last day, and its totals have no device or country) | `engine` (1 Google, 2 Bing), `day`, `path_id`, `query_id` (dict kind 16), `device` (1 desktop, 2 mobile, 3 tablet), `country` (ISO 3166-1 alpha-3, lower case), `clicks`, `impressions`, `pos_impr` (position × impressions × 100, for weighted averages), `import_id` |
 | `changes` | change to the site, a marker on the timeline (schema v6; Changes below) | `id`, `ts`, `kind` (a code in `SEOProStats_Changes::KINDS`), `path_id` (0: site-wide), `object_type` (the post type, or `coupon`, `plugin`, `theme`, `core`, `option`), `object_id`, `old`, `new` (190 characters), `meta` (JSON), `source` (1 WordPress, 2 WP-CLI, 3 API, 4 cron, 5 feed, 6 note), `user_id` |
@@ -1166,7 +1238,11 @@ in the future meets the same length of the other period.
   `docs/seo-loop-recipes.md`), `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
-  `imports/{id}` (`DELETE` undoes one); planned: `pages`,
+  `imports/{id}` (`DELETE` undoes one, a search data import or one from
+  another statistics plugin), `migrate` (`GET`: plugins found, the job,
+  the imports; `/{source}` `POST` for the dry run or to start an import;
+  `/{source}/cleanup` `POST` to list, or remove, its leftovers; Moving
+  from other statistics plugins above); planned: `pages`,
   `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`,
   `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
@@ -1188,7 +1264,9 @@ in the future meets the same length of the other period.
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
   [--delete-data]`, `search-console` (`status`, `import`, `imports`,
-  `undo --id`, `reimport --from --to`); reports and definitions take
+  `undo --id`, `reimport --from --to`), `migrate` (`list`, `run <source>
+  [--dry-run] [--prefer=<source>] [--from] [--to]`, `imports`, `undo
+  --id`, `cleanup <source> [--dry-run] [--yes]`); reports and definitions take
   `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the
   read reports and annotations as `seoprostats/*` abilities, so MCP
@@ -1199,7 +1277,10 @@ in the future meets the same length of the other period.
   `seoprostats/content`, `seoprostats/experiments`,
   `seoprostats/experiment-record`, `seoprostats/queue`,
   `seoprostats/queue-update`, `seoprostats/targets`,
-  `seoprostats/targets-import` and `seoprostats/loop`.
+  `seoprostats/targets-import`, `seoprostats/loop`,
+  `seoprostats/migrate` (plugins found, dry run and leftovers, read
+  only) and `seoprostats/migrate-import`. Removing leftovers is for
+  people only: no ability does it.
 
 ## Dashboard app
 
