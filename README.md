@@ -78,7 +78,10 @@ or open **Shared reports** in the menu. A report has one or more sections
 in the order the reader should see them: Overview, Search (once for each
 engine: Rankings, Opportunities, Audit and Content, never the Plan or
 Experiments), Goals, Funnels, Properties, Clicks and Changes, each section
-once. Add an optional note, password and expiry, and edit a report later
+once. A new report starts with every section that has data, the tab you
+were on first; remove any, or drag them into order by their handles (or
+with the keyboard: Tab to a handle, Space, the arrow keys, Space again;
+Escape cancels). Add an optional note, password and expiry, and edit a report later
 from the list. Starting filters can be locked on every section; readers
 may add filters, change period and comparison, and switch tabs but cannot
 remove the server's locks. Search data and the change log have no visits,
@@ -112,10 +115,15 @@ report opens light, dark or following the reader's device) and the
 override them: title, local Media Library logo IDs, agency name, website,
 byline, accent, appearance and credit. Otherwise the header uses the
 site's logo, Site Icon and site name. Readers can switch between light and
-dark; accents that fail AA text contrast fall back to a readable colour.
+dark; an accent too light or too dark for AA text contrast on the page is
+darkened or lightened in its own hue until it is readable.
 **Share** sits after the period controls; with demo data it shows but
-cannot be pressed, as only live statistics are shared. **Print / Save as PDF** uses the browser's
-print dialog with a clean branded report.
+cannot be pressed, as only live statistics are shared. **Print or save as
+PDF** (or the browser's own print shortcut) first asks which sections to
+print, then prints each with all of its tabs, one section per page start,
+for the period on screen, through the browser's print dialog as a clean
+branded report. Breakdowns a report hides (search terms and referrer
+addresses) show no tab.
 
 Scripts manage shares through `/shares` (administrators) or
 `wp seoprostats share list|create|revoke|renew --user=<administrator>`.
