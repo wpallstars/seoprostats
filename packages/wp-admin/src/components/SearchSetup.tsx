@@ -10,9 +10,9 @@
 
 import { useEffect } from 'react';
 import { Button, Notice } from '@wordpress/components';
-import { __ } from '@wordpress/i18n';
+import { __, sprintf } from '@wordpress/i18n';
 import { addQueryArgs } from '@wordpress/url';
-import type { SearchEngine } from '@seoprostats/core';
+import type { SearchEngine, SearchEngineChoice } from '@seoprostats/core';
 import type { ViewProps } from '../App';
 import { boot } from '../boot';
 import { useDataSet } from '../data';
@@ -36,17 +36,35 @@ export function useReportEngines(answer: { engines?: SearchEngine[] } | undefine
 	}, [list, onEngines]);
 }
 
-/** An engine's name: Google, Bing. */
-export function engineName(engine: SearchEngine): string {
+/** An engine's name: Google, Bing; Combined for all. */
+export function engineName(engine: SearchEngineChoice): string {
+	if (engine === 'all') {
+		return __('Combined', 'seoprostats');
+	}
 	return engine === 'bing' ? __('Bing', 'seoprostats') : __('Google', 'seoprostats');
 }
 
-/** The source of an engine's figures: Google Search Console, Bing Webmaster Tools. */
-export function sourceName(engine: SearchEngine): string {
+/** Names as a list: “A and B”, “A, B and C”. */
+function listOf(names: string[]): string {
+	if (names.length < 2) {
+		return names[0] ?? '';
+	}
+	/* translators: 1: names joined by commas, 2: the last name, e.g. "Google Search Console and Bing Webmaster Tools". */
+	return sprintf(__('%1$s and %2$s', 'seoprostats'), names.slice(0, -1).join(__(', ', 'seoprostats')), names[names.length - 1] ?? '');
+}
+
+/**
+ * The source of an engine's figures: Google Search Console, Bing
+ * Webmaster Tools; for Combined, each engine's that it adds up.
+ */
+export function sourceName(engine: SearchEngineChoice, engines: SearchEngine[] = []): string {
+	if (engine === 'all') {
+		return listOf((engines.length ? engines : (['google'] as SearchEngine[])).map((e) => sourceName(e)));
+	}
 	return engine === 'bing' ? __('Bing Webmaster Tools', 'seoprostats') : __('Google Search Console', 'seoprostats');
 }
 
-export function SearchSetup({ answer }: { answer: { through: string; connected: boolean; engine?: SearchEngine } }) {
+export function SearchSetup({ answer }: { answer: { through: string; connected: boolean; engine?: SearchEngineChoice } }) {
 	const demo = useDataSet() === 'demo';
 	if (demo || answer.through) {
 		return null;
@@ -71,16 +89,32 @@ export function SearchSetup({ answer }: { answer: { through: string; connected: 
 	);
 }
 
-/** Google or Bing, when there is more than one engine (or Bing is chosen). */
-export function EngineSwitch({ engines, engine, choose }: { engines: SearchEngine[]; engine: SearchEngine; choose: (engine: SearchEngine) => void }) {
-	const shown: SearchEngine[] = engines.includes(engine) ? engines : [...engines, engine];
+/**
+ * Google or Bing, when there is more than one engine (or Bing is chosen),
+ * then Combined where the report can add them up (`combined`); elsewhere
+ * Combined shows as Google, the engine those reports read.
+ */
+export function EngineSwitch({
+	engines,
+	engine,
+	choose,
+	combined,
+}: {
+	engines: SearchEngine[];
+	engine: SearchEngineChoice;
+	choose: (engine: SearchEngineChoice) => void;
+	combined: boolean;
+}) {
+	const chosen: SearchEngineChoice = combined || engine !== 'all' ? engine : 'google';
+	const one: SearchEngine[] = chosen === 'all' || engines.includes(chosen) ? engines : [...engines, chosen];
+	const shown: SearchEngineChoice[] = combined && one.length > 1 ? [...one, 'all'] : one;
 	if (shown.length < 2) {
 		return null;
 	}
 	return (
 		<div className="spst-engines" role="group" aria-label={__('Search engine', 'seoprostats')}>
 			{shown.map((e) => (
-				<Button key={e} size="small" variant={e === engine ? 'primary' : 'secondary'} aria-pressed={e === engine} onClick={() => choose(e)}>
+				<Button key={e} size="small" variant={e === chosen ? 'primary' : 'secondary'} aria-pressed={e === chosen} onClick={() => choose(e)}>
 					{engineName(e)}
 				</Button>
 			))}
