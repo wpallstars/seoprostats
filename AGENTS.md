@@ -48,6 +48,11 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
   private repositories, their issues, private sites, local paths, or other
   analytics products used as research in it (commits, docs, comments or
   examples). Describe features in our own words.
+- **Other plugins' data is read only.** The one exception (the owner's, to
+  `STANDARDS.md` → Structure): Settings → Import → Remove leftover data
+  (`SEOProStats_Migrate::cleanup()`) deletes another statistics plugin's
+  leftovers, exactly its adapter's list, after confirmation, and only
+  while that plugin is inactive.
 - Keep the credits in `README.md` and `readme.txt`: **Built with AI** to
   aidevops (<https://aidevops.sh>) and the "Made from" line crediting the
   starter (`STANDARDS.md` → Structure).

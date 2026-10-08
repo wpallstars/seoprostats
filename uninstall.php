@@ -49,6 +49,14 @@ function seoprostats_uninstall_site() {
     delete_option('seoprostats_page_cache');
     delete_option('seoprostats_shares');
     wp_clear_scheduled_hook('seoprostats_page_cache_purge');
+    // Imports from other statistics plugins (SEOProStats_Migrate::forget();
+    // the found list is a transient, removed below). Their plugins' own
+    // data is never touched here.
+    wp_clear_scheduled_hook(SEOProStats_Collection::MIGRATE_HOOK);
+    delete_option('seoprostats_migrate');
+    delete_option('seoprostats_migrate_lock');
+    delete_option('seoprostats_imported');
+    delete_option('seoprostats_imported_demo');
 
     $patterns = array('_transient_seoprostats_', '_transient_timeout_seoprostats_');
     foreach ($patterns as $pattern) {
