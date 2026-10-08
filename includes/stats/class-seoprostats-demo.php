@@ -1206,7 +1206,7 @@ final class SEOProStats_Demo {
         foreach ($weights as $value => $weight) {
             $id = $appearance_ids[SEOProStats_Dict::clean($value)];
             $scale = $weight * (0.8 + 0.4 * self::noise($date . $value));
-            $rows['appearance'][(string) $id] = array($id, (int) round($total[0] * $scale), (int) round($total[1] * $scale), (int) round($total[2] * $scale));
+            $rows['appearance'][$value] = array($id, (int) round($total[0] * $scale), (int) round($total[1] * $scale), (int) round($total[2] * $scale));
         }
         $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
         foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
