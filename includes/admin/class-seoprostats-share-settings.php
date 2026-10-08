@@ -51,25 +51,59 @@ final class SEOProStats_Share_Settings {
     }
 
     /**
-     * The site's colours: WordPress's admin blue, then the theme's palette
-     * and colours added in the Site Editor or Customizer (WordPress's own
-     * palette only when the site has none). Only hex colours; no repeats.
+     * The site's colours: WordPress's admin blue, then the theme's colours
+     * (a classic theme's editor palette, set in its Customizer, and the
+     * theme.json palette), then colours added in the Site Editor;
+     * WordPress's own palette only when the site has none. Only hex
+     * colours: themes that give CSS variables in theme.json (such as
+     * Kadence) usually give the real colours in the editor palette. No
+     * repeats.
      *
      * @return array<string,string> hex => name
      */
     public static function palette() {
-        $out = array(self::DEFAULT_ACCENT => __('WordPress blue', 'seoprostats'));
-        $all = function_exists('wp_get_global_settings') ? (array) wp_get_global_settings(array('color', 'palette')) : array();
-        $own = array_merge((array) ($all['theme'] ?? array()), (array) ($all['custom'] ?? array()));
-        foreach ($own ? $own : (array) ($all['default'] ?? array()) as $entry) {
+        $all     = function_exists('wp_get_global_settings') ? (array) wp_get_global_settings(array('color', 'palette')) : array();
+        $support = get_theme_support('editor-color-palette');
+        $own     = array_merge(
+            is_array($support) && isset($support[0]) && is_array($support[0]) ? $support[0] : array(),
+            (array) ($all['theme'] ?? array()),
+            (array) ($all['custom'] ?? array())
+        );
+        $out = self::add_colours(array(), $own);
+        if (!$out) {
+            $out = self::add_colours(array(), (array) ($all['default'] ?? array()));
+        }
+        $out = self::add_colours(array(self::DEFAULT_ACCENT => __('WordPress blue', 'seoprostats')), array_map(static function ($hex, $name) {
+            return array('color' => $hex, 'name' => $name);
+        }, array_keys($out), $out));
+
+        /**
+         * Filter the colours offered for shared reports' accent, for a theme
+         * that keeps its colours elsewhere.
+         *
+         * @param array<string,string> $out hex (#rrggbb) => name.
+         */
+        $filtered = (array) apply_filters('seoprostats_share_palette', $out);
+        return array_slice(self::add_colours(array(), array_map(static function ($hex, $name) {
+            return array('color' => $hex, 'name' => $name);
+        }, array_keys($filtered), $filtered)), 0, self::MAX_SWATCHES, true);
+    }
+
+    /**
+     * Add palette entries (color, name) that are hex colours not yet in the list.
+     *
+     * @param array<string,string> $out     hex => name.
+     * @param array                $entries Palette entries.
+     * @return array<string,string>
+     */
+    private static function add_colours(array $out, array $entries) {
+        foreach ($entries as $entry) {
             $hex = self::hex(is_array($entry) ? ($entry['color'] ?? '') : '');
             if ($hex === '' || isset($out[$hex])) {
                 continue;
             }
-            $out[$hex] = is_array($entry) && is_string($entry['name'] ?? null) && $entry['name'] !== '' ? $entry['name'] : $hex;
-            if (count($out) >= self::MAX_SWATCHES) {
-                break;
-            }
+            $name      = is_array($entry) && is_scalar($entry['name'] ?? null) ? trim((string) $entry['name']) : '';
+            $out[$hex] = $name !== '' ? $name : $hex;
         }
         return $out;
     }
