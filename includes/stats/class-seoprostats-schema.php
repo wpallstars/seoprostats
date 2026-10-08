@@ -40,8 +40,9 @@ final class SEOProStats_Schema {
      *      page_facts.links_in (pages linking to each).
      * v12: page_facts.published (when each page was published) and
      *      sitemap (the addresses in the site's own sitemaps).
+     * v13: targets (the site's chosen search queries and their pages).
      */
-    const VERSION = 12;
+    const VERSION = 13;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -106,7 +107,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets');
     }
 
     /**
@@ -641,6 +642,24 @@ final class SEOProStats_Schema {
   PRIMARY KEY  (path_id),
   KEY first_seen (first_seen),
   KEY seen (seen)
+) $charset;",
+
+            // Search targets (SEOProStats_Targets): the site's chosen
+            // queries (a dictionary id, DICT_QUERY) and the page meant for
+            // each (0: none chosen), imported by people and agents.
+            // priority: 0-100; status and source: codes in
+            // SEOProStats_Targets. Small: read whole by its primary key.
+            'targets' => "CREATE TABLE {$t['targets']} (
+  query_id int unsigned NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  priority tinyint unsigned NOT NULL DEFAULT 50,
+  status tinyint unsigned NOT NULL DEFAULT 1,
+  source tinyint unsigned NOT NULL DEFAULT 1,
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (query_id),
+  KEY path_id (path_id)
 ) $charset;",
         );
     }
