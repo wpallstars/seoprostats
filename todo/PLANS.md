@@ -181,20 +181,28 @@ long-term record.
 
 ## Phase 7: move from other statistics plugins (GH#108)
 
-Bring a site's history and settings across when it switches: imported
-days in `daily` with an import id (undo), never overlapping days we
-recorded ourselves. It brings its own import engine, so it does not wait
-for Phase 6's generic import.
+Bring a site's history and settings across when it switches, then help
+remove the old plugin and its leftovers. Sources are found by their data
+(tables, options), not only by the plugin being installed. Imported days
+go in `daily` with an import id (undo). Each day is filled by one source
+only: never over days we recorded ourselves, and where several sources
+share days, the owner picks which one fills them. Other statistics
+plugins may keep running beside SEO Pro Stats (none goes in `REPLACES`).
+It brings its own import engine, so it does not wait for Phase 6's
+generic import.
 
-- [ ] Engine, detection, dry run, Settings → Import tab, REST, WP-CLI,
-      abilities, and Burst Statistics as the first source (GH#109).
-- [ ] Plugins screen: `replaces` on the tracking switch for standalone
-      statistics plugins (standard notices), and a "Move its history"
-      link and notice to the Import tab; Jetpack gets a row note only
-      (GH#110, after GH#109).
+- [ ] Engine, detection, dry run, overlap choice, check after import,
+      Remove leftover data (confirmed, only while the plugin is
+      inactive), Settings → Import tab, REST, WP-CLI, abilities, and
+      Burst Statistics as the first source (GH#109).
+- [ ] Notices on the Plugins screen and SEO Pro Stats's screens through
+      each step: import, check, deactivate and delete, remove leftovers;
+      shown until the plugin and its data are gone (GH#110, after
+      GH#109).
 - [ ] Jetpack Stats (from WordPress.com, by the site's Jetpack
       connection): daily views and visitors, top pages, referrers,
-      countries (GH#111, after GH#109).
+      countries. Built from Jetpack's open-source code without a test
+      site; invited users with Jetpack test it (GH#111, after GH#109).
 - [ ] Plugins that keep their data in the site's own database, each
       table layout checked against a real install first: Koko Analytics
       and Statify (GH#112), WP Statistics and Independent Analytics
