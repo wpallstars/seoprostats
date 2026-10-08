@@ -664,8 +664,10 @@ Statistics (`burst-statistics`, read from version 3.7.2), Koko Analytics
 Statify (`statify`, read from 2.0.3), WP Statistics (`wp-statistics`,
 read from 14.16.15 and its older layouts), Independent Analytics
 (`independent`, read from 2.15.5; the key fits `imports.source`'s 20
-characters), Slimstat (`slimstat`, read from 5.5.0) and Matomo for
-WordPress (`matomo`, read from 5.13.1). Device, system and browser names, IP address lists, and
+characters), Slimstat (`slimstat`, read from 5.5.0), Matomo for
+WordPress (`matomo`, read from 5.13.1) and Jetpack Stats (`jetpack`,
+built from Jetpack 16.3's source, its stats package 0.22.1, and tested by
+people who use it). Device, system and browser names, IP address lists, and
 sources, channels and campaign tags from referrers and first pages are
 worked out in the base class, the same for every adapter.
 
@@ -680,6 +682,7 @@ What each plugin keeps sets what can be imported:
 | Independent Analytics | A row per visit and per pageview (UTC), with the page, referrer, country, device, browser and system in tables of their own; UTM tags with its Pro version | Visitors, visits, pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags (Pro), search landing pages, countries, devices, browsers, systems | Scroll, events |
 | Slimstat | A row per pageview (local time), with its visit, page, referrer, browser, system, device type and country; rows its retention moved to an archive table | Visits (each one visitor), pageviews, bounces, time on page; pages, entry and exit pages, sources, channels, campaign tags, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, scroll, events |
 | Matomo for WordPress | A row per visit (UTC) with its referrer, campaign name, browser, system, device and country codes, a row per action, and report archives | Visits (each one visitor), pageviews, bounces, visit time and time on page; pages, entry and exit pages, sources, channels, campaign name and keyword, search landing pages, countries, devices, browsers, systems | Visitors across a day's visits, campaign source and medium, scroll, events |
+| Jetpack Stats | Nothing on the site: WordPress.com keeps views and visitors per day, and per day its top posts and pages, referrers and countries | Pageviews and visitors (and visits = visitors) of the site; pageviews of each post and page, each referring host and its channel, and each country | Visits, bounces, time, entry and exit pages, campaigns, devices, browsers, systems; search terms (mostly hidden) |
 
 Koko Analytics counts a visitor once a day, as SEO Pro Stats does, by a
 cookie or a fingerprint that changes daily (its setting), so its visitors
@@ -735,6 +738,32 @@ the collector counts it. Neither keeps a visitor across visits that is
 read here (only IP addresses, fingerprints and visitor IDs, which are
 never read), so each visit counts as one visitor.
 
+Jetpack Stats keeps its history on WordPress.com, so it is the one
+remote source (`SEOProStats_Migrate_Jetpack`; its docblock cites each
+endpoint, parameter and field from Jetpack's and the WordPress.com Stats
+screens' source). It is built from that source without a connected test
+site, and people who use it test it with `wp seoprostats migrate run
+jetpack --dry-run --debug` (each request, HTTP code, the answer's
+top-level keys and counts; never tokens or answers). It is read only
+while Jetpack (or the standalone Jetpack Stats) is active, connected to
+WordPress.com and has Stats on, Jetpack's own two checks; otherwise the
+adapter's `unavailable()` says why ("connect Jetpack first", "update
+Jetpack") on the Import tab and in `wp seoprostats migrate list`, and the
+dry run and import stop with it without a request. Requests are made
+only in cron and WP-CLI, never on visitor pages, screen loads or REST
+requests, through Jetpack's connection client as Jetpack makes them but
+without its `jetpack_restapi_stats_cache_*` transients. The daily views
+and visitors are looked up once in the background (`stats/visits`, 90
+days a request, back until 180 days without views) and kept as counts in
+the `seoprostats_migrate_jetpack` option, refreshed daily; that list is
+its days, its totals for the check and its overlap with other plugins.
+The import fetches a day's `top-posts`, `referrers` and
+`country-views` (100 items each) per step. Its visitors are counted per
+day, so they compare directly, and it has no visits: each visitor's day
+is imported as one visit, as for WP Statistics. Posts are imported at
+their current address, and posts deleted since are left out; referrers
+from this site's own address are left out.
+
 - **Detection** comes from the plugin's data, not only from the plugin:
   its tables and options are looked for whether it is active, inactive
   or deleted with its data left. A plugin is listed while it has
@@ -776,6 +805,14 @@ never read), so each visit counts as one visitor.
   `imports` row (`source` = the adapter key; `meta`: version, days,
   skipped days with reasons, the check, settings filled in, the
   timeline note), and its rows carry its id in `daily.import_id`.
+  When a remote source (Jetpack) cannot answer, its `days()` returns a
+  `WP_Error` with `retry` seconds: the day is put back and the job waits
+  (longer after each try; the job's `notice` and `wait` say why and until
+  when), and after six tries, or an error trying again cannot help (not
+  connected), that plugin's import stops with the error. Days already
+  imported stay, and running it again carries on from the days left.
+  The dry run in a web request leaves a remote source's rows estimate
+  out (WP-CLI reads its sample days).
 - **Reports** read imported days like summarised ones: the
   `seoprostats_imported` option holds the last imported day and when
   imports last changed (report caches start again then), and the daily
@@ -870,6 +907,13 @@ setting to remove their data when deleted:
   Leftovers listed: the same, its `matomo_` and settings-tab transients
   and its remaining `matomo_` cron hooks (on a network its site options
   and user meta are listed as shared).
+- **Jetpack Stats** keeps its history on WordPress.com, not here; its
+  step after the import is to switch off Stats in Jetpack → Settings →
+  Traffic (Jetpack does other jobs), or to deactivate the standalone
+  Jetpack Stats plugin. Leftovers listed: only its statistics caches,
+  the `jetpack_restapi_stats_cache_*` transients and the
+  `_jetpack_restapi_stats_cache_` post meta; never Jetpack's connection,
+  modules or other options.
 
 **Notices** (`SEOProStats_Migrate_Notices`) give one next step per plugin
 found, with its link, from finding its data until the plugin and its data
