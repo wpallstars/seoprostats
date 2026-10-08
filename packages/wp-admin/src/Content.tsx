@@ -1,6 +1,6 @@
 /**
  * Search → Content: which pages earn their search traffic. Per page, the
- * chosen engine's clicks, position and CTR, with the visits from
+ * chosen engine's (or every engine's, Combined) clicks, position and CTR, with the visits from
  * search that started on the page (bounce rate, time) and how many of them
  * reached a goal. A page that ranks but whose visits leave needs better
  * content or a clearer next step; one that converts but gets few clicks is
@@ -27,7 +27,7 @@ import {
 	type ContentMetrics,
 	type ContentRow,
 	type ContentSort,
-	type SearchEngine,
+	type SearchEngineChoice,
 } from '@seoprostats/core';
 import { errorMessage, useContent } from './api';
 import { locale } from './boot';
@@ -51,7 +51,7 @@ type ContentProps = SearchReportProps & {
 export function Content({ state, update, open, onEngines }: ContentProps) {
 	const sort: ContentSort = state.sort ?? 'clicks';
 	const goal = state.goal ?? '';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngineChoice = state.engine ?? 'google';
 	// Back to the first rows when the period, filters, engine, order or goal change.
 	const scope = JSON.stringify([apiArgs(state), engine, sort, goal]);
 	const [at, setAt] = useState({ scope, offset: 0 });
@@ -60,6 +60,8 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 	const query = useContent(state, sort, goal, PER_PAGE, offset);
 	const answer = query.data;
 	useReportEngines(answer, onEngines);
+	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
+	const answered: SearchEngineChoice = answer?.engine ?? engine;
 	const rows = answer?.rows ?? [];
 	const counted = answer?.goal ?? null;
 
@@ -98,7 +100,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 								{sprintf(
 									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
 									__('%1$s, final days through %2$s, with the visits from search of the same days', 'seoprostats'),
-									sourceName(engine),
+									sourceName(answer.engine, answer.engines),
 									longLabel(answer.through, 'day')
 								)}
 							</p>
@@ -116,7 +118,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 						</div>
 					)}
 				</div>
-				<Tiles answer={answer} engine={engine} />
+				<Tiles answer={answer} engine={answered} />
 			</Card>
 
 			<Card className="spst-card is-wide spst-section" size="small">
@@ -136,7 +138,12 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 					{answer && answer.through && (
 						<div className="spst-note">
 							<p>
-								{engine === 'bing'
+								{answered === 'all'
+									? __(
+											'Clicks and position are every search engine’s added up, Bing’s from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+											'seoprostats'
+										)
+									: answered === 'bing'
 									? __(
 											'Clicks and position are Bing’s, from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
 											'seoprostats'
@@ -179,7 +186,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 }
 
 /** The totals: search clicks, visits from search, their bounce rate, conversions. */
-function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: SearchEngine }) {
+function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: SearchEngineChoice }) {
 	const totals = answer?.totals;
 	const then = answer?.compare?.totals;
 	const change = answer?.compare?.change;
@@ -197,7 +204,7 @@ function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: 
 		<div className="spst-tiles" role="group" aria-label={__('Totals', 'seoprostats')}>
 			{tile(
 				__('Clicks', 'seoprostats'),
-				engine === 'bing' ? __('From Bing', 'seoprostats') : __('From Google Search', 'seoprostats'),
+				engine === 'all' ? __('From search engines', 'seoprostats') : engine === 'bing' ? __('From Bing', 'seoprostats') : __('From Google Search', 'seoprostats'),
 				totals ? number(totals.clicks) : '',
 				change && <Change change={change.clicks} better={SEARCH_METRICS.clicks.better} previous={then ? number(then.clicks) : undefined} />
 			)}

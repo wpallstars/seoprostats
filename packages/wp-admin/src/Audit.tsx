@@ -26,6 +26,7 @@ import {
 	type AuditAnswer,
 	type AuditFinding,
 	type AuditRow,
+	singleEngine,
 	type SearchEngine,
 } from '@seoprostats/core';
 import { errorMessage, useAudit } from './api';
@@ -112,7 +113,7 @@ type AuditProps = SearchReportProps & {
 
 export function Audit({ state, update, open, onEngines }: AuditProps) {
 	const finding: AuditFinding | '' = state.finding ?? '';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, filters, engine or finding change.
 	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, finding]);
 	const [at, setAt] = useState({ scope, offset: 0 });

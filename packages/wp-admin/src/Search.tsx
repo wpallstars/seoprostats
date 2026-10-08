@@ -1,7 +1,9 @@
 /**
  * Search, from an engine's imported days (Google Search Console, or Bing
  * Webmaster Tools once it has data), in three tabs; the engine switch
- * sits beside them and stays across the tabs.
+ * sits beside them and stays across the tabs. With two engines it also
+ * offers Combined (engine all) on Rankings, Opportunities and Content:
+ * every engine added up; the other reports read Google then.
  *
  * Rankings: clicks, impressions, CTR and average position as tiles that
  * pick the chart's metric, with the changes on the timeline under it;
@@ -32,9 +34,11 @@ import {
 	SEARCH_METRICS,
 	SEARCH_REPORTS,
 	SHARE_SEARCH_REPORTS,
+	COMBINED_REPORTS,
 	type Marker,
 	type SearchAnswer,
 	type SearchEngine,
+	type SearchEngineChoice,
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchReport,
@@ -74,9 +78,9 @@ function metricName(metric: SearchMetricKey): string {
 	return names[metric];
 }
 
-function metricFoot(metric: SearchMetricKey, engine: SearchEngine): string {
+function metricFoot(metric: SearchMetricKey, engine: SearchEngineChoice): string {
 	const feet: Record<SearchMetricKey, string> = {
-		clicks: engine === 'bing' ? __('Visits from Bing', 'seoprostats') : __('Visits from Google Search', 'seoprostats'),
+		clicks: engine === 'all' ? __('Visits from search engines', 'seoprostats') : engine === 'bing' ? __('Visits from Bing', 'seoprostats') : __('Visits from Google Search', 'seoprostats'),
 		impressions: __('Times shown in results', 'seoprostats'),
 		ctr: __('Clicks per impression', 'seoprostats'),
 		position: __('Lower is better', 'seoprostats'),
@@ -103,8 +107,8 @@ function value(metric: SearchMetricKey, row: { impressions: number } & Record<Se
 }
 
 /** The title: the site, a page, a query, or both, on an engine. */
-function title(page: string, query: string, engine: SearchEngine): string {
-	const name = engine === 'bing' ? __('Bing Search', 'seoprostats') : __('Google Search', 'seoprostats');
+function title(page: string, query: string, engine: SearchEngineChoice): string {
+	const name = engine === 'all' ? __('All search engines', 'seoprostats') : engine === 'bing' ? __('Bing Search', 'seoprostats') : __('Google Search', 'seoprostats');
 	if (page && query) {
 		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query, 3: a page path. */
 		return sprintf(__('%1$s: “%2$s” showing %3$s', 'seoprostats'), name, query, page);
@@ -135,14 +139,21 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 	// A shared report: its section is one engine, without the owner's Plan and Experiments.
 	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
 	const report: SearchReport = reports.includes(state.report ?? 'rankings') ? (state.report ?? 'rankings') : 'rankings';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngineChoice = state.engine ?? 'google';
 	const id = useId();
 	// The engines with data, as the last answer listed them (every report's answer does).
 	const [engines, setEngines] = useState<SearchEngine[]>(['google']);
-	const onEngines = useCallback((list: SearchEngine[]) => setEngines((was) => (was.join() === list.join() ? was : list)), []);
-	// Google is the default, so it is left out of the address; Bing has no countries or devices.
-	const chooseEngine = (next: SearchEngine) =>
-		update({ engine: next === 'google' ? undefined : next, tab: next === 'bing' && (state.tab === 'countries' || state.tab === 'devices') ? undefined : state.tab });
+	// Whether Combined adds anything up (two or more engines with data), as Rankings, Opportunities or Content last said.
+	const [combinable, setCombinable] = useState(false);
+	const onEngines = useCallback((list: SearchEngine[], combined?: boolean) => {
+		setEngines((was) => (was.join() === list.join() ? was : list));
+		if (combined !== undefined) {
+			setCombinable(combined);
+		}
+	}, []);
+	// Google is the default, so it is left out of the address; only Google has countries and devices.
+	const chooseEngine = (next: SearchEngineChoice) =>
+		update({ engine: next === 'google' ? undefined : next, tab: next !== 'google' && (state.tab === 'countries' || state.tab === 'devices') ? undefined : state.tab });
 	const names: Record<SearchReport, string> = {
 		rankings: __('Rankings', 'seoprostats'),
 		opportunities: __('Opportunities', 'seoprostats'),
@@ -204,7 +215,15 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 					</button>
 				))}
 			</div>
-			{!shared && <EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />}
+			{!shared && (
+				<EngineSwitch
+					engines={engines}
+					engine={engine}
+					choose={chooseEngine}
+					combined={(COMBINED_REPORTS as readonly SearchReport[]).includes(report)}
+					combinable={combinable}
+				/>
+			)}
 			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
 				{report === 'rankings' && <Rankings {...reportProps} />}
@@ -220,7 +239,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 }
 
 function Rankings({ state, update, onEngines }: SearchReportProps) {
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngineChoice = state.engine ?? 'google';
 	const kind: SearchKind = state.tab ?? 'queries';
 	const metric: SearchMetricKey = state.chart ?? 'clicks';
 	const page = state.page ?? '';
@@ -232,14 +251,16 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	useEffect(() => setTypedQuery(query), [query]);
 	const setKind = (tab: SearchKind) => update({ tab });
 	const id = useId();
-	// Countries and devices exist for the whole site only, and from Google only.
-	const kinds: SearchKind[] = page || query || engine === 'bing' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
+	// Countries and devices exist for the whole site only, and from Google only (not Bing, so not Combined).
+	const kinds: SearchKind[] = page || query || engine !== 'google' ? ['queries', 'pages'] : ['queries', 'pages', 'countries', 'devices'];
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
 	const search = useSearch(state, shown, page, query);
 	const markers = useMarkers(state, page);
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
 	useReportEngines(answer, onEngines);
+	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
+	const answered: SearchEngineChoice = answer?.engine ?? engine;
 	const printAll = usePrintAll();
 	const rows = answer?.kind === shown ? answer.rows : [];
 	const totals = answer?.totals;
@@ -294,14 +315,14 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 			<Card className="spst-summary">
 				<div className="spst-search__head">
 					<div>
-						<h2 className="spst-card__title">{title(page, query, engine)}</h2>
+						<h2 className="spst-card__title">{title(page, query, answered)}</h2>
 						{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
 									/* translators: 1: a source, e.g. "Google Search Console", 2: a day, e.g. "Sun 4 Oct 2026". */
 									__('%1$s, final days through %2$s', 'seoprostats'),
-									sourceName(answer.engine ?? engine),
+									sourceName(answered, answer.engines),
 									longLabel(answer.through, 'day')
 								)}
 								{answer.grain === 'week' && ` · ${__('by week', 'seoprostats')}`}
@@ -394,7 +415,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 							<span className="spst-tile__label">{metricName(key)}</span>
 							<span className="spst-tile__value">{totals ? value(key, totals) : '–'}</span>
 							<span className="spst-tile__foot">
-								<span className="spst-muted">{metricFoot(key, engine)}</span>
+								<span className="spst-muted">{metricFoot(key, answered)}</span>
 								{change && (
 									<Change
 										change={change[key]}
@@ -456,7 +477,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 					</CardHeader>
 					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
 						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
-						{answer && rows.length > 0 && <SearchNote engine={engine} />}
+						{answer && rows.length > 0 && <SearchNote engine={answered} />}
 					</CardBody>
 				</Card>
 			)}
@@ -492,7 +513,17 @@ function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; k
 }
 
 /** Why the rows add up to less than the totals, by engine. */
-function SearchNote({ engine }: { engine: SearchEngine }) {
+function SearchNote({ engine }: { engine: SearchEngineChoice }) {
+	if (engine === 'all') {
+		return (
+			<p className="spst-note">
+				{__(
+					'Combined adds up every search engine with data: a query or page shown on more than one is one row. The period ends at the earliest of their newest days, in whole weeks when one gives pages and queries by week. Each engine counts its own days (Google in Pacific time, Bing in UTC), and each leaves out some rows, so they add up to less than the totals. Position is the average place shown, weighted by impressions.',
+					'seoprostats'
+				)}
+			</p>
+		);
+	}
 	return (
 		<p className="spst-note">
 			{engine === 'bing'

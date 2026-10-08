@@ -22,10 +22,11 @@ import {
 	LINKS_KINDS,
 	QUEUE_FILTERS,
 	RANGE_KEYS,
-	SEARCH_ENGINES,
+	SEARCH_ENGINE_CHOICES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
 	TARGET_FILTERS,
+	singleEngine,
 	type AuditFinding,
 	type ChangeGroup,
 	type ClickKind,
@@ -37,7 +38,7 @@ import {
 	type MetricKey,
 	type QueueFilter,
 	type RangeKey,
-	type SearchEngine,
+	type SearchEngineChoice,
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchReport,
@@ -58,6 +59,10 @@ export function shareView(state: ViewState): ViewState | null {
         return null;
     }
     const view = parseHash(buildHash(state));
+    // A shared Search section is one engine's: Combined is not offered there.
+    if (view.engine === 'all') {
+        delete view.engine;
+    }
     if (view.report && !SHARE_SEARCH_REPORTS.includes(view.report)) {
         delete view.report;
         delete view.status;
@@ -70,7 +75,7 @@ export function shareView(state: ViewState): ViewState | null {
 
 /** What makes a section one of a kind in a shared report: its tab, and for Search its engine. */
 export function shareSectionKey(state: Pick<ViewState, 'view' | 'engine'>): string {
-    return state.view === 'search' ? `search:${state.engine ?? 'google'}` : state.view;
+    return state.view === 'search' ? `search:${singleEngine(state.engine)}` : state.view;
 }
 
 /** Overview's cards (stable names) and their tabs; the first tab is the default. */
@@ -118,8 +123,8 @@ export interface ViewState {
 	links?: LinksKind;
 	/** Search → Audit: the indexation list shown (pages when left out). */
 	index?: IndexationKind;
-	/** Search: the engine (Google when left out); kept across its reports. */
-	engine?: SearchEngine;
+	/** Search: the engine, or all for Combined (Google when left out); kept across its reports. */
+	engine?: SearchEngineChoice;
 	/** Search → Content: the order of the pages. */
 	sort?: ContentSort;
 	/** Search → Content and Audit (internal links): the goal counted; Search → Plan: the goal giving value (its ID); the first when left out. */
@@ -188,7 +193,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 	} else if (state.view === 'search') {
 		const report = oneOf(SEARCH_REPORTS, params.get('report'), 'rankings');
 		set('report', report === 'rankings' ? undefined : report);
-		const engine = oneOf(SEARCH_ENGINES, params.get('engine'), 'google');
+		const engine = oneOf(SEARCH_ENGINE_CHOICES, params.get('engine'), 'google');
 		set('engine', engine === 'google' ? undefined : engine);
 		if (report === 'content') {
 			const sort = oneOf(CONTENT_SORTS, params.get('sort'), 'clicks');
@@ -217,7 +222,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const change = params.get('change') ?? '';
 			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
 		}
-		// Bing has no countries or devices.
+		// Only Google has countries and devices (not Bing, so not Combined).
 		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_KINDS.filter((k) => k === 'queries' || k === 'pages');
 		const tab = oneOf(tabs, params.get('tab'), 'queries');
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');

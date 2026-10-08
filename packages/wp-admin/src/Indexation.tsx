@@ -15,7 +15,7 @@
 import { useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { formatNumber, INDEXATION_KINDS, serializeFilter, type IndexationAnswer, type IndexationKind, type IndexationRow, type SearchEngine, type SitemapSource } from '@seoprostats/core';
+import { formatNumber, INDEXATION_KINDS, serializeFilter, singleEngine, type IndexationAnswer, type IndexationKind, type IndexationRow, type SearchEngine, type SitemapSource } from '@seoprostats/core';
 import { errorMessage, useIndexation } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
@@ -53,7 +53,7 @@ type IndexationProps = SearchReportProps & {
 
 export function Indexation({ state, update, open }: IndexationProps) {
 	const kind: IndexationKind = state.index ?? 'pages';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the filters, engine or list change.
 	const scope = JSON.stringify([state.filters.map(serializeFilter), engine, kind]);
 	const [at, setAt] = useState({ scope, offset: 0 });

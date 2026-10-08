@@ -287,10 +287,15 @@ final class SEOProStats_API {
             'enum'        => array_keys(SEOProStats_Search::ENGINES),
             'default'     => 'google',
         );
+        // Rankings, Opportunities and Content can also add up every engine with data.
+        $combined = array(
+            'description' => __('Search engine: google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up; as the one engine while only one has data).', 'seoprostats'),
+            'enum'        => array_merge(array_keys(SEOProStats_Search::ENGINES), array(SEOProStats_Search::ALL)),
+        ) + $engine;
         register_rest_route($ns, '/search', $read + array(
             'callback' => array(__CLASS__, 'search'),
             'args'     => $base + array(
-                'engine' => $engine,
+                'engine' => $combined,
                 'kind'   => array(
                     'description' => __('Rows: search queries, pages, countries or devices (countries and devices for the whole site only).', 'seoprostats'),
                     'type'        => 'string',
@@ -314,7 +319,7 @@ final class SEOProStats_API {
         register_rest_route($ns, '/opportunities', $read + array(
             'callback' => array(__CLASS__, 'opportunities'),
             'args'     => $base + array(
-                'engine' => $engine,
+                'engine' => $combined,
                 'kind'   => array(
                     'description' => __('Opportunities: striking (queries at position 4–20 that could reach the top three), ctr (top-10 queries with a CTR well under the site\'s own at that position), decay (pages losing clicks, with the likely cause), missing (top-20 queries whose words the page does not have) or overlap (queries shared by two or more pages, each with at least 10% of the impressions: candidates to review).', 'seoprostats'),
                     'type'        => 'string',
@@ -398,7 +403,7 @@ final class SEOProStats_API {
         register_rest_route($ns, '/content', $read + array(
             'callback' => array(__CLASS__, 'content'),
             'args'     => $base + array(
-                'engine' => $engine,
+                'engine' => $combined,
                 'sort'   => array(
                     'description' => __('Order of the pages, most first: search clicks, visits from search, or conversions of the goal.', 'seoprostats'),
                     'type'        => 'string',

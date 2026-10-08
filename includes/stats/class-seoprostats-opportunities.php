@@ -90,7 +90,7 @@ final class SEOProStats_Opportunities {
      *
      * @param array<string,mixed> $req    From SEOProStats_Query::request().
      * @param string              $kind   One of KINDS.
-     * @param string              $engine google or bing (SEOProStats_Search::ENGINES).
+     * @param string              $engine google, bing (SEOProStats_Search::ENGINES) or all (Combined).
      * @return array<string,mixed>
      */
     public static function report(array $req, $kind = 'striking', $engine = 'google') {
@@ -98,7 +98,7 @@ final class SEOProStats_Opportunities {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-changes.php';
         $kind   = in_array($kind, self::KINDS, true) ? (string) $kind : 'striking';
-        $engine = SEOProStats_Search::engine_name($engine);
+        $engine = SEOProStats_Search::report_engine($engine);
         $live   = SEOProStats_Schema::set() === 'live';
 
         $answer = SEOProStats_Query::cached('opportunities', $req + array('kind' => $kind, 'engine' => $engine, 'imports' => SEOProStats_Search::version()), static function () use ($req, $kind, $engine) {
@@ -131,13 +131,13 @@ final class SEOProStats_Opportunities {
      * @return array<string,mixed>
      */
     private static function build(array $req, $kind, $name) {
-        $engine  = SEOProStats_Search::ENGINES[$name];
-        $bounds  = SEOProStats_Search::bounds($engine);
+        $engine  = SEOProStats_Search::codes($name);
+        $bounds  = SEOProStats_Search::span($name);
         $range   = SEOProStats_Query::range($req);
         $ignored = array();
         $pages   = SEOProStats_Search::page_ids($req['filters'], '', $ignored);
         // Without search days there is nothing to read (and nothing to cut).
-        $weekly  = in_array($name, SEOProStats_Search::WEEKLY, true);
+        $weekly  = SEOProStats_Search::weekly($name);
         $full    = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds, $weekly) : null;
         $now     = $full ? self::cut($full) : null;
         $days    = $now ? SEOProStats_Search::length($now) : 0;
@@ -145,19 +145,20 @@ final class SEOProStats_Opportunities {
         $offset  = (int) $req['offset'];
 
         $answer = array(
-            'engine'  => $name,
-            'engines' => SEOProStats_Search::engines(),
-            'kind'    => $kind,
-            'range'   => SEOProStats_Query::range_out($now ? $now : $range),
-            'days'    => $days,
-            'cut'     => $full && $now && SEOProStats_Search::length($full) > $days,
-            'through' => $bounds['to'],
-            'first'   => $bounds['from'],
-            'ignored' => array_values(array_unique($ignored)),
-            'rules'   => self::rules($kind, $days),
-            'rows'    => array(),
-            'total'   => 0,
-            'more'    => false,
+            'engine'   => $name,
+            'engines'  => SEOProStats_Search::engines(),
+            'combined' => SEOProStats_Search::combinable(),
+            'kind'     => $kind,
+            'range'    => SEOProStats_Query::range_out($now ? $now : $range),
+            'days'     => $days,
+            'cut'      => $full && $now && SEOProStats_Search::length($full) > $days,
+            'through'  => $bounds['to'],
+            'first'    => $bounds['from'],
+            'ignored'  => array_values(array_unique($ignored)),
+            'rules'    => self::rules($kind, $days),
+            'rows'     => array(),
+            'total'    => 0,
+            'more'     => false,
         );
         if ($kind === 'decay') {
             $answer['compare'] = null;
@@ -272,14 +273,15 @@ final class SEOProStats_Opportunities {
      * The WHERE of a period on a gsc_* table, with its key: path_day when
      * pages are filtered, else the primary key (engine, day).
      *
-     * @param int                 $engine Engine.
+     * @param int|int[]           $engine Engine code, or codes (Combined).
      * @param array<string,mixed> $days   From SEOProStats_Search::days().
      * @param int[]|null          $pages  Path ids, or null for every page.
      * @return array{key:string,where:string,args:array<int,mixed>}
      */
     public static function where($engine, array $days, $pages) {
-        $where = 'engine = %d AND day >= %s AND day <= %s';
-        $args  = array((int) $engine, (string) $days['day_from'], (string) $days['day_to']);
+        $on    = SEOProStats_Search::engine_where($engine);
+        $where = $on['sql'] . ' AND day >= %s AND day <= %s';
+        $args  = array_merge($on['args'], array((string) $days['day_from'], (string) $days['day_to']));
         if ($pages !== null) {
             $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
             $args   = array_merge($args, array_map('intval', $pages));
@@ -292,7 +294,7 @@ final class SEOProStats_Opportunities {
      * position has CURVE_MIN impressions, else the default; then made
      * never to rise with position.
      *
-     * @param int                 $engine Engine.
+     * @param int|int[]           $engine Engine code, or codes (Combined).
      * @param array<string,mixed> $days   From SEOProStats_Search::days().
      * @return array{source:string,ctr:array<int,float>}
      */
@@ -323,7 +325,7 @@ final class SEOProStats_Opportunities {
      * metrics, expected_ctr and potential (clicks).
      *
      * @param string                  $kind   striking or ctr.
-     * @param int                     $engine Engine.
+     * @param int|int[]               $engine Engine code, or codes (Combined).
      * @param array<string,mixed>     $days   From SEOProStats_Search::days().
      * @param int[]|null              $pages  Path ids, or null for every page.
      * @param array<int,float>        $curve  CTR by position.
@@ -393,7 +395,7 @@ final class SEOProStats_Opportunities {
      * Only the MISSING_PAGES pages with most impressions among the
      * candidates are read, each once.
      *
-     * @param int                     $engine Engine.
+     * @param int|int[]               $engine Engine code, or codes (Combined).
      * @param array<string,mixed>     $days   From SEOProStats_Search::days().
      * @param int[]|null              $pages  Path ids, or null for every page.
      * @param array<string,int|float> $rules  From rules().
@@ -456,7 +458,7 @@ final class SEOProStats_Opportunities {
      * with OVERLAP_SHARE or more of the query's impressions, most first).
      * From the CANDIDATES pairs with most impressions.
      *
-     * @param int                     $engine Engine.
+     * @param int|int[]               $engine Engine code, or codes (Combined).
      * @param array<string,mixed>     $days   From SEOProStats_Search::days().
      * @param int[]|null              $pages  Path ids, or null for every page.
      * @param array<string,int|float> $rules  From rules().
@@ -548,7 +550,7 @@ final class SEOProStats_Opportunities {
      * One read of gsc_pairs by key query_day for the shown queries' first
      * halves; the second half is the period less the first.
      *
-     * @param int                                          $engine Engine.
+     * @param int|int[]                                    $engine Engine code, or codes (Combined).
      * @param array{0:array<string,mixed>,1:array<string,mixed>}|null $halves From halves().
      * @param int[]|null                                   $pages  Path ids, or null for every page.
      * @param array<int,array<string,mixed>>               $list   From overlap_list(), the rows shown.
@@ -562,8 +564,9 @@ final class SEOProStats_Opportunities {
         $first = array();
         if ($halves) {
             $ids   = array_column($list, 'query_id');
-            $where = 'query_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ') AND day >= %s AND day <= %s AND engine = %d';
-            $args  = array_merge($ids, array((string) $halves[0]['day_from'], (string) $halves[0]['day_to'], (int) $engine));
+            $on    = SEOProStats_Search::engine_where($engine);
+            $where = 'query_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ') AND day >= %s AND day <= %s AND ' . $on['sql'];
+            $args  = array_merge($ids, array((string) $halves[0]['day_from'], (string) $halves[0]['day_to']), $on['args']);
             if ($pages !== null) {
                 $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
                 $args   = array_merge($args, array_map('intval', $pages));
@@ -638,7 +641,7 @@ final class SEOProStats_Opportunities {
      * Sums by page or by page and query in a period.
      *
      * @param string              $table  gsc_pages or gsc_pairs.
-     * @param int                 $engine Engine.
+     * @param int|int[]           $engine Engine code, or codes (Combined).
      * @param array<string,mixed> $days   From SEOProStats_Search::days().
      * @param int[]|null          $pages  Path ids, or null for every page.
      * @return array<string,array{c:int,i:int,p:int}> "path_id" or "path_id:query_id" => sums.
@@ -661,7 +664,7 @@ final class SEOProStats_Opportunities {
     /**
      * Pages losing clicks, most lost first: path_id, now and then sums.
      *
-     * @param int                     $engine Engine.
+     * @param int|int[]               $engine Engine code, or codes (Combined).
      * @param array<string,mixed>     $now    From SEOProStats_Search::days().
      * @param array<string,mixed>     $then   The earlier period, the same way.
      * @param int[]|null              $pages  Path ids, or null for every page.
@@ -690,7 +693,7 @@ final class SEOProStats_Opportunities {
      * Losing pages as the answer gives them, with the likely cause and
      * the queries that lost most.
      *
-     * @param int                            $engine Engine.
+     * @param int|int[]                      $engine Engine code, or codes (Combined).
      * @param array<string,mixed>            $now    From SEOProStats_Search::days().
      * @param array<string,mixed>            $then   The earlier period.
      * @param array<int,array<string,mixed>> $list   From decay(), the rows shown.
@@ -774,7 +777,7 @@ final class SEOProStats_Opportunities {
      * Every page's sums for some queries in a period, by key query_day
      * (page filters do not apply: another page can take a query).
      *
-     * @param int                 $engine    Engine.
+     * @param int|int[]           $engine    Engine code, or codes (Combined).
      * @param array<string,mixed> $days      From SEOProStats_Search::days().
      * @param int[]               $query_ids Query ids.
      * @return array<int,array<int,array{c:int,i:int,p:int}>> Query id => path id => sums.
@@ -782,9 +785,10 @@ final class SEOProStats_Opportunities {
     private static function by_query($engine, array $days, array $query_ids) {
         global $wpdb;
         $out = array();
+        $on  = SEOProStats_Search::engine_where($engine);
         foreach (array_chunk($query_ids, 200) as $chunk) {
-            $where = 'query_id IN (' . implode(', ', array_fill(0, count($chunk), '%d')) . ') AND day >= %s AND day <= %s AND engine = %d';
-            $args  = array_merge(array_map('intval', $chunk), array((string) $days['day_from'], (string) $days['day_to'], (int) $engine));
+            $where = 'query_id IN (' . implode(', ', array_fill(0, count($chunk), '%d')) . ') AND day >= %s AND day <= %s AND ' . $on['sql'];
+            $args  = array_merge(array_map('intval', $chunk), array((string) $days['day_from'], (string) $days['day_to']), $on['args']);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by key query_day (query_id, day); $where holds only placeholders.
             $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT query_id AS q, path_id AS pg, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`query_day`) WHERE $where GROUP BY query_id, path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $args)), ARRAY_A);
             foreach ($rows as $row) {

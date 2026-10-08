@@ -186,16 +186,21 @@ final class SEOProStats_Abilities {
             'default'     => 'google',
             'description' => __('Search engine: google (Search Console) or bing (Bing Webmaster Tools). Bing gives pages and queries by week, stored on each week\'s last day, and no countries or devices.', 'seoprostats'),
         );
+        // Rankings, Opportunities and Content can also add up every engine with data.
+        $combined = array(
+            'enum'        => array_merge(array_keys(SEOProStats_Search::ENGINES), array(SEOProStats_Search::ALL)),
+            'description' => __('Search engine: google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up, a query or page shared by engines as one row; the period ends at the earliest newest day, in whole weeks with Bing; no countries or devices; as the one engine while only one has data). Bing gives pages and queries by week, stored on each week\'s last day, and no countries or devices.', 'seoprostats'),
+        ) + $engine;
         wp_register_ability('seoprostats/search', array(
             'label'               => __('Search rankings', 'seoprostats'),
-            'description'         => __('Search engine clicks, impressions, CTR and average position in a period (Google Search Console, or Bing Webmaster Tools with engine bing), with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is some days old; the period is cut there. The answer lists the engines with data.', 'seoprostats'),
+            'description'         => __('Search engine clicks, impressions, CTR and average position in a period (Google Search Console, Bing Webmaster Tools with engine bing, or every engine added up with engine all), with the comparison, and the top search queries, pages, countries or devices; or one page\'s queries, or one query\'s pages. Search data is final only, so the newest day is some days old; the period is cut there. The answer lists the engines with data.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
                 'default'              => array(),
                 'additionalProperties' => false,
                 'properties'           => array(
-                    'engine'  => $engine,
+                    'engine'  => $combined,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
@@ -247,6 +252,7 @@ final class SEOProStats_Abilities {
                         'type'  => 'array',
                         'items' => array('type' => 'string'),
                     ),
+                    'combined'  => array('type' => 'boolean'),
                     'range'     => array('type' => 'object'),
                     'through'   => array('type' => 'string'),
                     'connected' => array('type' => 'boolean'),
@@ -275,7 +281,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/opportunities', array(
             'label'               => __('Search opportunities', 'seoprostats'),
-            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page), missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer) or overlap (a query for which two or more pages each get at least 10% of the impressions, with each page\'s clicks, share and position and whether the page with most impressions changed between the halves of the period: a candidate to review, as two pages can both be right). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing, or every engine added up with engine all): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page), missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer) or overlap (a query for which two or more pages each get at least 10% of the impressions, with each page\'s clicks, share and position and whether the page with most impressions changed between the halves of the period: a candidate to review, as two pages can both be right). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -288,7 +294,7 @@ final class SEOProStats_Abilities {
                         'default'     => 'striking',
                         'description' => __('striking, ctr, decay, missing or overlap.', 'seoprostats'),
                     ),
-                    'engine'  => $engine,
+                    'engine'  => $combined,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
@@ -630,7 +636,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/content', array(
             'label'               => __('Content performance', 'seoprostats'),
-            'description'         => __('Which pages earn their search traffic: per page, Google Search Console (or Bing Webmaster Tools with engine bing) clicks, impressions, CTR and position, with the visits from search that landed on the page (bounce rate, views per visit, visit duration in seconds) and how many reached a goal (conversions, conversion rate; the first goal unless one is named). A page that ranks but whose visits leave or never convert needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Final search days only.', 'seoprostats'),
+            'description'         => __('Which pages earn their search traffic: per page, Google Search Console (or Bing Webmaster Tools with engine bing, or every engine added up with engine all) clicks, impressions, CTR and position, with the visits from search that landed on the page (bounce rate, views per visit, visit duration in seconds) and how many reached a goal (conversions, conversion rate; the first goal unless one is named). A page that ranks but whose visits leave or never convert needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Final search days only.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -647,7 +653,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'description' => __('ID of the goal counted (the answer lists the goals); the first when left out.', 'seoprostats'),
                     ),
-                    'engine'  => $engine,
+                    'engine'  => $combined,
                     'range'   => array(
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,

@@ -33,6 +33,7 @@ import {
 	type ExperimentReason,
 	type ExperimentResult,
 	type Marker,
+	singleEngine,
 	type SearchEngine,
 } from '@seoprostats/core';
 import { addExperiment, deleteExperiment, errorMessage, updateExperiment, useExperiments, useGoals } from './api';
@@ -147,7 +148,7 @@ export function Experiments({ state, update }: SearchReportProps) {
 	const [adding, setAdding] = useState(!!state.change && boot.canManage);
 	const [error, setError] = useState('');
 	const shown = list.find((e) => e.id === open) ?? null;
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 
 	return (
 		<>

@@ -13,6 +13,13 @@
  * by a primary key (engine, day) or the path_day / query_day keys, and
  * nothing reads the visit tables.
  *
+ * Combined (engine all) adds up every engine with data: clicks,
+ * impressions and position × impressions, so CTR and position are over
+ * all of them, and a query or page shared by engines is one row. Its
+ * period ends at the earliest of the engines' newest days; with an engine
+ * that gives pages and queries by week, it is whole weeks. Each engine's
+ * days are its own (Pacific time for Google, UTC for Bing).
+ *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
@@ -51,6 +58,12 @@ final class SEOProStats_Search {
      */
     const WEEKLY = array('bing');
 
+    /**
+     * Combined: every engine with data, added up (Rankings, Opportunities
+     * and Content only). Not a stored engine code.
+     */
+    const ALL = 'all';
+
     /** Device codes of gsc_totals, by name (SEOProStats_Schema::GSC_DEVICES). */
     const DEVICES = array(
         1 => 'desktop',
@@ -71,7 +84,7 @@ final class SEOProStats_Search {
      * @param string              $kind  One of KINDS.
      * @param string              $page   Only this page (path; * for any text); '' for all.
      * @param string              $query  Only this query (* for any text); '' for all.
-     * @param string              $engine google or bing (ENGINES).
+     * @param string              $engine google, bing (ENGINES) or all (ALL).
      * @return array<string,mixed>
      */
     public static function report(array $req, $kind = 'queries', $page = '', $query = '', $engine = 'google') {
@@ -79,21 +92,22 @@ final class SEOProStats_Search {
         $kind   = in_array($kind, self::KINDS, true) ? (string) $kind : 'queries';
         $page   = trim((string) $page);
         $query  = SEOProStats_Dict::clean(trim((string) preg_replace('/\s+/u', ' ', (string) $query)));
-        $engine = self::engine_name($engine);
+        $engine = self::report_engine($engine);
         $live   = SEOProStats_Schema::set() === 'live';
 
         $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'imports' => self::version()), static function () use ($req, $kind, $page, $query, $engine) {
-            $code    = self::ENGINES[$engine];
-            $bounds  = self::bounds($code);
+            $code    = self::codes($engine);
+            $bounds  = self::span($engine);
             $range   = SEOProStats_Query::range($req);
             $ignored = array();
             $pages   = self::page_ids($req['filters'], $page, $ignored);
             $queries = $query === '' ? null : self::query_ids($query);
-            $weekly  = in_array($engine, self::WEEKLY, true);
+            $weekly  = self::weekly($engine);
             $now     = self::days($range, $bounds, $weekly);
             $scope   = self::scope($code, $now, $pages, $queries);
             $grain   = self::grain($engine, $now, $scope);
-            $anchor  = $grain === 'week' ? self::week_end($code, $bounds) : '';
+            // Combined weeks end on the period's last day, so each holds one week of every engine.
+            $anchor  = $grain !== 'week' ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
             $totals  = self::totals($scope);
             $rows    = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
             $more    = count($rows) > (int) $req['limit'];
@@ -102,6 +116,7 @@ final class SEOProStats_Search {
             $answer = array(
                 'engine'    => $engine,
                 'engines'   => self::engines(),
+                'combined'  => self::combinable(),
                 'range'     => $now ? self::range_out($now) : SEOProStats_Query::range_out($range),
                 'through'   => $bounds['to'],
                 'first'     => $bounds['from'],
@@ -126,7 +141,7 @@ final class SEOProStats_Search {
                     'range'  => SEOProStats_Query::range_out($other),
                     'totals' => $before,
                     'change' => self::change($totals, $before),
-                    'points' => $then_days ? self::series($then, $then_days, $grain, $anchor) : array(),
+                    'points' => $then_days ? self::series($then, $then_days, $grain, $engine === self::ALL && $anchor !== '' ? (string) $then_days['day_to'] : $anchor) : array(),
                 );
             }
             return $answer;
@@ -148,13 +163,22 @@ final class SEOProStats_Search {
 
     /**
      * Whether an engine's source is connected (live data): Search Console
-     * for Google, Bing Webmaster Tools for Bing.
+     * for Google, Bing Webmaster Tools for Bing; for Combined, any of
+     * the engines it adds up.
      *
-     * @param string $engine google or bing.
+     * @param string $engine google, bing or all.
      * @return bool
      */
     public static function connected($engine = 'google') {
         require_once __DIR__ . '/class-seoprostats-connections.php';
+        if ((string) $engine === self::ALL) {
+            foreach (self::with_data() as $name) {
+                if (self::connected($name)) {
+                    return true;
+                }
+            }
+            return false;
+        }
         return SEOProStats_Connections::get(self::ENGINE_SOURCES[self::engine_name($engine)]) !== null;
     }
 
@@ -166,6 +190,118 @@ final class SEOProStats_Search {
      */
     public static function engine_name($engine) {
         return isset(self::ENGINES[(string) $engine]) ? (string) $engine : 'google';
+    }
+
+    /**
+     * An engine's name as Rankings, Opportunities and Content take it:
+     * as engine_name(), or all (Combined) while two or more engines have
+     * data; with fewer, all is the one engine with data (else google).
+     *
+     * @param string $engine google, bing or all.
+     * @return string
+     */
+    public static function report_engine($engine) {
+        if ((string) $engine !== self::ALL) {
+            return self::engine_name($engine);
+        }
+        $with = self::with_data();
+        if (count($with) > 1) {
+            return self::ALL;
+        }
+        return $with ? $with[0] : 'google';
+    }
+
+    /**
+     * The engines with search data, Google first.
+     *
+     * @return string[]
+     */
+    public static function with_data() {
+        $out = array();
+        foreach (self::ENGINES as $name => $code) {
+            if (self::bounds($code)['to'] !== '') {
+                $out[] = $name;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Whether Combined adds anything up: two or more engines have data.
+     *
+     * @return bool
+     */
+    public static function combinable() {
+        return count(self::with_data()) > 1;
+    }
+
+    /**
+     * The engine codes a report reads: the engine's, or for Combined
+     * every engine's with data.
+     *
+     * @param string $engine From report_engine().
+     * @return int[]
+     */
+    public static function codes($engine) {
+        if ((string) $engine !== self::ALL) {
+            return array(self::ENGINES[self::engine_name($engine)]);
+        }
+        $out = array();
+        foreach (self::with_data() as $name) {
+            $out[] = self::ENGINES[$name];
+        }
+        return $out ? $out : array(SEOProStats_Schema::ENGINE_GOOGLE);
+    }
+
+    /**
+     * Whether an engine's pages and queries come by week (WEEKLY); for
+     * Combined, whether any of its engines' do.
+     *
+     * @param string $engine From report_engine().
+     * @return bool
+     */
+    public static function weekly($engine) {
+        if ((string) $engine !== self::ALL) {
+            return in_array((string) $engine, self::WEEKLY, true);
+        }
+        return (bool) array_intersect(self::with_data(), self::WEEKLY);
+    }
+
+    /**
+     * First and newest day of a report's engine (bounds()). For Combined:
+     * the first day of any engine and the earliest of their newest days,
+     * so one engine's lag never looks like a drop.
+     *
+     * @param string $engine From report_engine().
+     * @return array{from:string,to:string}
+     */
+    public static function span($engine) {
+        $from = '';
+        $to   = '';
+        foreach (self::codes($engine) as $n => $code) {
+            $one  = self::bounds($code);
+            if ($one['from'] !== '' && ($from === '' || $one['from'] < $from)) {
+                $from = $one['from'];
+            }
+            $to = $n === 0 || $one['to'] < $to ? $one['to'] : $to;
+        }
+        return array('from' => $from, 'to' => $to);
+    }
+
+    /**
+     * The engine condition of a read: `engine = %d`, or `engine IN (…)`
+     * for Combined; a range read of the primary key (engine, day, …) for
+     * each engine either way.
+     *
+     * @param int|int[] $engine Engine code or codes.
+     * @return array{sql:string,args:int[]}
+     */
+    public static function engine_where($engine) {
+        $codes = array_values(array_map('intval', (array) $engine));
+        if (count($codes) === 1) {
+            return array('sql' => 'engine = %d', 'args' => $codes);
+        }
+        return array('sql' => 'engine IN (' . implode(', ', array_fill(0, count($codes), '%d')) . ')', 'args' => $codes);
     }
 
     /**
@@ -187,9 +323,10 @@ final class SEOProStats_Search {
 
     /**
      * Points by day; by month past DAILY_DAYS; by week for a page or
-     * query of an engine whose pages and queries come by week.
+     * query of an engine whose pages and queries come by week (or of
+     * Combined with such an engine).
      *
-     * @param string                   $engine Engine name.
+     * @param string                   $engine Engine name, or all.
      * @param array<string,mixed>|null $days   From days().
      * @param array<string,mixed>|null $scope  From scope().
      * @return string day, week or month.
@@ -198,7 +335,7 @@ final class SEOProStats_Search {
         if ($days && self::length($days) > self::DAILY_DAYS) {
             return 'month';
         }
-        return in_array($engine, self::WEEKLY, true) && $scope && $scope['table'] !== 'gsc_totals' ? 'week' : 'day';
+        return self::weekly($engine) && $scope && $scope['table'] !== 'gsc_totals' ? 'week' : 'day';
     }
 
     /**
@@ -206,14 +343,14 @@ final class SEOProStats_Search {
      * (the newest day of its pages), so weekly points line up with the
      * weeks; the newest day with data without pages.
      *
-     * @param int                          $engine Engine.
+     * @param int[]                        $engine Engine code (one).
      * @param array{from:string,to:string} $bounds From bounds().
      * @return string Y-m-d, or ''.
      */
-    private static function week_end($engine, array $bounds) {
+    private static function week_end(array $engine, array $bounds) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, MAX of the primary key's (engine, day) prefix.
-        $day = (string) $wpdb->get_var($wpdb->prepare('SELECT MAX(day) FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_pages'), (int) $engine));
+        $day = (string) $wpdb->get_var($wpdb->prepare('SELECT MAX(day) FROM %i WHERE engine = %d', SEOProStats_Schema::table('gsc_pages'), (int) $engine[0]));
         return $day !== '' ? $day : $bounds['to'];
     }
 
@@ -379,13 +516,13 @@ final class SEOProStats_Search {
      * The site: gsc_totals; pages: gsc_pages by path_day; queries:
      * gsc_queries by query_day; both: gsc_pairs.
      *
-     * @param int                      $engine  Engine.
+     * @param int[]                    $engine  Engine codes (codes()).
      * @param array<string,mixed>|null $days    From days().
      * @param int[]|null               $pages   Path ids, or null for every page.
      * @param int[]|null               $queries Query ids, or null for every query.
      * @return array<string,mixed>|null Null when nothing can match.
      */
-    private static function scope($engine, $days, $pages, $queries) {
+    private static function scope(array $engine, $days, $pages, $queries) {
         if (!$days || ($pages !== null && !$pages) || ($queries !== null && !$queries)) {
             return null;
         }
@@ -401,16 +538,17 @@ final class SEOProStats_Search {
             $args   = array_merge($args, $queries);
         }
         $key = self::key($table, $pages, $queries);
+        $on  = self::engine_where($engine);
         return array(
-            'engine'  => (int) $engine,
+            'engine'  => $on['args'],
             'table'   => $table,
             'pages'   => $pages,
             'queries' => $queries,
             'from'    => (string) $days['day_from'],
             'to'      => (string) $days['day_to'],
             // Placeholders and a fixed key name only; values are in args.
-            'sql'     => "FROM %i FORCE INDEX (`$key`) WHERE engine = %d AND day >= %s AND day <= %s$where",
-            'args'    => array_merge(array((int) $engine, (string) $days['day_from'], (string) $days['day_to']), $args),
+            'sql'     => "FROM %i FORCE INDEX (`$key`) WHERE {$on['sql']} AND day >= %s AND day <= %s$where",
+            'args'    => array_merge($on['args'], array((string) $days['day_from'], (string) $days['day_to']), $args),
         );
     }
 
@@ -522,8 +660,17 @@ final class SEOProStats_Search {
             $bucket = $grain === 'month' ? "DATE_FORMAT(day, '%%Y-%%m-01')" : 'day';
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as in totals(); $bucket is fixed SQL.
             $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $bucket AS b, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$scope['sql']} GROUP BY b ORDER BY NULL", array_merge(array(SEOProStats_Schema::table($scope['table'])), $scope['args'])), ARRAY_A);
+            $last = $grain === 'week' && $anchor !== '' ? (int) gmdate('w', (int) strtotime($anchor . ' 00:00:00 UTC')) : null;
             foreach ($rows as $row) {
-                $by[(string) $row['b']] = $row;
+                $key = (string) $row['b'];
+                if ($last !== null) {
+                    // A day goes to the week it is in (Combined adds daily engines to weekly ones).
+                    $at  = (int) strtotime($key . ' 00:00:00 UTC');
+                    $key = gmdate('Y-m-d', $at + ((($last - (int) gmdate('w', $at)) + 7) % 7) * DAY_IN_SECONDS);
+                }
+                foreach (array('c', 'i', 'p') as $col) {
+                    $by[$key][$col] = (isset($by[$key][$col]) ? $by[$key][$col] : 0) + (int) $row[$col];
+                }
             }
         }
         $out = array();
@@ -592,8 +739,8 @@ final class SEOProStats_Search {
         $pages   = $scope['pages'];
         $queries = $scope['queries'];
         if ($kind === 'countries' || $kind === 'devices') {
-            // The site only; Bing gives no countries or devices.
-            if ($pages !== null || $queries !== null || (int) $scope['engine'] !== SEOProStats_Schema::ENGINE_GOOGLE) {
+            // The site only, and Google only: Bing gives no countries or devices.
+            if ($pages !== null || $queries !== null || $scope['engine'] !== array(SEOProStats_Schema::ENGINE_GOOGLE)) {
                 return null;
             }
             $table = 'gsc_totals';
@@ -618,7 +765,8 @@ final class SEOProStats_Search {
      */
     private static function scope_on(array $scope, $table) {
         $where = '';
-        $args  = array(SEOProStats_Schema::table($table), $scope['engine'], $scope['from'], $scope['to']);
+        $on    = self::engine_where($scope['engine']);
+        $args  = array_merge(array(SEOProStats_Schema::table($table)), $on['args'], array($scope['from'], $scope['to']));
         if ($scope['pages'] !== null) {
             $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($scope['pages']), '%d')) . ')';
             $args   = array_merge($args, $scope['pages']);
@@ -628,7 +776,7 @@ final class SEOProStats_Search {
             $args   = array_merge($args, $scope['queries']);
         }
         $key = self::key($table, $scope['pages'], $scope['queries']);
-        return array('sql' => "FROM %i FORCE INDEX (`$key`) WHERE engine = %d AND day >= %s AND day <= %s$where", 'args' => $args);
+        return array('sql' => "FROM %i FORCE INDEX (`$key`) WHERE {$on['sql']} AND day >= %s AND day <= %s$where", 'args' => $args);
     }
 
     /**

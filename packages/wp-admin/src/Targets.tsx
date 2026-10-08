@@ -22,6 +22,7 @@ import {
 	formatDecimal,
 	formatNumber,
 	TARGET_FILTERS,
+	singleEngine,
 	type SearchEngine,
 	type TargetFilter,
 	type TargetRow,
@@ -94,7 +95,7 @@ type TargetsProps = SearchReportProps & {
 
 export function Targets({ state, update, open, onEngines }: TargetsProps) {
 	const status: TargetFilter = state.targets ?? 'all';
-	const engine: SearchEngine = state.engine ?? 'google';
+	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, engine or status change.
 	const scope = JSON.stringify([apiArgs({ ...state, filters: [] }), engine, status]);
 	const [at, setAt] = useState({ scope, offset: 0 });
