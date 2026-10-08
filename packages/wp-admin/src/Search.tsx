@@ -56,8 +56,10 @@ import { longLabel } from './dates';
 import { appearanceLabel } from './labels';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
+import { changesByPoint } from './changelog';
 import { Change } from './components/Change';
-import { useChangesModal } from './components/ChangesModal';
+import { ChangeDots } from './components/ChangeDots';
+import { useChangesModal, type MarkerPick } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -509,7 +511,17 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 						</div>
 					</CardHeader>
 					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
-						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+						<SearchTable
+							answer={answer}
+							kind={shown}
+							failed={search.isError}
+							fetching={search.isFetching}
+							page={page}
+							query={query}
+							choose={choose}
+							markers={markers.data?.markers ?? NO_MARKERS}
+							onMarker={changes.onMarker}
+						/>
 						{answer && rows.length > 0 && <SearchNote engine={answered} kind={shown} />}
 						{answer?.kind === 'days' && answer.points.length > PER_PAGE && (
 							<nav className="spst-changes__pager" aria-label={sprintf(/* translators: %s: a table, e.g. "Days". */ __('Pages of %s', 'seoprostats'), kindName('days'))}>
@@ -607,12 +619,34 @@ interface SearchTableProps {
 	page: string;
 	query: string;
 	choose: RowProps['choose'];
+	/** Changes in the range: days rows show theirs, as the chart's markers, before Clicks. */
+	markers?: Marker[];
+	onMarker?: (pick: MarkerPick) => void;
+}
+
+/**
+ * Each days row's changes, by its first day: the chart's points with
+ * changes (a rollout begun before the period on its first point).
+ */
+function changesByDay(answer: SearchAnswer | undefined, markers: Marker[] | undefined): Map<string, Marker[]> | null {
+	if (!answer || answer.kind !== 'days' || !markers) {
+		return null;
+	}
+	const out = new Map<string, Marker[]>();
+	for (const [index, list] of changesByPoint(answer, markers)) {
+		const day = (answer.points[index]?.t ?? '').slice(0, 10);
+		if (day) {
+			out.set(day, list);
+		}
+	}
+	return out;
 }
 
 /** One kind of top searches: loading, empty, or its table. */
-function SearchTable({ answer, kind, failed, fetching, page, query, choose }: SearchTableProps) {
+function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker }: SearchTableProps) {
 	const rows = answer?.kind === kind ? answer.rows : [];
 	const top = Math.max(...rows.map((r) => r.clicks), 1);
+	const byDay = kind === 'days' ? changesByDay(answer, markers) : null;
 	return (
 		<>
 			{!answer && !failed && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
@@ -627,6 +661,11 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 						<thead>
 							<tr>
 								<th scope="col">{kindHeading(kind, answer?.grain)}</th>
+								{byDay && (
+									<th scope="col" className="spst-table__changes">
+										{__('Changes', 'seoprostats')}
+									</th>
+								)}
 								{METRIC_ORDER.map((key) => (
 									<th key={key} scope="col" className="num">
 										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
@@ -636,7 +675,18 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose }: Se
 						</thead>
 						<tbody>
 							{rows.map((row) => (
-								<Row key={row.id} row={row} kind={kind} grain={answer?.grain ?? 'day'} top={top} page={page} query={query} choose={choose} />
+								<Row
+									key={row.id}
+									row={row}
+									kind={kind}
+									grain={answer?.grain ?? 'day'}
+									top={top}
+									page={page}
+									query={query}
+									choose={choose}
+									changes={byDay ? byDay.get(row.from ?? row.value) ?? NO_MARKERS : undefined}
+									onMarker={onMarker}
+								/>
 							))}
 						</tbody>
 					</table>
@@ -655,11 +705,15 @@ interface RowProps {
 	page: string;
 	query: string;
 	choose: (next: { page?: string; query?: string }) => void;
+	/** A days row's changes (its column shows when set). */
+	changes?: Marker[];
+	onMarker?: (pick: MarkerPick) => void;
 }
 
-function Row({ row, kind, grain, top, page, query, choose }: RowProps) {
+function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: RowProps) {
 	const before = row.compare;
-	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? longLabel(row.from ?? row.value, grain) : row.label}</span>;
+	const when = kind === 'days' ? longLabel(row.from ?? row.value, grain) : '';
+	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? when : row.label}</span>;
 	if (kind === 'queries') {
 		name = (
 			<Button variant="link" aria-pressed={query === row.value} onClick={() => choose({ query: query === row.value ? '' : row.value })}>
@@ -703,6 +757,11 @@ function Row({ row, kind, grain, top, page, query, choose }: RowProps) {
 				<span className="spst-table__bar" style={{ width: `${(row.clicks / top) * 100}%` }} aria-hidden="true" />
 				{name}
 			</td>
+			{changes && (
+				<td className="spst-table__changes">
+					<ChangeDots markers={changes} from={row.from ?? row.value} to={row.to ?? row.from ?? row.value} when={when} onPick={onMarker} />
+				</td>
+			)}
 			{METRIC_ORDER.map((key) => (
 				<td key={key} className="num">
 					{value(key, row)}
