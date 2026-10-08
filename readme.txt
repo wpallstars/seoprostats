@@ -39,7 +39,7 @@ Made from WP Plugin Starter (https://github.com/wpallstars/wp-plugin-starter-tem
 
 = Can I share a report with a client? =
 
-Yes. Administrators choose Share in Overview, Goals or Clicks, or Shared reports in the menu. A private link opens selected live views without a WordPress account, with optional password, expiry, locked filters, period limits and branding. Copy the link when shown; only its hash is stored. Revoke it or make a new link at any time. Readers are not tracked. Password unlocks use tab session storage for an hour, never cookies. Light, dark and print views are included. Agency defaults live under Settings → Shared reports.
+Yes. Administrators choose Share on any tab, or Shared reports in the menu. A report can hold every tab as a section (Search once for each engine, without the Plan or Experiments). A private link opens them, live, without a WordPress account, with optional password, expiry, locked filters, period limits and branding. Copy the link when shown; only its hash is stored. Revoke it or make a new link at any time. Readers are not tracked. Password unlocks use tab session storage for an hour, never cookies. Light, dark and print views are included. Agency defaults live under Settings → Shared reports.
 
 = Where are the statistics? =
 

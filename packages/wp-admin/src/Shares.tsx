@@ -128,7 +128,7 @@ function LogoField({ label, help, id, url, choose, clear }: { label: string; hel
                 </Button>
                 {id > 0 && <Button variant="tertiary" isDestructive onClick={clear}>{__('Remove', 'seoprostats')}</Button>}
             </div>
-            <p className="spst-share-logo__help">{help}</p>
+            <p className="spst-share-logo__help">{canChoose ? help : __('The Media Library did not load. Reload the page to choose a logo.', 'seoprostats')}</p>
         </div>
     );
 }
