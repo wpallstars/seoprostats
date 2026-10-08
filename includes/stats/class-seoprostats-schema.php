@@ -44,8 +44,9 @@ final class SEOProStats_Schema {
      * v14: gsc_appearance (Google search appearances by day).
      * v15: daily.import_id (days imported from another statistics plugin,
      *      SEOProStats_Migrate; 0: summarised from the site's own visits).
+     * v16: ab_tests (A/B tests of blocks, read from posts when they are saved).
      */
-    const VERSION = 15;
+    const VERSION = 16;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -111,7 +112,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests');
     }
 
     /**
@@ -679,6 +680,31 @@ final class SEOProStats_Schema {
   user_id bigint unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (query_id),
   KEY path_id (path_id)
+) $charset;",
+
+            // A/B tests of blocks (SEOProStats_AB_Tests): one row per test
+            // block, read from its post when the post is saved. test_id:
+            // the block's random id. variants: JSON list of {slug, label,
+            // weight}; goals: JSON list of goal ids. status: codes in
+            // SEOProStats_AB_Tests::STATUSES. started, ended: when it
+            // first ran and when it ended; removed: when it left its post
+            // (rows stay, so its results stay readable). Times: Unix seconds.
+            'ab_tests' => "CREATE TABLE {$t['ab_tests']} (
+  test_id varchar(32) NOT NULL,
+  post_id bigint unsigned NOT NULL DEFAULT 0,
+  name varchar(190) NOT NULL DEFAULT '',
+  variants text NOT NULL,
+  goals text NOT NULL,
+  status tinyint unsigned NOT NULL DEFAULT 0,
+  winner varchar(64) NOT NULL DEFAULT '',
+  created int unsigned NOT NULL,
+  updated int unsigned NOT NULL,
+  started int unsigned NOT NULL DEFAULT 0,
+  ended int unsigned NOT NULL DEFAULT 0,
+  removed int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (test_id),
+  KEY post_id (post_id),
+  KEY status (status)
 ) $charset;",
         );
     }

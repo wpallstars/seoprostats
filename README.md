@@ -95,6 +95,31 @@ agents use REST `search?kind=days` (each row has `from` and `to`),
 `wp seoprostats search days --range=90d --limit=100 --format=csv`, or the
 `seoprostats/search` ability with `kind: days`; `offset` reads the next rows.
 
+### A/B tests
+
+In the block editor, select a block (a paragraph, a button, a group…) or
+several and choose **A/B test** in the block toolbar or its More menu.
+The selection becomes Variant A of a test and Variant B starts as a copy
+to change. The test's toolbar has a variant dropdown to pick the variant
+shown and edited; the others stay saved. The block's sidebar sets the
+test's name, status (draft, running, paused, ended) and the goals it is
+judged by, and each variant's label and weight (equal by default), and adds,
+duplicates, removes and reorders variants (up to ten). Tests start in posts
+and pages; templates, template parts and synced patterns come later.
+
+Once a test is running, each page load shows one variant, picked by
+weight in the browser before the page is drawn, so there is no flicker
+and nothing is stored: no cookie or browser storage. Search engines,
+visitors without JavaScript, feeds and page caches see Variant A (or the
+winner). Draft, paused and ended tests show Variant A or the winner only.
+Saving a post keeps a list of its tests; a test taken out of a post is
+kept as removed, so its results stay. Results come in a later version.
+While SEO Pro Stats is switched off, a page shows all of a test's
+variants one after another.
+
+A/B tests are not Search → Experiments, which measure a change you made
+to pages against pages you did not change.
+
 ### Shared reports
 
 Administrators can choose **Share** after the period controls on any tab,
@@ -349,12 +374,13 @@ curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1
 
 ## Uninstall
 
-Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
+Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
 
 ### Unreleased
 
+- New: A/B tests of blocks, part 1: the blocks, the editor and the site. Choose **A/B test** on any block or selection in the block editor; Variant A holds it and Variant B starts as a copy. Pick the variant to edit from the test's toolbar, and set the name, status, goals and each variant's label and weight in the sidebar. A running test shows each page load one variant, picked by weight before the page is drawn, with no cookie, storage or query; search engines, visitors without JavaScript and page caches see Variant A. Saving a post keeps its tests in a new `ab_tests` table (schema v16). Results come in later parts.
 - New: Settings → Import also reads Jetpack Stats (Jetpack or the standalone Jetpack Stats plugin), built from Jetpack 16.3's published code and to be tested by people who use it. Its history is on WordPress.com: while Jetpack is active, connected and has Stats on, SEO Pro Stats looks up the daily views and visitors in the background, then imports each day's views of posts and pages, referrers and countries, in cron and WP-CLI only, without filling Jetpack's caches, waiting and trying again when WordPress.com is busy. The Import tab and `wp seoprostats migrate list` say when Jetpack needs connecting or updating; `wp seoprostats migrate run jetpack --dry-run --requests` lists each request for problem reports (never tokens or statistics). After importing, switch off Stats in Jetpack; Remove leftover data lists only its statistics caches.
 - New: Settings → Import also reads Slimstat (from version 5.5.0) and Matomo for WordPress (5.13.1), which keep raw rows, often millions: each day is read with grouped queries on their time index, and the dry run estimates their counts from three days when their tables are large (from table statistics, without counting), so it answers in seconds. Slimstat: its pageviews and archived pageviews by its local timestamps, without crawlers and wp-admin pages, each visit counted as one visitor. Matomo: its raw visit logs (not its reporting API, which needs it active and starts archiving), visits by their last action's time, campaign name and keyword as campaign tags. Both bring pages, entry and exit pages, referrers, channels, search landing pages, countries, devices, browsers and systems. Their excluded roles and IP addresses (and Slimstat's Do Not Track and retention) fill ours where still at the default; Remove leftover data lists exactly what each leaves, now including roles a plugin added (Matomo's four).
 - New: Settings → Import also reads WP Statistics (from version 14.16.15 and its older layouts) and Independent Analytics (2.15.5). WP Statistics: each visitor row as one visit, with pages, entry and exit pages, referrers, channels, campaign tags, search landing pages, countries, devices, browsers and systems; for days it purged, its daily visitors and pageviews. Independent Analytics: visits and pageviews by the site's days from its UTC times, with time on page, the same reports, and campaign tags from its Pro version. Their excluded roles, IP addresses, Do Not Track (WP Statistics) and data deletion settings fill ours where still at the default; Remove leftover data lists exactly what each leaves, now including post meta.

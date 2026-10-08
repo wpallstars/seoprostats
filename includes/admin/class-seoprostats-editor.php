@@ -32,6 +32,46 @@ final class SEOProStats_Editor {
     public static function init() {
         add_action('enqueue_block_editor_assets', array(__CLASS__, 'block_editor'));
         add_action('add_meta_boxes', array(__CLASS__, 'classic_editor'), 10, 2);
+        // A/B tests (SEOProStats_AB_Tests): the blocks' editor, in every block editor.
+        add_action('enqueue_block_editor_assets', array(__CLASS__, 'ab_tests'));
+        add_action('enqueue_block_assets', array(__CLASS__, 'ab_tests_canvas'));
+    }
+
+    /**
+     * Block editors: the A/B test blocks' editor (packages/wp-admin/src/
+     * ab-test/), with the goals a test can be judged by. Tests start only
+     * in posts and pages for now; the script says so in templates and
+     * synced patterns.
+     */
+    public static function ab_tests() {
+        $extra = array('wp-blocks', 'wp-block-editor', 'wp-data', 'wp-hooks', 'wp-compose', 'wp-plugins', 'wp-notices', 'wp-components', 'wp-element', 'wp-i18n');
+        if (!SEOProStats_Dashboard::enqueue_entry('ab-test', null, $extra)) {
+            return;
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-goals.php';
+        $before = SEOProStats_Schema::use_set('live');
+        $goals  = array_map(static function ($goal) {
+            return array('id' => $goal['id'], 'name' => $goal['name']);
+        }, SEOProStats_Goals::goals());
+        SEOProStats_Schema::use_set($before);
+        wp_add_inline_script('seoprostats-ab-test', 'window.seoprostatsAbTests = ' . wp_json_encode(array(
+            'goals'    => $goals,
+            'goalsUrl' => current_user_can(SEOProStats_API::CAP) ? SEOProStats_Dashboard::url() . '#/goals' : '',
+        )) . ';', 'before');
+    }
+
+    /**
+     * The block editor's canvas (an iframe): the A/B test blocks' outline
+     * and label. wp-admin only; the site gets no styles from them.
+     */
+    public static function ab_tests_canvas() {
+        $style = 'assets/build/ab-test' . (is_rtl() ? '-rtl' : '') . '.css';
+        $asset = SEOPROSTATS_DIR . 'assets/build/ab-test.asset.php';
+        if (!is_admin() || !is_readable(SEOPROSTATS_DIR . $style) || !is_readable($asset)) {
+            return;
+        }
+        $asset = require $asset;
+        wp_enqueue_style('seoprostats-ab-test-canvas', SEOPROSTATS_URL . $style, array(), isset($asset['version']) ? (string) $asset['version'] : SEOPROSTATS_VERSION);
     }
 
     /**

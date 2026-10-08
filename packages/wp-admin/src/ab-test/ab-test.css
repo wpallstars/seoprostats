@@ -1,0 +1,117 @@
+/*
+ * A/B tests in the block editor: the test's outline and label in the
+ * canvas (loaded into the editor's iframe too, SEOProStats_Editor::
+ * ab_tests_canvas()) and its sidebar. WordPress's own type and colours
+ * (DESIGN.md). Never loaded on the site.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ */
+
+/*
+ * Canvas: a dashed outline with the test's name and the variant shown in
+ * a tag at its top, inside it so it never covers the blocks before.
+ */
+.spst-ab-test {
+	position: relative;
+	padding-top: 28px;
+	outline: 1px dashed rgba(var(--wp-admin-theme-color--rgb, 56, 88, 233), 0.6);
+	outline-offset: 4px;
+}
+
+.spst-ab-test::before {
+	content: attr(data-spst-label);
+	position: absolute;
+	top: -4px;
+	inset-inline-start: -4px;
+	max-width: calc(100% + 8px);
+	box-sizing: border-box;
+	overflow: hidden;
+	padding: 2px 8px;
+	border-radius: 2px;
+	background: var(--wp-admin-theme-color, #3858e9);
+	color: #fff;
+	font: 500 11px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+	white-space: nowrap;
+	text-overflow: ellipsis;
+	pointer-events: none;
+}
+
+.spst-ab-variant[hidden] {
+	display: none !important;
+}
+
+/* One variant shows at a time, so none is spaced as if after another. */
+.spst-ab-test > .spst-ab-variant {
+	margin-block-start: 0;
+}
+
+/* Sidebar. */
+.spst-ab-note {
+	margin: 8px 0 0;
+	color: #757575;
+	font-size: 12px;
+}
+
+.spst-ab-goals {
+	margin: 16px 0 0;
+	padding: 0;
+	border: 0;
+}
+
+.spst-ab-goals legend {
+	margin-bottom: 8px;
+	padding: 0;
+	font-size: 11px;
+	font-weight: 500;
+	text-transform: uppercase;
+}
+
+.spst-ab-goals .components-checkbox-control {
+	margin-bottom: 8px;
+}
+
+.spst-ab-variant-list {
+	margin: 0 0 12px;
+	padding: 0;
+	list-style: none;
+}
+
+.spst-ab-variant-row {
+	margin: 0 0 12px;
+	padding: 12px;
+	border: 1px solid #e0e0e0;
+	border-radius: 2px;
+}
+
+.spst-ab-variant-row.is-shown {
+	border-color: var(--wp-admin-theme-color, #3858e9);
+	box-shadow: inset 0 0 0 1px var(--wp-admin-theme-color, #3858e9);
+}
+
+.spst-ab-variant-row > * + * {
+	margin-top: 12px;
+}
+
+.spst-ab-variant-row__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+}
+
+.spst-ab-variant-row__head code {
+	font-size: 11px;
+}
+
+.spst-ab-variant-row__share {
+	margin-inline-start: auto;
+	color: #757575;
+	font-variant-numeric: tabular-nums;
+}
+
+.spst-ab-variant-row__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}

@@ -650,6 +650,56 @@ on in the next; each run is an import (undo deletes its rows by its
 days and id). `wp seoprostats bing status|import|imports|undo|reimport`
 mirrors `search-console`.
 
+### A/B tests
+
+`SEOProStats_AB_Tests` (schema v16) shows each visitor one version of a
+part of a page, to learn which does better. They are **A/B tests**
+everywhere (blocks, table, routes, commands); **Experiments** are another
+feature (a change and its expected effect, above).
+
+- **Blocks.** `seoprostats/ab-test` holds two to ten
+  `seoprostats/ab-variant` blocks, each any blocks. The test's attributes
+  are `testId` (6 to 32 lower-case letters and digits, random), `name`,
+  `status` (draft, running, paused, ended), `goals` (goal ids) and
+  `winner` (a variant slug, set by part 4); a variant's are `slug`
+  (`variant-a`… kept once set), `label` and `weight` (0–100, relative; 0
+  never shows it). Both are registered in PHP with render callbacks and
+  saved with their inner blocks' markup, so the editor's own parser keeps
+  them.
+- **Editor** (`packages/wp-admin/src/ab-test/`, its own `ab-test` bundle,
+  enqueued with the post sidebar by `SEOProStats_Editor`). An A/B test
+  toolbar button (and the block's More menu) wraps the selected block or
+  blocks in a test: Variant A holds them, Variant B a copy. The test's
+  toolbar has a variant dropdown; only the chosen variant shows in the
+  canvas (the others are hidden in the editor only). The sidebar edits the
+  name (the post title by default), status, goals and each variant's
+  label, weight and order, and adds (blank or a copy) and removes
+  variants. In the site editor, template parts and synced patterns the
+  button only says tests start in posts and pages for now.
+- **Registry.** `wp_insert_post_data` gives each test without an id, or
+  with one another test in the post or another post has, a new id derived
+  from the old one and the post (saving again gives the same id), by
+  rewriting only those tests' opening comments. `save_post` parses the
+  post and upserts its tests into `ab_tests` (name, variants as JSON,
+  goals, status, winner, when it first ran and ended); tests no longer in
+  the post, or in a deleted post, are marked `removed`, not deleted. This
+  runs only when a post is saved.
+- **On the site.** The test prints the control (the first variant, or the
+  winner) as normal markup inside the test's wrapper (`data-spst-test`).
+  While it is running, on front-end pages only (not feeds, embeds, REST
+  or wp-admin; filter `seoprostats_ab_tests_swap`), the other variants
+  with a weight follow in `<template>` elements with an inline script
+  (`SEOProStats_AB_Tests::script()`, under 1 KB). As the page is
+  parsed, before paint, it picks a variant by weight for that page load,
+  swaps it in for the control and sets `data-spst-ab="<test>:<variant>"` on
+  the wrapper for collection (part 2). Crawlers, visitors without
+  JavaScript, feeds and page caches see one variant; nothing is stored
+  in the browser, and no query, option or remote request runs. Draft,
+  paused and ended tests print only the control or winner.
+- **Without the plugin**, the saved markup has every variant one after
+  the other, so a page shows them all while SEO Pro Stats is inactive.
+  Picking a winner (part 4) replaces the test with its blocks.
+
 ### Moving from other statistics plugins
 
 SEO Pro Stats → Settings → Import brings another statistics plugin's
@@ -1031,6 +1081,7 @@ with `dbDelta()` per `SEOProStats_Schema::VERSION`. Times are Unix seconds
 | `page_links` | a link in a published page's text to another of the site's pages (schema v11; `docs/seo-loop.md`) | `from_path`, `to_path` (primary key), `text_id` (the first link's text, `DICT_LABEL`), `links` (how many links) |
 | `sitemap` | an address in the site's own sitemaps other than its posts (schema v12; `docs/seo-loop.md`) | `path_id` (primary key), `source` (1 category and tag archives, 2 author archives, 3 another provider), `first_seen` (when first listed), `seen` (the read that last listed it) |
 | `targets` | a search the site chose to win and the page meant for it (schema v13; `docs/seo-loop.md`) | `query_id` (primary key, `DICT_QUERY`), `path_id` (0: none chosen), `priority` (0–100), `status` (1 candidate, 2 targeted, 3 live, 4 won, 5 retired), `source` (1 list, 2 aidevops, 3 demo), `created`, `updated`, `user_id` |
+| `ab_tests` | an A/B test in a post, read when the post is saved (schema v16; A/B tests above) | `test_id` (primary key, the block's `testId`), `post_id`, `name`, `variants` (JSON: slug, label, weight), `goals` (JSON goal ids), `status` (0 draft, 1 running, 2 paused, 3 ended), `winner` (a variant slug), `created`, `updated`, `started` (first ran), `ended`, `removed` (when it left its post; 0 while in it) |
 
 Goals, funnels, segments, alert rules and shared-dashboard tokens are small
 option arrays with autoload off. Goals (`seoprostats_goals`, up to 50) and
@@ -1056,7 +1107,7 @@ one page's or query's search data, and `imports` `(source, status)`
 v9); `page_facts` has `post_id`, `checked`, `flags`, `title_hash` and
 `desc_hash` (schema v10), and `links_in`, and `page_links` `to_path`
 (schema v11), and `published`, and `sitemap` `first_seen` and `seen`
-(schema v12);
+(schema v12); `ab_tests` has `post_id` and `status` (schema v16);
 with the primary key both cover the reports, which read only the
 period's index entries, never the table rows. Add one
 only for a query that needs it, after `SHOW INDEX` (`STANDARDS.md` →

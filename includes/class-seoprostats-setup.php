@@ -115,6 +115,10 @@ final class SEOProStats_Setup {
         SEOProStats_Changes::init();
         // Abilities for AI agents (WordPress 6.9+; hooks only).
         SEOProStats_Abilities::init();
+        // A/B test blocks (they render on the site from their attributes
+        // alone) and their registry, read when a post is saved.
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-ab-tests.php';
+        SEOProStats_AB_Tests::init();
         if (!is_admin()) {
             // Prints the tracker on front-end pages.
             require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-tracker.php';
