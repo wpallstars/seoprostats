@@ -4335,7 +4335,7 @@ components:
               description: The last day with impressions; null when never shown.
             age:
               type: integer
-              description: Days from publishing (pages) or first listed (sitemap) to the end of the period.
+              description: Days since it was published (pages) or first listed (sitemap).
             published:
               type: string
               format: date-time

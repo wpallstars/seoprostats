@@ -225,8 +225,11 @@ final class SEOProStats_Indexation {
         $list   = (array) $all['lists'][$kind];
         unset($all['lists']);
         $rows = array_slice($list, $offset, $limit);
-        // Editor links depend on the viewer, so they are added outside the shared cache.
+        // Editor links depend on the viewer and ages on today, so they are added outside the shared cache.
+        $now = time();
         foreach ($rows as &$row) {
+            $since      = strtotime((string) ($kind === 'pages' ? $row['published'] : $row['first_seen']));
+            $row['age'] = $since ? max(0, (int) floor(($now - $since) / DAY_IN_SECONDS)) : 0;
             if ((int) $row['post_id']) {
                 $row = SEOProStats_Clicks::with_edit_url($row);
             }
@@ -312,7 +315,7 @@ final class SEOProStats_Indexation {
             usort($list, static function ($a, $b) {
                 return array($a['last'] !== null, $b['since'], $a['path_id']) <=> array($b['last'] !== null, $a['since'], $b['path_id']);
             });
-            $answer['lists'][$kind] = self::rows(array_slice($list, 0, self::KEEP), $kind, $end->getTimestamp());
+            $answer['lists'][$kind] = self::rows(array_slice($list, 0, self::KEEP), $kind);
         }
         return $answer;
     }
@@ -434,10 +437,9 @@ final class SEOProStats_Indexation {
      *
      * @param array<int,array<string,mixed>> $list The rows kept.
      * @param string                         $kind pages or sitemap.
-     * @param int                            $end  End of the window (Unix seconds).
      * @return array<int,array<string,mixed>>
      */
-    private static function rows(array $list, $kind, $end) {
+    private static function rows(array $list, $kind) {
         $text = SEOProStats_Query::texts(array_column($list, 'path_id'));
         $live = SEOProStats_Schema::set() === 'live';
         $out  = array();
@@ -454,7 +456,8 @@ final class SEOProStats_Indexation {
                 'edit_url'        => null,
                 'state'           => $item['last'] === null ? 'never' : 'lost',
                 'last_impression' => $item['last'],
-                'age'             => max(0, (int) floor(($end - (int) $item['since']) / DAY_IN_SECONDS)),
+                // Days since, set by report() outside the cache.
+                'age'             => 0,
             );
             if ($kind === 'pages') {
                 $line += array(
