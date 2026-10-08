@@ -1128,6 +1128,25 @@ code.spst-meta {
 	padding: 12px 0 0;
 }
 
+/* Search → Targets. */
+.spst-targets td {
+	vertical-align: top;
+}
+
+.spst-targets__import {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	max-width: 960px;
+	margin-bottom: 16px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--spst-border, #dcdcde);
+}
+
+.spst-targets__import .components-notice {
+	margin: 0;
+}
+
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
 /* From WordPress's small breakpoint up; below it, its full-width sheet. */
 @media (min-width: 600px) {
