@@ -404,13 +404,8 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
      */
     public function leftovers() {
         $uploads = wp_upload_dir(null, false);
-        $tables  = array();
-        foreach (self::TABLES as $name) {
-            if (self::table_exists(self::table($name))) {
-                $tables[] = self::table($name);
-            }
-        }
-        sort($tables);
+        // One listing, kept to its own names (other plugins may use statistics_ too).
+        $tables = array_values(array_intersect(self::tables_like('statistics_'), array_map(array(__CLASS__, 'table'), self::TABLES)));
         // Copies of its script it once made in uploads (listed in an option of its own).
         $files  = array(trailingslashit((string) $uploads['basedir']) . 'wp-statistics');
         $hashed = get_option('wp_statistics_hashed_assets', array());
