@@ -582,9 +582,10 @@ final class SEOProStats_Query {
 
     /**
      * The part of a range the daily table answers: from its start (a
-     * site-local midnight) to the end of the last summarised day or the
-     * last whole day of the range, whichever is first. Null when none of
-     * it can (filters, a range that starts mid-day, nothing summarised).
+     * site-local midnight) to the end of the last summarised day (or,
+     * before the first, the last imported one) or the last whole day of
+     * the range, whichever is first. Null when none of it can (filters, a
+     * range that starts mid-day, nothing summarised or imported).
      * The fact tables answer from 'split' to the range's end.
      *
      * @param array<string,mixed> $range    From range().
@@ -597,7 +598,7 @@ final class SEOProStats_Query {
         }
         /** @var DateTimeImmutable $start */
         $start   = $range['start'];
-        $through = SEOProStats_Rollup::through();
+        $through = SEOProStats_Rollup::summary_through();
         if ($through === '' || $start->format('H:i:s') !== '00:00:00') {
             return null;
         }
@@ -1302,7 +1303,9 @@ final class SEOProStats_Query {
     public static function cached($name, array $req, callable $work) {
         $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string() . SEOProStats_Schema::set());
         $state   = get_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array());
-        $version = is_array($state) && isset($state['last']) ? (int) $state['last'] : 0;
+        // New hits, or days imported or undone (SEOProStats_Migrate).
+        require_once __DIR__ . '/class-seoprostats-rollup.php';
+        $version = (is_array($state) && isset($state['last']) ? (int) $state['last'] : 0) . ':' . SEOProStats_Rollup::imported()['at'];
         $object  = wp_using_ext_object_cache();
         $hit     = $object ? wp_cache_get($key, 'seoprostats') : get_transient($key);
 

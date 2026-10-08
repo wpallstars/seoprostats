@@ -42,8 +42,10 @@ final class SEOProStats_Schema {
      *      sitemap (the addresses in the site's own sitemaps).
      * v13: targets (the site's chosen search queries and their pages).
      * v14: gsc_appearance (Google search appearances by day).
+     * v15: daily.import_id (days imported from another statistics plugin,
+     *      SEOProStats_Migrate; 0: summarised from the site's own visits).
      */
-    const VERSION = 14;
+    const VERSION = 15;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -374,6 +376,9 @@ final class SEOProStats_Schema {
             // Finished days, per dimension and value (dim 0, val 0: the
             // site; codes in SEOProStats_Rollup::DIMS). For pages,
             // engaged_ms and scroll are sums over the page's views.
+            // import_id: the imports row of a day imported from another
+            // statistics plugin (SEOProStats_Migrate), 0 for the site's
+            // own; a day is either one or the other, never both.
             'daily' => "CREATE TABLE {$t['daily']} (
   day date NOT NULL,
   dim tinyint unsigned NOT NULL,
@@ -385,6 +390,7 @@ final class SEOProStats_Schema {
   engaged_ms bigint unsigned NOT NULL DEFAULT 0,
   events int unsigned NOT NULL DEFAULT 0,
   scroll bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (day,dim,val),
   KEY dim_val_day (dim,val,day)
 ) $charset;",

@@ -188,6 +188,9 @@ final class SEOProStats_Setup {
         // Settings → Connections (outside data sources; hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-connections-tab.php';
         SEOProStats_Connections_Tab::init();
+        // Settings → Import (other statistics plugins' history; hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-import-tab.php';
+        SEOProStats_Import_Tab::init();
         // Settings → Shared reports: the accent colour picker (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-share-settings.php';
         SEOProStats_Share_Settings::init();

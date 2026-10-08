@@ -476,6 +476,7 @@ final class SEOProStats_API {
             'permission_callback' => $settings,
             'callback'            => array(__CLASS__, 'undo_import'),
         ));
+        self::migrate_routes($settings);
 
         register_rest_route($ns, '/demo', array(
             array(
@@ -963,15 +964,131 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function undo_import($request) {
+        global $wpdb;
         self::load_connections();
         if (!SEOProStats_Schema::is_current()) {
             return new WP_Error('seoprostats_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoprostats'), array('status' => 503));
         }
-        $deleted = SEOProStats_Search_Import::undo((int) $request->get_param('id'));
+        $id = (int) $request->get_param('id');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        $source = (string) $wpdb->get_var($wpdb->prepare('SELECT source FROM %i WHERE id = %d', SEOProStats_Schema::table('imports'), $id));
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        // Imports from other statistics plugins undo through SEOProStats_Migrate.
+        $deleted = SEOProStats_Migrate::owns($source) ? SEOProStats_Migrate::undo($id) : SEOProStats_Search_Import::undo($id);
         if (is_wp_error($deleted)) {
             return self::with_status($deleted, 404);
         }
-        return rest_ensure_response(array('id' => (int) $request->get_param('id'), 'deleted' => $deleted));
+        return rest_ensure_response(array('id' => $id, 'deleted' => $deleted));
+    }
+
+    /**
+     * Routes of imports from other statistics plugins (SEOProStats_Migrate),
+     * for administrators who may change the settings.
+     *
+     * @param callable $settings Permission callback.
+     */
+    private static function migrate_routes($settings) {
+        $ns     = SEOProStats_Collection::REST_NAMESPACE;
+        $source = '/migrate/(?P<source>[a-z0-9-]+)';
+        register_rest_route($ns, '/migrate', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'migrate_status'),
+            'args'                => array(
+                'fresh' => array(
+                    'description' => __('Look for statistics plugins again instead of the list kept for ten minutes.', 'seoprostats'),
+                    'type'        => 'boolean',
+                    'default'     => false,
+                ),
+            ),
+        ));
+        register_rest_route($ns, $source, array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'migrate_run'),
+            'args'                => array(
+                'dry_run' => array(
+                    'description' => __('Only say what the import would do: days, rows, overlap with other plugins and SEO Pro Stats\'s own days, and settings. Writes nothing.', 'seoprostats'),
+                    'type'        => 'boolean',
+                    'default'     => false,
+                ),
+                'prefer'  => array(
+                    'description' => __('When another plugin not imported yet has statistics on the same days: the one whose counts fill those days. It imports first.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'from'    => array(
+                    'description' => __('First day to import (YYYY-MM-DD); default: its first day.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'to'      => array(
+                    'description' => __('Last day to import (YYYY-MM-DD); default: its last day.', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+            ),
+        ));
+        register_rest_route($ns, $source . '/cleanup', array(
+            'methods'             => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback'            => array(__CLASS__, 'migrate_cleanup'),
+            'args'                => array(
+                'dry_run' => array(
+                    'description' => __('Only list what it left behind (default). false deletes exactly that list; it cannot be undone.', 'seoprostats'),
+                    'type'        => 'boolean',
+                    'default'     => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * GET /migrate: statistics plugins found, the import job and the
+     * imports so far. While an import runs, each read moves it on for a
+     * few seconds (the Import tab polls), as well as cron.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response
+     */
+    public static function migrate_status($request) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        SEOProStats_Migrate::nudge();
+        return rest_ensure_response(SEOProStats_Migrate::status((bool) $request->get_param('fresh')));
+    }
+
+    /**
+     * POST /migrate/{source}: the dry run, or start an import (cron and
+     * GET /migrate carry it on).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function migrate_run($request) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        $source = (string) $request->get_param('source');
+        $args   = array(
+            'from'   => (string) $request->get_param('from'),
+            'to'     => (string) $request->get_param('to'),
+            'prefer' => (string) $request->get_param('prefer'),
+        );
+        if ($request->get_param('dry_run')) {
+            return self::with_status(SEOProStats_Migrate::plan($source, $args), 400);
+        }
+        $job = SEOProStats_Migrate::start($source, $args);
+        return is_wp_error($job) ? self::with_status($job, 400) : rest_ensure_response(array('job' => $job));
+    }
+
+    /**
+     * POST /migrate/{source}/cleanup: list, or remove, what a plugin left
+     * behind; refused while it is active. People only: no ability does it.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function migrate_cleanup($request) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        return self::with_status(SEOProStats_Migrate::cleanup((string) $request->get_param('source'), (bool) $request->get_param('dry_run')), 400);
     }
 
     /**

@@ -34,6 +34,11 @@
  *   position, clicks and the page that ranks (read).
  * - seoprostats/targets-import: import or delete search targets
  *   (administrators).
+ * - seoprostats/migrate: other statistics plugins whose history is on
+ *   the site, an import's dry run and what a plugin leaves behind
+ *   (administrators; read).
+ * - seoprostats/migrate-import: import a plugin's history
+ *   (administrators). Removing its leftovers is for people only.
  *
  * On older WordPress the hooks never run.
  *
@@ -960,6 +965,117 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        self::register_migrate();
+    }
+
+    /**
+     * Abilities to move from another statistics plugin. Removing its
+     * leftovers is for people only (the Import tab or WP-CLI).
+     */
+    private static function register_migrate() {
+        $source = array(
+            'type'        => 'string',
+            'description' => __('The plugin\'s key, such as burst-statistics (as listed in sources).', 'seoprostats'),
+        );
+        $days   = array(
+            'source' => $source,
+            'from'   => array('type' => 'string', 'description' => __('First day to import (YYYY-MM-DD); default: its first day.', 'seoprostats')),
+            'to'     => array('type' => 'string', 'description' => __('Last day to import (YYYY-MM-DD); default: its last day.', 'seoprostats')),
+            'prefer' => array('type' => 'string', 'description' => __('When another plugin not imported yet has statistics on the same days: the one whose counts fill them (it imports first). Default: this one.', 'seoprostats')),
+        );
+        wp_register_ability('seoprostats/migrate', array(
+            'label'               => __('Statistics plugins to move from', 'seoprostats'),
+            'description'         => __('Other statistics plugins whose history is on this site (whether active, inactive or deleted with its tables left): their days, the import job and past imports, each with its own counts beside the imported ones (check). With source: the dry run of importing it — the days it would fill (only before SEO Pro Stats\'s own first day, own_from, and not filled by another import), rows per dimension (estimated), plugins sharing those days (overlap, with a suggested prefer: the one with more pageviews), the settings it would carry over (only ours still at their default) — and leftovers, exactly what the plugin leaves on the site. Writes nothing.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => $days,
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'migrate'),
+            'permission_callback' => array('SEOProStats_API', 'can_change'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/migrate-import', array(
+            'label'               => __('Import another statistics plugin\'s history', 'seoprostats'),
+            'description'         => __('Start importing a plugin\'s history (see seoprostats/migrate for its dry run). It runs in the background in batches of days; seoprostats/migrate shows its progress, then the import with its check. Each day is filled once, so running it again adds nothing; undo is DELETE /seoprostats/v1/imports/{id}.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'required'             => array('source'),
+                'properties'           => $days,
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'migrate_import'),
+            'permission_callback' => array('SEOProStats_API', 'can_change'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => false,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/migrate.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function migrate($input = null) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        $input  = is_array($input) ? $input : array();
+        $status = SEOProStats_Migrate::status();
+        $key    = isset($input['source']) ? (string) $input['source'] : '';
+        if ($key === '') {
+            return $status;
+        }
+        $plan = SEOProStats_Migrate::plan($key, self::migrate_args($input));
+        if (is_wp_error($plan)) {
+            return $plan;
+        }
+        $source = SEOProStats_Migrate::source($key);
+        return $status + array('plan' => $plan, 'leftovers' => $source ? $source->leftovers() : array());
+    }
+
+    /**
+     * seoprostats/migrate-import.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function migrate_import($input = null) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        $input = is_array($input) ? $input : array();
+        $job   = SEOProStats_Migrate::start(isset($input['source']) ? (string) $input['source'] : '', self::migrate_args($input));
+        return is_wp_error($job) ? $job : array('job' => $job);
+    }
+
+    /**
+     * The days and preference of a migrate ability's input.
+     *
+     * @param array<string,mixed> $input Input.
+     * @return array<string,string>
+     */
+    private static function migrate_args(array $input) {
+        $out = array();
+        foreach (array('from', 'to', 'prefer') as $key) {
+            $out[$key] = isset($input[$key]) ? (string) $input[$key] : '';
+        }
+        return $out;
     }
 
     /**
