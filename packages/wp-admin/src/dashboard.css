@@ -486,6 +486,84 @@
 	grid-column: 1 / -1;
 }
 
+/* World map: visits by country, shaded in the accent (DESIGN.md → World map).
+ * The card is as tall as Locations beside it, so the map sits in the middle. */
+.spst-map.components-card > div:first-child {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+}
+
+.spst-map .spst-card__body.components-card__body {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	justify-content: center;
+	min-height: 0;
+}
+
+.spst-map__plot {
+	position: relative;
+}
+
+.spst-map__plot svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.spst-map__country {
+	fill: var(--spst-border);
+	stroke: var(--spst-background, #fff);
+	stroke-width: 0.5;
+	stroke-linejoin: round;
+}
+
+.spst-map__country.has-visits {
+	fill: var(--spst-accent);
+	cursor: pointer;
+}
+
+.spst-map__country.has-visits:hover {
+	stroke: var(--spst-text);
+	stroke-width: 1;
+}
+
+.spst-map__country.is-active {
+	stroke: var(--spst-text);
+	stroke-width: 1.5;
+	cursor: pointer;
+}
+
+.spst-map__plot.is-refreshing {
+	opacity: 0.6;
+}
+
+.spst-map__tip {
+	transform: translate(-50%, calc(-100% - 12px));
+}
+
+.spst-map__tip.is-below {
+	transform: translate(-50%, 16px);
+}
+
+.spst-map__legend {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+	color: var(--spst-muted);
+	font-size: 12px;
+}
+
+.spst-map__scale {
+	width: 120px;
+	height: 8px;
+	border-radius: 4px;
+	background: linear-gradient(90deg, var(--spst-accent-soft), var(--spst-accent));
+}
+
 .spst-card__header.components-card__header {
 	flex-wrap: wrap;
 	gap: 8px;

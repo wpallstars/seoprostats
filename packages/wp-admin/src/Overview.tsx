@@ -1,8 +1,8 @@
 /**
  * Overview: headline metrics, the chart, and where visits came from, what
  * they viewed (pages, pages not found, content by author, category and
- * type), what they searched for, where and on what, and what they did
- * (events).
+ * type), what they searched for, where (with a world map) and on what,
+ * and what they did (events): two cards a row on wide screens.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -18,6 +18,7 @@ import { BreakdownCard } from './components/BreakdownCard';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
+import { WorldMap } from './components/WorldMap';
 import { metricLabel } from './labels';
 import { METRICS, type Marker } from '@seoprostats/core';
 
@@ -130,6 +131,7 @@ export function Overview({ state, update }: ViewProps) {
 						{ dimension: 'language', title: __('Languages', 'seoprostats') },
 					]}
 				/>
+				<WorldMap state={state} update={update} />
 				<BreakdownCard
 					card="devices"
 					title={__('Devices', 'seoprostats')}
@@ -147,7 +149,6 @@ export function Overview({ state, update }: ViewProps) {
 					title={__('Events', 'seoprostats')}
 					state={state}
 					update={update}
-					wide
 					tabs={[{ dimension: 'event', title: __('Events', 'seoprostats') }]}
 				/>
 			</div>

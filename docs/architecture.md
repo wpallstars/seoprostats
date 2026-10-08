@@ -1337,8 +1337,10 @@ Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
 
 The Overview's cards: Sources; Pages (top, entry, exit, not found);
 Content (authors, categories, post types); Site search (searches, no
-results); Locations; Devices (devices, browsers, systems, logged in);
-Events.
+results); Locations; Map (visits by country, the `country` breakdown
+shaded on a world map, `WORLD_SHAPES` and `mapShades()` in
+`packages/charts`); Devices (devices, browsers, systems, logged in);
+Events. Two cards a row on wide screens.
 
 Built so far: Overview, Search (Rankings, Opportunities, Content), Goals,
 Funnels, Properties, Clicks and Changes, as the settings screen's tabs
