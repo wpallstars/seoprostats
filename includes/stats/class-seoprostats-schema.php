@@ -41,8 +41,9 @@ final class SEOProStats_Schema {
      * v12: page_facts.published (when each page was published) and
      *      sitemap (the addresses in the site's own sitemaps).
      * v13: targets (the site's chosen search queries and their pages).
+     * v14: gsc_appearance (Google search appearances by day).
      */
-    const VERSION = 13;
+    const VERSION = 14;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -67,6 +68,7 @@ final class SEOProStats_Schema {
     const DICT_TARGET   = 14;
     const DICT_SEARCH   = 15;
     const DICT_QUERY    = 16;
+    const DICT_APPEARANCE = 17;
 
     /** Search engines of the gsc_* rows. */
     const ENGINE_GOOGLE = 1;
@@ -107,7 +109,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets');
     }
 
     /**
@@ -504,6 +506,17 @@ final class SEOProStats_Schema {
   pos_impr bigint unsigned NOT NULL DEFAULT 0,
   import_id int unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (engine,day,device,country)
+) $charset;",
+
+            'gsc_appearance' => "CREATE TABLE {$t['gsc_appearance']} (
+  engine tinyint unsigned NOT NULL,
+  day date NOT NULL,
+  appearance_id int unsigned NOT NULL,
+  clicks int unsigned NOT NULL DEFAULT 0,
+  impressions int unsigned NOT NULL DEFAULT 0,
+  pos_impr bigint unsigned NOT NULL DEFAULT 0,
+  import_id int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (engine,day,appearance_id)
 ) $charset;",
 
             // One row per import run of an outside source, so it can be

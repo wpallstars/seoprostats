@@ -28,7 +28,7 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Search {
 
     /** Kinds of report rows. */
-    const KINDS = array('queries', 'pages', 'countries', 'devices');
+    const KINDS = array('queries', 'pages', 'countries', 'devices', 'appearance');
 
     /** Daily points up to this many days, else monthly. */
     const DAILY_DAYS = 120;
@@ -591,13 +591,13 @@ final class SEOProStats_Search {
         }
         $pages   = $scope['pages'];
         $queries = $scope['queries'];
-        if ($kind === 'countries' || $kind === 'devices') {
+        if (in_array($kind, array('countries', 'devices', 'appearance'), true)) {
             // The site only; Bing gives no countries or devices.
             if ($pages !== null || $queries !== null || (int) $scope['engine'] !== SEOProStats_Schema::ENGINE_GOOGLE) {
                 return null;
             }
-            $table = 'gsc_totals';
-            $by    = $kind === 'countries' ? 'country' : 'device';
+            $table = $kind === 'appearance' ? 'gsc_appearance' : 'gsc_totals';
+            $by    = $kind === 'appearance' ? 'appearance_id' : ($kind === 'countries' ? 'country' : 'device');
         } elseif ($kind === 'queries') {
             $table = $pages === null ? 'gsc_queries' : 'gsc_pairs';
             $by    = 'query_id';
@@ -641,7 +641,7 @@ final class SEOProStats_Search {
      * @return array<int,array<string,mixed>>
      */
     private static function label_rows($kind, array $rows, array $totals) {
-        $text = in_array($kind, array('queries', 'pages'), true) ? SEOProStats_Query::texts(array_map('intval', array_column($rows, 'v'))) : array();
+        $text = in_array($kind, array('queries', 'pages', 'appearance'), true) ? SEOProStats_Query::texts(array_map('intval', array_column($rows, 'v'))) : array();
         $out  = array();
         foreach ($rows as $row) {
             $id = (string) $row['v'];
