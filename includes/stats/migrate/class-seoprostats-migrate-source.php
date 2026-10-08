@@ -70,9 +70,14 @@ abstract class SEOProStats_Migrate_Source {
      * Metrics: visitors, visits, pageviews, bounces, engaged_ms, events
      * and scroll, as the daily table counts them.
      *
+     * An adapter that reads a remote service returns a WP_Error when it
+     * cannot answer now. Its data's retry (seconds) asks the import to
+     * wait and read the day again (0: not in this request, such as a web
+     * request); without retry the import stops with the error.
+     *
      * @param string $from First day (Y-m-d, site time zone).
      * @param string $to   Last day.
-     * @return array<string,array<int,array{0:string,1:int|string,2:array<string,int>}>> Day => rows.
+     * @return array<string,array<int,array{0:string,1:int|string,2:array<string,int>}>>|WP_Error Day => rows.
      */
     abstract public function days($from, $to);
 
@@ -134,6 +139,31 @@ abstract class SEOProStats_Migrate_Source {
      */
     public function removal_step() {
         return null;
+    }
+
+    /**
+     * Why its history cannot be imported now, in words, when it is in use
+     * but cannot hand it over yet (Jetpack keeps it on WordPress.com: not
+     * connected, too old, still being looked up): '' when nothing stops
+     * it. Shown on the Import tab; the dry run and the import stop with
+     * it. Read on screen loads, so no remote requests.
+     *
+     * @return string
+     */
+    public function unavailable() {
+        return '';
+    }
+
+    /**
+     * For people testing an adapter (wp seoprostats migrate run --debug):
+     * what it asked for in this request, such as remote requests with
+     * their HTTP codes and the shape of the answers. Never tokens, bodies
+     * or visitors' data. Each entry is a list of field => value.
+     *
+     * @return array<int,array<string,string|int>>
+     */
+    public function debug() {
+        return array();
     }
 
     /**

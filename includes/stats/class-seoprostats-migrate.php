@@ -45,7 +45,11 @@ final class SEOProStats_Migrate {
         'independent'      => 'SEOProStats_Migrate_Independent_Analytics',
         'slimstat'         => 'SEOProStats_Migrate_Slimstat',
         'matomo'           => 'SEOProStats_Migrate_Matomo',
+        'jetpack'          => 'SEOProStats_Migrate_Jetpack',
     );
+
+    /** Tries per day when a remote source is busy, before the import stops. */
+    const TRIES = 6;
 
     /** Cron hook of a running import. */
     const HOOK = SEOProStats_Collection::MIGRATE_HOOK;
@@ -144,7 +148,7 @@ final class SEOProStats_Migrate {
      * saves what the moving notices show (save_notices()).
      *
      * @param bool $fresh Look again.
-     * @return array<string,array<string,mixed>> Key => key, name, version, from, to, days, pending (days still to import, -1 unknown), plugin (file, state), leftovers (whether any), uninstall_setting.
+     * @return array<string,array<string,mixed>> Key => key, name, version, from, to, days, pending (days still to import, -1 unknown), plugin (file, state), leftovers (whether any), uninstall_setting, unavailable (why it cannot be imported now, '' for nothing).
      */
     public static function found($fresh = false) {
         $cached = $fresh ? false : get_transient(self::CACHE);
@@ -158,13 +162,14 @@ final class SEOProStats_Migrate {
                 $source = new $class();
                 $data   = $source->detect();
                 $plugin = $source->plugin();
+                $note   = $source->unavailable();
                 $left   = $plugin['state'] === 'active' || $plugin['state'] === 'network' ? null : $source->leftovers();
                 $any    = $left !== null && (bool) array_filter(array_diff_key($left, array('network' => true)));
-                if ($data['from'] === '' && !$any) {
+                if ($data['from'] === '' && !$any && $note === '') {
                     continue;
                 }
                 // The days it has and those still to import, in one pass over its days.
-                $plan      = $data['from'] !== '' ? self::make_plan($key, array(), false) : null;
+                $plan      = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
                 $out[$key] = array(
                     'key'               => $key,
                     'name'              => $class::NAME,
@@ -172,12 +177,14 @@ final class SEOProStats_Migrate {
                     'from'              => $data['from'],
                     'to'                => $data['to'],
                     'days'              => is_array($plan) ? (int) $plan['days'] : ($data['from'] !== '' ? count($source->day_list($data['from'], $data['to'])) : 0),
-                    'pending'           => $plan === null ? 0 : (is_array($plan) ? count($plan['import']) : -1),
+                    // Unknown (-1) while it cannot hand its history over: the notices wait.
+                    'pending'           => $note !== '' ? -1 : ($plan === null ? 0 : (is_array($plan) ? count($plan['import']) : -1)),
                     'pending_from'      => is_array($plan) && $plan['import'] ? (string) min($plan['import']) : '',
                     'pending_to'        => is_array($plan) && $plan['import'] ? (string) max($plan['import']) : '',
                     'plugin'            => $plugin,
                     'leftovers'         => $any,
                     'uninstall_setting' => $source->uninstall_setting(),
+                    'unavailable'       => $note,
                 );
             }
             set_transient(self::CACHE, $out, self::CACHE_TIME);
@@ -337,6 +344,10 @@ final class SEOProStats_Migrate {
             return new WP_Error('seoprostats_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoprostats'), array('status' => 503));
         }
         $data = $source->detect();
+        $note = $source->unavailable();
+        if ($note !== '') {
+            return new WP_Error('seoprostats_migrate_unavailable', $note, array('status' => 409));
+        }
         if ($data['from'] === '') {
             /* translators: %s: plugin name. */
             return new WP_Error('seoprostats_migrate_empty', sprintf(__('There are no %s statistics on this site.', 'seoprostats'), $source::NAME), array('status' => 404));
@@ -460,7 +471,9 @@ final class SEOProStats_Migrate {
 
     /**
      * Rows an import would write per dimension, estimated from a few of its
-     * days (the first, middle and last).
+     * days (the first, middle and last). Days a remote source cannot read
+     * now (a web request, WordPress.com busy) are left out; none read: no
+     * estimate.
      *
      * @param SEOProStats_Migrate_Source $source Adapter.
      * @param string[]                   $days   Days to import.
@@ -473,16 +486,21 @@ final class SEOProStats_Migrate {
         }
         $sample = array_values(array_unique(array($days[0], $days[(int) floor($count / 2)], $days[$count - 1])));
         $sums   = array();
+        $read_n = 0;
         foreach (array_slice($sample, 0, self::SAMPLE) as $day) {
             $read = $source->days($day, $day);
+            if (is_wp_error($read)) {
+                continue;
+            }
+            $read_n++;
             foreach (isset($read[$day]) ? self::encode($read[$day], false) : array() as $row) {
                 $name        = self::dimension_name($row[0]);
                 $sums[$name] = (isset($sums[$name]) ? $sums[$name] : 0) + 1;
             }
         }
         $out = array();
-        foreach ($sums as $name => $rows) {
-            $out[$name] = (int) round($rows / count($sample) * $count);
+        foreach ($read_n ? $sums : array() as $name => $rows) {
+            $out[$name] = (int) round($rows / $read_n * $count);
         }
         return $out;
     }
@@ -630,6 +648,11 @@ final class SEOProStats_Migrate {
             if ($progress) {
                 call_user_func($progress, $job);
             }
+            $wait = self::wait_until() - time();
+            if ($job['status'] === 'running' && empty($job['locked']) && $wait > 0) {
+                // A remote source asked to wait.
+                sleep(min($wait, 10 * MINUTE_IN_SECONDS));
+            }
         } while ($job['status'] === 'running' && empty($job['locked']));
         return $job;
     }
@@ -640,7 +663,7 @@ final class SEOProStats_Migrate {
     public static function cron() {
         $job = self::step(self::BUDGET);
         if ($job['status'] === 'running') {
-            wp_schedule_single_event(time() + 5, self::HOOK);
+            wp_schedule_single_event(max(time() + 5, self::wait_until()), self::HOOK);
         }
     }
 
@@ -681,6 +704,11 @@ final class SEOProStats_Migrate {
             $own   = self::own_from();
             while (isset($state['queue'][$state['current']]) && SEOProStats_Feature::more_time($start, $budget)) {
                 $item = &$state['queue'][$state['current']];
+                if (!empty($item['wait']) && (int) $item['wait'] > time()) {
+                    // A remote source asked to wait.
+                    unset($item);
+                    break;
+                }
                 $item = self::step_item($item, $own);
                 if ($item['days'] === array() && !empty($item['id'])) {
                     self::finish($item);
@@ -759,6 +787,11 @@ final class SEOProStats_Migrate {
             return $item;
         }
         $read = $source->days($day, $day);
+        if (is_wp_error($read)) {
+            return self::retry_item($item, $day, $read);
+        }
+        $item['tries'] = 0;
+        $item['wait']  = 0;
         $rows = isset($read[$day]) ? self::encode($read[$day], true) : array();
         if (!$rows) {
             $item['skipped']['empty'] = (isset($item['skipped']['empty']) ? $item['skipped']['empty'] : 0) + 1;
@@ -785,6 +818,51 @@ final class SEOProStats_Migrate {
             $item['theirs'][$metric] += (int) $count;
         }
         return $item;
+    }
+
+    /**
+     * A day a remote source could not read: put it back to read again
+     * after the wait its error asks for (retry seconds; 0: in a request
+     * that may fetch, without counting a try), or stop the item with the
+     * error when trying again cannot help or after TRIES tries.
+     *
+     * @param array<string,mixed> $item  Queue item.
+     * @param string              $day   The day.
+     * @param WP_Error            $error From the adapter's days().
+     * @return array<string,mixed> The item; wait set: the step stops here.
+     */
+    private static function retry_item(array $item, $day, WP_Error $error) {
+        $data  = $error->get_error_data();
+        $retry = is_array($data) && isset($data['retry']) ? (int) $data['retry'] : -1;
+        $tries = isset($item['tries']) ? (int) $item['tries'] : 0;
+        if ($retry < 0 || ($retry > 0 && $tries + 1 >= self::TRIES)) {
+            $item['days']  = array();
+            $item['error'] = $error->get_error_message();
+            return $item;
+        }
+        array_unshift($item['days'], $day);
+        $item['done']--;
+        if ($retry > 0) {
+            $item['tries'] = $tries + 1;
+            // Longer after each try.
+            $retry *= $item['tries'];
+        }
+        $item['wait']   = time() + max(1, $retry);
+        $item['notice'] = $retry > 0 ? $error->get_error_message() : '';
+        return $item;
+    }
+
+    /**
+     * When the running job's current item may be read again (0: now).
+     *
+     * @return int Unix time.
+     */
+    private static function wait_until() {
+        $state = self::state();
+        if (!isset($state['status'], $state['queue'], $state['current']) || $state['status'] !== 'running' || !isset($state['queue'][$state['current']]['wait'])) {
+            return 0;
+        }
+        return (int) $state['queue'][$state['current']]['wait'];
     }
 
     /**
@@ -1168,6 +1246,9 @@ final class SEOProStats_Migrate {
                 'done'   => (int) $item['done'],
                 'rows'   => (int) $item['rows'],
                 'error'  => isset($item['error']) ? (string) $item['error'] : '',
+                // A remote source asked to wait: why, and until when.
+                'notice' => !empty($item['wait']) && (int) $item['wait'] > time() && isset($item['notice']) ? (string) $item['notice'] : '',
+                'wait'   => !empty($item['wait']) && (int) $item['wait'] > time() ? (int) $item['wait'] : 0,
             );
         }
         return array(
@@ -1375,5 +1456,7 @@ final class SEOProStats_Migrate {
         delete_transient(self::CACHE);
         delete_option(SEOProStats_Rollup::IMPORTED_OPTION);
         delete_option(SEOProStats_Rollup::IMPORTED_OPTION . '_demo');
+        // Our copy of Jetpack Stats' daily counts (SEOProStats_Migrate_Jetpack::SERIES_OPTION).
+        delete_option('seoprostats_migrate_jetpack');
     }
 }

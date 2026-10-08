@@ -204,6 +204,8 @@ final class SEOProStats_Import_Tab {
         $running  = $status['job']['status'] === 'running';
         $can      = !empty($status['can']['import']);
         $inactive = $state === 'inactive' || $state === 'missing';
+        // Why its history cannot be imported now (Jetpack: connect it first).
+        $note     = isset($source['unavailable']) ? (string) $source['unavailable'] : '';
         ?>
         <section class="spst-card spst-import" id="<?php echo esc_attr('spst-import-' . $key); ?>" data-spst-source="<?php echo esc_attr($key); ?>">
             <h3>
@@ -228,8 +230,11 @@ final class SEOProStats_Import_Tab {
                                         ?>
                                     </span>
                                 <?php endif; ?>
-                            <?php else : ?>
+                            <?php elseif ($note === '') : ?>
                                 <?php esc_html_e('None left. Only the data it left behind is still on the site.', 'seoprostats'); ?>
+                            <?php endif; ?>
+                            <?php if ($note !== '') : ?>
+                                <div class="notice notice-warning inline"><p><?php echo esc_html($note); ?></p></div>
                             <?php endif; ?>
                         </td>
                     </tr>
@@ -248,7 +253,7 @@ final class SEOProStats_Import_Tab {
                 </tbody>
             </table>
 
-            <?php if ((string) $source['from'] !== '' && $can) : ?>
+            <?php if ((string) $source['from'] !== '' && $note === '' && $can) : ?>
                 <div class="spst-import__actions">
                     <button type="button" class="button button-primary" data-spst-action="plan" <?php disabled($running); ?>><?php esc_html_e('Check what would be imported', 'seoprostats'); ?></button>
                     <span class="description"><?php esc_html_e('Changes nothing.', 'seoprostats'); ?></span>

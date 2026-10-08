@@ -334,9 +334,12 @@
 				var job = status.job || {};
 				var done = 0;
 				var total = 0;
+				var waiting = '';
 				(job.queue || []).forEach(function (item) {
 					done += item.done;
 					total += item.total;
+					// A remote source (Jetpack Stats on WordPress.com) asked to wait.
+					waiting = item.notice || waiting;
 				});
 				if (bar) {
 					bar.max = Math.max(1, total);
@@ -344,7 +347,7 @@
 				}
 				if (text) {
 					/* translators: 1: days done, 2: days in all */
-					text.textContent = sprintf(__('%1$d of %2$d days. It carries on in the background; you can leave this page.', 'seoprostats'), done, total);
+					text.textContent = sprintf(__('%1$d of %2$d days. It carries on in the background; you can leave this page.', 'seoprostats'), done, total) + (waiting ? ' ' + waiting : '');
 				}
 				if (job.status === 'running') {
 					window.setTimeout(poll, 1500);
