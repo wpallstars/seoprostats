@@ -30,8 +30,8 @@ How changes are made and checked: `DEVELOPMENT.md`. Releases: `RELEASING.md`.
   scripts, the CI workflow and tool configuration, and the shared docs (this
   file, `DEVELOPMENT.md`, `RELEASING.md`, `CONTRIBUTING.md`,
   `CODE_OF_CONDUCT.md`, `SECURITY.md`).
-  A plugin's copy differs from the starter's only in the names above. They
-  hold no code for one plugin: they read `{Prefix}_Setup`
+  A plugin's own lines in a core file go only between its `{css}-own` markers.
+  Core files hold no code for one plugin: they read `{Prefix}_Setup`
   (`includes/class-{prefix}-setup.php`: features, settings tabs, header
   links, settings version and history, the plugin's own helpers and admin
   parts) or use hooks (`{prefix}_admin_tabs` for tabs,
@@ -238,9 +238,11 @@ it reads it. A small plugin has only `AGENTS.md`; a large one adds docs.
   plugins hand the choice to the owner instead of deciding for them.
   WordPress update checks and downloads are the exception: leave them alone (next rule).
 - Do not change WordPress update behaviour (update transients, `auto_update_*`
-  filters, update checks) outside the shared GitHub updater. Plugin Check
-  reports `plugin_updater_detected` as an error, and WordPress.org asks plugins
-  not to interfere with the updater.
+  filters, update checks, including when and where they run) outside the
+  shared GitHub updater. Plugin Check reports `plugin_updater_detected` as an
+  error, and WordPress.org asks plugins not to interfere with the updater. A
+  change to update behaviour goes in the shared updater, so it reaches GitHub
+  builds only.
 - Leave no PHP errors, warnings, notices or deprecations behind. Fix any the
   plugin causes, including ones in other plugins that happen only because of
   this one, in the same change when small or as a tracked issue. Messages
@@ -309,7 +311,16 @@ a test site take the site down.
   `wp_suspend_cache_invalidation()`, then turn them back on.
 - **No request per page view.** No admin-ajax, REST or remote request on
   every visitor page unless the feature needs it; remote requests a page
-  waits on have a short timeout (at most 3 seconds).
+  waits on have a short timeout (at most 3 seconds). Admin screens do not
+  wait on remote requests either when the answer can be fetched in cron
+  and cached: licence and update servers are the usual cause of slow admin
+  screens.
+- **Clear only your own cache.** Delete the plugin's own object-cache keys
+  or groups, never the whole object cache (`wp_cache_flush()`): on many
+  hosts every site on the account shares one memcached server, so a flush
+  empties every site's cache, and each of their pages is slower on its next
+  uncached load (measured on a host with 14 sites: about 0.2 seconds a
+  page, up to 0.5).
 - **Measure on large data.** `scripts/smoke-test.sh` loads every page on a
   site seeded with thousands of posts and meta rows, reports query counts
   and times, and fails on a full table or index scan, or a large sort, in
@@ -334,6 +345,15 @@ It replaces Git Updater.
   to core. It only adds entries for those plugins; it never removes or blocks
   other updates. Its icon, banner and View details (`readme.txt` and the
   screenshots) are the installed plugin's own files.
+- Update checks that fall due while someone opens an admin screen run in
+  WP-Cron instead. Core runs them on `admin_init` when its stored check is
+  12 hours old, so that screen waits while WordPress and every plugin's own
+  updater ask their servers (seconds on hosts with many premium plugins).
+  The updater moves only those three checks (`_maybe_update_core`,
+  `_maybe_update_plugins`, `_maybe_update_themes`) to core's own cron events,
+  and leaves them where they are while WP-Cron is not running. The checks on
+  the Plugins, Themes and Updates screens, the twice-daily checks, the checks
+  after updating and automatic updates stay as in core.
 - It is the same in every plugin apart from its text domain and `@package`.
   Change it in the starter, raise the version in its `load.php`, and copy it
   to each plugin. Plugins change what it does only through its filters
@@ -412,6 +432,40 @@ where still active, reads `Version:` on `main` instead), so:
   (`WPALLSTARS_GITHUB_TOKEN`).
 
 Details: `RELEASING.md`; the plugin's own submission state: `LAUNCH.md`.
+
+## Admin screens: spacing and forms
+
+React forms and modals in wp-admin use WordPress components. The container
+owns the spacing, not the controls. Scope these rules to the plugin's form
+classes (`.{css}-form`, `.{css}-fieldset`, `.{css}-form__row`,
+`.{css}-form__actions`), never to all admin forms.
+
+- Remove controls' outer margins. Use `__nextHasNoMarginBottom` on
+  `TextControl`, `SelectControl`, `TextareaControl`, `CheckboxControl` and
+  `ToggleControl`, and `__next40pxDefaultSize` on inputs, selects and adjacent
+  buttons, where the component version supports those props. On older
+  versions, use scoped CSS for the same spacing and height; do not pass
+  unsupported props to DOM elements.
+- Forms and groups use `display: grid; gap: 16px`. Related buttons have an
+  8px gap; help text sits 4px below its field. Use WordPress's 4px spacing
+  scale: 4, 8, 12, 16 and 24px. Reset `margin: 0` on paragraphs, headings
+  and lists inside these containers; never mix browser margins with `gap`.
+- Group fields with `<fieldset>` and `<legend>`, not headings with ad-hoc
+  margins. Set the legend to `float: left; width: 100%` so it participates
+  in the grid. Separate groups with a `1px solid #dcdcde` top border.
+- Short fields sit side by side in a row with
+  `grid-template-columns: repeat(auto-fit, minmax(200px, 1fr))` and
+  `align-items: start`: labels line up and fields wrap on narrow screens.
+- A notice containing content and actions has a content grid with `gap: 8px`.
+  Show a read-only URL in a full-width monospace input, with **Copy** and
+  **Open in a new window** buttons together on one wrapping row.
+- A disabled control always explains why in help text below it, or, for a
+  button that supports it, with `accessibleWhenDisabled` and a `title`.
+  Validate required fields on submit and show a message instead of silently
+  disabling the submit button.
+- Modals use the plugin's `.{css}-modal` class: a fixed width at WordPress's
+  small breakpoint (600px) and above, a full-width sheet below. End with
+  right-aligned **Cancel** (tertiary) and the primary action.
 
 ## Front-end styling and dark mode
 
