@@ -1082,7 +1082,10 @@ in the future meets the same length of the other period.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
   `opportunities`, `audit`, `links`, `indexation`, `coverage`, `content`,
-  `experiments`, `queue`, `demo`,
+  `experiments`, `queue`, `targets`, `loop` (one answer per cycle for an
+  agent: open queue items, experiments due and recently decided, and the
+  period's search rows in the aidevops export layout;
+  `docs/seo-loop-recipes.md`), `demo`,
   `view`, and for settings administrators `connections` (`GET`; `/{source}` to
   read, connect or disconnect; `/{source}/import` to import now) and
   `imports/{id}` (`DELETE` undoes one); planned: `pages`,
@@ -1100,7 +1103,9 @@ in the future meets the same length of the other period.
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
   [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
   [--goal=<id>]`, `indexation` (`list [--kind=<kind>] [--days=<n>]`,
-  `run`), `pages`,
+  `run`), `targets` (`list`, `import <file|->`, `delete <query>...`),
+  `loop [--rows=<n>]` (`--format=toon` writes the export rows as an
+  aidevops export file), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
   `demo` (`make`, `status`, `remove`), `connect <source>
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
@@ -1114,8 +1119,9 @@ in the future meets the same length of the other period.
   `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/links`,
   `seoprostats/indexation`, `seoprostats/coverage`,
   `seoprostats/content`, `seoprostats/experiments`,
-  `seoprostats/experiment-record`, `seoprostats/queue` and
-  `seoprostats/queue-update`.
+  `seoprostats/experiment-record`, `seoprostats/queue`,
+  `seoprostats/queue-update`, `seoprostats/targets`,
+  `seoprostats/targets-import` and `seoprostats/loop`.
 
 ## Dashboard app
 

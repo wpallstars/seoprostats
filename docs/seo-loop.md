@@ -567,6 +567,28 @@ WordPress; mark the item done (which records the experiment); on the
 review day decide it from the measurement; feed results into the next
 plan.
 
+As built (`SEOProStats_Loop`):
+
+- `queue`: the open items (new and accepted) of `/queue`, best first
+  (`limit`, 20 by default, at most 200), with its counts in `summary`.
+- `experiments`: `due` (running, with search data through the review
+  day), `running`, and `decided` in the last 90 days
+  (`experiments.recent_days`) with the measurement each was decided on,
+  null and negative results included.
+- `export`: per query and page for the period, most impressions first
+  (`rows`, 1,000 by default, at most 5,000; `more` when cut), with the
+  file header (`domain`, `source` `gsc` or `bing`, `exported`,
+  `start_date`, `end_date`). `wp seoprostats loop --format=toon` writes it
+  as an aidevops export file.
+- `params`: the period (30 days by default, cut at the newest search day
+  and to its newest 91 days, as the queue), engine, goal, page filters and
+  data set, to pass back with `POST /queue/{key}`.
+
+Nothing is stored. The export is one grouped read of `gsc_pairs` by its
+primary key (`path_day` with page filters), cached like the reports until
+the next search import; the queue and experiments are read as their own
+routes read them.
+
 ## Dropped or deferred, and why
 
 | Candidate | Decision |

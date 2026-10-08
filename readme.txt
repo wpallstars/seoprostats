@@ -107,6 +107,10 @@ Search → Plan puts what Opportunities, Audit, Internal links and Indexation fi
 
 Search → Experiments checks it. Write down a change and what it should do, such as more clicks or a better position, from a row in Changes or with a start time and pages. It compares the same number of days before and after the change for those pages and for the pages that did not change, so a site-wide rise or a season does not count, and shows how far unchanged pages usually move, whether there was enough data, and the search engine updates and other changes in the same days. Once the data is in it suggests keep, revise, undo or inconclusive; you decide, and the figures are kept with the decision. A result is evidence about your site, not proof of cause. Scripts and AI agents use it through the REST API (experiments), wp seoprostats experiments, and on WordPress 6.9 and later the abilities seoprostats/experiments and seoprostats/experiment-record.
 
+= Can an AI agent run the SEO work week by week? =
+
+Yes, with an Application Password. One answer, the loop (REST API loop, wp seoprostats loop, and on WordPress 6.9 and later the ability seoprostats/loop), gives the agent everything for a cycle: the open Plan items best first, the experiments due for a decision, those running and those decided lately with their results, and the period's search figures per search and page. The agent accepts an item, makes the change in WordPress, marks it done (which starts an experiment), and decides the experiment on its review day from the measurement; the results then shape the next plan. The plugin proposes and measures; it never changes a page by itself. The steps are in docs/seo-loop-recipes.md in the plugin's repository.
+
 = Can I see what it shows before my site has visits? =
 
 Yes. Switch on Demo data on the Overview: an administrator can make a little over a year of made-up visits there. They are kept in tables of their own, apart from your live statistics, and can be removed at any time.

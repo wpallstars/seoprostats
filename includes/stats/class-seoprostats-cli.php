@@ -1,7 +1,7 @@
 <?php
 /**
  * WP-CLI commands: wp seoprostats stats, timeseries, breakdown, realtime,
- * goals, funnels, properties, clicks, search, changes, annotate, experiments, queue, search-updates,
+ * goals, funnels, properties, clicks, search, changes, annotate, experiments, queue, loop, search-updates,
  * process, rollup, prune, doctor, demo and purge-caches. Reports come from
  * the same engine as the REST API, so the numbers match, on live data or
  * with --data=demo the demo data (docs/architecture.md → Interfaces).
@@ -2301,8 +2301,9 @@ final class SEOProStats_CLI {
      * The decision queue: one ranked list of search work, made from
      * Opportunities (low CTR, missing from the page, striking distance,
      * losing clicks, overlapping pages), the content audit, internal links,
-     * indexation and the refresh planner (update, leave, protect or merge a
-     * page losing clicks). Each item says why it is listed and how its score is
+     * indexation, the refresh planner (update, leave, protect or merge a
+     * page losing clicks) and search targets (shown with another page, or
+     * high priority in striking distance). Each item says why it is listed and how its score is
      * made: potential clicks per 28 days × value (how well the page's
      * visits from search convert) × confidence ÷ effort. Pages with a
      * running experiment are left out. Done opens an experiment on the
@@ -2337,7 +2338,7 @@ final class SEOProStats_CLI {
      * ---
      *
      * [--kind=<kind>]
-     * : For list: only items of this kind: ctr, missing, striking, decay, overlap, audit, links, index or refresh.
+     * : For list: only items of this kind: ctr, missing, striking, decay, overlap, audit, links, index, refresh or target.
      *
      * [--engine=<engine>]
      * : google or bing.
@@ -2500,6 +2501,116 @@ final class SEOProStats_CLI {
             'effort'     => $item['parts']['effort'],
             'experiment' => $exp ? '#' . $exp['id'] . ' ' . ($exp['result'] !== null ? (string) $exp['result'] : ($exp['due'] ? 'due' : (string) $exp['status'])) . ($exp['suggested'] !== null && $exp['result'] === null ? ' (' . $exp['suggested'] . ')' : '') : '',
         );
+    }
+
+    /**
+     * The loop export: one answer per cycle for an agent. The decision
+     * queue's open items, the experiments due for review, running and
+     * decided in the last 90 days with their results, and the period's
+     * search figures per query and page in the aidevops export layout
+     * (query, page, clicks, impressions, CTR, position). Steps for an
+     * agent: docs/seo-loop-recipes.md.
+     *
+     * ## OPTIONS
+     *
+     * [--engine=<engine>]
+     * : google or bing.
+     * ---
+     * default: google
+     * ---
+     *
+     * [--goal=<id>]
+     * : The goal whose conversions give a page its value in the queue; the first goal when left out.
+     *
+     * [--range=<range>]
+     * : The period, as for stats (at most its newest 91 days are read).
+     * ---
+     * default: 30d
+     * ---
+     *
+     * [--from=<date>]
+     * : First day of a custom range.
+     *
+     * [--to=<date>]
+     * : Last day of a custom range.
+     *
+     * [--filter=<filters>]
+     * : Page filters, as for stats.
+     *
+     * [--limit=<limit>]
+     * : Most queue items.
+     * ---
+     * default: 20
+     * ---
+     *
+     * [--rows=<rows>]
+     * : Most export rows (a search and a page each), most impressions first.
+     * ---
+     * default: 1000
+     * ---
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table (a summary), json (the whole answer, as GET /loop) or toon (only the export, as an aidevops export file).
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats loop
+     *     wp seoprostats loop --format=json
+     *     wp seoprostats loop --data=demo --format=json
+     *     wp seoprostats loop --range=90d --rows=5000 --format=toon > gsc-export.toon
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function loop($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
+        $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
+        $rows   = isset($assoc['rows']) ? (int) $assoc['rows'] : SEOProStats_Loop::ROWS;
+        $format = isset($assoc['format']) ? (string) $assoc['format'] : 'table';
+        $req    = $this->request(array_diff_key($assoc, array('rows' => 1, 'format' => 1)) + array('range' => SEOProStats_Loop::RANGE, 'limit' => (string) SEOProStats_Loop::ITEMS, 'compare' => 'none'));
+        $answer = $this->on_data($assoc, static function () use ($req, $engine, $goal, $rows) {
+            return SEOProStats_Loop::report($req, $engine, $goal, $rows);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($format === 'toon') {
+            WP_CLI::line(rtrim(SEOProStats_Loop::toon($answer['export']), "\n"));
+            return;
+        }
+        if ($format === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        $this->search_connected($answer);
+        $this->range_line($answer['range']);
+        $sum = $answer['summary'];
+        /* translators: 1: new, 2: accepted, 3: experiments due, 4: running, 5: decided lately, 6: days, 7: export rows */
+        WP_CLI::log(sprintf(__('Queue: %1$d new, %2$d accepted. Experiments: %3$d due, %4$d running, %5$d decided in the last %6$d days. Export: %7$d rows.', 'seoprostats'), $sum['new'], $sum['accepted'], $sum['due'], $sum['running'], $sum['decided'], $answer['experiments']['recent_days'], $sum['rows']));
+        if ($answer['experiments']['due']) {
+            WP_CLI::log(__('Due for review (decide with: wp seoprostats experiments decide <id> <result>):', 'seoprostats'));
+            $due = array_map(array($this, 'experiment_row'), $answer['experiments']['due']);
+            WP_CLI\Utils\format_items('table', $due, array_keys($due[0]));
+        }
+        if ($answer['queue']['items']) {
+            WP_CLI::log(__('Open queue items, best first:', 'seoprostats'));
+            $items = array_map(array($this, 'queue_row'), $answer['queue']['items']);
+            WP_CLI\Utils\format_items('table', $items, array_keys($items[0]));
+        }
+        WP_CLI::log(__('--format=json gives the whole answer (as GET /loop); --format=toon the export rows as an aidevops export file.', 'seoprostats'));
     }
 
     /**

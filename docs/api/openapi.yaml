@@ -852,6 +852,72 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /loop:
+    get:
+      operationId: getLoop
+      summary: The loop export — one answer per cycle for an agent working the SEO decision loop.
+      description: |
+        The decision queue's open items (new and accepted, as `/queue`),
+        the experiments due for review (running, with search data through
+        the review day), still running, and decided in the last
+        `experiments.recent_days` days with their results (null and
+        negative ones included), and the period's search figures per query
+        and page in the aidevops export layout (`export`: `query`, `page`,
+        `clicks`, `impressions`, `ctr`, `position`, most impressions
+        first). The queue and the export share the period (cut at the
+        newest search day and to its newest 91 days), engine and page
+        filters; `params` gives them back, so acting on an item
+        (`POST /queue/{key}`) uses the same ones. Read-only; nothing is
+        stored. Steps for an agent: `docs/seo-loop-recipes.md`.
+      parameters:
+        - $ref: '#/components/parameters/engine'
+        - name: goal
+          in: query
+          description: ID of the goal whose conversions give a page its value in the queue; the first goal when left out.
+          schema:
+            type: string
+        - name: range
+          in: query
+          description: Period, in the site time zone.
+          schema:
+            type: string
+            default: 30d
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          description: Most queue items.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 20
+        - name: rows
+          in: query
+          description: Most export rows (a search and a page each).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5000
+            default: 1000
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: The loop answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoopAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
   /goals:
     get:
       operationId: getGoals
@@ -3429,6 +3495,197 @@ components:
               type: integer
             more:
               type: boolean
+
+    LoopExportRow:
+      type: object
+      description: One search and page in the aidevops export layout.
+      required: [query, page, clicks, impressions, ctr, position]
+      properties:
+        query:
+          type: string
+        page:
+          type: string
+          description: The page's path.
+        clicks:
+          type: integer
+        impressions:
+          type: integer
+        ctr:
+          type: number
+          description: Clicks ÷ impressions (0.031 is 3.1%).
+        position:
+          type: number
+          description: Average position, weighted by impressions.
+
+    LoopExport:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [domain, source, exported, start_date, end_date, columns, ignored, rows, more]
+          description: |
+            The period's search figures per query and page, most
+            impressions first, as an aidevops export file holds them
+            (`wp seoprostats loop --format=toon` writes that file).
+          properties:
+            domain:
+              type: string
+            source:
+              type: string
+              enum: [gsc, bing]
+            exported:
+              type: string
+              format: date-time
+              description: When the rows were read (they are cached until new data arrives).
+            start_date:
+              type: [string, 'null']
+              description: First day read (YYYY-MM-DD); null without search data.
+            end_date:
+              type: [string, 'null']
+              description: Last day read (YYYY-MM-DD); null without search data.
+            columns:
+              type: array
+              items:
+                type: string
+              example: [query, page, clicks, impressions, ctr, position]
+            ignored:
+              type: array
+              items:
+                type: string
+            rows:
+              type: array
+              items:
+                $ref: '#/components/schemas/LoopExportRow'
+            more:
+              type: boolean
+              description: More rows than `rows` asked for.
+
+    LoopAnswer:
+      type: object
+      required: [loop, site, engine, engines, range, days, cut, through, connected, ignored, goal, goals, params, summary, queue, experiments, export]
+      properties:
+        loop:
+          type: integer
+          description: Version of this layout; raised when a field changes meaning or goes.
+        site:
+          type: string
+          format: uri
+        engine:
+          $ref: '#/components/schemas/SearchEngine'
+        engines:
+          $ref: '#/components/schemas/SearchEngines'
+        range:
+          $ref: '#/components/schemas/Range'
+        days:
+          type: integer
+        cut:
+          type: boolean
+          description: Whether the period was cut at the newest search day or to its newest 91 days.
+        through:
+          type: string
+          description: Newest day with search data (YYYY-MM-DD); empty with none.
+        connected:
+          type: boolean
+        ignored:
+          type: array
+          items:
+            type: string
+        goal:
+          type: [object, 'null']
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        goals:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+        params:
+          type: object
+          description: The period (range, and from and to for a custom one), engine, goal, page filters and data set used; give the same to `POST /queue/{key}`.
+          properties:
+            range:
+              type: string
+            from:
+              type: string
+            to:
+              type: string
+            engine:
+              $ref: '#/components/schemas/SearchEngine'
+            goal:
+              type: string
+            filters:
+              type: array
+              items:
+                type: object
+            data:
+              type: string
+              enum: [live, demo]
+        summary:
+          type: object
+          description: Counts for a quick look.
+          properties:
+            new:
+              type: integer
+            accepted:
+              type: integer
+            done:
+              type: integer
+            dismissed:
+              type: integer
+            left_out:
+              type: integer
+              description: New queue items left out because their page has a running experiment.
+            due:
+              type: integer
+            running:
+              type: integer
+            decided:
+              type: integer
+              description: Experiments decided in the last `experiments.recent_days` days.
+            rows:
+              type: integer
+              description: Export rows.
+        queue:
+          type: object
+          description: The open items (new and accepted), best first, as `/queue` gives them.
+          properties:
+            total:
+              type: integer
+            more:
+              type: boolean
+            rules:
+              type: object
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/QueueItem'
+        experiments:
+          type: object
+          properties:
+            due:
+              type: array
+              description: Running, with search data through the review day; decide them.
+              items:
+                $ref: '#/components/schemas/Experiment'
+            running:
+              type: array
+              items:
+                $ref: '#/components/schemas/Experiment'
+            decided:
+              type: array
+              description: Decided in the last `recent_days` days, with the measurement each was decided on.
+              items:
+                $ref: '#/components/schemas/Experiment'
+            recent_days:
+              type: integer
+        export:
+          $ref: '#/components/schemas/LoopExport'
 
     TargetStatus:
       type: string
