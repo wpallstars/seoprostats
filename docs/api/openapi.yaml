@@ -3512,7 +3512,9 @@ components:
           type: integer
         ctr:
           type: number
-          description: Clicks ÷ impressions (0.031 is 3.1%).
+          minimum: 0
+          maximum: 1
+          description: Clicks ÷ impressions (0.031 is 3.1%), at most 1 (Bing sometimes counts more clicks than impressions for a rare query; clicks and impressions are as imported).
         position:
           type: number
           description: Average position, weighted by impressions.
@@ -4248,7 +4250,9 @@ components:
           type: integer
         ctr:
           type: number
-          description: clicks ÷ impressions.
+          minimum: 0
+          maximum: 1
+          description: clicks ÷ impressions, at most 1.
         position:
           type: number
           description: Average position weighted by impressions; lower is better; 0 without impressions.

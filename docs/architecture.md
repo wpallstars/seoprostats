@@ -573,6 +573,9 @@ newest week. Positions are real ranks (`AvgImpressionPosition`; Bing's
 click position is −1, unknown). A day's position is its week's: the
 average over the week's queries weighted by impressions (pages' when a
 week has no queries), else the nearest week's. Bing's days are UTC.
+Bing sometimes counts more clicks than impressions for a rare query;
+clicks and impressions are kept as Bing gives them, so totals add up,
+and CTR is capped at 100% (`SEOProStats_Search::ctr()`).
 
 The same job (`SEOProStats_Search_Import`) imports it with the same
 lock, budget, history, undo and reimport. The first request of a run
