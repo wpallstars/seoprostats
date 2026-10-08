@@ -642,7 +642,19 @@ paths:
         on the page it should go to with the page that should link in
         `figures.link_from`) and indexation (`index`: one item per page
         or sitemap address search has not shown, from `/indexation`, its
-        list in `finding`) when the list is read.
+        list in `finding`) and the refresh planner (`refresh`: in place
+        of the `decay` item of a losing page whose content facts the
+        content audit has, a proposal in `finding` from the cause of the
+        loss, the content's age and words, its conversions and the other
+        pages that overtook it, checked in this order: `leave` when fewer
+        people search; `protect` when its visits from search convert at
+        `rules.refresh.protect_value` × the site's rate or more with at
+        least `rules.refresh.protect_conversions` conversions; `merge`
+        when another page of the site now ranks better for a query it
+        lost most on and did not before, both pages in `figures.pages`,
+        though only an experiment on the losing page holds it back;
+        else `update`. Proposals only: nothing changes the content) when
+        the list is read.
         Each item's score is potential clicks per 28 days ×
         value × confidence ÷ effort, and every part is given so an agent
         can rank by its own rule:
@@ -657,7 +669,8 @@ paths:
           site's CTR at the page's position × the list's share in
           `rules.links_share`; index: `/indexation`'s `typical`, a shown
           page's clicks, × the list's share in `rules.index_share`, so
-          none without search data), scaled to 28 days;
+          none without search data; refresh: the clicks lost × the
+          proposal's share in `rules.refresh_share`), scaled to 28 days;
         - value: the page's conversion rate of visits from search for
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
@@ -665,9 +678,10 @@ paths:
           `rules.full_impressions`), the root at most 1; index items have
           no impressions, so theirs is the kind's own;
         - effort: the kind's (`rules.effort`; an audit finding's in
-          `rules.audit_effort`, a links list's in `rules.links_effort` and
-          an indexation list's in `rules.index_effort` when it differs)
-          unless someone set another.
+          `rules.audit_effort`, a links list's in `rules.links_effort`, an
+          indexation list's in `rules.index_effort` and a refresh
+          proposal's in `rules.refresh_effort` when it differs) unless
+          someone set another.
 
         Only items someone acted on are stored. New items on a page with
         a running experiment are left out (`left_out`); dismissed items
@@ -684,6 +698,12 @@ paths:
             type: string
             enum: [open, new, accepted, done, dismissed, all]
             default: open
+        - name: kind
+          in: query
+          description: Only items of this kind; every kind when left out.
+          schema:
+            type: string
+            enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh]
         - name: goal
           in: query
           description: ID of the goal whose conversions give a page its value; the first goal when left out.
@@ -745,9 +765,11 @@ paths:
         Give the same period, engine and goal as the list the key came
         from: an item not yet stored must be in that list now. done
         opens an experiment on the item's page, starting now, with the
-        kind's measure (ctr: CTR; missing and decay: clicks; striking:
-        position), expected up (position: a better place); the item then
-        shows the experiment's result. restore forgets what was done with
+        kind's measure (ctr: CTR; missing, decay and refresh: clicks;
+        striking: position), expected up (position: a better place); the
+        item then shows the experiment's result. done on a refresh item
+        whose proposal is leave opens no experiment: the page stays as it
+        is. restore forgets what was done with
         the item (its experiment stays).
       parameters:
         - $ref: '#/components/parameters/engine'
@@ -2848,25 +2870,26 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap, audit, links, index]
+              enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
             finding:
-              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list). Null for other kinds.
+              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page). Null for other kinds.
               oneOf:
                 - $ref: '#/components/schemas/AuditFinding'
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
+                - $ref: '#/components/schemas/RefreshProposal'
                 - type: 'null'
             found:
               type: boolean
               description: Whether the opportunity is still found in this period; else as it was when acted on.
             query:
               type: [string, 'null']
-              description: The query; null for decay (a page).
+              description: The query; null for decay and refresh (a page).
             why:
               type: string
               description: Why it is listed, in the site's language.
@@ -2912,7 +2935,7 @@ components:
                   description: overlap; whether the leading page changed between the halves of the period.
                 pages:
                   type: array
-                  description: overlap; the pages sharing the query, most impressions first. Done measures them all.
+                  description: overlap; the pages sharing the query, most impressions first. refresh, merge; this page, then the one that overtook it (with its share of the query). Done measures them all.
                   items:
                     type: object
                     required: [path_id, path, clicks, impressions, position, share]
@@ -2926,9 +2949,63 @@ components:
                       impressions:
                         type: integer
                       position:
-                        type: number
+                        type: [number, 'null']
                       share:
-                        type: number
+                        type: [number, 'null']
+                proposal:
+                  $ref: '#/components/schemas/RefreshProposal'
+                then_impressions:
+                  type: integer
+                  description: refresh; impressions in the earlier period.
+                modified:
+                  type: [string, 'null']
+                  format: date-time
+                  description: refresh; when the content last changed.
+                old:
+                  type: boolean
+                  description: refresh; the content changed over rules.refresh.old_days days ago.
+                changed:
+                  type: boolean
+                  description: refresh; the content changed within the periods compared.
+                lost_queries:
+                  type: array
+                  description: refresh; the queries that lost most clicks, each with the page that overtook it there, if one did.
+                  items:
+                    type: object
+                    properties:
+                      query:
+                        type: string
+                      lost:
+                        type: integer
+                      position:
+                        type: [number, 'null']
+                      then_position:
+                        type: [number, 'null']
+                      rival:
+                        type: [object, 'null']
+                        properties:
+                          path:
+                            type: string
+                          clicks:
+                            type: integer
+                          position:
+                            type: number
+                          then_position:
+                            type: [number, 'null']
+                          share:
+                            type: number
+                rival:
+                  description: refresh, merge; the page that overtook this one, with the query and this page's positions now and before.
+                  allOf:
+                    - $ref: '#/components/schemas/DecayRival'
+                    - type: object
+                      properties:
+                        query:
+                          type: string
+                        position_here:
+                          type: [number, 'null']
+                        then_position_here:
+                          type: [number, 'null']
                 finding:
                   $ref: '#/components/schemas/AuditFinding'
                 share:
@@ -2955,7 +3032,8 @@ components:
                   items:
                     type: string
                 visits:
-                  type: integer
+                  type: [integer, 'null']
+                  description: links and refresh; visits from search (refresh, null without goal data).
                 conversions:
                   type: [integer, 'null']
                 link_from:
@@ -2988,17 +3066,17 @@ components:
                   type: [string, 'null']
                   description: index.
                 age:
-                  type: integer
-                  description: index; days since published or first listed.
+                  type: [integer, 'null']
+                  description: index; days since published or first listed. refresh; days since the content changed (null, not known).
                 typical:
                   type: number
                   description: index; a shown page's clicks per 28 days.
                 published:
-                  type: string
-                  description: index, pages.
+                  type: [string, 'null']
+                  description: index, pages; refresh.
                 words:
                   type: integer
-                  description: index, pages.
+                  description: index, pages; refresh.
                 first_seen:
                   type: string
                   description: index, sitemap.
@@ -3124,13 +3202,16 @@ components:
               description: The site's conversion rate of visits from search for the goal.
             rules:
               type: object
-              description: The constants the score uses.
+              description: The constants the score uses, and the refresh planner's thresholds in refresh (old_days, protect_value, protect_conversions).
             left_out:
               type: integer
               description: New items left out because their page has a running experiment.
             status:
               type: string
               enum: [open, new, accepted, done, dismissed, all]
+            kind:
+              type: [string, 'null']
+              description: The kind asked for; null for every kind.
             counts:
               type: object
               description: Items in each state (dismissed ones only while hidden).
@@ -3728,7 +3809,7 @@ components:
               description: The queries that lost most clicks (up to 3).
               items:
                 type: object
-                required: [query, lost, clicks, then_clicks, position, then_position]
+                required: [query, lost, clicks, then_clicks, position, then_position, rival]
                 properties:
                   query:
                     type: string
@@ -3743,11 +3824,41 @@ components:
                     description: Null without impressions.
                   then_position:
                     type: [number, 'null']
+                  rival:
+                    description: Another page of the site that ranks better for the query now and did not before (the refresh planner's merge), if one does.
+                    oneOf:
+                      - $ref: '#/components/schemas/DecayRival'
+                      - type: 'null'
             changes:
               type: array
               description: The site's recorded changes on the page in both periods, newest first (up to 5).
               items:
                 $ref: '#/components/schemas/Marker'
+
+    DecayRival:
+      description: Another page of the site that overtook a losing page for a query.
+      allOf:
+        - $ref: '#/components/schemas/OpportunityPage'
+        - type: object
+          required: [clicks, impressions, position, then_position, share]
+          properties:
+            clicks:
+              type: integer
+            impressions:
+              type: integer
+            position:
+              type: number
+            then_position:
+              type: [number, 'null']
+              description: Null when search did not show it for the query before.
+            share:
+              type: number
+              description: Its share of the query's impressions now.
+
+    RefreshProposal:
+      type: string
+      enum: [leave, protect, merge, update]
+      description: The refresh planner's proposal for a page losing clicks, checked in this order.
 
     CoverageResult:
       type: object

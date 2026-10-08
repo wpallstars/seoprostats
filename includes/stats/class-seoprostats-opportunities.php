@@ -9,7 +9,8 @@
  *   own CTR at that position; clicks missed.
  * - decay: pages with fewer clicks than in the previous period of the
  *   same length, each with a likely cause (position, demand, CTR, gone),
- *   the queries that lost most and what changed on the page.
+ *   the queries that lost most (each with the other page that overtook
+ *   it there, if one did) and what changed on the page.
  * - missing: a page's query in the top 20 with enough impressions whose
  *   words the page does not have, or has only some of
  *   (SEOProStats_Coverage); the pages with most impressions, at most
@@ -28,7 +29,8 @@
  * cut at the newest one, page filters apply and visit filters do not.
  * The period is also cut to its newest MAX_DAYS days, so a year never
  * reads every pair. Every read is by the primary key (engine, day) or
- * path_day (and overlap's halves by query_day for the queries shown);
+ * path_day (overlap's halves, and decay's other pages for the queries
+ * shown, by query_day);
  * nothing reads the visit tables.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -721,7 +723,20 @@ final class SEOProStats_Opportunities {
             $lost_by[$path_id] = array_slice($queries, 0, self::PER_PAGE);
             $query_ids         = array_merge($query_ids, array_column($lost_by[$path_id], 'query_id'));
         }
-        $text = SEOProStats_Query::texts(array_merge($ids, $query_ids));
+        $query_ids = array_values(array_unique($query_ids));
+        // Every page's figures for those queries, in both periods: which other page overtook a losing one.
+        $all_now  = self::by_query($engine, $now, $query_ids);
+        $all_then = self::by_query($engine, $then, $query_ids);
+        $rivals   = array();
+        foreach ($lost_by as $path_id => $queries) {
+            foreach ($queries as $q) {
+                $rival = self::rival($path_id, $q['query_id'], $all_now, $all_then);
+                if ($rival) {
+                    $rivals[$path_id . ':' . $q['query_id']] = $rival;
+                }
+            }
+        }
+        $text = SEOProStats_Query::texts(array_merge($ids, $query_ids, array_column($rivals, 'path_id')));
 
         $out = array();
         foreach ($list as $row) {
@@ -739,6 +754,7 @@ final class SEOProStats_Opportunities {
             foreach (isset($lost_by[$row['path_id']]) ? $lost_by[$row['path_id']] : array() as $q) {
                 $q_now             = SEOProStats_Search::metrics($q['now']['c'], $q['now']['i'], $q['now']['p']);
                 $q_then            = SEOProStats_Search::metrics($q['then']['c'], $q['then']['i'], $q['then']['p']);
+                $rival             = isset($rivals[$row['path_id'] . ':' . $q['query_id']]) ? $rivals[$row['path_id'] . ':' . $q['query_id']] : null;
                 $item['queries'][] = array(
                     'query'         => isset($text[$q['query_id']]) ? $text[$q['query_id']] : '',
                     'lost'          => $q['lost'],
@@ -746,11 +762,84 @@ final class SEOProStats_Opportunities {
                     'then_clicks'   => $q_then['clicks'],
                     'position'      => $q_now['impressions'] ? $q_now['position'] : null,
                     'then_position' => $q_then['impressions'] ? $q_then['position'] : null,
+                    'rival'         => $rival ? self::page($rival['path_id'], $text) + array_diff_key($rival, array('path_id' => 0)) : null,
                 );
             }
             $out[] = $item;
         }
         return $out;
+    }
+
+    /**
+     * Every page's sums for some queries in a period, by key query_day
+     * (page filters do not apply: another page can take a query).
+     *
+     * @param int                 $engine    Engine.
+     * @param array<string,mixed> $days      From SEOProStats_Search::days().
+     * @param int[]               $query_ids Query ids.
+     * @return array<int,array<int,array{c:int,i:int,p:int}>> Query id => path id => sums.
+     */
+    private static function by_query($engine, array $days, array $query_ids) {
+        global $wpdb;
+        $out = array();
+        foreach (array_chunk($query_ids, 200) as $chunk) {
+            $where = 'query_id IN (' . implode(', ', array_fill(0, count($chunk), '%d')) . ') AND day >= %s AND day <= %s AND engine = %d';
+            $args  = array_merge(array_map('intval', $chunk), array((string) $days['day_from'], (string) $days['day_to'], (int) $engine));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by key query_day (query_id, day); $where holds only placeholders.
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT query_id AS q, path_id AS pg, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`query_day`) WHERE $where GROUP BY query_id, path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $args)), ARRAY_A);
+            foreach ($rows as $row) {
+                $out[(int) $row['q']][(int) $row['pg']] = array('c' => (int) $row['c'], 'i' => (int) $row['i'], 'p' => (int) $row['p']);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The page that overtook a losing page for a query: another page with
+     * at least OVERLAP_SHARE of the query's impressions now that ranks
+     * better than the losing page now, and did not before (or was not
+     * shown then). The one with most clicks now; null for none.
+     *
+     * @param int                                             $path_id  The losing page.
+     * @param int                                             $query_id The query.
+     * @param array<int,array<int,array{c:int,i:int,p:int}>> $now      From by_query(), this period.
+     * @param array<int,array<int,array{c:int,i:int,p:int}>> $then     From by_query(), the earlier one.
+     * @return array<string,mixed>|null path_id, clicks, impressions, position, then_position, share.
+     */
+    private static function rival($path_id, $query_id, array $now, array $then) {
+        $pages = isset($now[$query_id]) ? $now[$query_id] : array();
+        $sum   = array_sum(array_column($pages, 'i'));
+        if (!$sum) {
+            return null;
+        }
+        $was  = isset($then[$query_id]) ? $then[$query_id] : array();
+        $mine = isset($pages[$path_id]) && $pages[$path_id]['i'] ? $pages[$path_id]['p'] / $pages[$path_id]['i'] : null;
+        $was_mine = isset($was[$path_id]) && $was[$path_id]['i'] ? $was[$path_id]['p'] / $was[$path_id]['i'] : null;
+        $best = null;
+        foreach ($pages as $other => $sums) {
+            if ($other === (int) $path_id || $sums['i'] < $sum * self::OVERLAP_SHARE) {
+                continue;
+            }
+            $position      = $sums['p'] / $sums['i'];
+            $then_position = isset($was[$other]) && $was[$other]['i'] ? $was[$other]['p'] / $was[$other]['i'] : null;
+            $ahead_now     = $mine === null || $position < $mine;
+            $ahead_then    = $then_position !== null && ($was_mine === null || $then_position < $was_mine);
+            if (!$ahead_now || $ahead_then) {
+                continue;
+            }
+            if ($best === null || $sums['c'] > $best['clicks']) {
+                $metrics = SEOProStats_Search::metrics($sums['c'], $sums['i'], $sums['p']);
+                $best    = array(
+                    'path_id'       => (int) $other,
+                    'clicks'        => $metrics['clicks'],
+                    'impressions'   => $metrics['impressions'],
+                    'position'      => $metrics['position'],
+                    'then_position' => $then_position === null ? null : SEOProStats_Search::metrics($was[$other]['c'], $was[$other]['i'], $was[$other]['p'])['position'],
+                    'share'         => round($sums['i'] / $sum, 4),
+                );
+            }
+        }
+        return $best;
     }
 
     /**

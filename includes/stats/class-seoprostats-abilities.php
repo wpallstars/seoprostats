@@ -741,7 +741,7 @@ final class SEOProStats_Abilities {
         );
         wp_register_ability('seoprostats/queue', array(
             'label'               => __('Decision queue', 'seoprostats'),
-            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need; audit: fix a content audit finding on a page with search impressions, one item per page and finding). Each item has a key, its page and query (or finding), why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
+            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need; audit: fix a content audit finding on a page with search impressions, one item per page and finding; links: internal links to add; index: a page search does not show; refresh: the refresh planner\'s proposal for a page losing clicks, in place of its decay item: update it, leave it (fewer people search), protect it (it converts: change it carefully) or merge it (another page of the site overtook it for a search it lost), with the reason and the numbers in why and figures; it never changes content). Each item has a key, its page and query (or finding), why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -753,6 +753,11 @@ final class SEOProStats_Abilities {
                         'enum'        => SEOProStats_Queue::FILTERS,
                         'default'     => 'open',
                         'description' => __('open (new and accepted), new, accepted, done, dismissed (in the last 90 days) or all.', 'seoprostats'),
+                    ),
+                    'kind'   => array(
+                        'type'        => 'string',
+                        'enum'        => array_values(SEOProStats_Queue::KINDS),
+                        'description' => __('Only items of this kind, e.g. refresh; every kind when left out.', 'seoprostats'),
                     ),
                     'limit'  => array(
                         'type'    => 'integer',
@@ -791,7 +796,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/queue-update', array(
             'label'               => __('Act on a decision queue item', 'seoprostats'),
-            'description'         => __('Accept an item of the decision queue, mark it done (opens an experiment on its page with the kind\'s measure: CTR, clicks or position), dismiss it (hidden for 90 days), restore it, or set its effort (1–5) or a note. Use a key from seoprostats/queue, with the same period, engine and goal.', 'seoprostats'),
+            'description'         => __('Accept an item of the decision queue, mark it done (opens an experiment on its page with the kind\'s measure: CTR, clicks, impressions or position; none for a refresh proposal to leave the page as it is), dismiss it (hidden for 90 days), restore it, or set its effort (1–5) or a note. Use a key from seoprostats/queue, with the same period, engine and goal.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -863,8 +868,9 @@ final class SEOProStats_Abilities {
         $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
         $status = isset($input['status']) ? (string) $input['status'] : 'open';
         $goal   = isset($input['goal']) ? (string) $input['goal'] : '';
-        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $engine, $status, $goal) {
-            return SEOProStats_Queue::report((array) $req, $engine, $status, $goal);
+        $kind   = isset($input['kind']) ? (string) $input['kind'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $engine, $status, $goal, $kind) {
+            return SEOProStats_Queue::report((array) $req, $engine, $status, $goal, $kind);
         });
     }
 

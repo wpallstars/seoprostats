@@ -476,6 +476,15 @@ export interface OpportunityPair extends OpportunityPage, SearchMetrics {
 	potential: number;
 }
 
+/** Another page of the site that overtook a losing page for a query: its figures now, its position before (null: not shown then) and its share of the query's impressions. */
+export interface DecayRival extends OpportunityPage {
+	clicks: number;
+	impressions: number;
+	position: number;
+	then_position: number | null;
+	share: number;
+}
+
 /** A page losing clicks. */
 export interface OpportunityDecay extends OpportunityPage, SearchMetrics {
 	compare: SearchMetrics & { change: SearchChange };
@@ -483,8 +492,16 @@ export interface OpportunityDecay extends OpportunityPage, SearchMetrics {
 	cause: DecayCause;
 	/** One sentence saying why, in the site's language. */
 	why: string;
-	/** The queries that lost most. */
-	queries: { query: string; lost: number; clicks: number; then_clicks: number; position: number | null; then_position: number | null }[];
+	/** The queries that lost most, each with the other page that overtook this one there (ranks better now, did not before), if one did. */
+	queries: {
+		query: string;
+		lost: number;
+		clicks: number;
+		then_clicks: number;
+		position: number | null;
+		then_position: number | null;
+		rival: DecayRival | null;
+	}[];
 	/** What changed on the page in the two periods, newest first. */
 	changes: Marker[];
 }
@@ -986,8 +1003,12 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 	more: boolean;
 }
 
-/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links and indexation. */
-export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index';
+/** Refresh planner proposals for a page losing clicks, in the order they are checked. */
+export const REFRESH_PROPOSALS = ['leave', 'protect', 'merge', 'update'] as const;
+export type RefreshProposal = (typeof REFRESH_PROPOSALS)[number];
+
+/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links, indexation and refresh proposals. */
+export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index' | 'refresh';
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -1028,8 +1049,8 @@ export interface QueueFigures {
 	question?: boolean;
 	/** overlap: whether the leading page changed between the halves. */
 	switched?: boolean;
-	/** overlap: the pages sharing the query. */
-	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number; share: number }[];
+	/** overlap: the pages sharing the query; refresh, merge: this page and the one that overtook it (with its share of the query). */
+	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number | null; share: number | null }[];
 	/** audit: the finding, its share of the page's expected clicks, the page's facts and the other pages with the same title or description. */
 	finding?: AuditFinding;
 	share?: number;
@@ -1039,7 +1060,7 @@ export interface QueueFigures {
 	list?: LinksKind;
 	links_in?: number;
 	from?: string[];
-	visits?: number;
+	visits?: number | null;
 	conversions?: number | null;
 	/** links, missing: the page that should link, its figures for the searches, and the searches. */
 	link_from?: { path_id: number; path: string; url: string };
@@ -1050,12 +1071,21 @@ export interface QueueFigures {
 	/** index: never or lost, the last day shown, the age in days, what a shown page earns here per 28 days, and the row's own facts. */
 	state?: 'never' | 'lost';
 	last_impression?: string | null;
-	age?: number;
+	/** index: days since publishing or listing; refresh: days since the content changed (null: not known). */
+	age?: number | null;
 	typical?: number;
-	published?: string;
+	published?: string | null;
 	words?: number;
 	first_seen?: string;
 	source?: SitemapSource;
+	/** refresh: the proposal, the impressions before, when the content changed, whether that is old or within the periods compared, the queries lost most (each with the page that overtook it) and, for merge, that page with the query. */
+	proposal?: RefreshProposal;
+	then_impressions?: number;
+	modified?: string | null;
+	old?: boolean;
+	changed?: boolean;
+	lost_queries?: { query: string; lost: number; position: number | null; then_position: number | null; rival: { path: string; clicks: number; position: number; then_position: number | null; share: number } | null }[];
+	rival?: DecayRival & { query: string; position_here: number | null; then_position_here: number | null };
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -1067,8 +1097,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
-	/** audit: the finding (the item is one per page and finding); links and index: the list; else null. */
-	finding: AuditFinding | LinksKind | IndexationKind | null;
+	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; else null. */
+	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -1124,6 +1154,10 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		/** Indexation lists whose effort is not the index kind's, and each list's share of a typical page's clicks. */
 		index_effort: Partial<Record<IndexationKind, number>>;
 		index_share: Record<IndexationKind, number>;
+		/** Refresh proposals' effort and share of the clicks lost, and the planner's thresholds. */
+		refresh_effort: Record<RefreshProposal, number>;
+		refresh_share: Record<RefreshProposal, number>;
+		refresh: { old_days: number; protect_value: number; protect_conversions: number };
 		confidence: Record<QueueKind, number>;
 		full_impressions: number;
 		missing_share: number;
@@ -1135,6 +1169,8 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 	/** New items left out because their page has a running experiment. */
 	left_out: number;
 	status: QueueFilter;
+	/** The kind asked for; null for every kind. */
+	kind: QueueKind | null;
 	counts: Record<QueueStatus, number>;
 	items: QueueItem[];
 	total: number;

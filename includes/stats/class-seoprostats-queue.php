@@ -31,7 +31,11 @@
  * converting, or missing (on the page the link should go to; the key's
  * query names the page that should link). Index items
  * (SEOProStats_Indexation) are one per page or sitemap address search
- * has not shown lately (the key's query is the list).
+ * has not shown lately (the key's query is the list). A losing page with
+ * content facts gets a refresh item (SEOProStats_Refresh: update, leave,
+ * protect or merge; the key's query is the proposal) in place of its
+ * decay item: potential clicks those lost × the proposal's share; done on
+ * leave opens no experiment, as nothing changes.
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -69,6 +73,7 @@ final class SEOProStats_Queue {
         6 => 'audit',
         7 => 'links',
         8 => 'index',
+        9 => 'refresh',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -86,7 +91,7 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2, 'refresh' => 3);
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings and links and indexation lists other than their kind's. */
@@ -98,10 +103,13 @@ final class SEOProStats_Queue {
      * The kind's own confidence, before the impressions are weighed;
      * indexation items have no impressions, so theirs is not weighed.
      */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3, 'refresh' => 0.8);
 
     /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions');
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions', 'refresh' => 'clicks');
+
+    /** Refresh proposals done without an experiment: nothing on the page changes. */
+    const NO_CHANGE = array('leave');
 
     /** Share of a page's expected clicks links put at stake, by links list. */
     const LINKS_SHARE = array('missing' => 0.2, 'orphans' => 0.1, 'converting' => 0.1);
@@ -168,18 +176,30 @@ final class SEOProStats_Queue {
      * @param string              $engine google or bing.
      * @param string              $status One of FILTERS.
      * @param string              $goal   Goal id for value; '' for the first goal.
+     * @param string              $kind   Only items of this kind (one of KINDS); '' for all.
      * @return array<string,mixed>|WP_Error
      */
-    public static function report(array $req, $engine = 'google', $status = 'open', $goal = '') {
+    public static function report(array $req, $engine = 'google', $status = 'open', $goal = '', $kind = '') {
         $status = $status === '' ? 'open' : (string) $status;
+        $kind   = (string) $kind;
         if (!in_array($status, self::FILTERS, true)) {
             /* translators: %s: list of states */
             return self::error('seoprostats_queue_status', sprintf(__('The status is one of: %s.', 'seoprostats'), implode(', ', self::FILTERS)));
         }
+        if ($kind !== '' && !in_array($kind, self::KINDS, true)) {
+            /* translators: %s: list of kinds */
+            return self::error('seoprostats_queue_kind', sprintf(__('The kind is one of: %s.', 'seoprostats'), implode(', ', self::KINDS)));
+        }
         $built  = self::build($req, $engine, $goal);
         $left   = 0;
         $items  = self::with_states($built['items'], $built['answer']['engine'], $built['running'], $left);
+        if ($kind !== '') {
+            $items = array_values(array_filter($items, static function ($item) use ($kind) {
+                return $item['kind'] === $kind;
+            }));
+        }
         $built['answer']['left_out'] = $left;
+        $built['answer']['kind']     = $kind === '' ? null : $kind;
         $counts = array_fill_keys(self::STATUSES, 0);
         foreach ($items as $item) {
             ++$counts[$item['status']];
@@ -225,6 +245,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-audit.php';
         require_once __DIR__ . '/class-seoprostats-links.php';
         require_once __DIR__ . '/class-seoprostats-indexation.php';
+        require_once __DIR__ . '/class-seoprostats-refresh.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -259,6 +280,8 @@ final class SEOProStats_Queue {
         $value = self::values(array_merge($req, array('limit' => self::VALUE_PAGES, 'offset' => 0, 'compare' => 'none')), $engine, $goal);
 
         $running = SEOProStats_Experiments::running_pages();
+        // Losing pages with content facts get a refresh proposal in place of their decay item.
+        $facts   = SEOProStats_Refresh::facts(array_column($found['decay']['rows'], 'path_id'));
         $items   = array();
         if ($days > 0) {
             foreach ($found as $kind => $answer) {
@@ -267,7 +290,9 @@ final class SEOProStats_Queue {
                         // No page's CTR is better than the others': nothing to win by choosing one.
                         continue;
                     }
-                    $item = self::item($kind, $engine, $row, $days, $curve, $value);
+                    $item = $kind === 'decay' && isset($facts[(int) $row['path_id']])
+                        ? self::refresh_item($engine, $row, $facts[(int) $row['path_id']], $days, $value)
+                        : self::item($kind, $engine, $row, $days, $curve, $value);
                     if (!isset($items[$item['key']])) {
                         $items[$item['key']] = $item;
                     }
@@ -320,6 +345,13 @@ final class SEOProStats_Queue {
                     'links_share'      => self::LINKS_SHARE,
                     'index_effort'     => self::INDEX_EFFORT,
                     'index_share'      => self::INDEX_SHARE,
+                    'refresh_effort'   => SEOProStats_Refresh::EFFORT,
+                    'refresh_share'    => SEOProStats_Refresh::SHARE,
+                    'refresh'          => array(
+                        'old_days'            => SEOProStats_Refresh::OLD_DAYS,
+                        'protect_value'       => SEOProStats_Refresh::PROTECT_VALUE,
+                        'protect_conversions' => SEOProStats_Refresh::PROTECT_CONVERSIONS,
+                    ),
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
                     'missing_share'    => self::MISSING_SHARE,
@@ -686,6 +718,56 @@ final class SEOProStats_Queue {
     }
 
     /**
+     * One refresh item from a losing page with content facts
+     * (SEOProStats_Refresh): update, leave, protect or merge. Potential
+     * clicks: those lost × the proposal's share; confidence the kind's,
+     * weighed by impressions as decay's.
+     *
+     * @param string              $engine Engine name.
+     * @param array<string,mixed> $row    Decay row.
+     * @param array{post_id:int,modified:int,published:int,words:int,links_in:int} $facts The page's content facts (SEOProStats_Refresh::facts()).
+     * @param int                 $days   Days of the period.
+     * @param array<string,mixed> $value  From values().
+     * @return array<string,mixed>
+     */
+    private static function refresh_item($engine, array $row, array $facts, $days, array $value) {
+        $path_id  = (int) $row['path_id'];
+        $worth    = self::worth($path_id, $value);
+        $page     = $value['site'] ? (isset($value['pages'][$path_id]) ? $value['pages'][$path_id] : array('visits' => 0, 'conversions' => 0)) : null;
+        $made     = SEOProStats_Refresh::propose($row, $facts, $page, $worth, $days);
+        $proposal = $made['proposal'];
+        $figures  = $made['figures'];
+        $scale    = self::SCALE_DAYS / max(1, (int) $days);
+        $impr     = max((int) $row['impressions'], (int) $row['compare']['impressions']);
+        $parts    = array(
+            'clicks'     => round((int) $row['lost'] * SEOProStats_Refresh::SHARE[$proposal] * $scale, 1),
+            'value'      => round($worth, 2),
+            'confidence' => round(self::CONFIDENCE['refresh'] * min(1.0, sqrt($impr * $scale / self::FULL_IMPRESSIONS)), 2),
+            'effort'     => self::effort_of('refresh', $proposal),
+        );
+        return array(
+            'key'      => self::key('refresh', $engine, (string) $row['path'], $proposal),
+            'kind'     => 'refresh',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => $path_id,
+            'path'     => (string) $row['path'],
+            'url'      => (string) $row['url'],
+            'post_id'  => (int) $row['post_id'],
+            'edit_url' => isset($row['edit_url']) ? $row['edit_url'] : null,
+            'query'    => null,
+            'finding'  => $proposal,
+            'why'      => SEOProStats_Refresh::why($row, $figures, $value['site']),
+            'todo'     => SEOProStats_Refresh::todo($figures),
+            'figures'  => $figures,
+            'metric'   => self::METRIC['refresh'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
      * A page's value: how well its visits from search convert against the
      * site's, smoothed, 1 to MAX_VALUE (1 without a goal).
      *
@@ -719,6 +801,9 @@ final class SEOProStats_Queue {
         }
         if ($kind === 'index' && $finding !== null && isset(self::INDEX_EFFORT[$finding])) {
             return self::INDEX_EFFORT[$finding];
+        }
+        if ($kind === 'refresh' && $finding !== null && isset(SEOProStats_Refresh::EFFORT[$finding])) {
+            return SEOProStats_Refresh::EFFORT[$finding];
         }
         return self::EFFORT[$kind];
     }
@@ -758,7 +843,7 @@ final class SEOProStats_Queue {
                 // Back after HIDE_DAYS days, as new.
                 $item['status'] = 'new';
             }
-            if ($item['status'] === 'new' && array_intersect_key($running, array_flip(self::page_ids($item)))) {
+            if ($item['status'] === 'new' && array_intersect_key($running, array_flip(self::held_by($item)))) {
                 ++$left_out;
                 continue;
             }
@@ -981,25 +1066,31 @@ final class SEOProStats_Queue {
         } elseif ($action === 'dismiss') {
             $status = 3;
         } elseif ($action === 'done') {
+            if ($status === 2 && self::no_change($item)) {
+                return self::error('seoprostats_queue_done', __('This item is done already.', 'seoprostats'), 409);
+            }
             if ($status === 2 && $exp_id) {
                 return self::error('seoprostats_queue_done', __('This item is done already; its experiment measures it.', 'seoprostats'), 409);
             }
-            $opened = SEOProStats_Experiments::add(array(
-                'name'       => isset($input['name']) && trim((string) $input['name']) !== '' ? (string) $input['name'] : self::experiment_name($item),
-                'pages'      => self::paths($item),
-                'engine'     => $item['engine'],
-                'metric'     => $item['metric'],
-                'direction'  => 'up',
-                'days'       => isset($input['days']) && (int) $input['days'] ? (int) $input['days'] : SEOProStats_Experiments::DAYS,
-                'threshold'  => isset($input['threshold']) ? $input['threshold'] : '',
-                'hypothesis' => $item['why'] . ' ' . $item['todo'],
-                'note'       => $note,
-            ));
-            if (is_wp_error($opened)) {
-                return $opened;
+            // A page left as it is changes nothing, so no experiment measures it.
+            if (!self::no_change($item)) {
+                $opened = SEOProStats_Experiments::add(array(
+                    'name'       => isset($input['name']) && trim((string) $input['name']) !== '' ? (string) $input['name'] : self::experiment_name($item),
+                    'pages'      => self::paths($item),
+                    'engine'     => $item['engine'],
+                    'metric'     => $item['metric'],
+                    'direction'  => 'up',
+                    'days'       => isset($input['days']) && (int) $input['days'] ? (int) $input['days'] : SEOProStats_Experiments::DAYS,
+                    'threshold'  => isset($input['threshold']) ? $input['threshold'] : '',
+                    'hypothesis' => $item['why'] . ' ' . $item['todo'],
+                    'note'       => $note,
+                ));
+                if (is_wp_error($opened)) {
+                    return $opened;
+                }
+                $exp_id = (int) $opened['id'];
             }
             $status = 2;
-            $exp_id = (int) $opened['id'];
         }
 
         // What it was when acted on, so it can be shown if it is no longer found.
@@ -1112,6 +1203,14 @@ final class SEOProStats_Queue {
             /* translators: %s: page path */
             return sprintf(__('Search shows %s once it can find it', 'seoprostats'), $page);
         }
+        if ($item['kind'] === 'refresh' && $item['finding'] === 'merge') {
+            /* translators: 1: page path, 2: the other page's path */
+            return sprintf(__('One clear page for %1$s and %2$s wins back clicks', 'seoprostats'), $page, (string) $item['figures']['rival']['path']);
+        }
+        if ($item['kind'] === 'refresh' && $item['finding'] === 'protect') {
+            /* translators: %s: page path */
+            return sprintf(__('A careful change to %s wins back clicks and keeps conversions', 'seoprostats'), $page);
+        }
         /* translators: %s: page path */
         return sprintf(__('Updating %s wins back its clicks', 'seoprostats'), $page);
     }
@@ -1211,6 +1310,17 @@ final class SEOProStats_Queue {
     }
 
     /**
+     * Whether doing an item changes nothing on its pages (a refresh
+     * proposal to leave the page as it is): done opens no experiment.
+     *
+     * @param array<string,mixed> $item Item.
+     * @return bool
+     */
+    private static function no_change(array $item) {
+        return $item['kind'] === 'refresh' && in_array((string) $item['finding'], self::NO_CHANGE, true);
+    }
+
+    /**
      * The pages an item is about: its page, and for overlap every page
      * sharing the query.
      *
@@ -1225,6 +1335,19 @@ final class SEOProStats_Queue {
             }
         }
         return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * The pages whose running experiment holds a new item back: those it
+     * is about, except for a refresh item, which is about its losing page
+     * only (a merge's other page running an experiment does not hide the
+     * loss, as its decay item would not have been hidden).
+     *
+     * @param array<string,mixed> $item Item.
+     * @return int[]
+     */
+    private static function held_by(array $item) {
+        return $item['kind'] === 'refresh' ? array((int) $item['path_id']) : self::page_ids($item);
     }
 
     /**
