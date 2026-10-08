@@ -15,8 +15,9 @@
  * headings, length, images, noindex, canonical), pages that matter most
  * first; Content (./Content): each page's search clicks with its visits
  * from search and their conversions. Choosing a row opens it in Rankings.
- * Plan (./Plan): one ranked list of what to do next, made from
- * Opportunities. Experiments (./Experiments): changes measured against
+ * Targets (./Targets): the searches the site chose and the page meant for
+ * each. Plan (./Plan): one ranked list of what to do next, made from
+ * Opportunities and Targets. Experiments (./Experiments): changes measured against
  * unchanged pages.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -56,6 +57,7 @@ import { Audit } from './Audit';
 import { Content } from './Content';
 import { Experiments } from './Experiments';
 import { Plan } from './Plan';
+import { Targets } from './Targets';
 
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
@@ -146,11 +148,12 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 		opportunities: __('Opportunities', 'seoprostats'),
 		audit: __('Audit', 'seoprostats'),
 		content: __('Content', 'seoprostats'),
+		targets: __('Targets', 'seoprostats'),
 		plan: __('Plan', 'seoprostats'),
 		experiments: __('Experiments', 'seoprostats'),
 	};
 	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content, Plan's state and goal with Plan, a change with Experiments.
-	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, finding: undefined, change: undefined });
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, targets: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
 		const at = reports.indexOf(report);
@@ -171,6 +174,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 			sort: undefined,
 			goal: undefined,
 			status: undefined,
+			targets: undefined,
 			finding: undefined,
 			page: pick.page || undefined,
 			query: pick.query || undefined,
@@ -207,6 +211,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
 				{report === 'audit' && <Audit {...reportProps} open={open} />}
 				{report === 'content' && <Content {...reportProps} open={open} />}
+				{!shared && report === 'targets' && <Targets {...reportProps} open={open} />}
 				{!shared && report === 'plan' && <Plan {...reportProps} open={open} />}
 				{!shared && report === 'experiments' && <Experiments {...reportProps} />}
 			</div>

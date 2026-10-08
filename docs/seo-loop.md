@@ -501,12 +501,59 @@ Built (GH#80), no schema change (`SEOProStats_Refresh`):
 ## 8. Search targets
 
 The site's chosen queries and the page meant for each: `targets` (schema
-v9), `query_id` primary key, `path_id`, priority (0–100), status, source.
+v13), `query_id` primary key, `path_id`, priority (0–100), status, source.
 Imported from a simple list (query, address, priority) or the aidevops
 search targets table (`phrase`, `target_url`, `priority`, `status`). The
 report gives each target's position, clicks and the page that ranks; a
 target ranking with another page is a queue item (`target`), as is a
 high-priority target in striking distance.
+
+Built (GH#81), schema v13 (`SEOProStats_Targets`):
+
+- `targets`: `query_id` (the dictionary's query, lower case; primary
+  key), `path_id` (0: no page chosen yet), `priority` (0–100, 50 when
+  left out; high 80, medium 50, low 20), `status` (candidate, targeted,
+  live, won, retired; `active` imports as targeted), `source` (list,
+  aidevops, demo), `created`, `updated`, `user_id`. At most 1,000
+  targets; read whole by its primary key.
+- Import: CSV or tab-separated text (a header row naming query, page,
+  priority and status under any of their usual names, or those columns
+  in that order), JSON (a list, or an object with `targets`), or the
+  aidevops search targets table (TOON, its first table with a `phrase`
+  or `query` column). Each row is checked: no query text, an address not
+  on this site, or a priority or status that cannot be read skips the row
+  with its number and reason, never a guess. Searches already listed are
+  updated; `replace` deletes those not in the import. At most 5,000 rows
+  and 1 MB.
+- Report: per target, for the period (cut at the newest search day, to
+  its newest 91 days), the query's clicks, impressions, CTR and position
+  on any page, the page search shows most for it (`shown`, with its share
+  of the impressions), and the page meant for it with its own figures, as
+  a state: `ranking` (the page meant for it is the one shown most, or
+  search gave no page), `wrong_page`, `no_page` (none chosen) or
+  `not_shown` (no impressions). Highest priority first. Reads
+  `gsc_queries` and `gsc_pairs` by `query_day` for the targets' queries
+  only.
+- Queue kind `target` (code 10), one item per target and finding, the
+  key's query the finding and the query: `wrong_page` for an open target
+  (candidate, targeted, live) shown with another page (potential clicks:
+  impressions × the site's CTR at its position × 0.5; done measures both
+  pages' clicks), and `striking` for an open target of priority 70 or
+  more at positions 4–20 with its page or none chosen (potential clicks
+  as striking distance's; measured by position), in place of its plain
+  striking item. Both × priority ÷ 50; confidence 0.6, weighed by
+  impressions; effort 2.
+- REST `GET /targets` (`status`: all, open or one status; `engine`,
+  period, `compare`, `limit`, `offset`), `POST /targets` (`targets` as a
+  list or `text`, `replace`) and `DELETE /targets` (`queries` or `all`);
+  WP-CLI `wp seoprostats targets [list|import <file|->|delete <query>...]`;
+  abilities `seoprostats/targets` (read) and `seoprostats/targets-import`.
+  Writes need `manage_options`. Dashboard: Search → **Targets**, with a
+  status switch, an import form and delete for administrators; Plan shows
+  "Search target: <finding>". Shared reports leave Targets out.
+- Demo data: nine targets: two shown with another page, three
+  high-priority ones in striking distance (one with no page chosen), one
+  won, one retired, one ranking as meant, one not shown yet.
 
 ## 9. Loop export and agent recipes
 

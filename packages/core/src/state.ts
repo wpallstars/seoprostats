@@ -25,6 +25,7 @@ import {
 	SEARCH_ENGINES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
+	TARGET_FILTERS,
 	type AuditFinding,
 	type ChangeGroup,
 	type ClickKind,
@@ -40,6 +41,7 @@ import {
 	type SearchKind,
 	type SearchMetricKey,
 	type SearchReport,
+	type TargetFilter,
 } from './types';
 import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
@@ -47,7 +49,7 @@ export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'c
 export type View = (typeof VIEWS)[number];
 /** Every tab can be shared; Search once per engine. */
 export const SHARE_VIEWS: readonly View[] = VIEWS;
-/** The Search reports a shared report shows (not Plan or Experiments: the owner's work list and notes). */
+/** The Search reports a shared report shows (not Targets, Plan or Experiments: the owner's chosen searches, work list and notes). */
 export const SHARE_SEARCH_REPORTS: readonly SearchReport[] = ['rankings', 'opportunities', 'audit', 'content'];
 
 /** Normalize saved public views with exactly the address reader's rules. */
@@ -61,6 +63,7 @@ export function shareView(state: ViewState): ViewState | null {
         delete view.status;
         delete view.change;
         delete view.goal;
+        delete view.targets;
     }
     return view;
 }
@@ -105,8 +108,10 @@ export interface ViewState {
 	key?: string;
 	/** Properties: only properties sent with this event. */
 	event?: string;
-	/** Search: Rankings (the default), Opportunities, Audit, Content, Plan or Experiments. */
+	/** Search: Rankings (the default), Opportunities, Audit, Content, Targets, Plan or Experiments. */
 	report?: SearchReport;
+	/** Search → Targets: the targets shown (all when left out). */
+	targets?: TargetFilter;
 	/** Search → Audit: only pages with this finding (all when left out). */
 	finding?: AuditFinding;
 	/** Search → Audit: the internal links list shown (orphans when left out). */
@@ -134,7 +139,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -194,6 +199,10 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const status = oneOf(QUEUE_FILTERS, params.get('status'), 'open');
 			set('status', status === 'open' ? undefined : status);
 			set('goal', text(params.get('goal')));
+		}
+		if (report === 'targets') {
+			const targets = oneOf(TARGET_FILTERS, params.get('targets'), 'all');
+			set('targets', targets === 'all' ? undefined : targets);
 		}
 		if (report === 'audit') {
 			const finding = params.get('finding');

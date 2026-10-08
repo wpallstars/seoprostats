@@ -30,6 +30,10 @@
  *   with each item's why and score parts (read).
  * - seoprostats/queue-update: accept, do (opens an experiment), dismiss
  *   or restore an item, or set its effort or note (administrators).
+ * - seoprostats/targets: the site's search targets, each with its
+ *   position, clicks and the page that ranks (read).
+ * - seoprostats/targets-import: import or delete search targets
+ *   (administrators).
  *
  * On older WordPress the hooks never run.
  *
@@ -708,6 +712,186 @@ final class SEOProStats_Abilities {
         ));
         self::register_experiments($data, $engine);
         self::register_queue($data, $engine);
+        self::register_targets($data, $engine);
+    }
+
+    /**
+     * The search target abilities.
+     *
+     * @param array<string,mixed> $data   The data property.
+     * @param array<string,mixed> $engine The engine property.
+     */
+    private static function register_targets(array $data, array $engine) {
+        wp_register_ability('seoprostats/targets', array(
+            'label'               => __('Search targets', 'seoprostats'),
+            'description'         => __('The searches the site chose to win and the page meant for each (imported with seoprostats/targets-import), with how search treats them now: the query\'s clicks, impressions, CTR and position on any page, the page search shows most for it (shown) and the page meant for it (page) with its own figures, as a state: ranking (the page meant for it is the one shown most), wrong_page (another page is), no_page (none chosen yet) or not_shown (no impressions in the period). band is top (positions 1–3), striking (4–20) or beyond. Highest priority first. The decision queue lists open targets shown with the wrong page, and high-priority targets in striking distance (kind target). Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'status'  => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Targets::FILTERS,
+                        'default'     => 'all',
+                        'description' => __('all, open (candidate, targeted and live), candidate, targeted, live, won or retired.', 'seoprostats'),
+                    ),
+                    'range'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'      => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'compare' => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::COMPARE,
+                        'default'     => 'none',
+                        'description' => __('previous or year adds each target\'s position and clicks then.', 'seoprostats'),
+                    ),
+                    'engine'  => $engine,
+                    'limit'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Targets::MAX_LIMIT,
+                        'default' => SEOProStats_Targets::LIMIT,
+                    ),
+                    'offset'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'engine'    => array('type' => 'string'),
+                    'range'     => array('type' => 'object'),
+                    'through'   => array('type' => 'string'),
+                    'connected' => array('type' => 'boolean'),
+                    'rules'     => array('type' => 'object'),
+                    'statuses'  => array('type' => 'object'),
+                    'counts'    => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'targets'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/targets-import', array(
+            'label'               => __('Import or delete search targets', 'seoprostats'),
+            'description'         => __('Add or update search targets by query, from targets (a list of objects: query or phrase; page or target_url, a path such as /pricing/ or an address on this site, left out when no page is chosen yet; priority 0–100 or high, medium, low, 50 when left out; status candidate, targeted, live, won or retired, targeted when left out) or text (CSV or tab-separated with a header row, JSON, or the aidevops search targets table in TOON). Rows without search text, with an address that is not on this site, or with a priority or status that cannot be read are skipped and listed with the reason, never guessed. replace deletes targets not in the import; delete removes the searches given (all: every target) instead of importing.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'targets' => array(
+                        'type'     => 'array',
+                        'maxItems' => SEOProStats_Targets::MAX_ROWS,
+                        'items'    => array('type' => 'object'),
+                    ),
+                    'text'    => array(
+                        'type'      => 'string',
+                        'maxLength' => SEOProStats_Targets::MAX_BYTES,
+                    ),
+                    'replace' => array(
+                        'type'    => 'boolean',
+                        'default' => false,
+                    ),
+                    'delete'  => array(
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'description' => __('The searches whose targets to delete (instead of importing).', 'seoprostats'),
+                    ),
+                    'all'     => array(
+                        'type'        => 'boolean',
+                        'default'     => false,
+                        'description' => __('With delete: delete every target.', 'seoprostats'),
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'targets_import'),
+            'permission_callback' => array('SEOProStats_API', 'can_manage'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => false,
+                    'destructive' => true,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+    }
+
+    /**
+     * seoprostats/targets.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function targets($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request($input + array('range' => '30d', 'limit' => SEOProStats_Targets::LIMIT));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
+        $status = isset($input['status']) ? (string) $input['status'] : 'all';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $engine, $status) {
+            return SEOProStats_Targets::report((array) $req, $engine, $status);
+        });
+    }
+
+    /**
+     * seoprostats/targets-import.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function targets_import($input = null) {
+        $input = is_array($input) ? $input : array();
+        return SEOProStats_API::on_data(self::data($input), static function () use ($input) {
+            if (isset($input['delete']) || !empty($input['all'])) {
+                return SEOProStats_Targets::delete(array_map('strval', isset($input['delete']) ? (array) $input['delete'] : array()), !empty($input['all']));
+            }
+            $format = 'list';
+            $rows   = isset($input['targets']) ? (array) $input['targets'] : array();
+            if (!$rows) {
+                $parsed = SEOProStats_Targets::parse(isset($input['text']) ? (string) $input['text'] : '');
+                if (is_wp_error($parsed)) {
+                    return $parsed;
+                }
+                $rows   = $parsed['rows'];
+                $format = $parsed['format'];
+            }
+            $done = SEOProStats_Targets::import($rows, $format === 'toon' ? 'aidevops' : 'list', !empty($input['replace']));
+            return is_wp_error($done) ? $done : array('format' => $format) + $done;
+        });
     }
 
     /**
@@ -741,7 +925,7 @@ final class SEOProStats_Abilities {
         );
         wp_register_ability('seoprostats/queue', array(
             'label'               => __('Decision queue', 'seoprostats'),
-            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need; audit: fix a content audit finding on a page with search impressions, one item per page and finding; links: internal links to add; index: a page search does not show; refresh: the refresh planner\'s proposal for a page losing clicks, in place of its decay item: update it, leave it (fewer people search), protect it (it converts: change it carefully) or merge it (another page of the site overtook it for a search it lost), with the reason and the numbers in why and figures; it never changes content). Each item has a key, its page and query (or finding), why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
+            'description'         => __('One ranked list of search work made from the opportunities (ctr: rewrite a title and description; missing: answer a search the page lacks; striking: improve a page ranking 4–20; decay: find why a page lost clicks, then update it; overlap: review a search several pages share, and make one the clear answer if they serve the same need; audit: fix a content audit finding on a page with search impressions, one item per page and finding; links: internal links to add; index: a page search does not show; refresh: the refresh planner\'s proposal for a page losing clicks, in place of its decay item: update it, leave it (fewer people search), protect it (it converts: change it carefully) or merge it (another page of the site overtook it for a search it lost), with the reason and the numbers in why and figures; it never changes content; target: a search target (seoprostats/targets) shown with another page than the one meant for it (finding wrong_page), or a high-priority target in striking distance (finding striking, in place of its striking item)). Each item has a key, its page and query (or finding), why it is listed, its figures and its score with the parts: potential clicks per 28 days × value (how well the page\'s visits from search convert against the site, at least 1) × confidence (the kind\'s, weighed by impressions) ÷ effort, so you can rank by your own rule. Pages with a running experiment are left out of new items; done items show their experiment\'s result.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',

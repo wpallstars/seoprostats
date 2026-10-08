@@ -35,7 +35,11 @@
  * content facts gets a refresh item (SEOProStats_Refresh: update, leave,
  * protect or merge; the key's query is the proposal) in place of its
  * decay item: potential clicks those lost × the proposal's share; done on
- * leave opens no experiment, as nothing changes.
+ * leave opens no experiment, as nothing changes. Target items
+ * (SEOProStats_Targets) are one per search target and finding: shown with
+ * another page than the one meant for it (wrong_page), or a high-priority
+ * target in striking distance, in place of its plain striking item (the
+ * key's query is the finding and the query).
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -74,6 +78,7 @@ final class SEOProStats_Queue {
         7 => 'links',
         8 => 'index',
         9 => 'refresh',
+        10 => 'target',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -91,7 +96,7 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2, 'refresh' => 3);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2, 'refresh' => 3, 'target' => 2);
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings and links and indexation lists other than their kind's. */
@@ -103,10 +108,19 @@ final class SEOProStats_Queue {
      * The kind's own confidence, before the impressions are weighed;
      * indexation items have no impressions, so theirs is not weighed.
      */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3, 'refresh' => 0.8);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3, 'refresh' => 0.8, 'target' => 0.6);
 
-    /** The measure of the experiment done opens, by kind. */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions', 'refresh' => 'clicks');
+    /** The measure of the experiment done opens, by kind (target: by finding, TARGET_METRIC). */
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions', 'refresh' => 'clicks', 'target' => 'clicks');
+
+    /** Search target findings measured otherwise than the target kind's. */
+    const TARGET_METRIC = array('striking' => 'position');
+
+    /**
+     * Share of a search's expected clicks at its position put at stake when
+     * search shows another page than the one meant for it.
+     */
+    const TARGET_SHARE = 0.5;
 
     /** Refresh proposals done without an experiment: nothing on the page changes. */
     const NO_CHANGE = array('leave');
@@ -246,6 +260,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-links.php';
         require_once __DIR__ . '/class-seoprostats-indexation.php';
         require_once __DIR__ . '/class-seoprostats-refresh.php';
+        require_once __DIR__ . '/class-seoprostats-targets.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -274,6 +289,9 @@ final class SEOProStats_Queue {
                 $through      = (string) $answer['through'];
             }
         }
+        // Search targets in an open status (one cached report, every target).
+        $targets = SEOProStats_Targets::report(array_merge($ask, array('limit' => SEOProStats_Targets::MAX_TARGETS, 'compare' => 'none')), $engine, 'open');
+        $targets = is_wp_error($targets) ? array() : $targets['rows'];
         $head  = $found['striking'];
         $days  = (int) $head['days'];
         $curve = isset($head['curve']['ctr']) && is_array($head['curve']['ctr']) ? $head['curve']['ctr'] : SEOProStats_Opportunities::DEFAULT_CURVE;
@@ -322,6 +340,15 @@ final class SEOProStats_Queue {
                     }
                 }
             }
+            foreach ($targets as $row) {
+                $item = self::target_item($engine, $row, $days, $curve, $value);
+                if (!$item || isset($items[$item['key']])) {
+                    continue;
+                }
+                // A target in striking distance takes the place of its plain striking item.
+                unset($items[self::key('striking', $engine, (string) $item['path'], (string) $item['query'])]);
+                $items[$item['key']] = $item;
+            }
         }
 
         return array(
@@ -351,6 +378,12 @@ final class SEOProStats_Queue {
                         'old_days'            => SEOProStats_Refresh::OLD_DAYS,
                         'protect_value'       => SEOProStats_Refresh::PROTECT_VALUE,
                         'protect_conversions' => SEOProStats_Refresh::PROTECT_CONVERSIONS,
+                    ),
+                    'target'           => array(
+                        'share'         => self::TARGET_SHARE,
+                        'priority'      => SEOProStats_Targets::PRIORITY,
+                        'high_priority' => SEOProStats_Targets::HIGH_PRIORITY,
+                        'statuses'      => SEOProStats_Targets::OPEN,
                     ),
                     'confidence'       => self::CONFIDENCE,
                     'full_impressions' => self::FULL_IMPRESSIONS,
@@ -762,6 +795,105 @@ final class SEOProStats_Queue {
             'todo'     => SEOProStats_Refresh::todo($figures),
             'figures'  => $figures,
             'metric'   => self::METRIC['refresh'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
+     * One item from a search target (SEOProStats_Targets), or null:
+     *
+     * - wrong_page: search shows another page than the one meant for it;
+     *   potential clicks the search's impressions × the site's CTR at its
+     *   position × TARGET_SHARE; done measures both pages' clicks;
+     * - striking: priority HIGH_PRIORITY or more, positions 4–20, on its
+     *   own page or none chosen; potential clicks those of the top three
+     *   less those now, as Opportunities' striking distance; measured by
+     *   position.
+     *
+     * Both × the priority ÷ PRIORITY (a target of 100 counts twice one of
+     * 50), scaled to 28 days; confidence the kind's, weighed by impressions.
+     *
+     * @param string              $engine Engine name.
+     * @param array<string,mixed> $row    Targets report row.
+     * @param int                 $days   Days of the period.
+     * @param array<int,float>    $curve  Expected CTR by position.
+     * @param array<string,mixed> $value  From values().
+     * @return array<string,mixed>|null
+     */
+    private static function target_item($engine, array $row, $days, array $curve, array $value) {
+        $impr = (int) $row['impressions'];
+        if (!$impr || $row['position'] === null) {
+            return null;
+        }
+        $place  = max(1, min(20, (int) round((float) $row['position'])));
+        $weight = (int) $row['priority'] / SEOProStats_Targets::PRIORITY;
+        if ($row['state'] === 'wrong_page') {
+            $finding  = 'wrong_page';
+            $page     = $row['page'];
+            $expected = (float) $curve[$place];
+            $clicks   = $impr * $expected * self::TARGET_SHARE;
+        } elseif (in_array($row['state'], array('ranking', 'no_page'), true) && $row['band'] === 'striking' && (int) $row['priority'] >= SEOProStats_Targets::HIGH_PRIORITY) {
+            $finding  = 'striking';
+            $page     = $row['state'] === 'ranking' ? $row['page'] : $row['shown'];
+            $expected = (float) $curve[SEOProStats_Opportunities::TARGET];
+            $clicks   = max(0.0, $impr * $expected - (int) $row['clicks']);
+        } else {
+            return null;
+        }
+        // An item is on a page: none when search gave no page for the query and none is chosen.
+        if (!is_array($page) || ($finding === 'wrong_page' && !is_array($row['shown']))) {
+            return null;
+        }
+        $scale = self::SCALE_DAYS / max(1, (int) $days);
+        $parts = array(
+            'clicks'     => round($clicks * $weight * $scale, 1),
+            'value'      => round(self::worth((int) $page['path_id'], $value), 2),
+            'confidence' => round(self::CONFIDENCE['target'] * min(1.0, sqrt($impr * $scale / self::FULL_IMPRESSIONS)), 2),
+            'effort'     => self::EFFORT['target'],
+        );
+        if ($parts['clicks'] <= 0) {
+            return null;
+        }
+        $figures = array(
+            'clicks'        => (int) $row['clicks'],
+            'impressions'   => $impr,
+            'ctr'           => $row['ctr'],
+            'position'      => $row['position'],
+            'expected_ctr'  => round($expected, 4),
+            'potential'     => (int) round($clicks),
+            'priority'      => (int) $row['priority'],
+            'target_status' => (string) $row['status'],
+        );
+        if ($finding === 'wrong_page') {
+            $figures['pages'] = array_map(static function ($one) {
+                return array(
+                    'path_id'     => (int) $one['path_id'],
+                    'path'        => (string) $one['path'],
+                    'clicks'      => (int) $one['clicks'],
+                    'impressions' => (int) $one['impressions'],
+                    'position'    => $one['position'],
+                    'share'       => $one['share'],
+                );
+            }, array($row['page'], $row['shown']));
+        }
+        return array(
+            'key'      => self::key('target', $engine, (string) $page['path'], $finding . "\n" . (string) $row['query']),
+            'kind'     => 'target',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => (int) $page['path_id'],
+            'path'     => (string) $page['path'],
+            'url'      => (string) $page['url'],
+            'post_id'  => (int) $page['post_id'],
+            'edit_url' => isset($page['edit_url']) ? $page['edit_url'] : null,
+            'query'    => (string) $row['query'],
+            'finding'  => $finding,
+            'why'      => SEOProStats_Targets::why($finding, $row, (int) round($clicks)),
+            'todo'     => SEOProStats_Targets::todo($finding, $row),
+            'figures'  => $figures,
+            'metric'   => isset(self::TARGET_METRIC[$finding]) ? self::TARGET_METRIC[$finding] : self::METRIC['target'],
             'parts'    => $parts,
             'score'    => self::score($parts),
         );
@@ -1202,6 +1334,14 @@ final class SEOProStats_Queue {
         if ($item['kind'] === 'index') {
             /* translators: %s: page path */
             return sprintf(__('Search shows %s once it can find it', 'seoprostats'), $page);
+        }
+        if ($item['kind'] === 'target' && $item['finding'] === 'wrong_page') {
+            /* translators: 1: page path, 2: search query */
+            return sprintf(__('%1$s becomes the page search shows for “%2$s”', 'seoprostats'), $page, $query);
+        }
+        if ($item['kind'] === 'target') {
+            /* translators: 1: page path, 2: search query */
+            return sprintf(__('A better page and links lift %1$s for “%2$s”', 'seoprostats'), $page, $query);
         }
         if ($item['kind'] === 'refresh' && $item['finding'] === 'merge') {
             /* translators: 1: page path, 2: the other page's path */

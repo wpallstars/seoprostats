@@ -365,6 +365,29 @@ final class SEOProStats_Demo {
         '/category/performance/'  => array(1, 10),
     );
 
+    /**
+     * The demo's search targets (SEOProStats_Targets): query, page meant
+     * for it ('' for none chosen yet), priority, status. Two show with
+     * another page (the plugin search shows the front page for, the TTFB
+     * search the Core Web Vitals post has taken over), three high-priority
+     * ones are in striking distance (one with no page chosen), one is won,
+     * one retired, one ranks as meant, and one search is not shown yet.
+     */
+    const TARGETS = array(
+        array('wordpress analytics plugin', '/features/', 85, 'targeted'),
+        array('reduce ttfb wordpress', '/blog/speed-up-wordpress/', 75, 'targeted'),
+        array('privacy friendly analytics', '/blog/privacy-friendly-analytics/', 90, 'targeted'),
+        array('site statistics plugin', '', 80, 'candidate'),
+        array('cookieless analytics wordpress', '/blog/privacy-friendly-analytics/', 70, 'live'),
+        array('why did my rankings drop', '/blog/what-changed-after-an-update/', 60, 'live'),
+        array('seo pro stats pricing', '/pricing/', 100, 'won'),
+        array('gdpr analytics without consent', '/blog/privacy-friendly-analytics/', 30, 'retired'),
+        array('wordpress uptime monitoring', '', 40, 'candidate'),
+    );
+
+    /** Search targets made by this version of the demo; older ones are made again. */
+    const TARGETS_VERSION = 1;
+
     /** Content audit facts made by this version of the demo; older ones are made again. */
     const AUDIT_VERSION = 2;
 
@@ -673,11 +696,13 @@ final class SEOProStats_Demo {
         require_once __DIR__ . '/class-seoprostats-goals.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
         require_once __DIR__ . '/class-seoprostats-indexation.php';
+        require_once __DIR__ . '/class-seoprostats-targets.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
             SEOProStats_Goals::forget();
             SEOProStats_Audit::reset();
             SEOProStats_Indexation::reset();
+            SEOProStats_Targets::reset();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
@@ -864,6 +889,13 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::audit();
         }
+        // The search targets (again when they change).
+        $state = self::state();
+        if (!$more && (empty($state['targets']) || (int) $state['targets'] < self::TARGETS_VERSION)) {
+            $state['targets'] = self::TARGETS_VERSION;
+            update_option(self::OPTION, $state, false);
+            self::targets();
+        }
         // Then the decision queue: one item accepted, one done (once).
         $state = self::state();
         if (!$more && empty($state['queue'])) {
@@ -913,6 +945,19 @@ final class SEOProStats_Demo {
             $first[$path] = time() - (int) $info[1] * DAY_IN_SECONDS;
         }
         SEOProStats_Indexation::write_sitemap($paths, true, true, $first);
+    }
+
+    /**
+     * Write the demo's search targets (TARGETS), replacing any; on the demo
+     * tables (called inside run()).
+     */
+    private static function targets() {
+        require_once __DIR__ . '/class-seoprostats-targets.php';
+        $rows = array();
+        foreach (self::TARGETS as $target) {
+            $rows[] = array('query' => $target[0], 'page' => $target[1], 'priority' => (string) $target[2], 'status' => $target[3]);
+        }
+        SEOProStats_Targets::import($rows, 'demo', true);
     }
 
     /**

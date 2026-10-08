@@ -47,6 +47,9 @@ import {
 	type SearchAnswer,
 	type SearchKind,
 	type StatsAnswer,
+	type TargetFilter,
+	type TargetsAnswer,
+	type TargetsImportAnswer,
 	type TimeseriesAnswer,
 	type ViewState,
 } from '@seoprostats/core';
@@ -292,6 +295,38 @@ export function useIndexation(scope: SearchScope, kind: IndexationKind, limit = 
 		placeholderData: keepPreviousData,
 		enabled,
 	});
+}
+
+/** Search targets: each with its position, clicks and the page that ranks; filters do not apply (targets are searches). */
+export function useTargets(scope: SearchScope, status: TargetFilter, limit = 50, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, filters: [] }), ...engineArg(scope), status, limit, offset }, data);
+	return useQuery({
+		queryKey: ['targets', args],
+		queryFn: () => get<TargetsAnswer>('targets', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** After targets change: the list, and the plan (its target items). */
+function refreshTargets(): void {
+	void queryClient.invalidateQueries({ queryKey: ['targets'] });
+	void queryClient.invalidateQueries({ queryKey: ['queue'] });
+}
+
+/** Import targets from text (CSV, tab-separated, JSON or the aidevops TOON table) (administrators). */
+export async function importTargets(data: DataSet, text: string, replace: boolean): Promise<TargetsImportAnswer> {
+	const done = await send<TargetsImportAnswer>('targets', 'POST', { text, replace, data });
+	refreshTargets();
+	return done;
+}
+
+/** Delete targets by their searches, or every target (administrators). */
+export async function deleteTargets(data: DataSet, queries: string[], all = false): Promise<{ deleted: number; total: number }> {
+	const done = await send<{ deleted: number; total: number }>('targets', 'DELETE', { queries, all, data });
+	refreshTargets();
+	return done;
 }
 
 /** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first). */
