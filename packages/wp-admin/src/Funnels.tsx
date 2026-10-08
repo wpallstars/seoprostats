@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, TextControl } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { FUNNEL_STEPS, formatNumber, formatPercent, type FunnelRow, type GoalStep } from '@seoprostats/core';
-import { errorMessage, saveFunnel, useFunnels } from './api';
+import { errorMessage, saveFunnel, shareAccess, useFunnels } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import type { ViewProps } from './App';
@@ -217,9 +217,11 @@ export function Funnels(props: ViewProps) {
 					<CardBody className="spst-empty">
 						<p>{__('A funnel follows visits through steps in order, such as product, cart, checkout and thank-you, and shows where they leave.', 'seoprostats')}</p>
 						<p>
-							{boot.canManage
-								? __('Add one with 2 to 12 steps.', 'seoprostats')
-								: __('An administrator can add funnels here.', 'seoprostats')}
+							{shareAccess.token
+								? __('No funnels are set up on this site yet.', 'seoprostats')
+								: boot.canManage
+									? __('Add one with 2 to 12 steps.', 'seoprostats')
+									: __('An administrator can add funnels here.', 'seoprostats')}
 						</p>
 					</CardBody>
 				</Card>

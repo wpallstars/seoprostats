@@ -16,12 +16,28 @@ if (!defined('ABSPATH')) {
 final class SEOProStats_Shares {
 
     const OPTION = 'seoprostats_shares';
-    const SECTIONS = array('overview', 'goals', 'clicks');
+    /** Every dashboard tab can be a section; Search once per engine. */
+    const SECTIONS = array('overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes');
+    /**
+     * The reads each section makes. Search leaves out Plan and Experiments
+     * (the owner's work list and notes), so a shared Search shows Rankings,
+     * Opportunities, Audit and Content.
+     */
     const REPORTS = array(
-        'overview' => array('stats', 'timeseries', 'breakdown', 'markers', 'realtime'),
-        'goals'    => array('goals'),
-        'clicks'   => array('clicks'),
+        'overview'   => array('stats', 'timeseries', 'breakdown', 'markers', 'realtime'),
+        'search'     => array('search', 'markers', 'opportunities', 'audit', 'links', 'content'),
+        'goals'      => array('goals'),
+        'funnels'    => array('funnels'),
+        'properties' => array('properties', 'breakdown'),
+        'clicks'     => array('clicks', 'breakdown'),
+        'changes'    => array('changes', 'breakdown'),
     );
+    /** Search reports a shared Search section shows. */
+    const SEARCH_REPORTS = array('rankings', 'opportunities', 'audit', 'content');
+    /** Sections whose data only page filters can narrow (search data and the change log have no visits). */
+    const PAGE_ONLY = array('search', 'changes');
+    /** Breakdowns left out when a report hides site search terms and referrer addresses. */
+    const SENSITIVE_DIMENSIONS = array('search', 'no_results', 'source', 'utm_term');
 
     /** @return array Stored shares, bounded to 50. */
     public static function all() {
@@ -50,8 +66,8 @@ final class SEOProStats_Shares {
         if (!is_array($view) || !isset($view['view']) || !in_array($view['view'], self::SECTIONS, true)) {
             return self::invalid();
         }
-        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page') as $key) {
-            if (isset($view[$key]) && (!is_string($view[$key]) || strlen($view[$key]) > 2048)) {
+        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page', 'query', 'key', 'event', 'engine', 'report', 'tab', 'chart', 'sort', 'goal', 'finding', 'links') as $key) {
+            if (isset($view[$key]) && (!is_string($view[$key]) || strlen($view[$key]) > 2048 || preg_match('/[\x00-\x1f\x7f]/', $view[$key]) || $view[$key] !== trim($view[$key]))) {
                 return self::invalid();
             }
         }
@@ -83,11 +99,24 @@ final class SEOProStats_Shares {
                 return self::invalid();
             }
             $out['kind'] = $kind;
-            $page = $view['page'] ?? '';
-            if ($page !== trim($page) || preg_match('/[\x00-\x1f\x7f]/', $page)) {
-                return self::invalid();
+            $out['page'] = $view['page'] ?? '';
+        }
+        if ($out['view'] === 'changes' && ($view['page'] ?? '') !== '') {
+            $out['page'] = $view['page'];
+        }
+        if ($out['view'] === 'properties') {
+            foreach (array('key', 'event') as $key) {
+                if (($view[$key] ?? '') !== '') {
+                    $out[$key] = $view[$key];
+                }
             }
-            $out['page'] = $page;
+        }
+        if ($out['view'] === 'search') {
+            $search = self::search_view($view);
+            if (is_wp_error($search)) {
+                return $search;
+            }
+            $out += $search;
         }
         if ($out['view'] === 'overview' && isset($view['tabs']) && is_array($view['tabs'])) {
             $tabs = array(
@@ -106,6 +135,124 @@ final class SEOProStats_Shares {
             }
         }
         return $out;
+    }
+
+    /**
+     * A Search section's choices: its engine, and the report (of those a
+     * shared Search shows) with that report's choices. Defaults left out,
+     * as the address leaves them out.
+     *
+     * @param array $view Checked strings.
+     * @return array|WP_Error
+     */
+    private static function search_view(array $view) {
+        $out    = array();
+        $engine = $view['engine'] ?? 'google';
+        if (!isset(SEOProStats_Search::ENGINES[$engine])) {
+            return self::invalid();
+        }
+        if ($engine !== 'google') {
+            $out['engine'] = $engine;
+        }
+        $report = in_array($view['report'] ?? '', self::SEARCH_REPORTS, true) ? $view['report'] : 'rankings';
+        if ($report !== 'rankings') {
+            $out['report'] = $report;
+        }
+        $kinds = $engine === 'google' ? SEOProStats_Search::KINDS : array('queries', 'pages');
+        if (in_array($view['tab'] ?? '', $kinds, true) && $view['tab'] !== 'queries') {
+            $out['tab'] = $view['tab'];
+        }
+        if (in_array($view['chart'] ?? '', array('impressions', 'ctr', 'position'), true)) {
+            $out['chart'] = $view['chart'];
+        }
+        foreach (array('page', 'query') as $key) {
+            if (($view[$key] ?? '') !== '') {
+                $out[$key] = $view[$key];
+            }
+        }
+        if ($report === 'content' && in_array($view['sort'] ?? '', array_diff(SEOProStats_Content::SORTS, array('clicks')), true)) {
+            $out['sort'] = $view['sort'];
+        }
+        if ($report === 'audit') {
+            if (in_array($view['finding'] ?? '', SEOProStats_Audit::FINDINGS, true)) {
+                $out['finding'] = $view['finding'];
+            }
+            if (in_array($view['links'] ?? '', array_diff(SEOProStats_Links::KINDS, array('orphans')), true)) {
+                $out['links'] = $view['links'];
+            }
+        }
+        if (in_array($report, array('content', 'audit'), true) && ($view['goal'] ?? '') !== '') {
+            $out['goal'] = $view['goal'];
+        }
+        return $out;
+    }
+
+    /**
+     * What makes a section one of a kind in a report: its tab, and for
+     * Search its engine.
+     *
+     * @param array $view Checked view.
+     * @return string
+     */
+    public static function section_key(array $view) {
+        return $view['view'] === 'search' ? 'search:' . ($view['engine'] ?? 'google') : $view['view'];
+    }
+
+    /**
+     * The sections with something to show on the live data, in tab order
+     * (section_key() names): a new report starts with these. Each check
+     * reads at most one row, or the stored goal and funnel definitions.
+     *
+     * @return string[]
+     */
+    public static function sections_with_data() {
+        global $wpdb;
+        $any = static function ($name) use ($wpdb) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table; one row by the first index entry.
+            return (bool) $wpdb->get_var($wpdb->prepare('SELECT 1 FROM %i LIMIT 1', SEOProStats_Schema::table($name)));
+        };
+        $before = SEOProStats_Schema::use_set('live');
+        try {
+            $out = array();
+            if ($any('daily') || $any('sessions')) {
+                $out[] = 'overview';
+            }
+            foreach (SEOProStats_Search::ENGINES as $engine => $code) {
+                if (SEOProStats_Search::bounds($code)['to'] !== '') {
+                    $out[] = 'search:' . $engine;
+                }
+            }
+            if (SEOProStats_Goals::goals()) {
+                $out[] = 'goals';
+            }
+            if (SEOProStats_Goals::funnels()) {
+                $out[] = 'funnels';
+            }
+            foreach (array('props' => 'properties', 'clicks' => 'clicks', 'changes' => 'changes') as $table => $section) {
+                if ($any($table)) {
+                    $out[] = $section;
+                }
+            }
+            return $out;
+        } finally {
+            SEOProStats_Schema::use_set($before);
+        }
+    }
+
+    /**
+     * Whether locked filters only choose pages (all that search data and
+     * the change log can be narrowed by).
+     *
+     * @param array $locked Parsed filters.
+     * @return bool
+     */
+    public static function page_locks_only(array $locked) {
+        foreach ($locked as $filter) {
+            if (($filter['dimension'] ?? '') !== 'page') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -154,9 +301,16 @@ final class SEOProStats_Shares {
             }
         }
         unset($view);
+        $keys = array_map(array(__CLASS__, 'section_key'), $views);
+        if (count(array_unique($keys)) !== count($keys)) {
+            return new WP_Error('seoprostats_invalid_share', __('Each section can be in a shared report once.', 'seoprostats'), array('status' => 400));
+        }
         $locked = self::filters($raw['locked_filters'] ?? array());
         if (is_wp_error($locked)) {
             return $locked;
+        }
+        if (!self::page_locks_only($locked) && array_intersect(array_column($views, 'view'), self::PAGE_ONLY)) {
+            return new WP_Error('seoprostats_invalid_share', __('Search and Changes can only be locked to pages. Remove the other locked filters, or those sections.', 'seoprostats'), array('status' => 400));
         }
         $expires = (int) ($raw['expires'] ?? 0);
         if ($expires && $expires <= time()) {
@@ -255,11 +409,20 @@ final class SEOProStats_Shares {
         return $out;
     }
 
-    /** @return array Branding defaults from the shared reports settings tab. */
+    /**
+     * Branding defaults from the shared reports settings tab. With Agency
+     * branding off, the agency fields stay empty whatever is stored.
+     *
+     * @return array
+     */
     public static function defaults() {
-        $out = array();
+        $brand = (bool) SEOProStats_Settings::get('share_brand');
+        $out   = array();
         foreach (array('agency', 'website', 'byline', 'agency_logo', 'accent', 'mode', 'credit') as $key) {
             $out[$key] = SEOProStats_Settings::get('share_' . $key);
+        }
+        if (!$brand) {
+            $out = array_merge($out, array('agency' => '', 'website' => '', 'byline' => '', 'agency_logo' => 0));
         }
         return $out;
     }

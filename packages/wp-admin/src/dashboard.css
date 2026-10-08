@@ -1157,6 +1157,265 @@ code.spst-meta {
 	padding-top: 8px;
 }
 
+/* Groups in an editor: a heading line, then their fields at the form's spacing. */
+.spst-fieldset {
+	display: grid;
+	gap: 16px;
+	min-width: 0;
+	margin: 0;
+	padding: 16px 0 0;
+	border: 0;
+	border-top: 1px solid #dcdcde;
+}
+
+.spst-fieldset > legend {
+	float: left;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	font-size: 14px;
+	font-weight: 600;
+}
+
+/* Two short fields side by side, their labels on one line. */
+.spst-form__row {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 16px;
+	align-items: start;
+}
+
+.spst-form .components-base-control__help,
+.spst-form .components-checkbox-control__help {
+	margin: 4px 0 0;
+}
+
+/* Share: the sections, in order. */
+.spst-share-sections {
+	display: grid;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	counter-reset: spst-section;
+}
+
+.spst-share-sections__item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0;
+	padding: 4px;
+	border: 1px solid #dcdcde;
+	border-radius: 2px;
+	background: #fff;
+	counter-increment: spst-section;
+}
+
+/* The one being moved (keyboard or pointer). */
+.spst-share-sections__item.is-moving {
+	border-color: var(--spst-accent);
+	background: var(--spst-accent-soft);
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.spst-share-sections.is-dragging,
+.spst-share-sections.is-dragging * {
+	cursor: grabbing;
+	user-select: none;
+}
+
+.spst-share-sections__name {
+	flex: 1;
+	min-width: 0;
+}
+
+.spst-share-sections__name::before {
+	content: counter(spst-section) ". ";
+	color: #646970;
+}
+
+/* The drag handle: a 32px target, grabbed by mouse, pen or touch, or Space from the keyboard. */
+.spst-share-sections__handle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 32px;
+	height: 32px;
+	padding: 0;
+	border: 0;
+	border-radius: 2px;
+	background: none;
+	color: #50575e;
+	fill: currentColor;
+	cursor: grab;
+	touch-action: none;
+}
+
+.spst-share-sections__handle:hover:not(:disabled) {
+	color: var(--spst-accent);
+	background: var(--spst-accent-soft);
+}
+
+.spst-share-sections__handle:focus-visible {
+	outline: 2px solid var(--spst-accent);
+	outline-offset: 0;
+}
+
+.spst-share-sections__handle[aria-pressed="true"] {
+	color: var(--spst-accent);
+}
+
+.spst-share-sections__handle:disabled {
+	cursor: default;
+	opacity: 0.4;
+}
+
+/* Share: a logo from the Media Library. */
+.spst-share-logo {
+	display: grid;
+	gap: 8px;
+	justify-items: start;
+}
+
+.spst-share-logo__label,
+.spst-share-accent__label {
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.4;
+	text-transform: uppercase;
+}
+
+.spst-share-logo__image {
+	max-width: 160px;
+	max-height: 64px;
+	padding: 4px;
+	border: 1px solid #dcdcde;
+	border-radius: 2px;
+	object-fit: contain;
+}
+
+.spst-share-logo__actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.spst-share-logo__help {
+	margin: 0;
+	color: #757575;
+	font-size: 12px;
+	font-style: normal;
+}
+
+/* Share: the accent, from the site's colours. */
+.spst-share-accent {
+	display: grid;
+	gap: 8px;
+}
+
+.spst-share-accent__swatches {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.spst-share-accent__swatch {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+	cursor: pointer;
+}
+
+.spst-share-accent__swatch[aria-pressed="true"] {
+	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2), 0 0 0 2px #fff, 0 0 0 4px #1d2327;
+}
+
+.spst-share-accent__swatch:focus-visible {
+	outline: 2px solid var(--wp-admin-theme-color, #2271b1);
+	outline-offset: 4px;
+}
+
+.spst-share-accent__other {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	margin-inline-start: 8px;
+}
+
+.spst-share-accent__other input {
+	width: 40px;
+	height: 28px;
+	padding: 0 2px;
+	cursor: pointer;
+}
+
+/* Share: the private link, shown once. */
+.spst-share-link.components-notice {
+	margin: 0 0 16px;
+}
+
+.spst-share-link .components-notice__content {
+	display: grid;
+	gap: 8px;
+	margin: 4px 16px 4px 0;
+}
+
+.spst-share-link p {
+	margin: 0;
+}
+
+.spst-share-link__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.spst-share-link__url.code {
+	flex: 1 1 320px;
+	min-width: 0;
+	min-height: 36px;
+	margin: 0;
+	padding: 0 8px;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 13px;
+	background: #fff;
+	border: 1px solid #8c8f94;
+	border-radius: 2px;
+}
+
+/* Shared reports: the list. */
+.spst-shares {
+	display: grid;
+	gap: 16px;
+	margin-top: 16px;
+}
+
+.spst-shares > .spst-note,
+.spst-shares > p {
+	margin: 0;
+}
+
+.spst-shares__table td {
+	vertical-align: top;
+}
+
+.spst-badge {
+	display: inline-block;
+	margin-inline-start: 8px;
+	padding: 0 6px;
+	font-size: 12px;
+	line-height: 20px;
+	color: #50575e;
+	background: #f0f0f1;
+	border-radius: 2px;
+}
+
 .spst-step-fields {
 	display: grid;
 	grid-template-columns: minmax(140px, 1fr) 2fr;

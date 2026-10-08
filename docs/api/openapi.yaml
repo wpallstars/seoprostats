@@ -43,7 +43,7 @@ paths:
       summary: Administrator-only shared reports and branding defaults; never hashes or full links.
       responses:
         '200':
-          description: Shares (at most 50), with id, created, expires, last_opened, opens, revoked and protected; defaults holds the branding for new shares.
+          description: Shares (at most 50), with id, created, expires, last_opened, opens, revoked and protected; defaults holds the branding for new shares; logos maps each logo's attachment id to its image address; engines lists the search engines with data (a shared report can have a Search section for each); sections lists the section keys (overview, search:google, search:bing, goals, funnels, properties, clicks, changes) that have live data, in tab order, which a new report starts with.
         '403':
           $ref: '#/components/responses/Forbidden'
     post:
@@ -133,7 +133,7 @@ paths:
                 password: {type: string, maxLength: 256, default: ''}
       responses:
         '200':
-          description: Public share fields, views, branding, home/site_name/logo_url/agency_logo_url and a one-hour signed unlock grant. Keep the grant in sessionStorage only. No password or bearer hashes, owner IDs or user information. Private/no-store, noindex/nofollow, no-referrer headers.
+          description: Public share fields, views, branding, home/site_name/logo_url/agency_logo_url, hidden_dimensions (the breakdowns this report leaves out, so readers see no empty tabs for them) and a one-hour signed unlock grant. Keep the grant in sessionStorage only. No password or bearer hashes, owner IDs or user information. Private/no-store, noindex/nofollow, no-referrer headers.
         '403':
           description: Uniform unavailable response for unknown, revoked, expired, password-protected or throttled shares (five unlock attempts per minute per secret).
 
@@ -150,12 +150,12 @@ paths:
         - name: section
           in: path
           required: true
-          schema: {type: string, enum: [overview, goals, clicks]}
+          schema: {type: string, enum: [overview, search, goals, funnels, properties, clicks, changes]}
         - name: report
           in: path
           required: true
-          schema: {type: string, enum: [stats, timeseries, breakdown, markers, realtime, goals, clicks]}
-          description: Overview allows stats/timeseries/breakdown/markers/realtime; Goals allows goals; Clicks allows clicks. The section must be saved in this share.
+          schema: {type: string, enum: [stats, timeseries, breakdown, markers, realtime, search, opportunities, audit, links, content, goals, funnels, properties, clicks, changes]}
+          description: Overview allows stats/timeseries/breakdown/markers/realtime; Search allows search/markers/opportunities/audit/links/content, for the engines of its saved Search sections only; Goals allows goals; Funnels allows funnels; Properties allows properties/breakdown; Clicks allows clicks/breakdown; Changes allows changes/breakdown. The section must be saved in this share. Other query arguments are those of the report's own route, checked the same way; markers and changes are a public projection (no users, notes, old/new values, or plugin, theme and setting names).
         - name: X-Seoprostats-Unlock
           in: header
           schema: {type: string}
@@ -2119,10 +2119,15 @@ components:
           maxItems: 10
           items:
             type: object
-            description: Saved ViewState; valid section choices are normalized as the dashboard address reader normalizes them.
+            description: Saved ViewState; valid section choices are normalized as the dashboard address reader normalizes them. Each section once (Search once per engine); with Search or Changes, locked_filters can only choose pages.
             required: [view]
             properties:
-              view: {type: string, enum: [overview, goals, clicks]}
+              view: {type: string, enum: [overview, search, goals, funnels, properties, clicks, changes]}
+              engine: {type: string, enum: [google, bing], description: Search only; google when left out.}
+              report: {type: string, enum: [rankings, opportunities, audit, content], description: Search only; the report it opens on.}
+              key: {type: string, description: Properties only.}
+              event: {type: string, description: Properties only.}
+              query: {type: string, description: Search only.}
               range: {type: string, default: '30d'}
               from: {type: string, format: date}
               to: {type: string, format: date}

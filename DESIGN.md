@@ -138,7 +138,15 @@ with an explicit toggle. Text and chart accents must meet 4.5:1 against
 the active surface; otherwise use the shell's readable fallback. Components
 read mode variables, not fixed mode colours. Controls wrap at 390 px and
 tables scroll inside cards; print hides interactive controls while keeping
-the report, locked-filter description and branding.
+the report, locked-filter description and branding. Paper is always light,
+charts fit the page width and the period's changes print as a dated list.
+A click on a report button leaves no focus ring; the keyboard still shows one.
+
+The share editor is a modal form: fieldsets with legends separated by a
+1px border, `gap` spacing on WordPress's 4px scale, short fields two to a
+row, and every disabled control with a line saying why. The private link
+shows in a success notice with a full-width read-only address, Copy and
+Open (new window).
 
 - **Primary (`#2271b1`)**: the admin colour scheme's accent (`--spst-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's.
 - **Secondary (`#50575e`)**: muted text, axis labels, captions (`--spst-muted`).
@@ -152,7 +160,7 @@ the report, locked-filter description and branding.
 
 ### Header
 
-The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). On the statistics screen the bar's right holds Share (when offered), the live count, the Live/Demo switch, then the period and comparison; on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load.
+The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). On the statistics screen the bar's right holds the live count, the Live/Demo switch, the period and comparison, then Share (on every tab, for administrators; with demo data it shows but cannot be pressed, so screenshots show every control); on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load.
 
 ### Markers
 

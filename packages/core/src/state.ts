@@ -41,11 +41,29 @@ import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
 export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'] as const;
 export type View = (typeof VIEWS)[number];
-export const SHARE_VIEWS: readonly View[] = ['overview', 'goals', 'clicks'];
+/** Every tab can be shared; Search once per engine. */
+export const SHARE_VIEWS: readonly View[] = VIEWS;
+/** The Search reports a shared report shows (not Plan or Experiments: the owner's work list and notes). */
+export const SHARE_SEARCH_REPORTS: readonly SearchReport[] = ['rankings', 'opportunities', 'audit', 'content'];
 
 /** Normalize saved public views with exactly the address reader's rules. */
 export function shareView(state: ViewState): ViewState | null {
-    return SHARE_VIEWS.includes(state.view) ? parseHash(buildHash(state)) : null;
+    if (!SHARE_VIEWS.includes(state.view)) {
+        return null;
+    }
+    const view = parseHash(buildHash(state));
+    if (view.report && !SHARE_SEARCH_REPORTS.includes(view.report)) {
+        delete view.report;
+        delete view.status;
+        delete view.change;
+        delete view.goal;
+    }
+    return view;
+}
+
+/** What makes a section one of a kind in a shared report: its tab, and for Search its engine. */
+export function shareSectionKey(state: Pick<ViewState, 'view' | 'engine'>): string {
+    return state.view === 'search' ? `search:${state.engine ?? 'google'}` : state.view;
 }
 
 /** Overview's cards (stable names) and their tabs; the first tab is the default. */

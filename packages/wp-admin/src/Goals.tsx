@@ -20,7 +20,7 @@ import {
 	type Operator,
 	type ViewState,
 } from '@seoprostats/core';
-import { deleteDefinition, errorMessage, saveGoal, useGoals } from './api';
+import { deleteDefinition, errorMessage, saveGoal, shareAccess, useGoals } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import type { ViewProps } from './App';
@@ -120,9 +120,11 @@ export function Goals({ state, update }: ViewProps) {
 						<div className="spst-empty">
 							<p>{__('A goal is a page or event that counts as a conversion: a thank-you page, a sign-up, a purchase.', 'seoprostats')}</p>
 							<p>
-								{boot.canManage
-									? __('Add one to see how many visits reach it, and what they are worth.', 'seoprostats')
-									: __('An administrator can add goals here.', 'seoprostats')}
+								{shareAccess.token
+									? __('No goals are set up on this site yet.', 'seoprostats')
+									: boot.canManage
+										? __('Add one to see how many visits reach it, and what they are worth.', 'seoprostats')
+										: __('An administrator can add goals here.', 'seoprostats')}
 							</p>
 						</div>
 					)}

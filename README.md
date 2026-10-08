@@ -73,13 +73,20 @@ The easiest way to do all of this is with [aidevops](https://aidevops.sh): open 
 
 ### Shared reports
 
-Administrators can choose **Share** beside the period controls in Overview,
-Goals or Clicks, or open **Shared reports** in the menu. Save one or more
-views in the order the reader should see them, an optional note, password
-and expiry. Starting filters can be locked on every report; readers may
-add filters, change period and comparison, and switch tabs but cannot
-remove the server's locks. An optional last-N-days limit also covers the
-comparison period.
+Administrators can choose **Share** after the period controls on any tab,
+or open **Shared reports** in the menu. A report has one or more sections
+in the order the reader should see them: Overview, Search (once for each
+engine: Rankings, Opportunities, Audit and Content, never the Plan or
+Experiments), Goals, Funnels, Properties, Clicks and Changes, each section
+once. A new report starts with every section that has data, the tab you
+were on first; remove any, or drag them into order by their handles (or
+with the keyboard: Tab to a handle, Space, the arrow keys, Space again;
+Escape cancels). Add an optional note, password and expiry, and edit a report later
+from the list. Starting filters can be locked on every section; readers
+may add filters, change period and comparison, and switch tabs but cannot
+remove the server's locks. Search data and the change log have no visits,
+so a report with Search or Changes can lock pages only. An optional limit
+on the days readers can look back also covers the comparison period.
 
 Copy the private link when it is first shown: only its hash is stored.
 If lost, **Make a new link** gives another and invalidates the old one.
@@ -92,17 +99,31 @@ tracker. It is not indexed and cannot be cached publicly. Reports use live
 data only, never demo data, editors, settings or user information. Hide
 search terms and referrer addresses when sharing outside the business.
 Realtime is omitted for locked shares because its existing report is
-site-wide. Chart markers contain only the change kind, time and allowed
-page, never names of users, configuration values or private notes; visit
-filters such as a campaign or country omit the changes lane.
+site-wide. Chart markers and the Changes section contain only the change
+kind, time and allowed page, with a published page's title or a search
+engine update's name, never names of users, plugins or themes,
+configuration or before-and-after values, or private notes; visit filters
+such as a campaign or country omit changes. Printed reports list the
+period's changes by date under the charts.
 
-Set agency branding defaults under **Settings → Shared reports**, then
-override them per report: title, local Media Library logo IDs, agency name,
-website, byline, accent, appearance and optional plugin credit. Otherwise
-the header uses the site's logo, Site Icon and site name. Light, dark and
-system appearances include a toggle; accents that fail AA text contrast
-fall back to a readable colour. **Print / Save as PDF** uses the browser's
-print dialog with a clean branded report.
+Set defaults for new reports under **Settings → Shared reports**: **Agency
+branding** (agency name, website, byline and a Media Library logo, at the
+foot of the report), **Report colours** (an accent picked from the site's
+theme, Site Editor or Customizer colours, or any other, and whether the
+report opens light, dark or following the reader's device) and the
+"Statistics logged by SEO Pro Stats for WordPress" credit. Each report can
+override them: title, local Media Library logo IDs, agency name, website,
+byline, accent, appearance and credit. Otherwise the header uses the
+site's logo, Site Icon and site name. Readers can switch between light and
+dark; an accent too light or too dark for AA text contrast on the page is
+darkened or lightened in its own hue until it is readable.
+**Share** sits after the period controls; with demo data it shows but
+cannot be pressed, as only live statistics are shared. **Print or save as
+PDF** (or the browser's own print shortcut) first asks which sections to
+print, then prints each with all of its tabs, one section per page start,
+for the period on screen, through the browser's print dialog as a clean
+branded report. Breakdowns a report hides (search terms and referrer
+addresses) show no tab.
 
 Scripts manage shares through `/shares` (administrators) or
 `wp seoprostats share list|create|revoke|renew --user=<administrator>`.

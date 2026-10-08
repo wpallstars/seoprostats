@@ -235,6 +235,10 @@ final class SEOProStats_Dashboard {
             SEOProStats_Admin_Manager::enqueue_header();
             // The app keeps its own width (dashboard.css), not the settings screen's.
             wp_add_inline_style('seoprostats-header', '#spst-dashboard.spst-main{max-width:none}');
+            // Share → logos: WordPress's Media Library, for those who share.
+            if (current_user_can('manage_options')) {
+                wp_enqueue_media();
+            }
             self::enqueue_entry('dashboard');
         } elseif ($hook === 'index.php' && current_user_can(SEOProStats_API::CAP)) {
             self::enqueue_entry('widget');
@@ -300,6 +304,12 @@ final class SEOProStats_Dashboard {
             // Live statistics, or the demo data this person switched to.
             'data'         => SEOProStats_Demo::viewing(),
             'demo'         => SEOProStats_Demo::status(),
+            // Share → accent: the site's colours, as Settings offers them.
+            'sharePalette' => $name === 'dashboard' && current_user_can('manage_options') && class_exists('SEOProStats_Share_Settings')
+                ? array_map(static function ($hex, $label) {
+                    return array('color' => $hex, 'name' => $label);
+                }, array_keys(SEOProStats_Share_Settings::palette()), SEOProStats_Share_Settings::palette())
+                : array(),
         );
     }
 

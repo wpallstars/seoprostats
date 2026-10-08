@@ -30,6 +30,8 @@ export interface Boot {
 	/** The data set this person chose to see. */
 	data: DataSet;
 	demo: DemoStatus;
+	/** Dashboard, for those who share: the site's colours offered as a shared report's accent. */
+	sharePalette: { color: string; name: string }[];
 }
 
 declare global {
@@ -49,6 +51,7 @@ export const boot: Boot = {
 	placeWidget: raw.placeWidget ?? false,
 	data: raw.data === 'demo' ? 'demo' : 'live',
 	demo: raw.demo ?? { status: 'none', days: 0, progress: 0, from: null, made: null },
+	sharePalette: raw.sharePalette ?? [],
 };
 
 /** BCP 47 form for Intl (en_GB → en-GB); falls back to the browser's. */

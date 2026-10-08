@@ -14,7 +14,7 @@ import { useEffect, useId, useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, toggleFilterValue, type ChangeGroup, type Marker } from '@seoprostats/core';
-import { addNote, deleteNote, errorMessage, useBreakdown, useChanges } from './api';
+import { addNote, deleteNote, errorMessage, shareAccess, useBreakdown, useChanges } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import type { ViewProps } from './App';
@@ -194,9 +194,11 @@ export function Changes({ state, update }: ViewProps) {
 					{answer && !rows.length && (
 						<div className="spst-empty">
 							<p>{__('No changes in this period.', 'seoprostats')}</p>
-							<p>
-								{__('Posts and pages published or edited, SEO titles and descriptions, product prices and stock, plugins, themes and settings are logged as they change. Google’s search updates show here too once switched on under Settings → Data.', 'seoprostats')}
-							</p>
+							{!shareAccess.token && (
+								<p>
+									{__('Posts and pages published or edited, SEO titles and descriptions, product prices and stock, plugins, themes and settings are logged as they change. Google’s search updates show here too once switched on under Settings → Data.', 'seoprostats')}
+								</p>
+							)}
 						</div>
 					)}
 					{rows.length > 0 && (

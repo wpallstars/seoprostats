@@ -30,7 +30,9 @@ import {
 	formatMetric,
 	SEARCH_METRICS,
 	SEARCH_REPORTS,
+	SHARE_SEARCH_REPORTS,
 	type Marker,
+	type SearchAnswer,
 	type SearchEngine,
 	type SearchKind,
 	type SearchMetricKey,
@@ -40,6 +42,7 @@ import {
 } from '@seoprostats/core';
 import { errorMessage, useMarkers, useSearch } from './api';
 import { locale } from './boot';
+import { usePrintAll } from './printAll';
 import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
@@ -125,9 +128,11 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 }
 
 /** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
-export function Search(props: ViewProps) {
-	const { state, update } = props;
-	const report: SearchReport = state.report ?? 'rankings';
+export function Search(props: ViewProps & { shared?: boolean }) {
+	const { state, update, shared = false } = props;
+	// A shared report: its section is one engine, without the owner's Plan and Experiments.
+	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
+	const report: SearchReport = reports.includes(state.report ?? 'rankings') ? (state.report ?? 'rankings') : 'rankings';
 	const engine: SearchEngine = state.engine ?? 'google';
 	const id = useId();
 	// The engines with data, as the last answer listed them (every report's answer does).
@@ -148,13 +153,13 @@ export function Search(props: ViewProps) {
 	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-		const at = SEARCH_REPORTS.indexOf(report);
+		const at = reports.indexOf(report);
 		const next = event.key === 'ArrowRight' ? at + 1 : event.key === 'ArrowLeft' ? at - 1 : null;
 		if (next === null) {
 			return;
 		}
 		event.preventDefault();
-		const target = SEARCH_REPORTS[(next + SEARCH_REPORTS.length) % SEARCH_REPORTS.length] ?? 'rankings';
+		const target = reports[(next + reports.length) % reports.length] ?? 'rankings';
 		show(target);
 		document.getElementById(`${id}-${target}`)?.focus();
 	};
@@ -178,7 +183,7 @@ export function Search(props: ViewProps) {
 		<>
 			<div className="spst-subnav">
 			<div className="spst-tabs" role="tablist" aria-label={__('Search', 'seoprostats')}>
-				{SEARCH_REPORTS.map((t) => (
+				{reports.map((t) => (
 					<button
 						key={t}
 						type="button"
@@ -195,15 +200,15 @@ export function Search(props: ViewProps) {
 					</button>
 				))}
 			</div>
-			<EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />
+			{!shared && <EngineSwitch engines={engines} engine={engine} choose={chooseEngine} />}
 			</div>
 			<div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${report}`} className="spst-subpanel">
 				{report === 'rankings' && <Rankings {...reportProps} />}
 				{report === 'opportunities' && <Opportunities {...reportProps} open={open} />}
 				{report === 'audit' && <Audit {...reportProps} open={open} />}
 				{report === 'content' && <Content {...reportProps} open={open} />}
-				{report === 'plan' && <Plan {...reportProps} open={open} />}
-				{report === 'experiments' && <Experiments {...reportProps} />}
+				{!shared && report === 'plan' && <Plan {...reportProps} open={open} />}
+				{!shared && report === 'experiments' && <Experiments {...reportProps} />}
 			</div>
 		</>
 	);
@@ -230,8 +235,8 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
 	useReportEngines(answer, onEngines);
+	const printAll = usePrintAll();
 	const rows = answer?.kind === shown ? answer.rows : [];
-	const top = Math.max(...rows.map((r) => r.clicks), 1);
 	const totals = answer?.totals;
 	const change = answer?.compare?.change;
 	const then = answer?.compare?.totals;
@@ -417,73 +422,130 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 			</Card>
 			{changes.modal}
 
-			<Card className="spst-card is-wide spst-section" size="small">
-				<CardHeader className="spst-card__header">
-					<h2 className="spst-card__title" id={id}>
-						{__('Top searches', 'seoprostats')}
-					</h2>
-					<div className="spst-tabs" role="tablist" aria-labelledby={id}>
-						{kinds.map((k) => (
-							<button
-								key={k}
-								type="button"
-								role="tab"
-								id={`${id}-${k}`}
-								aria-selected={shown === k}
-								aria-controls={`${id}-panel`}
-								tabIndex={shown === k ? 0 : -1}
-								className={`spst-tab${shown === k ? ' is-active' : ''}`}
-								onClick={() => setKind(k)}
-								onKeyDown={onTabKey}
-							>
-								{kindName(k)}
-							</button>
-						))}
-					</div>
-				</CardHeader>
-				<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
-					{!answer && !search.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-					{answer && answer.kind === shown && !rows.length && (
-						<div className="spst-empty">
-							<p>{answer.through ? __('No searches of this kind in this period.', 'seoprostats') : __('No search data yet.', 'seoprostats')}</p>
+			{printAll ? (
+				<PrintedSearches state={state} kinds={kinds} page={page} query={query} choose={choose} />
+			) : (
+				<Card className="spst-card is-wide spst-section" size="small">
+					<CardHeader className="spst-card__header">
+						<h2 className="spst-card__title" id={id}>
+							{__('Top searches', 'seoprostats')}
+						</h2>
+						<div className="spst-tabs" role="tablist" aria-labelledby={id}>
+							{kinds.map((k) => (
+								<button
+									key={k}
+									type="button"
+									role="tab"
+									id={`${id}-${k}`}
+									aria-selected={shown === k}
+									aria-controls={`${id}-panel`}
+									tabIndex={shown === k ? 0 : -1}
+									className={`spst-tab${shown === k ? ' is-active' : ''}`}
+									onClick={() => setKind(k)}
+									onKeyDown={onTabKey}
+								>
+									{kindName(k)}
+								</button>
+							))}
 						</div>
+					</CardHeader>
+					<CardBody className="spst-card__body" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${shown}`}>
+						<SearchTable answer={answer} kind={shown} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+						{answer && rows.length > 0 && <SearchNote engine={engine} />}
+					</CardBody>
+				</Card>
+			)}
+		</>
+	);
+}
+
+/** Paper: every kind of the top searches, each under its name. */
+function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }) {
+	return (
+		<Card className="spst-card is-wide spst-section is-print-all" size="small">
+			<CardHeader className="spst-card__header">
+				<h2 className="spst-card__title">{__('Top searches', 'seoprostats')}</h2>
+			</CardHeader>
+			<CardBody className="spst-card__body">
+				{kinds.map((kind) => (
+					<PrintedKind key={kind} state={state} kind={kind} page={page} query={query} choose={choose} />
+				))}
+				<SearchNote engine={state.engine ?? 'google'} />
+			</CardBody>
+		</Card>
+	);
+}
+
+function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }) {
+	const search = useSearch(state, kind, page, query);
+	return (
+		<section className="spst-print-tab">
+			<h3 className="spst-print-tab__title">{kindName(kind)}</h3>
+			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+		</section>
+	);
+}
+
+/** Why the rows add up to less than the totals, by engine. */
+function SearchNote({ engine }: { engine: SearchEngine }) {
+	return (
+		<p className="spst-note">
+			{engine === 'bing'
+				? __(
+						'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
+						'seoprostats'
+					)
+				: __(
+						'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
+						'seoprostats'
 					)}
-					{rows.length > 0 && (
-						<TableScroll label={kindName(shown)}>
-							<table className={`widefat striped spst-table${search.isFetching ? ' is-refreshing' : ''}`}>
-								<thead>
-									<tr>
-										<th scope="col">{shown === 'queries' ? __('Query', 'seoprostats') : shown === 'pages' ? __('Page', 'seoprostats') : shown === 'countries' ? __('Country', 'seoprostats') : __('Device', 'seoprostats')}</th>
-										{METRIC_ORDER.map((key) => (
-											<th key={key} scope="col" className="num">
-												{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
-											</th>
-										))}
-									</tr>
-								</thead>
-								<tbody>
-									{rows.map((row) => (
-										<Row key={row.id} row={row} kind={shown} top={top} page={page} query={query} choose={choose} />
-									))}
-								</tbody>
-							</table>
-						</TableScroll>
-					)}
-					{answer && rows.length > 0 && (
-						<p className="spst-note">
-							{engine === 'bing'
-								? __(
-										'Bing gives its top pages and queries by week, so a period’s rows cover the weeks that end in it, and they add up to less than the totals. Position is the average place shown, weighted by impressions; a day’s position is its week’s.',
-										'seoprostats'
-									)
-								: __(
-										'Search Console leaves out rare searches to protect searchers, so the rows add up to less than the totals. Position is the average of the highest place a page held each time it was shown.',
-										'seoprostats'
-									)}
-						</p>
-					)}
-				</CardBody>
-			</Card>
+		</p>
+	);
+}
+
+interface SearchTableProps {
+	answer: SearchAnswer | undefined;
+	kind: SearchKind;
+	failed: boolean;
+	fetching: boolean;
+	page: string;
+	query: string;
+	choose: RowProps['choose'];
+}
+
+/** One kind of top searches: loading, empty, or its table. */
+function SearchTable({ answer, kind, failed, fetching, page, query, choose }: SearchTableProps) {
+	const rows = answer?.kind === kind ? answer.rows : [];
+	const top = Math.max(...rows.map((r) => r.clicks), 1);
+	return (
+		<>
+			{!answer && !failed && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
+			{answer && answer.kind === kind && !rows.length && (
+				<div className="spst-empty">
+					<p>{answer.through ? __('No searches of this kind in this period.', 'seoprostats') : __('No search data yet.', 'seoprostats')}</p>
+				</div>
+			)}
+			{rows.length > 0 && (
+				<TableScroll label={kindName(kind)}>
+					<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
+						<thead>
+							<tr>
+								<th scope="col">{kind === 'queries' ? __('Query', 'seoprostats') : kind === 'pages' ? __('Page', 'seoprostats') : kind === 'countries' ? __('Country', 'seoprostats') : __('Device', 'seoprostats')}</th>
+								{METRIC_ORDER.map((key) => (
+									<th key={key} scope="col" className="num">
+										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
+									</th>
+								))}
+							</tr>
+						</thead>
+						<tbody>
+							{rows.map((row) => (
+								<Row key={row.id} row={row} kind={kind} top={top} page={page} query={query} choose={choose} />
+							))}
+						</tbody>
+					</table>
+				</TableScroll>
+			)}
 		</>
 	);
 }

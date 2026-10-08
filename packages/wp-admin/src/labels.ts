@@ -5,9 +5,36 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { __ } from '@wordpress/i18n';
-import type { CompareKey, Dimension, MetricKey, Operator, RangeKey } from '@seoprostats/core';
+import { __, sprintf } from '@wordpress/i18n';
+import type { CompareKey, Dimension, Filter, MetricKey, Operator, RangeKey, View, ViewState } from '@seoprostats/core';
 import { locale } from './boot';
+
+export function viewLabel(view: View): string {
+	const labels: Record<View, string> = {
+		overview: __('Overview', 'seoprostats'),
+		search: __('Search', 'seoprostats'),
+		goals: __('Goals', 'seoprostats'),
+		funnels: __('Funnels', 'seoprostats'),
+		properties: __('Properties', 'seoprostats'),
+		clicks: __('Clicks', 'seoprostats'),
+		changes: __('Changes', 'seoprostats'),
+	};
+	return labels[view];
+}
+
+/** A shared report's section: its tab, and for Search its engine. */
+export function sectionLabel(state: Pick<ViewState, 'view' | 'engine'>): string {
+	if (state.view !== 'search') {
+		return viewLabel(state.view);
+	}
+	/* translators: %s: a search engine, such as Google or Bing. */
+	return sprintf(__('Search: %s', 'seoprostats'), state.engine === 'bing' ? __('Bing', 'seoprostats') : __('Google', 'seoprostats'));
+}
+
+/** A filter as people read it: Country is United Kingdom, Spain. */
+export function filterLabel(filter: Filter): string {
+	return `${dimensionLabel(filter.dimension)} ${operatorLabel(filter.op)} ${filter.values.map((value) => valueLabel(filter.dimension, value)).join(', ')}`;
+}
 
 export function rangeLabel(key: RangeKey): string {
 	const labels: Record<RangeKey, string> = {

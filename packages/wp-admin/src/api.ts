@@ -6,6 +6,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+import { createContext, useContext } from 'react';
 import apiFetch from '@wordpress/api-fetch';
 import { addQueryArgs } from '@wordpress/url';
 import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -55,11 +56,21 @@ const NAMESPACE = '/seoprostats/v1';
 type Args = Record<string, string | string[] | number>;
 
 /** Public-shell transport. Never sends WordPress cookies or an admin nonce. */
-export const shareAccess = { token: '', root: '', unlock: '', section: 'overview' };
+export const shareAccess = { token: '', root: '', unlock: '', section: 'overview', hidden: [] as string[] };
+
+/**
+ * The shared report's section a subtree reads (each request names it), so
+ * printing can show several sections at once. Null outside shared reports.
+ */
+export const ShareSection = createContext<string | null>(null);
+
+/** Report arguments' key for the shared section: part of the cache key, never sent as an argument. */
+const SECTION_ARG = '__section';
 
 export function get<T>(route: string, args: Args = {}): Promise<T> {
     if (shareAccess.token) {
-        return shareFetch<T>(`${shareAccess.section}/${route}`, 'GET', args);
+        const { [SECTION_ARG]: section, ...rest } = args;
+        return shareFetch<T>(`${typeof section === 'string' && section ? section : shareAccess.section}/${route}`, 'GET', rest);
     }
 	return apiFetch<T>({ path: addQueryArgs(`${NAMESPACE}/${route}`, args) });
 }
@@ -88,9 +99,16 @@ function send<T>(route: string, method: 'POST' | 'DELETE', data: Record<string, 
 	return apiFetch<T>({ path: `${NAMESPACE}/${route}`, method, data });
 }
 
-/** Report arguments for a data set: live is the default, so it is left out. */
-function withData(args: Args, data: DataSet): Args {
-	return data === 'demo' ? { ...args, data } : args;
+/** Where a report reads: the data set, and in a shared report its section. */
+interface ReportSource {
+	set: DataSet;
+	section: string | null;
+}
+
+/** Report arguments for a data set (live is the default, so it is left out) and a shared section. */
+function withData(args: Args, data: ReportSource): Args {
+	const out = data.set === 'demo' ? { ...args, data: data.set } : args;
+	return data.section ? { ...out, [SECTION_ARG]: data.section } : out;
 }
 
 export const queryClient = new QueryClient({
@@ -107,10 +125,11 @@ export const queryClient = new QueryClient({
 type Scope = Pick<ViewState, 'range' | 'from' | 'to' | 'filters' | 'compare'>;
 
 /** Reports wait while the chosen demo data is not made yet (they would fail). */
-function useReportData(): { data: DataSet; enabled: boolean } {
-	const data = useDataSet();
+function useReportData(): { data: ReportSource; enabled: boolean } {
+	const set = useDataSet();
+	const section = useContext(ShareSection);
 	const demo = useDemo();
-	return { data, enabled: data === 'live' || demo.data?.status === 'ready' };
+	return { data: { set, section }, enabled: set === 'live' || demo.data?.status === 'ready' };
 }
 
 export function useStats(scope: Scope) {

@@ -28,7 +28,7 @@ import { Properties } from './Properties';
 import { Clicks } from './Clicks';
 import { Changes } from './Changes';
 import { boot } from './boot';
-import { ShareEditor, Shares } from './Shares';
+import { ShareEditor, ShareLink, Shares } from './Shares';
 
 export interface ViewProps {
 	state: ViewState;
@@ -71,7 +71,7 @@ function useNavCurrent(state: ViewState, shown: View | null): void {
 export function App() {
 	const [state, update] = useViewState();
 	const [sharing, setSharing] = useState(false);
-	const [link, setLink] = useState('');
+	const [link, setLink] = useState<{ url: string; name: string } | null>(null);
 	const [shares, setShares] = useState(window.location.hash.startsWith('#/shares'));
 	useEffect(() => {
 		const change = () => setShares(window.location.hash.startsWith('#/shares'));
@@ -103,22 +103,35 @@ export function App() {
 		section = <Changes {...props} />;
 	}
 
-	// Share, the live count, the Live/Demo switch, then the period and
-	// comparison: on the right of the tab bar when the screen has its slot.
+	// The live count, the Live/Demo switch, the period and comparison, then
+	// Share: on the right of the tab bar when the screen has its slot. Share
+	// shows with demo data too (so screenshots show every control), but only
+	// live statistics can be shared, so there it cannot be pressed.
+	const shareable = boot.canManage;
 	const controls = (
 		<>
-			{boot.canManage && data === 'live' && ['overview', 'goals', 'clicks'].includes(state.view) && <Button variant="secondary" onClick={() => setSharing(true)}>{__('Share', 'seoprostats')}</Button>}
 			{!waiting && <Realtime />}
 			<DemoSwitch />
 			{!waiting && <Controls state={state} update={update} />}
+			{shareable && (
+				<Button
+					variant="secondary"
+					disabled={data !== 'live'}
+					accessibleWhenDisabled
+					title={data === 'live' ? undefined : __('Only live statistics can be shared. Switch to Live to share this view.', 'seoprostats')}
+					onClick={() => setSharing(true)}
+				>
+					{__('Share', 'seoprostats')}
+				</Button>
+			)}
 		</>
 	);
 	const slot = document.getElementById('spst-dashboard-controls');
 
 	return (
 		<div className="spst-app">
-			{sharing && <ShareEditor state={state} close={() => setSharing(false)} saved={(share) => setLink(share.url ?? '')} />}
-			{link && <Notice status="success" onRemove={() => setLink('')}><p>{__('Copy this private link now; it is shown only once.', 'seoprostats')}</p><input aria-label="Private link" readOnly value={link} onFocus={(event) => event.currentTarget.select()} /></Notice>}
+			{sharing && <ShareEditor state={state} close={() => setSharing(false)} saved={(share) => setLink(share.url ? { url: share.url, name: share.name } : null)} />}
+			{link && <ShareLink url={link.url} name={link.name} onDismiss={() => setLink(null)} />}
 			{slot ? createPortal(controls, slot) : <div className="spst-toolbar">{controls}</div>}
 
 			<DemoNotice />
