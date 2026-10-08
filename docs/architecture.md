@@ -823,7 +823,7 @@ widget follows the same choice and says when it shows demo data.
 off. Each has at most 10 ordered saved `ViewState` objects, name, note,
 locked filters, last-N-days boundary, expiry, visibility switches, branding
 and open counters. Every dashboard tab can be a section, each once; Search
-once per engine with data (Google, Bing), showing Rankings, Opportunities,
+once per engine with data (Google, Bing; not Combined), showing Rankings, Opportunities,
 Audit and Content (not Targets, Plan or Experiments, the owner's chosen
 searches, work list and notes). Search data and the change log have no visits, so a share with
 Search or Changes can lock only pages. PHP validates against the report engine's range/filter rules and the UI's
@@ -971,7 +971,23 @@ points are by week (`grain` `week`, each point the week's last day,
 lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
-number of days, so days not imported yet never look like a drop. Totals
+number of days, so days not imported yet never look like a drop.
+Rankings, Opportunities and Content also take `engine=all`, **Combined**
+(`SEOProStats_Search::ALL`, not a stored engine code): every engine with
+data (`with_data()`), read with `engine IN (…)` (`engine_where()`; each
+engine is still a range of the primary key `(engine, day, …)`), clicks,
+impressions and `pos_impr` added up, so CTR and position are over all of
+them and a query or page shared by engines (one dictionary id) is one
+row. Its period ends at the earliest of the engines' newest days
+(`span()`), so one engine's lag never looks like a drop; with a weekly
+engine it is whole weeks, and a page's or query's points are by week,
+each day added to the week it falls in, the weeks ending on the period's
+last day. It has no countries or devices. Each engine's days are its own
+(Google's in Pacific time, Bing's in UTC) and are added as they are.
+While fewer than two engines have data, `all` answers as the one with
+data (`report_engine()`), and the dashboard offers Combined only with two
+or more. The other Search reports (Audit, Targets, Plan, Experiments)
+read one engine: Google when Combined is chosen. Totals
 and the points (daily, monthly past 120 days) come from `gsc_totals` for
 the site, `gsc_pages` by `path_day` for a page or pattern, `gsc_queries`
 by `query_day` for a query, and `gsc_pairs` for both; each read names

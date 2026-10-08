@@ -75,7 +75,7 @@ SEO Pro Stats → Search shows them: clicks, impressions, click-through rate and
 
 = Can it show Bing too? =
 
-Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI).
+Yes. Connect Bing Webmaster Tools under Settings → Connections with the API key from Bing Webmaster Tools (Settings → API access); the site must be verified there, which importing it from Google Search Console does at once. The key is stored encrypted. Bing's clicks and impressions for the site are imported by day, and its top pages and search queries by week with their average position: the 16 months Bing keeps on connecting, then each week once Bing gives it, about a week after it ends. Google and Bing buttons switch every Search tab between the two. Bing has no countries or devices, and its periods are whole weeks. Scripts and AI agents choose it with engine=bing (REST API and abilities) or --engine=bing (WP-CLI). A Combined button (engine=all) adds Google and Bing up on Rankings, Opportunities and Content, with the period ending at the earlier of their newest days.
 
 = What does Search → Opportunities show? =
 
