@@ -45,7 +45,7 @@ final class SEOProStats_Content {
      * @param array<string,mixed> $req  From SEOProStats_Query::request().
      * @param string              $sort One of SORTS.
      * @param string              $goal   Goal id; '' for the first goal.
-     * @param string              $engine google or bing (SEOProStats_Search::ENGINES).
+     * @param string              $engine google, bing (SEOProStats_Search::ENGINES) or all (Combined).
      * @return array<string,mixed>
      */
     public static function report(array $req, $sort = 'clicks', $goal = '', $engine = 'google') {
@@ -63,7 +63,7 @@ final class SEOProStats_Content {
             }
         }
         $live   = SEOProStats_Schema::set() === 'live';
-        $engine = SEOProStats_Search::engine_name($engine);
+        $engine = SEOProStats_Search::report_engine($engine);
 
         $key    = array(
             'sort'     => $sort,
@@ -98,12 +98,12 @@ final class SEOProStats_Content {
      * @return array<string,mixed>
      */
     private static function build(array $req, $sort, $goal, $name) {
-        $engine  = SEOProStats_Search::ENGINES[$name];
-        $bounds  = SEOProStats_Search::bounds($engine);
+        $engine  = SEOProStats_Search::codes($name);
+        $bounds  = SEOProStats_Search::span($name);
         $range   = SEOProStats_Query::range($req);
         $ignored = array();
         $pages   = SEOProStats_Search::page_ids($req['filters'], '', $ignored);
-        $weekly  = in_array($name, SEOProStats_Search::WEEKLY, true);
+        $weekly  = SEOProStats_Search::weekly($name);
         $now     = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds, $weekly) : null;
         $limit   = (int) $req['limit'];
         $offset  = (int) $req['offset'];
@@ -173,14 +173,15 @@ final class SEOProStats_Content {
      * Each page's sums in a period: search (c clicks, i impressions, p
      * position × impressions × 100), search visits and conversions.
      *
-     * @param int                      $engine Engine.
+     * @param int[]                    $engine Engine codes (SEOProStats_Search::codes()).
      * @param array<string,mixed>      $days   From SEOProStats_Search::days().
      * @param int[]|null               $pages  Path ids, or null for every page.
      * @param array<string,mixed>|null $goal   Goal, or null.
      * @return array<int,array<string,int>> Path id => sums.
      */
-    private static function period($engine, array $days, $pages, $goal) {
+    private static function period(array $engine, array $days, $pages, $goal) {
         global $wpdb;
+        $on    = SEOProStats_Search::engine_where($engine);
         $in    = $pages === null ? '' : ' IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
         $ids   = $pages === null ? array() : array_map('intval', $pages);
         $key   = $pages === null ? 'PRIMARY' : 'path_day';
@@ -189,8 +190,8 @@ final class SEOProStats_Content {
         $list  = array();
         $zero  = array('c' => 0, 'i' => 0, 'p' => 0, 'visitors' => 0, 'visits' => 0, 'pageviews' => 0, 'bounces' => 0, 'engaged_ms' => 0, 'events' => 0, 'conversions' => 0);
 
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: gsc_pages by its primary key (engine, day) or path_day, daily by dim_val_day; $key is a fixed key name, and $paths and $vals hold only placeholders.
-        $search = $wpdb->get_results($wpdb->prepare("SELECT path_id AS v, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`$key`) WHERE engine = %d AND day >= %s AND day <= %s$paths GROUP BY path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pages'), (int) $engine, (string) $days['day_from'], (string) $days['day_to']), $ids)), ARRAY_A);
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: gsc_pages by its primary key (engine, day) or path_day, daily by dim_val_day; $key is a fixed key name, and $on, $paths and $vals hold only placeholders.
+        $search = $wpdb->get_results($wpdb->prepare("SELECT path_id AS v, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p FROM %i FORCE INDEX (`$key`) WHERE {$on['sql']} AND day >= %s AND day <= %s$paths GROUP BY path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pages')), $on['args'], array((string) $days['day_from'], (string) $days['day_to']), $ids)), ARRAY_A);
         $visits = $wpdb->get_results($wpdb->prepare("SELECT val AS v, SUM(visitors) AS visitors, SUM(visits) AS visits, SUM(pageviews) AS pageviews, SUM(bounces) AS bounces, SUM(engaged_ms) AS engaged_ms, SUM(events) AS events FROM %i WHERE dim = %d$vals AND day >= %s AND day <= %s GROUP BY val ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('daily'), SEOProStats_Rollup::SEARCH_LANDING), $ids, array((string) $days['day_from'], (string) $days['day_to']))), ARRAY_A);
         // phpcs:enable
 

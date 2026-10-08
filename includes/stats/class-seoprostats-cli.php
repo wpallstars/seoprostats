@@ -772,12 +772,13 @@ final class SEOProStats_CLI {
      * : Only this search query (* for any text).
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools; no countries or devices).
+     * : google (Search Console), bing (Bing Webmaster Tools; no countries or devices) or all (Combined: every engine with data added up; no countries or devices).
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
@@ -828,6 +829,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats search queries --page=/pricing/
      *     wp seoprostats search pages --query="seo pro stats" --format=json
      *     wp seoprostats search --engine=bing
+     *     wp seoprostats search --engine=all
      *
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
@@ -928,12 +930,13 @@ final class SEOProStats_CLI {
      * ---
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools).
+     * : google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up).
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
@@ -1811,12 +1814,13 @@ final class SEOProStats_CLI {
      * : ID of the goal counted (wp seoprostats goals); the first when left out.
      *
      * [--engine=<engine>]
-     * : google (Search Console) or bing (Bing Webmaster Tools) for the search figures.
+     * : google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up) for the search figures.
      * ---
      * default: google
      * options:
      *   - google
      *   - bing
+     *   - all
      * ---
      *
      * [--range=<range>]
