@@ -672,7 +672,9 @@ Statistics (`burst-statistics`, read from version 3.7.2).
   returns counts and names. IP addresses (raw or hashed), visitor IDs,
   user agent strings and form values never leave its tables. Texts go
   through the dictionary as the processor stores them. A visit counts on
-  the day it began, as SEO Pro Stats's own do.
+  the day it began, and a bounce is a visit of one pageview, as SEO Pro
+  Stats's own do (the plugin's own bounce flag is not read: Burst sets it
+  later from its cron, by its own rule).
 - **No double counting.** Each day is filled by one source. Only days
   before SEO Pro Stats's own first day (its first own `daily` day, the
   first stored visit, or today) are imported; that first day counts only
@@ -699,7 +701,8 @@ Statistics (`burst-statistics`, read from version 3.7.2).
   imports last changed (report caches start again then), and the daily
   summaries delete and rewrite only rows with `import_id = 0`.
 - **Check**: a finished import shows the plugin's own pageviews and
-  visits for its days beside the imported ones, a link to the Overview
+  visits for its days (visitors too in WP-CLI and REST, each day's added
+  up, since no visitor is known across days) beside the imported ones, a link to the Overview
   for those days, and a note on the timeline on its last day.
 - **Settings** it has an equivalent for (Burst: Do Not Track, excluded
   roles, excluded IP addresses) are filled in only where ours are still
