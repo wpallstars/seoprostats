@@ -227,7 +227,7 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
             $out[] = array(
                 'key'   => 'tracking_skip_roles',
                 'label' => 'Exclude user roles from being tracked',
-                'from'  => $roles ? implode(', ', $roles) : __('None', 'seoprostats'),
+                'from'  => self::role_names($roles),
                 'value' => $roles,
             );
         }

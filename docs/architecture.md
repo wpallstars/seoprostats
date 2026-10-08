@@ -823,7 +823,9 @@ from this site's own address are left out.
   up, since no visitor is known across days) beside the imported ones, a link to the Overview
   for those days, and a note on the timeline on its last day.
 - **Settings** it has an equivalent for are filled in only where ours
-  are still at their default: Burst's Do Not Track, excluded roles and
+  are still at their default, and only those chosen in the dry run (the
+  import's `settings` keys, kept in the job; a key's related settings
+  follow it; none given: all): Burst's Do Not Track, excluded roles and
   excluded IP addresses; Koko Analytics's excluded user roles and IP
   addresses (only roles it leaves out: its default counts everyone);
   Statify's "Logged in users" (skip all: every role; skip
@@ -1494,7 +1496,7 @@ in the future meets the same length of the other period.
   [--key-file=<file>] [--property=<property>]`, `disconnect <source>
   [--delete-data]`, `search-console` (`status`, `import`, `imports`,
   `undo --id`, `reimport --from --to`), `migrate` (`list`, `run <source>
-  [--dry-run] [--prefer=<source>] [--from] [--to]`, `imports`, `undo
+  [--dry-run] [--prefer=<source>] [--from] [--to] [--settings=<keys>|none]`, `imports`, `undo
   --id`, `cleanup <source> [--dry-run] [--yes]`); reports and definitions take
   `--data=demo`.
 - **Abilities** (WordPress 6.9+, guarded with `function_exists()`): the

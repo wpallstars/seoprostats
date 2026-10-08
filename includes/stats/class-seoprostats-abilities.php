@@ -1013,7 +1013,13 @@ final class SEOProStats_Abilities {
                 'type'                 => 'object',
                 'additionalProperties' => false,
                 'required'             => array('source'),
-                'properties'           => $days,
+                'properties'           => $days + array(
+                    'settings' => array(
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'description' => __('The settings to carry over, by key (the dry run\'s plan.settings); an empty list carries none. Default: every one the dry run would change.', 'seoprostats'),
+                    ),
+                ),
             ),
             'output_schema'       => array('type' => 'object'),
             'execute_callback'    => array(__CLASS__, 'migrate_import'),
@@ -1060,7 +1066,11 @@ final class SEOProStats_Abilities {
     public static function migrate_import($input = null) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
         $input = is_array($input) ? $input : array();
-        $job   = SEOProStats_Migrate::start(isset($input['source']) ? (string) $input['source'] : '', self::migrate_args($input));
+        $args  = self::migrate_args($input);
+        if (isset($input['settings']) && is_array($input['settings'])) {
+            $args['settings'] = array_map('strval', $input['settings']);
+        }
+        $job = SEOProStats_Migrate::start(isset($input['source']) ? (string) $input['source'] : '', $args);
         return is_wp_error($job) ? $job : array('job' => $job);
     }
 

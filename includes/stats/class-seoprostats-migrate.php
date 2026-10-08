@@ -314,8 +314,8 @@ final class SEOProStats_Migrate {
     /**
      * The dry run: what an import would do. Writes nothing.
      *
-     * @param string               $key  Adapter key.
-     * @param array<string,string> $args from, to (Y-m-d, optional), prefer (adapter key, optional).
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to (Y-m-d, optional), prefer (adapter key, optional); settings is the import's, not the plan's.
      * @return array<string,mixed>|WP_Error
      */
     public static function plan($key, array $args = array()) {
@@ -330,9 +330,9 @@ final class SEOProStats_Migrate {
     /**
      * plan(), on the live data set.
      *
-     * @param string               $key  Adapter key.
-     * @param array<string,string> $args from, to, prefer.
-     * @param bool                 $full With the overlap, rows and settings (the dry run), not only the days.
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to, prefer (strings; anything else is ignored).
+     * @param bool                $full With the overlap, rows and settings (the dry run), not only the days.
      * @return array<string,mixed>|WP_Error
      */
     private static function make_plan($key, array $args, $full) {
@@ -534,7 +534,8 @@ final class SEOProStats_Migrate {
                 'value'  => $value,
                 'also'   => isset($setting['also']) ? (array) $setting['also'] : array(),
                 'change' => $default && !self::same($now, $value),
-                'reason' => !$default ? 'set' : (self::same($now, $value) ? 'same' : ''),
+                // Already the same comes first: nothing would change either way.
+                'reason' => self::same($now, $value) ? 'same' : (!$default ? 'set' : ''),
             );
         }
         return $out;
@@ -594,9 +595,9 @@ final class SEOProStats_Migrate {
      * days with this one, then this one. Cron carries it on, and so does
      * each read of the status while the Import tab is open.
      *
-     * @param string               $key  Adapter key.
-     * @param array<string,string> $args from, to, prefer.
-     * @param bool                 $cron Schedule it (false: the caller runs step() itself, as WP-CLI does).
+     * @param string              $key  Adapter key.
+     * @param array<string,mixed> $args from, to, prefer, settings (the setting keys to carry over; absent or null: all it would change).
+     * @param bool                $cron Schedule it (false: the caller runs step() itself, as WP-CLI does).
      * @return array<string,mixed>|WP_Error The job.
      */
     public static function start($key, array $args = array(), $cron = true) {
@@ -616,6 +617,8 @@ final class SEOProStats_Migrate {
             'status'   => 'running',
             'from'     => isset($args['from']) ? (string) $args['from'] : '',
             'to'       => isset($args['to']) ? (string) $args['to'] : '',
+            // The settings chosen in the dry run (null: all it would change).
+            'settings' => isset($args['settings']) && is_array($args['settings']) ? array_values(array_map('strval', $args['settings'])) : null,
             'queue'    => $queue,
             'current'  => 0,
             'started'  => time(),
@@ -633,9 +636,9 @@ final class SEOProStats_Migrate {
     /**
      * WP-CLI: run an import to the end.
      *
-     * @param string               $key      Adapter key.
-     * @param array<string,string> $args     from, to, prefer.
-     * @param callable|null        $progress Called with the job after each step.
+     * @param string              $key      Adapter key.
+     * @param array<string,mixed> $args     from, to, prefer, settings (as start()).
+     * @param callable|null       $progress Called with the job after each step.
      * @return array<string,mixed>|WP_Error The job.
      */
     public static function run($key, array $args = array(), $progress = null) {
@@ -1036,7 +1039,8 @@ final class SEOProStats_Migrate {
             return;
         }
         $source   = self::source((string) $item['key']);
-        $settings = $source ? self::apply_settings($source) : array();
+        $state    = self::state();
+        $settings = $source ? self::apply_settings($source, isset($state['settings']) && is_array($state['settings']) ? $state['settings'] : null) : array();
         $meta     = array(
             'version'  => isset($item['version']) ? (string) $item['version'] : '',
             'days'     => (int) $item['imported'],
@@ -1071,18 +1075,19 @@ final class SEOProStats_Migrate {
     }
 
     /**
-     * Carry over the adapter's settings that are still at our default.
-     * The plugin's own options are never written.
+     * Carry over the adapter's settings that are still at our default,
+     * of those chosen. The plugin's own options are never written.
      *
      * @param SEOProStats_Migrate_Source $source Adapter.
+     * @param string[]|null              $only   Setting keys chosen (null: all; a key's also settings follow it).
      * @return array<string,array{0:string,1:string}> Key => before, after (in words).
      */
-    private static function apply_settings(SEOProStats_Migrate_Source $source) {
+    private static function apply_settings(SEOProStats_Migrate_Source $source, $only = null) {
         $schema   = SEOProStats_Settings::schema();
         $defaults = SEOProStats_Settings::defaults();
         $changed  = array();
         foreach (self::settings_plan($source) as $setting) {
-            if (!$setting['change']) {
+            if (!$setting['change'] || ($only !== null && !in_array($setting['key'], $only, true))) {
                 continue;
             }
             $saved = SEOProStats_Settings::set($setting['key'], $setting['value']);

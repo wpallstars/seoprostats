@@ -3347,6 +3347,9 @@ final class SEOProStats_CLI {
      * [--to=<day>]
      * : run: last day (Y-m-d).
      *
+     * [--settings=<keys>]
+     * : run: the settings to carry over, comma-separated keys (the dry run lists them), or none. Default: every one the dry run would change.
+     *
      * [--id=<id>]
      * : undo: the import.
      *
@@ -3365,6 +3368,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats migrate run burst-statistics --dry-run
      *     wp seoprostats migrate run burst-statistics
      *     wp seoprostats migrate run statify --prefer=koko-analytics
+     *     wp seoprostats migrate run wp-statistics --settings=tracking_skip_roles
      *     wp seoprostats migrate run jetpack --dry-run --requests
      *     wp seoprostats migrate undo --id=12
      *     wp seoprostats migrate cleanup burst-statistics --dry-run
@@ -3489,6 +3493,10 @@ final class SEOProStats_CLI {
             'to'     => isset($assoc['to']) ? (string) $assoc['to'] : '',
             'prefer' => isset($assoc['prefer']) ? (string) $assoc['prefer'] : '',
         );
+        if (isset($assoc['settings'])) {
+            $chosen          = strtolower(trim((string) $assoc['settings']));
+            $run['settings'] = $chosen === 'none' || $chosen === '' ? array() : array_values(array_filter(array_map('trim', explode(',', $chosen))));
+        }
         $requests = !empty($assoc['requests']);
         if (!empty($assoc['dry-run'])) {
             $plan = SEOProStats_Migrate::plan($source, $run);

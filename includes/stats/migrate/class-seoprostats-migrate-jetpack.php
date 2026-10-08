@@ -313,7 +313,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             array(
                 'key'   => 'tracking_skip_roles',
                 'label' => 'Count logged in page views from',
-                'from'  => $count ? implode(', ', $count) : 'Nobody',
+                'from'  => $count ? self::role_names($count) : 'Nobody',
                 'value' => $skip,
             ),
         );
