@@ -748,8 +748,8 @@ final class SEOProStats_CLI {
 
     /**
      * Search (Google Search Console's imported days): clicks, impressions,
-     * CTR and average position, then search queries, pages, countries or
-     * devices. The period is cut at the newest day with search data
+     * CTR and average position, then search queries, pages, countries,
+     * devices or search appearances. The period is cut at the newest day with search data
      * (about three days ago); visit filters do not apply, page filters do.
      *
      * ## OPTIONS
@@ -878,10 +878,11 @@ final class SEOProStats_CLI {
             $rows[]       = $row;
         }
         $first = array(
-            'queries'   => 'value',
-            'pages'     => 'path',
-            'countries' => 'label',
-            'devices'   => 'label',
+            'queries'    => 'value',
+            'pages'      => 'path',
+            'countries'  => 'label',
+            'devices'    => 'label',
+            'appearance' => 'label',
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array($first[$answer['kind']], 'clicks', 'impressions', 'ctr', 'position', 'share'));
     }
