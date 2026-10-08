@@ -170,6 +170,21 @@ abstract class SEOProStats_Migrate_Source {
     }
 
     /**
+     * The installed plugin's version, from its header ('' when it is not
+     * installed), for plugins that do not record their version.
+     *
+     * @return string
+     */
+    protected function installed_version() {
+        $file = $this->plugin()['file'];
+        if ($file === '') {
+            return '';
+        }
+        $plugins = get_plugins();
+        return isset($plugins[$file]['Version']) ? (string) $plugins[$file]['Version'] : '';
+    }
+
+    /**
      * Days with statistics in a range, oldest first (one indexed probe a
      * day).
      *

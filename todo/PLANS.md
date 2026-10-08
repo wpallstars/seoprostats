@@ -191,11 +191,11 @@ plugins may keep running beside SEO Pro Stats (none goes in `REPLACES`).
 It brings its own import engine, so it does not wait for Phase 6's
 generic import.
 
-- [ ] Engine, detection, dry run, overlap choice, check after import,
+- [x] Engine, detection, dry run, overlap choice, check after import,
       Remove leftover data (confirmed, only while the plugin is
       inactive), Settings → Import tab, REST, WP-CLI, abilities, and
       Burst Statistics as the first source (GH#109).
-- [ ] Notices on the Plugins screen and SEO Pro Stats's screens through
+- [x] Notices on the Plugins screen and SEO Pro Stats's screens through
       each step: import, check, deactivate and delete, remove leftovers;
       shown until the plugin and its data are gone (GH#110, after
       GH#109).
@@ -203,11 +203,12 @@ generic import.
       connection): daily views and visitors, top pages, referrers,
       countries. Built from Jetpack's open-source code without a test
       site; invited users with Jetpack test it (GH#111, after GH#109).
+- [x] Koko Analytics and Statify, checked against real installs
+      (GH#112).
 - [ ] Plugins that keep their data in the site's own database, each
-      table layout checked against a real install first: Koko Analytics
-      and Statify (GH#112), WP Statistics and Independent Analytics
-      (GH#113), Slimstat and Matomo for WordPress (GH#114); all after
-      GH#109.
+      table layout checked against a real install first: WP Statistics
+      and Independent Analytics (GH#113), Slimstat and Matomo for
+      WordPress (GH#114); all after GH#109.
 
 ## Later
 

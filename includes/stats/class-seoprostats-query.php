@@ -631,7 +631,7 @@ final class SEOProStats_Query {
         $select = $group === 'month' ? 'LEFT(day, 7)' : ($group === 'day' ? 'day' : "''");
         $by     = $group === '' ? '' : ' GROUP BY b';
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `dim_val_day`; $select and $by are fixed SQL.
-        $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, SUM(visitors) AS visitors, SUM(visits) AS visits, SUM(pageviews) AS pageviews, SUM(bounces) AS bounces, SUM(engaged_ms) AS engaged_ms, SUM(events) AS events FROM %i WHERE dim = %d AND val = %d AND day >= %s AND day < %s$by", SEOProStats_Schema::table('daily'), $part['dim'], $part['val'], $part['from'], $part['to']), ARRAY_A);
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, SUM(visitors) AS visitors, SUM(visits) AS visits, SUM(pageviews) AS pageviews, SUM(IF(visits > 0, pageviews, 0)) AS visit_pageviews, SUM(bounces) AS bounces, SUM(engaged_ms) AS engaged_ms, SUM(events) AS events FROM %i WHERE dim = %d AND val = %d AND day >= %s AND day < %s$by", SEOProStats_Schema::table('daily'), $part['dim'], $part['val'], $part['from'], $part['to']), ARRAY_A);
         $out  = array();
         foreach ((array) $rows as $row) {
             $out[(string) $row['b']] = $row;
@@ -651,7 +651,22 @@ final class SEOProStats_Query {
         foreach (array('visitors', 'visits', 'pageviews', 'bounces', 'engaged_ms', 'events') as $key) {
             $out[$key] = (isset($a[$key]) ? (int) $a[$key] : 0) + (isset($b[$key]) ? (int) $b[$key] : 0);
         }
+        $out['visit_pageviews'] = self::visit_pageviews($a) + self::visit_pageviews($b);
         return $out;
+    }
+
+    /**
+     * Pageviews of visits, for pages per visit: imported days that kept
+     * pageviews but no visits (SEOProStats_Migrate) are left out.
+     *
+     * @param array<string,mixed> $row Sums; without visit_pageviews, all its pageviews.
+     * @return int
+     */
+    private static function visit_pageviews(array $row) {
+        if (isset($row['visit_pageviews'])) {
+            return (int) $row['visit_pageviews'];
+        }
+        return isset($row['pageviews']) ? (int) $row['pageviews'] : 0;
     }
 
     /**
@@ -880,7 +895,8 @@ final class SEOProStats_Query {
         if ($level === 'session') {
             list($val, $val_args) = SEOProStats_Rollup::value_sql($column, $kind);
             $cols                 = self::VISIT_METRICS;
-            $rows                 = $wpdb->get_results($wpdb->prepare("SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.pageviews) AS pageviews, SUM(u.bounces) AS bounces, SUM(u.engaged_ms) AS engaged_ms, SUM(u.events) AS events FROM (SELECT val AS v, visitors, visits, pageviews, bounces, engaged_ms, events FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT $val AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d GROUP BY v) u GROUP BY u.v ORDER BY visits DESC, u.v LIMIT %d OFFSET %d", array_merge($daily, $val_args, array($s), $facts, $page)), ARRAY_A);
+            // Pageviews of imported days without visits stay out of pages per visit (visit_pageviews).
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.pageviews) AS pageviews, SUM(u.bounces) AS bounces, SUM(u.engaged_ms) AS engaged_ms, SUM(u.events) AS events, SUM(u.vp) AS visit_pageviews FROM (SELECT val AS v, visitors, visits, pageviews, bounces, engaged_ms, events, IF(visits > 0, pageviews, 0) AS vp FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT $val AS v, $cols, COALESCE(SUM(s.pageviews), 0) AS vp FROM %i s WHERE s.started >= %d AND s.started < %d GROUP BY v) u GROUP BY u.v ORDER BY visits DESC, u.v LIMIT %d OFFSET %d", array_merge($daily, $val_args, array($s), $facts, $page)), ARRAY_A);
         } elseif ($level === 'page') {
             $rows = $wpdb->get_results($wpdb->prepare('SELECT u.v, SUM(u.visitors) AS visitors, SUM(u.visits) AS visits, SUM(u.pageviews) AS pageviews, SUM(u.engaged_ms) AS engaged_ms, SUM(u.scroll) AS scroll FROM (SELECT val AS v, visitors, visits, pageviews, engaged_ms, scroll FROM %i WHERE dim = %d AND day >= %s AND day < %s UNION ALL SELECT p.path_id AS v, COUNT(DISTINCT s.day, s.visitor), COUNT(DISTINCT p.session_id), COUNT(*), COALESCE(SUM(p.engaged_ms), 0), COALESCE(SUM(p.scroll), 0) FROM %i s INNER JOIN %i p ON p.session_id = s.id WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d GROUP BY p.path_id) u GROUP BY u.v ORDER BY pageviews DESC, u.v LIMIT %d OFFSET %d', array_merge($daily, array($s, SEOProStats_Schema::table('pageviews')), $window, $facts, $page)), ARRAY_A);
         } else {
@@ -922,7 +938,7 @@ final class SEOProStats_Query {
     /**
      * Metrics from summed columns (also SEOProStats_Content's).
      *
-     * @param array<string,mixed> $row visitors, visits, pageviews, bounces, engaged_ms, events.
+     * @param array<string,mixed> $row visitors, visits, pageviews, bounces, engaged_ms, events; visit_pageviews (optional) for pages per visit.
      * @return array<string,int|float>
      */
     public static function metrics(array $row) {
@@ -932,7 +948,7 @@ final class SEOProStats_Query {
             'visitors'        => isset($row['visitors']) ? (int) $row['visitors'] : 0,
             'visits'          => $visits,
             'pageviews'       => $pageviews,
-            'views_per_visit' => $visits ? round($pageviews / $visits, 2) : 0,
+            'views_per_visit' => $visits ? round(self::visit_pageviews($row) / $visits, 2) : 0,
             'bounce_rate'     => $visits ? round((int) $row['bounces'] / $visits, 4) : 0,
             'visit_duration'  => $visits ? (int) round((int) $row['engaged_ms'] / $visits / 1000) : 0,
             'events'          => isset($row['events']) ? (int) $row['events'] : 0,

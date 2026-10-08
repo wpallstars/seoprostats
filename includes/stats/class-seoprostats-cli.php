@@ -3330,7 +3330,7 @@ final class SEOProStats_CLI {
      * ---
      *
      * [<source>]
-     * : The plugin, for run and cleanup: burst-statistics.
+     * : The plugin, for run and cleanup: burst-statistics, koko-analytics or statify.
      *
      * [--dry-run]
      * : run: only say what it would do (days, rows, overlap, settings). cleanup: only list (the default without --yes).
@@ -3361,6 +3361,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats migrate list
      *     wp seoprostats migrate run burst-statistics --dry-run
      *     wp seoprostats migrate run burst-statistics
+     *     wp seoprostats migrate run statify --prefer=koko-analytics
      *     wp seoprostats migrate undo --id=12
      *     wp seoprostats migrate cleanup burst-statistics --dry-run
      *

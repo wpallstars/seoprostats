@@ -39,6 +39,8 @@ final class SEOProStats_Migrate {
     /** Adapters: imports.source => class (in includes/stats/migrate/). */
     const SOURCES = array(
         'burst-statistics' => 'SEOProStats_Migrate_Burst',
+        'koko-analytics'   => 'SEOProStats_Migrate_Koko',
+        'statify'          => 'SEOProStats_Migrate_Statify',
     );
 
     /** Cron hook of a running import. */
