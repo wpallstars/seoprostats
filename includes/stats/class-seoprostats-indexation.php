@@ -458,13 +458,14 @@ final class SEOProStats_Indexation {
             );
             if ($kind === 'pages') {
                 $line += array(
-                    'published' => gmdate('c', (int) $item['since']),
+                    // In the site time zone, as report times are.
+                    'published' => wp_date('c', (int) $item['since']),
                     'words'     => (int) $row['words'],
                     'links_in'  => (int) $row['links_in'],
                 );
             } else {
                 $line += array(
-                    'first_seen' => gmdate('c', (int) $item['since']),
+                    'first_seen' => wp_date('c', (int) $item['since']),
                     'source'     => isset(self::SOURCES[(int) $row['source']]) ? self::SOURCES[(int) $row['source']] : 'other',
                 );
             }

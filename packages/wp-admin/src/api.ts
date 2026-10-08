@@ -30,6 +30,8 @@ import {
 	type Goal,
 	type GoalStep,
 	type GoalsAnswer,
+	type IndexationAnswer,
+	type IndexationKind,
 	type LinksAnswer,
 	type LinksKind,
 	type Marker,
@@ -274,6 +276,19 @@ export function useLinks(scope: SearchScope, kind: LinksKind, goal: string, limi
 	return useQuery({
 		queryKey: ['links', args],
 		queryFn: () => get<LinksAnswer>('links', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Indexation: published pages or sitemap addresses search has not shown in its newest days; the period and comparison do not apply. */
+export function useIndexation(scope: SearchScope, kind: IndexationKind, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	// The window is the engine's newest days, whatever the period: only the page filters count.
+	const args: Args = withData({ ...apiArgs({ range: '30d', filters: scope.filters }), ...engineArg(scope), kind, limit, offset }, data);
+	return useQuery({
+		queryKey: ['indexation', args],
+		queryFn: () => get<IndexationAnswer>('indexation', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

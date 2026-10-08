@@ -933,8 +933,61 @@ export interface LinksAnswer extends Answer, SearchEngineAnswer {
 	more: boolean;
 }
 
-/** Kinds of decision queue item: each an opportunity kind, audit findings and internal links. */
-export type QueueKind = OpportunityKind | 'audit' | 'links';
+/** Indexation lists: published pages, and other addresses in the site's sitemaps. */
+export const INDEXATION_KINDS = ['pages', 'sitemap'] as const;
+export type IndexationKind = (typeof INDEXATION_KINDS)[number];
+
+/** Where a sitemap address comes from: category and tag archives, author archives, another plugin's. */
+export type SitemapSource = 'taxonomies' | 'users' | 'other';
+
+/** A page or sitemap address search has not shown in the window. */
+export interface IndexationRow extends OpportunityPage {
+	/** never: search never showed it; lost: it did until last_impression. */
+	state: 'never' | 'lost';
+	/** YYYY-MM-DD, or null when never shown. */
+	last_impression: string | null;
+	/** Days from publishing (pages) or first listing (sitemap) to the window's end. */
+	age: number;
+	/** pages: when it was published, its words and the pages linking to it. */
+	published?: string;
+	words?: number;
+	links_in?: number;
+	/** sitemap: when it was first listed, and from where. */
+	first_seen?: string;
+	source?: SitemapSource;
+}
+
+export interface IndexationAnswer extends Answer, SearchEngineAnswer {
+	/** The window: the engine's newest `days` days, through `through`. */
+	range: Range;
+	days: number;
+	through: string;
+	first: string;
+	connected: boolean;
+	ignored: string[];
+	kind: IndexationKind;
+	rules: { days: number; max_rows: number; max_urls: number };
+	/** Published pages read by the audit, how many have their published time, and the sitemaps' last read. */
+	read: {
+		pages: number;
+		published: number;
+		complete: boolean;
+		sitemap: { read: string | null; enabled: boolean; complete: boolean; addresses: number };
+	};
+	/** A page's clicks per 28 days here, on average, when search shows it. */
+	typical: number;
+	/** Pages left out: they ask not to be indexed, or name another page as canonical. */
+	skipped: { noindex: number; canonical: number };
+	/** Rows per list (of every list, whichever is asked for). */
+	counts: Record<IndexationKind, number>;
+	/** Never shown first, then the newest. */
+	rows: IndexationRow[];
+	total: number;
+	more: boolean;
+}
+
+/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links and indexation. */
+export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index';
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -994,6 +1047,15 @@ export interface QueueFigures {
 	from_position?: number;
 	queries?: LinksMissingQuery[];
 	query_count?: number;
+	/** index: never or lost, the last day shown, the age in days, what a shown page earns here per 28 days, and the row's own facts. */
+	state?: 'never' | 'lost';
+	last_impression?: string | null;
+	age?: number;
+	typical?: number;
+	published?: string;
+	words?: number;
+	first_seen?: string;
+	source?: SitemapSource;
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -1005,8 +1067,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
-	/** audit: the finding (the item is one per page and finding); links: the list; else null. */
-	finding: AuditFinding | LinksKind | null;
+	/** audit: the finding (the item is one per page and finding); links and index: the list; else null. */
+	finding: AuditFinding | LinksKind | IndexationKind | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -1059,6 +1121,9 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		/** Internal links lists whose effort is not the links kind's, and each list's share of the expected clicks. */
 		links_effort: Partial<Record<LinksKind, number>>;
 		links_share: Record<LinksKind, number>;
+		/** Indexation lists whose effort is not the index kind's, and each list's share of a typical page's clicks. */
+		index_effort: Partial<Record<IndexationKind, number>>;
+		index_share: Record<IndexationKind, number>;
 		confidence: Record<QueueKind, number>;
 		full_impressions: number;
 		missing_share: number;
