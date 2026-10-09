@@ -105,11 +105,12 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Screenshots ==
 
-1. The Overview: visits against the previous period, with the site's changes under the chart.
+1. The Overview: visits against the previous period, the visitors on the site now, and the site's changes under the chart.
 2. Search → Rankings: Google Search Console and Bing Webmaster Tools clicks, impressions, CTR and position by query and page.
 3. Search → Plan: search work from every report in one list, best first, with its score.
 4. Changes: what changed on the site, when and on which page.
-5. Goals: conversions, conversion rate and revenue per currency, against the previous period.
+5. Goals: conversions, conversion rate and revenue per currency, against the previous period, with what the figures say and how to improve them.
+6. A shared report: the sections you chose, read-only for a client or colleague, without wp-admin, ready to print or save as PDF.
 
 == Changelog ==
 

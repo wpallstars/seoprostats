@@ -45,11 +45,10 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
 - **Portable underneath.** The API contract (`docs/api/openapi.yaml`) and
   `packages/core`, `packages/tracker` and `packages/charts` stay free of
   WordPress and React so later apps reuse them.
-- **Write as if public.** The repository is private until its public
-  launch (`LAUNCH.md`), and its whole history is published then. Never name
-  private repositories, their issues, private sites, local paths, or other
-  analytics products used as research in it (commits, docs, comments or
-  examples). Describe features in our own words.
+- **Everything here is public** (`LAUNCH.md`). Never name private
+  repositories, their issues, private sites, local paths, or other
+  analytics products used as research in it (commits, docs, issues,
+  comments or examples). Describe features in our own words.
 - **Other plugins' data is read only.** The one exception (the owner's, to
   `STANDARDS.md` → Structure): Settings → Import → Remove leftover data
   (`SEOProStats_Migrate::cleanup()`) deletes another statistics plugin's
@@ -58,13 +57,6 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
 - Keep the credits in `README.md` and `readme.txt`: **Built with AI** to
   aidevops (<https://aidevops.sh>) and the "Made from" line crediting the
   starter (`STANDARDS.md` → Structure).
-- **Checks run locally for now (owner's decision).** GitHub Actions do not
-  start on this repository while it is private ("recent account payments
-  have failed or your spending limit needs to be increased"); that failure
-  is billing, not code, so do not fix code or wait for it. Before merging,
-  run `composer install && scripts/lint.sh` and `scripts/smoke-test.sh`
-  (Docker) in the worktree and put the results in the PR. Remove this rule
-  when Actions run again.
 
 ## Test sites
 

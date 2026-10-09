@@ -3,25 +3,19 @@
 # SEO Pro Stats
 
 <!-- aidevops:badges:start -->
-<!-- managed by aidevops badges; edit the template, not this block -->
-<!-- Build & Quality Status -->
-[![GitHub Actions](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
+<!-- On GitHub only: the Read Me tab skips this block. scripts/rename-plugin.sh rewrites it. -->
+[![CI](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoprostats/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoprostats)
+[![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/wpallstars/seoprostats)](https://github.com/wpallstars/seoprostats/releases)
 
-<!-- License & Legal -->
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](https://github.com/wpallstars/seoprostats/blob/main/LICENSE)
-
-<!-- WordPress Plugin -->
-[![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-[![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-[![Requires PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg?logo=php)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-
-<!-- Repository Metrics -->
+[![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
+[![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
+[![Requires PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg?logo=php)](readme.txt)
 [![Lines of code](docs/metrics/badges/loc.svg)](docs/metrics/repo-metrics.md)
-[![Languages by lines of code](docs/metrics/badges/languages.svg)](docs/metrics/repo-metrics.md)
 [![Dependencies](docs/metrics/badges/dependencies.svg)](docs/metrics/repo-metrics.md)
 
-<!-- Project Links -->
-[![GitHub repository](https://img.shields.io/badge/github-repository-181717.svg?logo=github)](https://github.com/wpallstars/seoprostats)
+[![Languages by lines of code](docs/metrics/badges/languages.svg)](docs/metrics/repo-metrics.md)
 <!-- aidevops:badges:end -->
 
 **Actionable analytics for WordPress. Connect your content to the data that shows you how to grow.**
@@ -37,7 +31,7 @@ Version: 1.0.0
 <!-- github-only:start -->
 ## Screenshots
 
-**The Overview**: visits against the previous period, with the site's changes marked under the chart.
+**The Overview**: visits against the previous period, the visitors on the site now, and the site's changes marked under the chart.
 
 ![The SEO Pro Stats Overview with its chart and changes lane](.wordpress-org/screenshot-1.png)
 
@@ -53,9 +47,13 @@ Version: 1.0.0
 
 ![The Changes section](.wordpress-org/screenshot-4.png)
 
-**Goals**: conversions, conversion rate and revenue per currency, against the previous period.
+**Goals**: conversions, conversion rate and revenue per currency, against the previous period, with what the figures say and how to improve them.
 
 ![The Goals section](.wordpress-org/screenshot-5.png)
+
+**A shared report**: the sections you chose, read-only for a client or colleague, without wp-admin, ready to print or save as PDF.
+
+![A shared report's Overview](.wordpress-org/screenshot-6.png)
 <!-- github-only:end -->
 
 ## Why SEO Pro Stats
@@ -392,7 +390,7 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 - Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 75 months, events 120 months, clicks 3 months and imported search data by page and query 25 months, then deleted; the summaries and search totals are kept. Change the months under Settings → Data, or with the `seoprostats_retention` filter (`visits`, `events`, `clicks`, `search`; 0 keeps forever; clicks never outlast their visits).
 
 ```sh
-curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
+curl -u "$WP_USER:$WP_APPLICATION_PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
 ```
 
 ### Tracking
@@ -468,6 +466,10 @@ Read a setting with `SEOProStats_Settings::get( 'key' )`.
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### Unreleased
+
+- Changed: the source code is public on GitHub. The screenshots show the current screens (the live count on the Overview, Info & ideas), and a sixth shows a shared report. Nothing changes in the plugin.
 
 ### 1.0.0
 
