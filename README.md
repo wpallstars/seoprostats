@@ -492,6 +492,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 - Fixed: a report filter value that ends in a backslash no longer runs into the next one. In a filter's text form, `\\` is a backslash in a value, as `\,` is a comma; any other backslash stays as written, so existing links still work.
 - Fixed: screen readers announce the row labels in Settings → Connections (a search connection's status) and Settings → Import (each plugin's facts) again.
 - Changed: the source code is public on GitHub. The screenshots show the current screens (the live count on the Overview, Info & ideas), and a sixth shows a shared report.
+- New: **View details** (Plugins and Updates screens) shows the banner with its words higher, above the plugin name WordPress writes over its lower left; this README and the Read Me tab keep them centred.
 
 ### 1.0.0
 
