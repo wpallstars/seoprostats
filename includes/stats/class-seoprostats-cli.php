@@ -1365,7 +1365,8 @@ final class SEOProStats_CLI {
      * archives, and other plugins'), listed that long, with none. Pages
      * that ask not to be indexed or name another page as canonical are
      * left out. The sitemaps are read by the daily cron; `run` reads them
-     * now. Engine URL inspection is not used.
+     * now. For Google, rows inspected by URL Inspection add Google's reason
+     * and last crawl (`wp seoprostats inspect`).
      *
      * ## OPTIONS
      *
@@ -1493,6 +1494,11 @@ final class SEOProStats_CLI {
                     'source'     => $row['source'],
                 );
             }
+            if ($answer['inspections'] !== null) {
+                // Google's reason from URL Inspection, or its verdict when it gives none.
+                $google         = isset($row['google']) && is_array($row['google']) ? $row['google'] : null;
+                $line['google'] = $google === null ? '–' : (string) ($google['coverage'] !== null ? $google['coverage'] : $google['verdict']);
+            }
             $rows[] = $line;
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
@@ -1609,6 +1615,190 @@ final class SEOProStats_CLI {
                     }
                     $rows[] = $line;
             }
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * Google's URL Inspection: how Google indexed the site's pages (the
+     * version in Google's index, not a live test), and Search Console's
+     * sitemaps.
+     *
+     * While Search Console is connected, the hourly import inspects up to
+     * the daily setting (Settings → Data, 200 by default; Google allows
+     * 2,000 a day per property): the Indexation lists' pages first, then
+     * pages with search impressions whose inspection is oldest, each again
+     * after 14 days. --run inspects now, for up to two minutes, within the
+     * same daily cap. Lists the pages inspected, newest first.
+     *
+     * ## OPTIONS
+     *
+     * [<page>]
+     * : A page (a path such as /pricing/, or its address): show Google's view of it; with --run, inspect it now.
+     *
+     * [--run]
+     * : Inspect now: the page given, or the pages due. With --sitemaps, read the sitemaps from Search Console now.
+     *
+     * [--sitemaps]
+     * : List the property's sitemaps as last read from Search Console (once a day).
+     *
+     * [--verdict=<verdict>]
+     * : Only pages with this verdict: PASS, PARTIAL, FAIL or NEUTRAL.
+     *
+     * [--coverage=<coverage>]
+     * : Only pages with this coverage state, in Google's words.
+     *
+     * [--finding=<finding>]
+     * : Only pages with this finding: robots_blocked, not_indexed, google_canonical or rich_errors.
+     *
+     * [--limit=<limit>]
+     * : Most rows (20 when left out).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats inspect
+     *     wp seoprostats inspect --run
+     *     wp seoprostats inspect /pricing/ --run
+     *     wp seoprostats inspect /pricing/
+     *     wp seoprostats inspect --finding=google_canonical
+     *     wp seoprostats inspect --sitemaps
+     *     wp seoprostats inspect --sitemaps --run
+     *     wp seoprostats inspect --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function inspect($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
+        $json = $this->format($assoc) === 'json';
+        $page = isset($args[0]) ? trim((string) $args[0]) : '';
+        if ($page !== '') {
+            $page = strpos($page, '/') === 0 ? $page : SEOProStats_Changes::path($page);
+            if ($page === '' || $page[0] !== '/') {
+                WP_CLI::error(__('Give a page as a path such as /pricing/, or its address on this site.', 'seoprostats'));
+            }
+        }
+        if (!empty($assoc['run'])) {
+            if (($assoc['data'] ?? 'live') === 'demo') {
+                WP_CLI::error(__('Google is asked about live data only.', 'seoprostats'));
+            }
+            if (!SEOProStats_Schema::maybe_upgrade()) {
+                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+            }
+        }
+        if (!empty($assoc['sitemaps'])) {
+            // As kept by the daily read; --run reads them from Search Console first.
+            if (!empty($assoc['run'])) {
+                $read = SEOProStats_Inspections::read_sitemaps();
+                if (is_wp_error($read)) {
+                    WP_CLI::error($read->get_error_message());
+                }
+            }
+            $all = $this->on_data($assoc, static function () {
+                return SEOProStats_Inspections::sitemaps();
+            });
+            if ($json) {
+                WP_CLI::line((string) wp_json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return;
+            }
+            if (!$all['submitted']) {
+                /* translators: %s: the site's sitemap address */
+                WP_CLI::warning(sprintf(__('The site\'s sitemap %s is not submitted in Search Console.', 'seoprostats'), (string) $all['own']));
+            }
+            if (!$all['rows']) {
+                WP_CLI::line(__('No sitemap is submitted for the property.', 'seoprostats'));
+                return;
+            }
+            $rows = array();
+            foreach ($all['rows'] as $row) {
+                $rows[] = array(
+                    'sitemap'    => $row['path'],
+                    'type'       => $row['type'] . ($row['index'] ? ' (index)' : ''),
+                    'submitted'  => substr((string) $row['submitted'], 0, 10),
+                    'downloaded' => substr((string) $row['downloaded'], 0, 10),
+                    'errors'     => $row['errors'],
+                    'warnings'   => $row['warnings'],
+                    'problems'   => implode(', ', $row['problems']),
+                );
+            }
+            WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+            return;
+        }
+        if (!empty($assoc['run'])) {
+            $done = SEOProStats_Inspections::run_now(120, $page !== '' ? array(0 => $page) : null);
+            if (is_wp_error($done)) {
+                WP_CLI::error($done->get_error_message());
+                return;
+            }
+            if ($json) {
+                WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return;
+            }
+            if ($done['error'] !== null) {
+                /* translators: %s: Google's message */
+                WP_CLI::warning(sprintf(__('Google stopped the run: %s', 'seoprostats'), $done['error']));
+            }
+            /* translators: 1: pages inspected, 2: addresses Google would not inspect, 3: inspections today, 4: daily cap */
+            $line = sprintf(__('Inspected: %1$d. Not inspected by Google: %2$d. Today: %3$d of %4$d.', 'seoprostats'), $done['inspected'], $done['failed'], $done['used'], $done['daily']);
+            if ($done['daily'] < 1) {
+                $line .= ' ' . __('Inspections are off (Settings → Data).', 'seoprostats');
+            } elseif ($done['left'] < 1) {
+                $line .= ' ' . __('The daily cap is reached; the rest wait for tomorrow (Pacific time).', 'seoprostats');
+            } elseif ($done['more']) {
+                $line .= ' ' . __('More pages are due; run it again.', 'seoprostats');
+            }
+            WP_CLI::success($line);
+            if ($page === '') {
+                return;
+            }
+        }
+        $req    = $this->request($assoc + array('limit' => '20'));
+        $filter = $page !== '' ? array(array('dimension' => 'page', 'op' => 'is', 'values' => array($page))) : array();
+        $answer = $this->on_data($assoc, static function () use ($req, $assoc, $filter) {
+            return SEOProStats_Inspections::report(array_merge($req, $filter ? array('filters' => $filter) : array()), $assoc['verdict'] ?? '', $assoc['coverage'] ?? '', $assoc['finding'] ?? '');
+        });
+        if ($json) {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $progress = $answer['progress'];
+        /* translators: 1: pages inspected, 2: inspections today, 3: daily cap */
+        WP_CLI::log(sprintf(__('Pages inspected: %1$d. Today: %2$d of %3$d.', 'seoprostats'), $answer['inspected'], $progress['used'], $progress['daily']) . ($answer['connected'] ? '' : ' ' . __('Search Console is not connected (Settings → Connections).', 'seoprostats')));
+        if ($progress['error']) {
+            /* translators: %s: Google's message */
+            WP_CLI::warning(sprintf(__('The last run stopped: %s', 'seoprostats'), $progress['error']));
+        }
+        if (!$answer['rows']) {
+            WP_CLI::line($page !== '' ? __('The page is not inspected yet.', 'seoprostats') : __('No page is inspected yet.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            $rows[] = array(
+                'page'             => $row['path'],
+                'verdict'          => (string) $row['verdict'],
+                'coverage'         => (string) ($row['error'] !== null ? $row['error'] : $row['coverage']),
+                'last_crawl'       => substr((string) $row['last_crawl'], 0, 10),
+                'google_canonical' => (string) $row['google_canonical'],
+                'findings'         => implode(', ', $row['findings']),
+                'checked'          => substr((string) $row['checked'], 0, 10),
+            );
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
     }
@@ -4122,6 +4312,13 @@ final class SEOProStats_CLI {
             $add('backlinks check', true, 'off (SEO Pro Stats → Settings → Data)');
         } else {
             $add('backlinks check', true, $backlinks['last'] ? 'last run ' . human_time_diff($backlinks['last']) . ' ago: ' . $backlinks['checked'] . ' page(s) opened, ' . $backlinks['errors'] . ' could not be opened' : 'not run yet');
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
+        $inspections = SEOProStats_Inspections::progress();
+        if ($inspections['daily'] < 1) {
+            $add('google url inspection', true, 'off (SEO Pro Stats → Settings → Data)');
+        } else {
+            $add('google url inspection', $inspections['error'] === null, ($inspections['last'] ? 'last run ' . human_time_diff((int) strtotime((string) $inspections['last'])) . ' ago' : 'not run yet (needs Search Console)') . ', ' . $inspections['used'] . ' of ' . $inspections['daily'] . ' today' . ($inspections['error'] !== null ? '; stopped: ' . $inspections['error'] : ''), 'warn');
         }
         if (!SEOProStats_Statistics::search_updates()) {
             $add('search engine updates', true, 'off (SEO Pro Stats → Settings → Data)');

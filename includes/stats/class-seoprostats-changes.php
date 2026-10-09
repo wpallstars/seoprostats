@@ -51,6 +51,7 @@ final class SEOProStats_Changes {
         13 => array('canonical', 'seo'),
         14 => array('backlink_new', 'seo'),
         15 => array('backlink_lost', 'seo'),
+        16 => array('index_status', 'search'),
         20 => array('out_of_stock', 'product'),
         21 => array('back_in_stock', 'product'),
         22 => array('price_up', 'product'),
@@ -118,6 +119,14 @@ final class SEOProStats_Changes {
      */
     const BACKLINK_NEW  = 14;
     const BACKLINK_LOST = 15;
+
+    /**
+     * Kind code of a page whose verdict in Google's index changed, found by
+     * URL Inspection (SEOProStats_Inspections): object_type inspection,
+     * path the page, old and new Google's coverage states; meta verdict and
+     * verdict_before (PASS, PARTIAL, FAIL, NEUTRAL).
+     */
+    const INDEX_STATUS = 16;
 
     /** Groups of kinds, for filters. */
     const GROUPS = array('content', 'seo', 'product', 'site', 'search', 'note');
@@ -1680,6 +1689,9 @@ final class SEOProStats_Changes {
             case 'backlink_lost':
                 /* translators: 1: the linking site, 2: number of links */
                 return sprintf(_n('Lost backlink: %1$s (%2$d link)', 'Lost backlinks: %1$s (%2$d links)', isset($meta['count']) ? (int) $meta['count'] : 1, 'seoprostats'), $new, isset($meta['count']) ? (int) $meta['count'] : 1);
+            case 'index_status':
+                /* translators: 1: page, 2: Google's coverage state before, 3: Google's coverage state now */
+                return sprintf(__('Google index status of %1$s: %2$s → %3$s', 'seoprostats'), $title, $old !== '' ? $old : '–', $new !== '' ? $new : '–');
             case 'out_of_stock':
                 /* translators: %s: product name */
                 return sprintf(__('Out of stock: %s', 'seoprostats'), $title);

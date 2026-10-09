@@ -5,8 +5,11 @@
  * that have a finding listed by their search impressions, so the pages
  * that matter most come first. Facts are read when a post is saved and
  * in daily batches; each finding also goes to Plan, weighed by search
- * and conversions. Below it, internal links (./Links), read from the same
- * text, and indexation (./Indexation): pages search has not shown.
+ * and conversions. Google's URL Inspection adds four findings (blocked
+ * by robots.txt, crawled but not indexed, Google picked another canonical,
+ * rich result errors). Below it, internal links (./Links), read from the
+ * same text, and indexation (./Indexation): pages search has not shown,
+ * with Search Console's sitemaps.
  *
  * Choosing a page opens it in Rankings.
  *
@@ -32,6 +35,7 @@ import {
 import { errorMessage, useAudit } from './api';
 import { locale } from './boot';
 import { Indexation } from './Indexation';
+import { Inspections } from './Inspections';
 import { Links } from './Links';
 import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
@@ -50,6 +54,9 @@ export function findingName(finding: AuditFinding): string {
 	const names: Record<AuditFinding, string> = {
 		noindex: __('Not indexed', 'seoprostats'),
 		canonical: __('Canonical is another page', 'seoprostats'),
+		robots_blocked: __('Blocked by robots.txt', 'seoprostats'),
+		not_indexed: __('Crawled, not indexed', 'seoprostats'),
+		google_canonical: __('Google picked another canonical', 'seoprostats'),
 		thin: __('Thin content', 'seoprostats'),
 		title_missing: __('No title', 'seoprostats'),
 		title_duplicate: __('Same title as other pages', 'seoprostats'),
@@ -59,18 +66,30 @@ export function findingName(finding: AuditFinding): string {
 		description_long: __('Description too long', 'seoprostats'),
 		h1_none: __('No H1', 'seoprostats'),
 		h1_several: __('Several H1s', 'seoprostats'),
+		rich_errors: __('Rich result errors', 'seoprostats'),
 		images_alt: __('Images without alt text', 'seoprostats'),
 	};
 	return names[finding];
 }
 
 /** Which findings stop a page showing in search, rather than weaken it. */
-const SERIOUS: readonly AuditFinding[] = ['noindex', 'canonical'];
+const SERIOUS: readonly AuditFinding[] = ['noindex', 'canonical', 'robots_blocked', 'not_indexed', 'google_canonical'];
 
 /** The fact behind a finding on a page, in a few words. */
 function findingDetail(finding: AuditFinding, row: AuditRow): string {
 	const f = row.facts;
+	const g = row.google;
 	switch (finding) {
+		case 'robots_blocked':
+		case 'not_indexed':
+			return g?.coverage ? sprintf(/* translators: %s: Google's reason, in its words. */ __('Google: %s', 'seoprostats'), g.coverage) : '';
+		case 'google_canonical':
+			return g?.google_canonical ?? '';
+		case 'rich_errors':
+			return (g?.rich ?? [])
+				.filter((t) => t.errors > 0)
+				.map((t) => `${t.type}: ${t.issues.filter((i) => i.severity === 'error').map((i) => i.message).join('; ')}`)
+				.join(' · ');
 		case 'thin':
 			/* translators: %s: number of words. */
 			return sprintf(_n('%s word, no clicks', '%s words, no clicks', f.words, 'seoprostats'), number(f.words));
@@ -217,6 +236,8 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 			<Links state={state} update={update} open={open} onEngines={onEngines} />
 
 			<Indexation state={state} update={update} open={open} onEngines={onEngines} />
+
+			{engine === 'google' && <Inspections state={state} update={update} open={open} onEngines={onEngines} />}
 		</>
 	);
 }
@@ -262,6 +283,12 @@ function Notes({ answer }: { answer: AuditAnswer }) {
 			number(r.description_max),
 			number(r.thin_words),
 			number(r.thin_impressions)
+		)
+	);
+	notes.push(
+		__(
+			'Blocked by robots.txt, crawled but not indexed, Google picked another canonical and rich result errors come from Google’s URL Inspection of the page (the version in Google’s index), while Search Console is connected; see Indexation below for the daily inspections.',
+			'seoprostats'
 		)
 	);
 	if (answer.cut) {

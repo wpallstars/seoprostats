@@ -91,6 +91,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
     }
@@ -397,6 +398,30 @@ final class SEOProStats_API {
                 ),
                 'limit'  => array('maximum' => SEOProStats_Backlinks::MAX_LIMIT, 'default' => SEOProStats_Backlinks::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/inspections', $read + array(
+            'callback' => array(__CLASS__, 'inspections'),
+            'args'     => $base + array(
+                'verdict'  => array(
+                    'description' => __('Only pages with this verdict of Google\'s URL Inspection (the version in Google\'s index).', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), array_values(SEOProStats_Inspections::VERDICTS)),
+                    'default'     => '',
+                ),
+                'coverage' => array(
+                    'description' => __('Only pages with this coverage state, in Google\'s words (for example "Crawled - currently not indexed").', 'seoprostats'),
+                    'type'        => 'string',
+                    'default'     => '',
+                ),
+                'finding'  => array(
+                    'description' => __('Only pages with this finding: robots_blocked, not_indexed, google_canonical (Google chose another canonical) or rich_errors.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), array_keys(SEOProStats_Inspections::FLAGS)),
+                    'default'     => '',
+                ),
+                'limit'    => array('maximum' => SEOProStats_Inspections::MAX_LIMIT, 'default' => SEOProStats_Inspections::LIMIT) + self::args(true)['limit'],
+                'offset'   => self::args(true)['offset'],
             ),
         ));
         register_rest_route($ns, '/coverage', $read + array(
@@ -1784,6 +1809,23 @@ final class SEOProStats_API {
         $kind = (string) $request->get_param('kind');
         return self::report($request, static function ($req) use ($kind) {
             return SEOProStats_Backlinks::report($req, $kind);
+        });
+    }
+
+    /**
+     * GET /inspections: Google's URL Inspection of the site's pages (the
+     * version in Google's index), newest first, with Search Console's
+     * sitemaps and the run's progress.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function inspections($request) {
+        $verdict  = (string) $request->get_param('verdict');
+        $coverage = (string) $request->get_param('coverage');
+        $finding  = (string) $request->get_param('finding');
+        return self::report($request, static function ($req) use ($verdict, $coverage, $finding) {
+            return SEOProStats_Inspections::report($req, $verdict, $coverage, $finding);
         });
     }
 

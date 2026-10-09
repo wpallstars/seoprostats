@@ -96,11 +96,14 @@ final class SEOProStats_Search_Import {
 
     /**
      * Cron: one run of every connected source within the budget, and
-     * another in a minute while one is catching up.
+     * another in a minute while one is catching up. Then, while Search
+     * Console is connected, its sitemaps (daily) and URL inspections
+     * (within the daily cap) with their own budget.
      */
     public static function cron() {
-        $more = false;
-        foreach (SEOProStats_Connections::connected() as $source) {
+        $more      = false;
+        $connected = SEOProStats_Connections::connected();
+        foreach ($connected as $source) {
             $result = self::run($source, self::BUDGET);
             $more   = $more || (!is_wp_error($result) && !$result['done']);
         }
@@ -108,6 +111,11 @@ final class SEOProStats_Search_Import {
             wp_schedule_single_event(time() + MINUTE_IN_SECONDS, self::HOOK, array('more'));
         }
         self::prune(microtime(true));
+        // The source key of Search Console (its class loads only when used).
+        if (in_array('search-console', $connected, true)) {
+            require_once __DIR__ . '/class-seoprostats-inspections.php';
+            SEOProStats_Inspections::cron();
+        }
     }
 
     /**
@@ -662,12 +670,13 @@ final class SEOProStats_Search_Import {
     }
 
     /**
-     * A source's class, an access token and its property.
+     * A source's class, an access token and its property (also for
+     * Search Console's sitemaps and URL Inspection, SEOProStats_Inspections).
      *
      * @param string $source Source key.
      * @return array{0:string,1:string,2:string}|WP_Error
      */
-    private static function ready($source) {
+    public static function ready($source) {
         if (!SEOProStats_Schema::is_current()) {
             return new WP_Error('seoprostats_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoprostats'));
         }

@@ -48,8 +48,10 @@ final class SEOProStats_Schema {
      * v17: ab_exposures (the A/B test variants each page load showed).
      * v18: links (backlinks: pages of other sites linking to the site's
      *      pages, SEOProStats_Backlinks).
+     * v19: inspections (Google's URL Inspection of each page,
+     *      SEOProStats_Inspections).
      */
-    const VERSION = 18;
+    const VERSION = 19;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -78,6 +80,7 @@ final class SEOProStats_Schema {
     const DICT_AB_TEST    = 18;
     const DICT_AB_VARIANT = 19;
     const DICT_URL        = 20;
+    const DICT_COVERAGE   = 21;
 
     /** Search engines of the gsc_* rows. */
     const ENGINE_GOOGLE = 1;
@@ -118,7 +121,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections');
     }
 
     /**
@@ -767,6 +770,38 @@ final class SEOProStats_Schema {
   KEY status_first (status,first_seen),
   KEY lost (lost),
   KEY source_host (source_host_id)
+) $charset;",
+
+            // Google's URL Inspection (SEOProStats_Inspections): one row per
+            // page, the version in Google's index when it was last inspected
+            // (checked). verdict, indexing, robots, page_fetch, crawled_as
+            // and rich: codes of Google's values (SEOProStats_Inspections's
+            // VERDICTS, INDEXING, ROBOTS, FETCH, CRAWLED_AS; 0 unspecified).
+            // coverage_id: Google's coverage state (DICT_COVERAGE);
+            // google_canonical_id, user_canonical_id: DICT_URL. crawled: the
+            // last crawl. flags: findings (SEOProStats_Inspections::FLAGS).
+            // details: JSON of rich result types and issues, the sitemaps
+            // Google knows it from and Search Console's link.
+            'inspections' => "CREATE TABLE {$t['inspections']} (
+  path_id int unsigned NOT NULL,
+  checked int unsigned NOT NULL DEFAULT 0,
+  verdict tinyint unsigned NOT NULL DEFAULT 0,
+  coverage_id int unsigned NOT NULL DEFAULT 0,
+  indexing tinyint unsigned NOT NULL DEFAULT 0,
+  robots tinyint unsigned NOT NULL DEFAULT 0,
+  page_fetch tinyint unsigned NOT NULL DEFAULT 0,
+  crawled_as tinyint unsigned NOT NULL DEFAULT 0,
+  crawled int unsigned NOT NULL DEFAULT 0,
+  google_canonical_id int unsigned NOT NULL DEFAULT 0,
+  user_canonical_id int unsigned NOT NULL DEFAULT 0,
+  rich tinyint unsigned NOT NULL DEFAULT 0,
+  flags tinyint unsigned NOT NULL DEFAULT 0,
+  details text NOT NULL,
+  PRIMARY KEY  (path_id),
+  KEY checked (checked),
+  KEY verdict_checked (verdict,checked),
+  KEY coverage_checked (coverage_id,checked),
+  KEY flags (flags)
 ) $charset;",
         );
     }

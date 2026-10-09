@@ -19,7 +19,7 @@
  */
 
 import { Fragment, useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, ExternalLink, Notice, SelectControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import {
 	apiArgs,
@@ -40,6 +40,8 @@ import {
 	type QueueFilter,
 	type QueueItem,
 	type QueueKind,
+	QUEUE_SITEMAP_PROBLEMS,
+	type QueueSitemapProblem,
 	type QueueStatus,
 	type RefreshProposal,
 	singleEngine,
@@ -76,8 +78,25 @@ export function kindName(kind: QueueKind): string {
 		index: __('Indexation', 'seoprostats'),
 		refresh: __('Refresh', 'seoprostats'),
 		target: __('Search target', 'seoprostats'),
+		sitemap: __('Sitemap', 'seoprostats'),
 	};
 	return names[kind];
+}
+
+/** A sitemap item's problem, or null. */
+function sitemapProblem(item: QueueItem): QueueSitemapProblem | null {
+	return item.kind === 'sitemap' && item.finding && (QUEUE_SITEMAP_PROBLEMS as readonly string[]).includes(item.finding) ? (item.finding as QueueSitemapProblem) : null;
+}
+
+/** A sitemap problem's name. */
+function sitemapProblemName(problem: QueueSitemapProblem): string {
+	const names: Record<QueueSitemapProblem, string> = {
+		missing: __('Not submitted', 'seoprostats'),
+		errors: __('Errors', 'seoprostats'),
+		stale: __('Not downloaded lately', 'seoprostats'),
+		warnings: __('Warnings', 'seoprostats'),
+	};
+	return names[problem];
 }
 
 /** A search target item's finding, or null. */
@@ -128,7 +147,20 @@ function itemKind(item: QueueItem): string {
 	const index = indexList(item);
 	const proposal = refreshProposal(item);
 	const target = targetFinding(item);
-	const detail = finding ? findingName(finding) : list ? linksName(list) : index ? indexationName(index) : proposal ? proposalName(proposal) : target ? targetFindingName(target) : '';
+	const problem = sitemapProblem(item);
+	const detail = finding
+		? findingName(finding)
+		: list
+			? linksName(list)
+			: index
+				? indexationName(index)
+				: proposal
+					? proposalName(proposal)
+					: target
+						? targetFindingName(target)
+						: problem
+							? sitemapProblemName(problem)
+							: '';
 	return detail
 		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
@@ -383,7 +415,11 @@ function ItemTable({ answer, items, offset, state, goal, open, refreshing, onErr
 								<td className="num">{number(offset + i + 1)}</td>
 								<td>
 									<strong className="spst-plan__kind">{itemKind(item)}</strong>
-									<PageCell row={item} query={item.query ?? ''} open={open} />
+									{item.kind === 'sitemap' ? (
+										<span className="spst-meta">{/^https?:\/\//.test(item.url) ? <ExternalLink href={item.url}>{item.url}</ExternalLink> : item.url}</span>
+									) : (
+										<PageCell row={item} query={item.query ?? ''} open={open} />
+									)}
 								</td>
 								<td>
 									{item.why}
@@ -497,7 +533,9 @@ function Actions(props: ActProps) {
 	const { busy, act } = useAct(props);
 	const done = () => {
 		const question =
-			refreshProposal(item) === 'leave'
+			item.kind === 'sitemap'
+				? __('Mark it done? A sitemap is about the whole site, so no experiment starts; the item is listed again if Search Console still shows the problem.', 'seoprostats')
+				: refreshProposal(item) === 'leave'
 				? __('Mark it done? The page stays as it is, so no experiment starts.', 'seoprostats')
 				: sprintf(
 						/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
@@ -608,6 +646,7 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const list = linksList(item);
 	const index = indexList(item);
 	const proposal = refreshProposal(item);
+	const problem = sitemapProblem(item);
 	const kindEffort =
 		(finding
 			? answer.rules.audit_effort?.[finding]
@@ -617,7 +656,9 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 					? answer.rules.index_effort?.[index]
 					: proposal
 						? answer.rules.refresh_effort?.[proposal]
-						: undefined) ?? answer.rules.effort[item.kind];
+						: problem
+							? answer.rules.sitemap_effort?.[problem]
+							: undefined) ?? answer.rules.effort[item.kind];
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
@@ -663,6 +704,13 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 													: __('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what links in could add), scaled to 28 days.', 'seoprostats'),
 												`${number((f.share ?? 0) * 100)}%`
 											)
+										: item.kind === 'sitemap'
+											? sprintf(
+													/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
+													__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s (what this sitemap problem puts at stake for the pages Google finds through it).', 'seoprostats'),
+													decimal(f.typical ?? 0),
+													`${number((f.share ?? 0) * 100)}%`
+												)
 										: item.kind === 'index'
 											? sprintf(
 													/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
@@ -701,7 +749,7 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 						: __('Value: 1, as there is no goal or no visits from search.', 'seoprostats')}
 				</li>
 				<li>
-					{item.kind === 'index'
+					{item.kind === 'index' || item.kind === 'sitemap'
 						? sprintf(
 								/* translators: %s: the kind's confidence. */
 								__('Confidence: the kind’s %s; with no impressions there is nothing to weigh it by.', 'seoprostats'),
@@ -720,7 +768,9 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 						: __('Effort: the kind’s, from 1 (least) to 5.', 'seoprostats')}
 				</li>
 				<li>
-					{proposal === 'leave'
+					{item.kind === 'sitemap'
+						? __('Done records the sitemap as fixed; no experiment starts, as a sitemap is about the whole site.', 'seoprostats')
+						: proposal === 'leave'
 						? __('Done records that the page stays as it is; no experiment starts.', 'seoprostats')
 						: sprintf(
 								/* translators: %s: a measure, e.g. "CTR". */

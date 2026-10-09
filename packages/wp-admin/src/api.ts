@@ -37,6 +37,8 @@ import {
 	type GoalsAnswer,
 	type IndexationAnswer,
 	type IndexationKind,
+	type InspectionsAnswer,
+	type InspectionVerdict,
 	type LinksAnswer,
 	type LinksKind,
 	type Marker,
@@ -304,6 +306,18 @@ export function useIndexation(scope: SearchScope, kind: IndexationKind, limit = 
 		queryFn: () => get<IndexationAnswer>('indexation', args),
 		placeholderData: keepPreviousData,
 		enabled,
+	});
+}
+
+/** Google's URL Inspection of the site's pages, newest first, with Search Console's sitemaps; only page filters apply (Google only). */
+export function useInspections(scope: SearchScope, verdict: InspectionVerdict | '', limit = 25, offset = 0, on = true) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ range: '30d', filters: scope.filters }), limit, offset, ...(verdict ? { verdict } : {}) }, data);
+	return useQuery({
+		queryKey: ['inspections', args],
+		queryFn: () => get<InspectionsAnswer>('inspections', args),
+		placeholderData: keepPreviousData,
+		enabled: enabled && on,
 	});
 }
 

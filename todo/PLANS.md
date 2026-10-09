@@ -154,8 +154,11 @@ long-term record.
 - [x] Backlinks from verified referrers: the daily check opens pages that
       sent visits and keeps their links to the site; Search → Backlinks,
       new and lost links on the timeline (GH#142).
+- [x] Search Console sitemaps and URL Inspection: Google's index under
+      Search → Audit, four audit findings, sitemap plan items and verdict
+      changes on the timeline (GH#144).
 - [ ] Backlinks from a provider (DataForSEO; GH#141), and the other data
-      sources in GH#37 (#144–#150).
+      sources in GH#37 (#145–#150).
 - [ ] Referral spikes and mentions.
 
 ## Phase 5: health (depends on 1)

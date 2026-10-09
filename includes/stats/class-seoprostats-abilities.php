@@ -517,7 +517,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/indexation', array(
             'label'               => __('Indexation', 'seoprostats'),
-            'description'         => __('Pages search engines do not seem to show, from the site\'s own search data, in two lists. pages: published pages with no search impressions in the engine\'s newest days (28 by default), published before them. sitemap: other addresses in the site\'s own sitemaps (category, tag and author archives, other plugins\'), listed that long, with none. Each row says whether search never showed it (state never) or showed it until last_impression (state lost), with its age in days; pages add words and links_in (pages linking to it). Never shown first, then the newest. Pages that ask not to be indexed or name another page as canonical are left out (skipped counts them). typical is a page\'s clicks per 28 days here when search shows it. Fix: check the page may be indexed and is linked and in the sitemap, ask the engine to crawl it, or improve or merge it. Engine URL inspection is not used.', 'seoprostats'),
+            'description'         => __('Pages search engines do not seem to show, from the site\'s own search data, in two lists. pages: published pages with no search impressions in the engine\'s newest days (28 by default), published before them. sitemap: other addresses in the site\'s own sitemaps (category, tag and author archives, other plugins\'), listed that long, with none. Each row says whether search never showed it (state never) or showed it until last_impression (state lost), with its age in days; pages add words and links_in (pages linking to it). Never shown first, then the newest. Pages that ask not to be indexed or name another page as canonical are left out (skipped counts them). typical is a page\'s clicks per 28 days here when search shows it. Fix: check the page may be indexed and is linked and in the sitemap, ask the engine to crawl it, or improve or merge it. For Google, google on each row is its URL Inspection (verdict, coverage, last_crawl; null until inspected), sitemaps the property\'s submitted sitemaps and inspections the inspection run (seoprostats/inspections has the details).', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -644,6 +644,78 @@ final class SEOProStats_Abilities {
                 ),
             ),
             'execute_callback'    => array(__CLASS__, 'backlinks'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/inspections', array(
+            'label'               => __('Google URL Inspection', 'seoprostats'),
+            'description'         => __('How Google indexed the site\'s pages, from Search Console\'s URL Inspection (the version in Google\'s index, not a live test), newest first. While Search Console is connected, the hourly import inspects up to the daily setting (200 by default; Google allows 2,000 a day per property): pages search has not shown first, then pages with search impressions, each again after 14 days. Each row: page, verdict (PASS, PARTIAL, FAIL, NEUTRAL), coverage (Google\'s reason in its words, such as "Crawled - currently not indexed"), indexing, robots, page_fetch, crawled_as, last_crawl, google_canonical and user_canonical, rich_verdict and rich (rich result types with their errors, warnings and issues), sitemaps and referring (addresses Google knows it from), link (the report in Search Console) and findings: robots_blocked, not_indexed, google_canonical (Google chose another canonical than the page\'s own), rich_errors. counts gives pages per verdict; progress the daily cap, today\'s use and the last error; sitemaps the property\'s submitted sitemaps with errors, warnings, last downloaded and problems (errors, stale, warnings), and submitted (false when the site\'s own sitemap index is not submitted). A verdict change is also a change on the timeline (index_status, seoprostats/markers).', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'page'     => array(
+                        'type'        => 'string',
+                        'description' => __('Only this page (a path such as /pricing/).', 'seoprostats'),
+                    ),
+                    'verdict'  => array(
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), array_values(SEOProStats_Inspections::VERDICTS)),
+                        'default'     => '',
+                        'description' => __('Only pages with this verdict.', 'seoprostats'),
+                    ),
+                    'coverage' => array(
+                        'type'        => 'string',
+                        'default'     => '',
+                        'description' => __('Only pages with this coverage state, in Google\'s words.', 'seoprostats'),
+                    ),
+                    'finding'  => array(
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), array_keys(SEOProStats_Inspections::FLAGS)),
+                        'default'     => '',
+                        'description' => __('Only pages with this finding.', 'seoprostats'),
+                    ),
+                    'limit'    => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Inspections::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'offset'   => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'     => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'connected' => array('type' => 'boolean'),
+                    'progress'  => array('type' => 'object'),
+                    'rules'     => array('type' => 'object'),
+                    'sitemaps'  => array('type' => 'object'),
+                    'inspected' => array('type' => 'integer'),
+                    'counts'    => array('type' => 'object'),
+                    'rows'      => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'     => array('type' => 'integer'),
+                    'more'      => array('type' => 'boolean'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'inspections'),
             'permission_callback' => array('SEOProStats_API', 'can_read'),
             'meta'                => array(
                 'show_in_rest' => true,
@@ -1760,6 +1832,31 @@ final class SEOProStats_Abilities {
         $kind = isset($input['kind']) ? (string) $input['kind'] : 'links';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
             return SEOProStats_Backlinks::report((array) $req, $kind);
+        });
+    }
+
+    /**
+     * seoprostats/inspections.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function inspections($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request(array_diff_key($input, array_flip(array('page', 'verdict', 'coverage', 'finding'))) + array('limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $req  = (array) $req;
+        $page = isset($input['page']) ? trim((string) $input['page']) : '';
+        if ($page !== '') {
+            $req['filters'] = array(array('dimension' => 'page', 'op' => 'is', 'values' => array($page)));
+        }
+        $verdict  = isset($input['verdict']) ? (string) $input['verdict'] : '';
+        $coverage = isset($input['coverage']) ? (string) $input['coverage'] : '';
+        $finding  = isset($input['finding']) ? (string) $input['finding'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $verdict, $coverage, $finding) {
+            return SEOProStats_Inspections::report($req, $verdict, $coverage, $finding);
         });
     }
 

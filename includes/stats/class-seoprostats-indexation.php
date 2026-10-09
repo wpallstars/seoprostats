@@ -24,8 +24,10 @@
  * Reads: page_facts by its published key and sitemap by its first_seen
  * key (the newest MAX_ROWS of each), then gsc_pages by path_day for those
  * pages only: which had impressions in the window, then the last day of
- * the others'. Engine URL inspection is a later opt-in step. Design:
- * docs/seo-loop.md → Indexation.
+ * the others'. Google's URL Inspection of the rows listed (their reason
+ * and last crawl) and Search Console's sitemaps come from
+ * SEOProStats_Inspections, outside the cache. Design: docs/seo-loop.md →
+ * Indexation.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -225,22 +227,28 @@ final class SEOProStats_Indexation {
         $list   = (array) $all['lists'][$kind];
         unset($all['lists']);
         $rows = array_slice($list, $offset, $limit);
-        // Editor links depend on the viewer and ages on today, so they are added outside the shared cache.
-        $now = time();
+        // Editor links depend on the viewer, ages on today and Google's view on the latest inspection, so they are added outside the shared cache.
+        $now    = time();
+        $google = $engine === 'google' ? SEOProStats_Inspections::of_pages(array_column($rows, 'path_id')) : array();
         foreach ($rows as &$row) {
             $since      = strtotime((string) ($kind === 'pages' ? $row['published'] : $row['first_seen']));
             $row['age'] = $since ? max(0, (int) floor(($now - $since) / DAY_IN_SECONDS)) : 0;
+            // Google's reason (coverage state) and last crawl, from URL Inspection; null until inspected.
+            $row['google'] = isset($google[(int) $row['path_id']]) ? $google[(int) $row['path_id']] : null;
             if ((int) $row['post_id']) {
                 $row = SEOProStats_Clicks::with_edit_url($row);
             }
         }
         unset($row);
         return $all + array(
-            'kind'      => $kind,
-            'connected' => !$live || SEOProStats_Search::connected($engine),
-            'rows'      => $rows,
-            'total'     => (int) $all['counts'][$kind],
-            'more'      => $offset + $limit < min((int) $all['counts'][$kind], count($list)),
+            'kind'        => $kind,
+            'connected'   => !$live || SEOProStats_Search::connected($engine),
+            // Search Console's sitemaps and the URL Inspection run (Google only).
+            'sitemaps'    => $engine === 'google' ? SEOProStats_Inspections::sitemaps() : null,
+            'inspections' => $engine === 'google' ? SEOProStats_Inspections::progress() + array('inspected' => SEOProStats_Inspections::inspected()) : null,
+            'rows'        => $rows,
+            'total'       => (int) $all['counts'][$kind],
+            'more'        => $offset + $limit < min((int) $all['counts'][$kind], count($list)),
         );
     }
 
@@ -576,6 +584,7 @@ final class SEOProStats_Indexation {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-changes.php';
         require_once __DIR__ . '/class-seoprostats-audit.php';
+        require_once __DIR__ . '/class-seoprostats-inspections.php';
     }
 
     /**

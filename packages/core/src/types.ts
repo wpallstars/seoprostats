@@ -1014,6 +1014,9 @@ export interface ExperimentInput {
 export const AUDIT_FINDINGS = [
 	'noindex',
 	'canonical',
+	'robots_blocked',
+	'not_indexed',
+	'google_canonical',
 	'thin',
 	'title_missing',
 	'title_duplicate',
@@ -1023,9 +1026,114 @@ export const AUDIT_FINDINGS = [
 	'description_long',
 	'h1_none',
 	'h1_several',
+	'rich_errors',
 	'images_alt',
 ] as const;
 export type AuditFinding = (typeof AUDIT_FINDINGS)[number];
+
+/** Findings of Google's URL Inspection (also content audit findings). */
+export const INSPECTION_FINDINGS = ['robots_blocked', 'not_indexed', 'google_canonical', 'rich_errors'] as const;
+export type InspectionFinding = (typeof INSPECTION_FINDINGS)[number];
+
+/** Google's verdicts of a page in its index. */
+export const INSPECTION_VERDICTS = ['PASS', 'PARTIAL', 'FAIL', 'NEUTRAL'] as const;
+export type InspectionVerdict = (typeof INSPECTION_VERDICTS)[number];
+
+/** A rich result type Google detected on a page, with its issues. */
+export interface InspectionRichType {
+	type: string;
+	items: number;
+	errors: number;
+	warnings: number;
+	issues: { message: string; severity: 'error' | 'warning' }[];
+}
+
+/** Google's view of a page from URL Inspection (the version in its index); Google's values as it gives them, null when not given. */
+export interface InspectionGoogle {
+	/** When it was inspected (ISO 8601). */
+	checked: string;
+	verdict: InspectionVerdict | null;
+	/** Google's reason, in its words, e.g. "Crawled - currently not indexed". */
+	coverage: string | null;
+	indexing: string | null;
+	robots: string | null;
+	page_fetch: string | null;
+	crawled_as: string | null;
+	last_crawl: string | null;
+	google_canonical: string | null;
+	user_canonical: string | null;
+	rich_verdict: InspectionVerdict | null;
+	rich: InspectionRichType[];
+	/** Sitemaps and pages Google knows it from (up to five each). */
+	sitemaps: string[];
+	referring: string[];
+	/** The inspection in Search Console. */
+	link: string | null;
+	/** Google's message when it would not inspect the address. */
+	error: string | null;
+	findings: InspectionFinding[];
+}
+
+/** A sitemap problem: errors, not downloaded lately, warnings. */
+export type SitemapProblem = 'errors' | 'stale' | 'warnings';
+
+/** A sitemap submitted in Search Console, as Google read it. */
+export interface SearchSitemap {
+	path: string;
+	type: string;
+	index: boolean;
+	pending: boolean;
+	submitted: string | null;
+	downloaded: string | null;
+	errors: number;
+	warnings: number;
+	/** Addresses submitted, by type (Google's indexed count is deprecated and left out). */
+	contents: { type: string; submitted: number }[];
+	problems: SitemapProblem[];
+}
+
+/** The property's sitemaps, read daily while Search Console is connected. */
+export interface SearchSitemaps {
+	read: string | null;
+	error: string | null;
+	/** The site's own sitemap index (its SEO plugin's, or WordPress's); null without one. */
+	own: string | null;
+	/** False when the site's own sitemap index is not submitted. */
+	submitted: boolean;
+	stale_days: number;
+	rows: SearchSitemap[];
+}
+
+/** URL Inspection's daily cap, today's use, the last run and its error. */
+export interface InspectionProgress {
+	daily: number;
+	used: number;
+	/** Google's day (Pacific time), YYYY-MM-DD. */
+	day: string;
+	last: string | null;
+	error: string | null;
+	error_at: string | null;
+}
+
+export interface InspectionRow extends OpportunityPage, InspectionGoogle {}
+
+export interface InspectionsAnswer {
+	connected: boolean;
+	ignored: string[];
+	verdict: InspectionVerdict | '';
+	coverage: string;
+	finding: InspectionFinding | '';
+	progress: InspectionProgress;
+	rules: { daily: number; max_daily: number; recheck_days: number; budget: number; stale_days: number };
+	sitemaps: SearchSitemaps;
+	/** Pages inspected, and per verdict. */
+	inspected: number;
+	counts: Record<InspectionVerdict, number>;
+	/** Newest first. */
+	rows: InspectionRow[];
+	total: number;
+	more: boolean;
+}
 
 /** What the content audit read from a page's post and SEO plugin fields. */
 export interface AuditFacts {
@@ -1054,6 +1162,8 @@ export interface AuditRow extends OpportunityPage, SearchMetrics {
 	/** Other pages with the same title or description (up to five). */
 	same_title: string[];
 	same_description: string[];
+	/** Google's URL Inspection of the page; null until inspected. */
+	google: InspectionGoogle | null;
 }
 
 export interface AuditAnswer extends Answer, SearchEngineAnswer {
@@ -1178,6 +1288,8 @@ export interface IndexationRow extends OpportunityPage {
 	/** sitemap: when it was first listed, and from where. */
 	first_seen?: string;
 	source?: SitemapSource;
+	/** Google's URL Inspection of the page (its reason and last crawl); null until inspected or for Bing. */
+	google: InspectionGoogle | null;
 }
 
 export interface IndexationAnswer extends Answer, SearchEngineAnswer {
@@ -1203,6 +1315,9 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 	skipped: { noindex: number; canonical: number };
 	/** Rows per list (of every list, whichever is asked for). */
 	counts: Record<IndexationKind, number>;
+	/** Search Console's sitemaps and the URL Inspection run (Google; null for Bing). */
+	sitemaps: SearchSitemaps | null;
+	inspections: (InspectionProgress & { inspected: number }) | null;
 	/** Never shown first, then the newest. */
 	rows: IndexationRow[];
 	total: number;
@@ -1368,8 +1483,12 @@ export interface TargetsImportAnswer {
 export const REFRESH_PROPOSALS = ['leave', 'protect', 'merge', 'update'] as const;
 export type RefreshProposal = (typeof REFRESH_PROPOSALS)[number];
 
-/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links, indexation, refresh proposals and search targets. */
-export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index' | 'refresh' | 'target';
+/** Kinds of decision queue item: each an opportunity kind, audit findings, internal links, indexation, refresh proposals, search targets and Search Console sitemap problems. */
+export type QueueKind = OpportunityKind | 'audit' | 'links' | 'index' | 'refresh' | 'target' | 'sitemap';
+
+/** A sitemap item's problem: a sitemap's own, or the site's sitemap index not submitted (missing). */
+export const QUEUE_SITEMAP_PROBLEMS = ['missing', 'errors', 'stale', 'warnings'] as const;
+export type QueueSitemapProblem = (typeof QUEUE_SITEMAP_PROBLEMS)[number];
 
 /** An item's state: new (worked out now) or as someone left it. */
 export const QUEUE_STATUSES = ['new', 'accepted', 'done', 'dismissed'] as const;
@@ -1450,6 +1569,8 @@ export interface QueueFigures {
 	/** target: the target's priority and status (wrong_page: pages are the page meant for it, then the page shown). */
 	priority?: number;
 	target_status?: TargetStatus;
+	/** sitemap: the sitemap as Search Console read it (typical and share give the potential clicks). */
+	sitemap?: { url: string; errors: number; warnings: number; downloaded: string | null; submitted: string | null };
 }
 
 export interface QueueItem extends OpportunityPage {
@@ -1461,8 +1582,8 @@ export interface QueueItem extends OpportunityPage {
 	/** Whether the opportunity is still found in this period (else as it was when acted on). */
 	found: boolean;
 	query: string | null;
-	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; else null. */
-	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | null;
+	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; sitemap: the problem; else null. */
+	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -1518,6 +1639,9 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		/** Indexation lists whose effort is not the index kind's, and each list's share of a typical page's clicks. */
 		index_effort: Partial<Record<IndexationKind, number>>;
 		index_share: Record<IndexationKind, number>;
+		/** Sitemap problems whose effort is not the sitemap kind's, and each problem's share of a typical page's clicks. */
+		sitemap_effort: Partial<Record<QueueSitemapProblem, number>>;
+		sitemap_share: Record<QueueSitemapProblem, number>;
 		/** Refresh proposals' effort and share of the clicks lost, and the planner's thresholds. */
 		refresh_effort: Record<RefreshProposal, number>;
 		refresh_share: Record<RefreshProposal, number>;
