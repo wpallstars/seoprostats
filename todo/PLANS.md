@@ -69,10 +69,10 @@ long-term record.
       ThriveCart orders as revenue events, once per order (server side, on
       payment), in each order's currency, on the visit that checked out
       (issue #30). Refunds and renewals later.
-- [ ] A/B testing of blocks: variants in the editor, results by test and
-      variant (issue #29). Part 1, blocks, editor, `ab_tests` registry and
-      the site's variant swap, done (#133); collection (#134), reports
-      (#135) and results and winner in the editor (#136) to come.
+- [x] A/B testing of blocks: variants in the editor, results by test and
+      variant (issue #29): blocks, editor, `ab_tests` registry and the
+      site's variant swap (#133); collection (#134); reports (#135);
+      results and picking the winner in the editor (#136).
 - [x] Clicks by page with View and Edit links (issue #25).
 - [ ] Journeys (visitor per day timeline), Flow (Sankey), segments.
 

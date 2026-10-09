@@ -54,9 +54,13 @@ final class SEOProStats_Editor {
             return array('id' => $goal['id'], 'name' => $goal['name']);
         }, SEOProStats_Goals::goals());
         SEOProStats_Schema::use_set($before);
+        $read = current_user_can(SEOProStats_API::CAP);
         wp_add_inline_script('seoprostats-ab-test', 'window.seoprostatsAbTests = ' . wp_json_encode(array(
             'goals'    => $goals,
-            'goalsUrl' => current_user_can(SEOProStats_API::CAP) ? SEOProStats_Dashboard::url() . '#/goals' : '',
+            'goalsUrl' => $read ? SEOProStats_Dashboard::url('goals') : '',
+            // Results in the test's sidebar, for people who may read statistics.
+            'canRead'  => $read,
+            'testsUrl' => $read ? SEOProStats_Dashboard::url('ab-tests') : '',
         )) . ';', 'before');
     }
 

@@ -664,7 +664,7 @@ feature (a change and its expected effect, above).
   `seoprostats/ab-variant` blocks, each any blocks. The test's attributes
   are `testId` (6 to 32 lower-case letters and digits, random), `name`,
   `status` (draft, running, paused, ended), `goals` (goal ids) and
-  `winner` (a variant slug, set by part 4); a variant's are `slug`
+  `winner` (a variant slug); a variant's are `slug`
   (`variant-a`… kept once set), `label` and `weight` (0–100, relative; 0
   never shows it). Both are registered in PHP with render callbacks and
   saved with their inner blocks' markup, so the editor's own parser keeps
@@ -679,6 +679,24 @@ feature (a change and its expected effect, above).
   label, weight and order, and adds (blank or a copy) and removes
   variants. In the site editor, template parts and synced patterns the
   button only says tests start in posts and pages for now.
+- **Results and the winner in the editor** (`ab-test/results.tsx`). For
+  people who may read statistics, the sidebar's Results panel reads
+  `GET /ab-tests/{id}` (live data) when it opens, never on the site, and
+  keeps the answer for the session (Refresh reads again): per variant
+  visits, the primary metric's rate and the chance to beat the control,
+  the verdict in one line (too early says what is still needed) and a
+  link to the test in the dashboard. **Pick a winner** (defaulting to the
+  leader of a called test) replaces the test block with copies of the
+  chosen variant's inner blocks by `replaceBlocks`, one undo step, with an
+  Undo snackbar (removed once the blocks are gone or the post is saved).
+  After a save (not an autosave) succeeds with the test gone and those
+  blocks still there, the editor sends `POST /ab-tests/{id}/winner`;
+  undone first, nothing is sent, and a test deleted by hand is only
+  marked removed. `SEOProStats_AB_Tests::pick_winner()` checks the test
+  ran, the person may edit its post and the post no longer holds it, then
+  sets it ended with that winner (keeping `removed` at 0, so later saves
+  leave it) and adds the timeline changes; sending it again changes
+  nothing. A draft test, which never ran, just keeps the chosen variant.
 - **Registry.** `wp_insert_post_data` gives each test without an id, or
   with one another test in the post or another post has, a new id derived
   from the old one and the post (saving again gives the same id), by
@@ -751,18 +769,21 @@ feature (a change and its expected effect, above).
   loads and clicks per variant by `ts`. The Pages breakdown marks pages
   with a running test (`ab_test`). Shared reports leave A/B tests out.
 - **Timeline.** Saving a post that starts, resumes, pauses or ends a
-  test, or picks its winner, adds a change (`ab_test_started`,
-  `ab_test_paused`, `ab_test_ended`, `ab_test_winner`, group content) on
-  its page; never on visitor pages.
+  test, or picks its winner (in the block's attributes or by Pick a
+  winner), adds a change (`ab_test_started`, `ab_test_paused`,
+  `ab_test_ended`, `ab_test_winner`, group content) on its page; never on
+  visitor pages.
 - **Where to read them**: the dashboard's A/B tests section (a list, and
-  one test's variants side by side), `GET /ab-tests` and
+  one test's variants side by side), the test's sidebar in the editor,
+  `GET /ab-tests` and
   `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]`, and the
   `seoprostats/ab-tests` ability. The demo data has three running: a
   headline test with a clear winner, a button test with no clear
   difference and a price test too early to call.
 - **Without the plugin**, the saved markup has every variant one after
   the other, so a page shows them all while SEO Pro Stats is inactive.
-  Picking a winner (part 4) replaces the test with its blocks.
+  Picking a winner replaces the test with its blocks, so the saved markup
+  no longer depends on the plugin.
 
 ### Moving from other statistics plugins
 

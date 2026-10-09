@@ -2,8 +2,9 @@
 	'dependencies' => array(
 		'react',
 		'react-jsx-runtime',
+		'wp-api-fetch',
 		'wp-components',
 		'wp-i18n'
 	),
-	'version' => '5f72a1b8400454030d4e'
+	'version' => 'ddea126ca25c41bbbdca'
 );

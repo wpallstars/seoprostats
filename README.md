@@ -131,7 +131,19 @@ Overview's Events card has an A/B variants tab, the Pages card marks pages
 with a running test, and starting, pausing, ending a test or picking its
 winner shows on the timeline. Scripts and agents read the same from `GET
 /ab-tests`, `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]` and the
-`seoprostats/ab-tests` ability. To show
+`seoprostats/ab-tests` ability.
+
+The test's sidebar in the editor shows its results when you open it:
+each variant's visits, conversion rate and chance to beat Variant A, a
+one-line verdict (or what it still needs before it can be called), and a
+link to the test in **A/B tests**. **Pick a winner** replaces the test
+with the variant you choose (the leader, when there is one), in one step
+you can undo. When you save the post, the test ends with that winner,
+which shows on the timeline; its results stay in A/B tests, and the page
+prints only the winner's blocks, with no test script. Undo before saving
+and nothing changes.
+
+To show
 a visitor the same variant on every page of a visit, turn on **Settings →
 Tracking → Show each visit one variant of an A/B test** (off by default).
 It keeps the variant in the browser tab's session storage until the tab is
@@ -403,6 +415,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: A/B tests of blocks, part 4: results and the winner in the editor. The test's sidebar shows each variant's visits, conversion rate and chance to beat Variant A with a short verdict and a link to the test in A/B tests. **Pick a winner** replaces the test with the chosen variant's blocks (one step to undo); saving the post ends the test with that winner on the timeline and keeps its results. New `POST /ab-tests/{id}/winner`. The editor's link to Goals now opens Goals.
 - New: A/B tests of blocks, part 3: reports. **SEO Pro Stats → A/B tests** (under Behaviour) lists every test and shows one test's variants side by side over its whole life: visits, conversions, rate, uplift over Variant A with a 95% interval, chance to beat it, a plain verdict (too early, a winner, Variant A still best, or no clear difference), every goal with revenue per currency, bounce rate, engaged time and clicks. Visits that saw more than one variant are counted apart. New **A/B variant** filter and breakdown, an A/B mark on pages with a running test, and timeline changes when a test starts, pauses, ends or gets a winner. New `GET /ab-tests`, `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]` and the `seoprostats/ab-tests` ability; the demo data has three tests.
 - New: A/B tests of blocks, part 2: what each visitor saw. Each pageview sends the A/B test variants it shows and each click inside a variant says which, into a new `ab_exposures` table (schema v17): one row per page load and test, with its visit and clicks, only for tests and variants the site has. Kept as long as visits. New opt-in setting, **Settings → Tracking → Show each visit one variant of an A/B test**: off, each page load picks again and nothing is stored; on, the variant is kept in the tab's session storage, which may need consent.
 - New: A/B tests of blocks, part 1: the blocks, the editor and the site. Choose **A/B test** on any block or selection in the block editor; Variant A holds it and Variant B starts as a copy. Pick the variant to edit from the test's toolbar, and set the name, status, goals and each variant's label and weight in the sidebar. A running test shows each page load one variant, picked by weight before the page is drawn, with no cookie, storage or query; search engines, visitors without JavaScript and page caches see Variant A. Saving a post keeps its tests in a new `ab_tests` table (schema v16). Results come in later parts.

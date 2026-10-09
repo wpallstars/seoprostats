@@ -29,6 +29,7 @@ import {
 	type Status,
 	type TestAttributes,
 } from './model';
+import { ResultsPanel, WinnerPanel } from './results';
 import { useVariants, VariantSwitcher } from './switcher';
 import { blockActions, editor, wp, type BlockEditorSelectors, type BlockInstance, type EditProps } from './wp';
 
@@ -314,6 +315,7 @@ export function TestEdit({ clientId, attributes, setAttributes }: EditProps<Test
 						{sprintf(/* translators: %s: the test's id. */ __('Test ID: %s', 'seoprostats'), attributes.testId)}
 					</p>
 				</PanelBody>
+				{validId(attributes.testId) && <ResultsPanel testId={attributes.testId} />}
 				<PanelBody title={__('Variants', 'seoprostats')}>
 					<p className="spst-ab-note">{__('The first variant is the control: crawlers, feeds and visitors without JavaScript see it.', 'seoprostats')}</p>
 					<ol className="spst-ab-variant-list">
@@ -340,6 +342,9 @@ export function TestEdit({ clientId, attributes, setAttributes }: EditProps<Test
 						</Button>
 					</div>
 				</PanelBody>
+				{validId(attributes.testId) && variants.length > 0 && (
+					<WinnerPanel testClientId={clientId} testId={attributes.testId} status={attributes.status} variants={variants} shown={shown} />
+				)}
 			</InspectorControls>
 			<div {...innerBlocksProps} />
 		</>
