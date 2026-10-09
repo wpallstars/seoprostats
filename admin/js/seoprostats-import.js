@@ -50,6 +50,7 @@
 			if (!file) { return; }
 			var body = new FormData();
 			body.append('file', file);
+			body.append('source', linksForm.querySelector('select').value);
 			linksForm.querySelector('button').disabled = true;
 			wp.apiFetch({ path: base + 'backlinks/import', method: 'POST', body: body }).then(showLinks).catch(function (error) {
 				linksStatus.textContent = error.message || __('The links could not be imported.', 'seoprostats');

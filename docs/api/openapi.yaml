@@ -2019,7 +2019,7 @@ paths:
           description: How found; filters the bounded 5,000-row window before aggregation and pagination.
           schema:
             type: string
-            enum: ['', referrer, dataforseo, gsc, ahrefs, semrush, majestic, moz, bing, generic]
+            enum: ['', referrer, dataforseo, gsc, ahrefs, semrush, majestic, moz, bing, generic, verified]
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'

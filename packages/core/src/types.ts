@@ -1328,7 +1328,7 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 export const BACKLINK_KINDS = ['links', 'domains', 'pages', 'lost'] as const;
 export type BacklinkKind = (typeof BACKLINK_KINDS)[number];
 
-export const BACKLINK_SOURCES = ['referrer', 'dataforseo', 'gsc', 'ahrefs', 'semrush', 'majestic', 'moz', 'bing', 'generic'] as const;
+export const BACKLINK_SOURCES = ['referrer', 'dataforseo', 'gsc', 'ahrefs', 'semrush', 'majestic', 'moz', 'bing', 'generic', 'verified'] as const;
 
 /** A link's rel words kept. */
 export type BacklinkRel = 'nofollow' | 'sponsored' | 'ugc';

@@ -36,7 +36,7 @@ final class SEOProStats_Backlinks_Import {
 
     /** Normalise a CSV header (including an optional UTF-8 BOM). @param string $value Header. @return string */
     private static function header($value) {
-        return strtolower((string) preg_replace('/[^a-zA-Z0-9]/', '', $value));
+        return strtolower((string) preg_replace('/[^a-zA-Z0-9]/', '', (string) $value));
     }
 
     /** Detect the provider without guessing from the filename. @param string[] $headers Headers. @return string */
@@ -73,6 +73,10 @@ final class SEOProStats_Backlinks_Import {
             return new WP_Error('seoprostats_links_source', __('Choose a supported export source.', 'seoprostats'), array('status' => 400));
         }
         $lock = SEOProStats_Schema::option(self::OPTION . '_lock');
+        $held = (int) get_option($lock, 0);
+        if ($held && $held < time() - 300) {
+            delete_option($lock);
+        }
         if (!add_option($lock, time(), '', false)) {
             return new WP_Error('seoprostats_links_busy', __('A links import is busy.', 'seoprostats'), array('status' => 409));
         }
@@ -197,6 +201,11 @@ final class SEOProStats_Backlinks_Import {
         require_once __DIR__ . '/class-seoprostats-dict.php';
         require_once __DIR__ . '/class-seoprostats-links.php';
         require_once __DIR__ . '/class-seoprostats-changes.php';
+        $job = self::status();
+        if ($job['status'] === 'running' && !wp_next_scheduled(SEOProStats_Collection::BACKLINK_IMPORT_HOOK)) {
+            // Schedule recovery before work: a fatal error must not strand the job.
+            wp_schedule_single_event(time() + 60, SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
+        }
         $lock = SEOProStats_Schema::option(self::OPTION . '_lock');
         // A crashed worker's lease expires; a normal worker removes it in finally.
         $held = (int) get_option($lock, 0);
@@ -208,6 +217,9 @@ final class SEOProStats_Backlinks_Import {
         }
         try {
             $job = self::status();
+            if ($job['status'] === 'running' && $job['done'] >= $job['total']) {
+                $job['status'] = 'done';
+            }
             $start = microtime(true);
             while ($job['status'] === 'running' && SEOProStats_Feature::more_time($start, $budget)) {
                 $index = (int) ($job['done'] / self::BATCH);
@@ -224,12 +236,12 @@ final class SEOProStats_Backlinks_Import {
                 }
                 ++$job[$link === null ? 'skipped' : 'accepted'];
                 ++$job['done'];
+                if ($job['done'] === $job['total']) {
+                    $job['status'] = 'done';
+                }
                 if ($job['done'] % self::BATCH === 0 || $job['done'] === $job['total']) {
                     update_option(SEOProStats_Schema::option(self::OPTION), $job, false);
                     delete_option(SEOProStats_Schema::option(self::OPTION . '_' . $index));
-                }
-                if ($job['done'] === $job['total']) {
-                    $job['status'] = 'done';
                 }
             }
             update_option(SEOProStats_Schema::option(self::OPTION), $job, false);
@@ -238,8 +250,9 @@ final class SEOProStats_Backlinks_Import {
             $state = is_array($state) ? $state : array();
             $state['version'] = max(time(), isset($state['version']) ? (int) $state['version'] + 1 : 0);
             update_option(SEOProStats_Schema::option(SEOProStats_Backlinks::OPTION), $state, false);
-            if ($job['status'] === 'running') {
-                wp_schedule_single_event(time() + 60, SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
+            if ($job['status'] !== 'running') {
+                wp_clear_scheduled_hook(SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
+                self::clear_chunks();
             }
             return $job;
         } finally {
@@ -265,10 +278,13 @@ final class SEOProStats_Backlinks_Import {
             $key = SEOProStats_Dict::hash($url . "\t" . $path);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table, unique lkey lookup.
             $known = $wpdb->get_row($wpdb->prepare('SELECT providers FROM %i WHERE lkey = UNHEX(%s)', SEOProStats_Schema::table('links'), $key), ARRAY_A);
-            $providers = is_array($known) ? json_decode($known['providers'], true) : array();
+            $providers = is_array($known) ? json_decode((string) $known['providers'], true) : array();
             $providers = is_array($providers) ? $providers : array();
             $old = isset($providers[$source]) ? $providers[$source] : array();
             $providers[$source] = array('authority' => $link['authority'] !== null ? $link['authority'] : (isset($old['authority']) ? $old['authority'] : null), 'last_seen' => max($link['last'], isset($old['last_seen']) ? (int) $old['last_seen'] : 0));
+            if (!$path && ($link['path'] === '' || !empty($old['candidate']))) {
+                $providers[$source]['candidate'] = true;
+            }
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table, unique lkey upsert; exports never reset lost, checked or misses.
             $ok = $wpdb->query($wpdb->prepare(
                 'INSERT INTO %i (lkey, source_host_id, source_url_id, path_id, anchor_id, rel, found, status, first_seen, last_seen, providers) VALUES (UNHEX(%s), %d, %d, %d, %d, %d, %d, %d, %d, %d, %s) ON DUPLICATE KEY UPDATE found = found | VALUES(found), first_seen = IF(first_seen = 0, VALUES(first_seen), IF(VALUES(first_seen) = 0, first_seen, LEAST(first_seen, VALUES(first_seen)))), last_seen = GREATEST(last_seen, VALUES(last_seen)), providers = VALUES(providers)',
@@ -299,6 +315,8 @@ final class SEOProStats_Backlinks_Import {
         self::clear_chunks();
         delete_option(SEOProStats_Schema::option(self::OPTION));
         delete_option(SEOProStats_Schema::option(self::OPTION . '_lock'));
-        wp_clear_scheduled_hook(SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
+        if (SEOProStats_Schema::set() === 'live') {
+            wp_clear_scheduled_hook(SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
+        }
     }
 }

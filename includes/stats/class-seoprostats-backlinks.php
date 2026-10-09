@@ -70,6 +70,7 @@ final class SEOProStats_Backlinks {
         'moz'       => 64,
         'bing'      => 128,
         'generic'   => 256,
+        'verified'  => 512,
     );
 
     /** Progress, per data set (autoload off): upto, last, pages, checked, errors, version. */
@@ -246,7 +247,7 @@ final class SEOProStats_Backlinks {
     private static function due($before) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its path_checked key in its order.
-        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, last_seen, found FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
+        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, last_seen, found, providers FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
     }
 
     /**
@@ -291,6 +292,17 @@ final class SEOProStats_Backlinks {
         $ids   = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links)) : array();
         $anchors = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor')) : array();
         $seen  = array();
+        $found = self::FOUND['verified'] | ((int) $page['found'] & self::FOUND['referrer']);
+        $providers = json_decode((string) $page['providers'], true);
+        // A source-only export led us to this page; target-specific exports
+        // retain their bits on the exact link, never on every link of its page.
+        if (is_array($providers)) {
+            foreach ($providers as $source => $facts) {
+                if (!empty($facts['candidate']) && isset(self::FOUND[$source])) {
+                    $found |= self::FOUND[$source];
+                }
+            }
+        }
         foreach ($links as $path => $link) {
             $path_id = isset($ids[SEOProStats_Dict::clean($path)]) ? (int) $ids[SEOProStats_Dict::clean($path)] : 0;
             if (!$path_id) {
@@ -310,7 +322,7 @@ final class SEOProStats_Backlinks {
                 $path_id,
                 $anchor_id,
                 (int) $link['rel'],
-                (int) $page['found'],
+                $found,
                 self::LINK_LIVE,
                 $now,
                 $now,

@@ -396,6 +396,7 @@ final class SEOProStats_API {
                     'enum'        => SEOProStats_Backlinks::KINDS,
                     'default'     => 'links',
                 ),
+                'source' => array('type' => 'string', 'enum' => array_merge(array(''), array_keys(SEOProStats_Backlinks::FOUND)), 'default' => ''),
                 'limit'  => array('maximum' => SEOProStats_Backlinks::MAX_LIMIT, 'default' => SEOProStats_Backlinks::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
             ),

@@ -520,12 +520,15 @@ UTF-8 comma-separated header detection, or explicit source; multipart and JSON
 at most 200 chunks of 500 rows (100,000 rows, 50 MB), with a single job and a
 five-minute crash-recovery lease. Cron `seoprostats_backlinks_import` runs within
 20 seconds, checkpoints completed batches and the final partial batch, removes
-consumed chunks, and schedules the next minute while unfinished. Replaying a
+consumed chunks, and schedules recovery before processing, including busy-lock
+returns. Terminal status is checkpointed before final-chunk removal. Replaying a
 batch after a crash is idempotent. Uninstall/reset removes staging, state, lease
 and the hook. No public upload attachment or visitor-page work.
 
 `found` is now smallint: referrer 1 and dataforseo 2 retain their meanings;
-gsc 4, ahrefs 8, semrush 16, majestic 32, moz 64, bing 128, generic 256.
+gsc 4, ahrefs 8, semrush 16, majestic 32, moz 64, bing 128, generic 256,
+verified 512 (a page check). Only source-only candidate provenance is inherited
+by newly verified links; target-specific provider bits stay on their exact rows.
 `providers` JSON stores authority (0–100 or null) and last_seen per export
 source, distinct from the existing provider score and verification times.
 The own-host target restriction uses the collector's host list. Source-only

@@ -223,7 +223,7 @@ function relLabel(rel: BacklinkRow['rel']): string {
 
 /** How a link was found. */
 function foundLabel(found: string[]): string {
-	const names: Record<string, string> = { referrer: __('A visit', 'seoprostats'), dataforseo: 'DataForSEO', gsc: 'Search Console export', ahrefs: 'Ahrefs export', semrush: 'Semrush export', majestic: 'Majestic export', moz: 'Moz export', bing: 'Bing export', generic: __('CSV export', 'seoprostats') };
+	const names: Record<string, string> = { referrer: __('A visit', 'seoprostats'), dataforseo: 'DataForSEO', gsc: 'Search Console export', ahrefs: 'Ahrefs export', semrush: 'Semrush export', majestic: 'Majestic export', moz: 'Moz export', bing: 'Bing export', generic: __('CSV export', 'seoprostats'), verified: __('Page check', 'seoprostats') };
 	return found.map((how) => names[how] ?? how).join(', ') || '–';
 }
 

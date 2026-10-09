@@ -132,6 +132,13 @@ final class SEOProStats_Import_Tab {
             <form data-spst-links-form>
                 <label for="spst-links-file"><?php esc_html_e('Links CSV', 'seoprostats'); ?></label>
                 <input id="spst-links-file" type="file" accept=".csv,text/csv" required>
+                <label for="spst-links-source"><?php esc_html_e('Export source', 'seoprostats'); ?></label>
+                <select id="spst-links-source">
+                    <option value=""><?php esc_html_e('Detect from headers', 'seoprostats'); ?></option>
+                    <?php foreach (SEOProStats_Backlinks_Import::SOURCES as $source) : ?>
+                        <option value="<?php echo esc_attr($source); ?>"><?php echo esc_html($source === 'gsc' ? 'Search Console' : ucfirst($source)); ?></option>
+                    <?php endforeach; ?>
+                </select>
                 <button class="button button-primary" type="submit"><?php esc_html_e('Import links', 'seoprostats'); ?></button>
             </form>
             <p data-spst-links-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"><?php echo esc_html((string) $job['status'] . ': ' . (int) $job['done'] . '/' . (int) $job['total']); ?></p>
