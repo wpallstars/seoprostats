@@ -1555,7 +1555,8 @@ export interface QueueFigures {
 	/** overlap: the pages sharing the query; refresh, merge: this page and the one that overtook it (with its share of the query). */
 	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number | null; share: number | null }[];
 	/** audit: the finding, its share of the page's expected clicks, the page's facts and the other pages with the same title or description. */
-	finding?: AuditFinding;
+	finding?: AuditFinding | 'page_experience';
+	samples?: VitalSample[];
 	share?: number;
 	facts?: AuditFacts;
 	same?: string[];
@@ -1606,7 +1607,7 @@ export interface QueueItem extends OpportunityPage {
 	found: boolean;
 	query: string | null;
 	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; sitemap: the problem; else null. */
-	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | null;
+	finding: AuditFinding | 'page_experience' | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */

@@ -167,8 +167,7 @@ final class SEOProStats_Search_Import {
         }
         try {
             if ($source === 'crux') {
-                require_once __DIR__ . '/class-seoprostats-vitals.php';
-                require_once __DIR__ . '/class-seoprostats-query.php';
+                SEOProStats_API::load();
                 return SEOProStats_Vitals::run($budget);
             }
             return self::run_days($source, $budget, $check);

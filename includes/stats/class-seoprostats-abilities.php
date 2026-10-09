@@ -1795,6 +1795,21 @@ final class SEOProStats_Abilities {
     }
 
     /**
+     * seoprostats/vitals: read only, including on demo tables.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function vitals($input = null) {
+        $input = is_array($input) ? $input : array();
+        $page = (string) ($input['page'] ?? '');
+        if ($page !== '' && SEOProStats_Vitals::local_url($page) === '') {
+            return new WP_Error('seoprostats_vitals_page', __('Use a local page path.', 'seoprostats'));
+        }
+        return SEOProStats_API::on_data(self::data($input), static function () use ($page) { return SEOProStats_Vitals::report($page); });
+    }
+
+    /**
      * seoprostats/links.
      *
      * @param array<string,mixed>|null $input Input.

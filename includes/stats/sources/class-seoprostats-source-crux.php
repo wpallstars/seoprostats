@@ -17,6 +17,9 @@ final class SEOProStats_Source_Crux {
     const NAME = 'Chrome UX Report';
     const API = 'https://chromeuxreport.googleapis.com/v1/records:';
     const PSI = 'https://pagespeedonline.googleapis.com/pagespeedonline/v5/runPagespeed';
+    // Background field reads are bounded; an explicit Lighthouse run can take longer.
+    const TIMEOUT = 10;
+    const LAB_TIMEOUT = 60;
     const METRICS = array(
         'lcp' => 'largest_contentful_paint',
         'inp' => 'interaction_to_next_paint',
@@ -70,10 +73,14 @@ final class SEOProStats_Source_Crux {
      */
     public static function query($key, $url, $form, $origin = false, $history = false) {
         $body = array($origin ? 'origin' : 'url' => $url, 'formFactor' => $form, 'metrics' => array_values(self::METRICS));
+        $json = wp_json_encode($body);
+        if ($json === false) {
+            return new WP_Error('seoprostats_crux_input', __('The field-data request could not be encoded.', 'seoprostats'));
+        }
         $response = wp_remote_post(self::API . ($history ? 'queryHistoryRecord' : 'queryRecord'), array(
-            'timeout' => 10,
+            'timeout' => self::TIMEOUT,
             'headers' => array('Content-Type' => 'application/json', 'X-Goog-Api-Key' => $key),
-            'body' => wp_json_encode($body),
+            'body' => $json,
         ));
         if (is_wp_error($response)) {
             return new WP_Error('seoprostats_crux_request', __('Chrome UX Report could not be reached.', 'seoprostats'));
@@ -99,7 +106,7 @@ final class SEOProStats_Source_Crux {
      */
     public static function lighthouse($url, $key) {
         $response = wp_remote_get(add_query_arg(array('url' => $url, 'strategy' => 'mobile', 'category' => 'performance'), self::PSI), array(
-            'timeout' => 60,
+            'timeout' => self::LAB_TIMEOUT,
             'headers' => array('X-Goog-Api-Key' => $key),
         ));
         if (is_wp_error($response)) {

@@ -48,7 +48,8 @@ final class SEOProStats_Vitals {
         }
         require_once __DIR__ . '/class-seoprostats-content.php';
         $search = SEOProStats_Content::report($req, 'clicks', '', 'all')['rows'];
-        $visits = SEOProStats_Query::breakdown($req)['rows'];
+        $traffic = SEOProStats_Query::breakdown($req);
+        $visits = is_wp_error($traffic) ? array() : $traffic['rows'];
         $by_path = array();
         foreach ($search as $row) {
             $path = (string) $row['value'];
@@ -105,6 +106,9 @@ final class SEOProStats_Vitals {
         $out = array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true);
         if (!$conn || SEOProStats_Schema::set() !== 'live') {
             return $out;
+        }
+        if (!SEOProStats_Schema::is_current()) {
+            return new WP_Error('seoprostats_vitals_schema', __('Update the statistics tables before importing field data.', 'seoprostats'));
         }
         $credentials = SEOProStats_Connections::credentials('crux');
         if (is_wp_error($credentials)) {
@@ -222,15 +226,16 @@ final class SEOProStats_Vitals {
      * Per-metric indexed history for one path.
      *
      * @param int $id Path ID.
+     * @param bool $latest Only the newest sample per metric.
      * @return array<int,array<string,mixed>>
      */
-    public static function series($id) {
+    public static function series($id, $latest = false) {
         global $wpdb;
         $out = array();
         foreach (self::FORMS as $form) {
             foreach (array_keys(self::THRESHOLDS) as $metric) {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- path_day equality prefix followed by ordered day range.
-                $rows = $wpdb->get_results($wpdb->prepare('SELECT day, form_factor, metric, p75, good, ni, poor FROM %i WHERE path_id = %d AND form_factor = %s AND metric = %s AND day >= %s ORDER BY day DESC LIMIT 400', SEOProStats_Schema::table('vitals'), $id, $form, $metric, gmdate('Y-m-d', time() - 400 * DAY_IN_SECONDS)), ARRAY_A);
+                $rows = $wpdb->get_results($wpdb->prepare('SELECT day, form_factor, metric, p75, good, ni, poor FROM %i WHERE path_id = %d AND form_factor = %s AND metric = %s AND day >= %s ORDER BY day DESC LIMIT %d', SEOProStats_Schema::table('vitals'), $id, $form, $metric, gmdate('Y-m-d', time() - 400 * DAY_IN_SECONDS), $latest ? 1 : 400), ARRAY_A);
                 foreach ((array) $rows as $row) {
                     foreach (array('p75', 'good', 'ni', 'poor') as $field) {
                         $row[$field] = (float) $row[$field];
@@ -268,6 +273,7 @@ final class SEOProStats_Vitals {
      * @return array<string,mixed>
      */
     public static function report($page = '') {
+        require_once __DIR__ . '/class-seoprostats-connections.php';
         $conn = SEOProStats_Connections::get('crux');
         $pages = self::pages((int) ($conn['settings']['pages'] ?? 100));
         if ($page !== '' && self::local_url($page) !== '') {
@@ -277,7 +283,7 @@ final class SEOProStats_Vitals {
         }
         $rows = array();
         foreach ($pages as $item) {
-            $samples = self::latest(self::series((int) $item['path_id']));
+            $samples = self::series((int) $item['path_id'], true);
             $failing = false;
             foreach ($samples as $sample) {
                 $failing = $failing || (!$sample['stale'] && in_array($sample['metric'], array('lcp', 'inp', 'cls'), true) && $sample['status'] === 'poor');

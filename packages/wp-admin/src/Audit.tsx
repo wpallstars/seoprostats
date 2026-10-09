@@ -37,6 +37,7 @@ import { locale } from './boot';
 import { Indexation } from './Indexation';
 import { Inspections } from './Inspections';
 import { Links } from './Links';
+import { Vitals } from './Vitals';
 import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
@@ -50,8 +51,8 @@ const percent = (value: number) => formatPercent(value, locale);
 const place = (value: number | null) => (value === null ? '–' : formatDecimal(value, locale));
 
 /** A finding's name, short enough for a list. */
-export function findingName(finding: AuditFinding): string {
-	const names: Record<AuditFinding, string> = {
+export function findingName(finding: AuditFinding | 'page_experience'): string {
+	const names: Record<AuditFinding | 'page_experience', string> = {
 		noindex: __('Not indexed', 'seoprostats'),
 		canonical: __('Canonical is another page', 'seoprostats'),
 		robots_blocked: __('Blocked by robots.txt', 'seoprostats'),
@@ -68,6 +69,7 @@ export function findingName(finding: AuditFinding): string {
 		h1_several: __('Several H1s', 'seoprostats'),
 		rich_errors: __('Rich result errors', 'seoprostats'),
 		images_alt: __('Images without alt text', 'seoprostats'),
+		page_experience: __('Poor Core Web Vitals', 'seoprostats'),
 	};
 	return names[finding];
 }
@@ -234,6 +236,7 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 			</Card>
 
 			<Links state={state} update={update} open={open} onEngines={onEngines} />
+			<Vitals />
 
 			<Indexation state={state} update={update} open={open} onEngines={onEngines} />
 
