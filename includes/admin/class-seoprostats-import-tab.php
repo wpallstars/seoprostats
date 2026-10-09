@@ -104,6 +104,7 @@ final class SEOProStats_Import_Tab {
                 <?php self::render_job($job); ?>
             <?php endif; ?>
             <div class="spst-cards">
+                <?php self::render_links(); ?>
                 <?php
                 foreach ($sources as $source) {
                     self::render_source($source, $status);
@@ -117,6 +118,25 @@ final class SEOProStats_Import_Tab {
                 ?>
             </div>
         </div>
+        <?php
+    }
+
+    /** Upload an export without creating a public media-library attachment. */
+    private static function render_links() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-import.php';
+        $job = SEOProStats_Backlinks_Import::status();
+        ?>
+        <section class="spst-card spst-import" data-spst-links>
+            <h3><?php esc_html_e('Links', 'seoprostats'); ?></h3>
+            <p><?php esc_html_e('Import a CSV from Search Console, Ahrefs, Semrush, Majestic, Moz or Bing, or a generic source URL / target URL export. Up to 100,000 rows and 50 MB. It carries on in cron; exports never mark missing links lost. Checking the referring pages remains opt-in in Settings → Data.', 'seoprostats'); ?></p>
+            <form data-spst-links-form>
+                <label for="spst-links-file"><?php esc_html_e('Links CSV', 'seoprostats'); ?></label>
+                <input id="spst-links-file" type="file" accept=".csv,text/csv" required>
+                <button class="button button-primary" type="submit"><?php esc_html_e('Import links', 'seoprostats'); ?></button>
+            </form>
+            <p data-spst-links-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"><?php echo esc_html((string) $job['status'] . ': ' . (int) $job['done'] . '/' . (int) $job['total']); ?></p>
+            <progress data-spst-links-progress max="<?php echo esc_attr((string) max(1, $job['total'])); ?>" value="<?php echo esc_attr((string) $job['done']); ?>"></progress>
+        </section>
         <?php
     }
 

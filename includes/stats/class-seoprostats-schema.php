@@ -764,7 +764,7 @@ final class SEOProStats_Schema {
   checked int unsigned NOT NULL DEFAULT 0,
   misses tinyint unsigned NOT NULL DEFAULT 0,
   authority smallint unsigned NOT NULL DEFAULT 0,
-  providers text NOT NULL,
+  providers text DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY lkey (lkey),
   KEY path_checked (path_id,checked),

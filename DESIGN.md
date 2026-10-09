@@ -2,6 +2,9 @@
 version: alpha
 name: seoprostats
 description: seoprostats interface design system
+# Backlink exports: Settings → Import has a native file input, primary submit,
+# accessible status and progress. Search → Backlinks has a WordPress SelectControl
+# for How found; scores and export freshness stay labelled by provider.
 colors:
   # Canonical palette (required: primary; recommended MD3 baseline families: secondary, tertiary, error, surface, background, outline)
   # WordPress admin colours (packages/wp-admin/src/common.css); primary follows the admin colour scheme.

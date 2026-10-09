@@ -1328,6 +1328,8 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 export const BACKLINK_KINDS = ['links', 'domains', 'pages', 'lost'] as const;
 export type BacklinkKind = (typeof BACKLINK_KINDS)[number];
 
+export const BACKLINK_SOURCES = ['referrer', 'dataforseo', 'gsc', 'ahrefs', 'semrush', 'majestic', 'moz', 'bing', 'generic'] as const;
+
 /** A link's rel words kept. */
 export type BacklinkRel = 'nofollow' | 'sponsored' | 'ugc';
 
@@ -1349,6 +1351,8 @@ export interface BacklinkRow {
 	/** First found in the period. */
 	new: boolean;
 	authority: number;
+	/** Export scores are not comparable between providers; missing scores are null. */
+	providers: Record<string, { authority: number | null; last_seen: string | null }>;
 	/** lost list: when it was lost. */
 	lost?: string | null;
 }

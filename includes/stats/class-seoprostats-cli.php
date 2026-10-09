@@ -1526,7 +1526,14 @@ final class SEOProStats_CLI {
      *   - pages
      *   - lost
      *   - check
+     *   - import
      * ---
+     *
+     * [<file>]
+     * : With import: the backlink export CSV file.
+     *
+     * [--source=<source>]
+     * : Export provider (gsc, ahrefs, semrush, majestic, moz, bing, generic), or the report's source filter.
      *
      * [--all]
      * : With check: open every referring page now, not only those due.
@@ -1567,6 +1574,36 @@ final class SEOProStats_CLI {
     public function backlinks($args, $assoc) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         $kind = isset($args[0]) ? (string) $args[0] : 'links';
+        if ($kind === 'import') {
+            require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+            if (!isset($args[1]) || !is_readable($args[1])) {
+                WP_CLI::error(__('Give a readable CSV file.', 'seoprostats'));
+            }
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- local file explicitly supplied by the CLI operator.
+            $stream = fopen($args[1], 'r');
+            if (!$stream) {
+                WP_CLI::error(__('The CSV could not be opened.', 'seoprostats'));
+                return;
+            }
+            try {
+                $job = SEOProStats_Backlinks_Import::start($stream, isset($assoc['source']) ? $assoc['source'] : '');
+            } finally {
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- the CLI import stream.
+                fclose($stream);
+            }
+            if (is_wp_error($job)) {
+                WP_CLI::error($job->get_error_message());
+            }
+            do {
+                $job = SEOProStats_Backlinks_Import::run(20);
+                WP_CLI::log(sprintf('%d/%d', $job['done'], $job['total']));
+            } while ($job['status'] === 'running');
+            if ($job['status'] === 'error') {
+                WP_CLI::error(__('The import could not finish. Check database writes.', 'seoprostats'));
+            }
+            WP_CLI::line((string) wp_json_encode($job));
+            return;
+        }
         if ($kind === 'check') {
             if (!SEOProStats_Schema::maybe_upgrade()) {
                 WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
@@ -1581,6 +1618,7 @@ final class SEOProStats_CLI {
             return;
         }
         $req    = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
+        $req['source'] = isset($assoc['source']) ? $assoc['source'] : '';
         $answer = $this->on_data($assoc, static function () use ($req, $kind) {
             return SEOProStats_Backlinks::report($req, $kind);
         });

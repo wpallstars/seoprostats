@@ -25,6 +25,40 @@
 		return;
 	}
 
+	var linksForm = root.querySelector('[data-spst-links-form]');
+	var linksStatus = root.querySelector('[data-spst-links-status]');
+	var linksProgress = root.querySelector('[data-spst-links-progress]');
+	function showLinks(job) {
+		linksStatus.textContent = job.status + ': ' + number(job.done) + '/' + number(job.total) + ' · ' + number(job.accepted) + ' ' + __('accepted', 'seoprostats') + ' · ' + number(job.skipped) + ' ' + __('skipped', 'seoprostats');
+		linksProgress.max = Math.max(1, job.total);
+		linksProgress.value = job.done;
+		linksForm.querySelector('button').disabled = job.status === 'running';
+		if (job.status === 'running') {
+			window.setTimeout(pollLinks, 5000);
+		}
+	}
+	function pollLinks() {
+		wp.apiFetch({ path: base + 'backlinks/import' }).then(showLinks).catch(function (error) {
+			linksStatus.textContent = error.message || __('The links import status could not be read.', 'seoprostats');
+			linksForm.querySelector('button').disabled = false;
+		});
+	}
+	if (linksForm) {
+		linksForm.addEventListener('submit', function (event) {
+			event.preventDefault();
+			var file = linksForm.querySelector('input').files[0];
+			if (!file) { return; }
+			var body = new FormData();
+			body.append('file', file);
+			linksForm.querySelector('button').disabled = true;
+			wp.apiFetch({ path: base + 'backlinks/import', method: 'POST', body: body }).then(showLinks).catch(function (error) {
+				linksStatus.textContent = error.message || __('The links could not be imported.', 'seoprostats');
+				linksForm.querySelector('button').disabled = false;
+			});
+		});
+		if (linksStatus.getAttribute('data-status') === 'running') { pollLinks(); }
+	}
+
 	function speak(message, politeness) {
 		if (wp.a11y && wp.a11y.speak) {
 			wp.a11y.speak(message, politeness || 'polite');

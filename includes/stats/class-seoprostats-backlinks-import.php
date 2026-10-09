@@ -82,7 +82,7 @@ final class SEOProStats_Backlinks_Import {
             }
             self::clear_chunks();
             $headers = is_resource($input) ? fgetcsv($input, 0, ',', '"', '') : (is_array($input) && isset($input[0]) && is_array($input[0]) ? array_keys($input[0]) : false);
-            if (!$headers || !is_array($headers)) {
+            if (!$headers) {
                 return new WP_Error('seoprostats_links_header', __('The export needs a header row.', 'seoprostats'), array('status' => 400));
             }
             $headers = array_map(array(__CLASS__, 'header'), $headers);
@@ -102,7 +102,7 @@ final class SEOProStats_Backlinks_Import {
                     return new WP_Error('seoprostats_links_size', __('Use at most 100,000 rows and 50 MB per export.', 'seoprostats'), array('status' => 400));
                 }
                 $values = is_array($row) ? array_values($row) : array();
-                $chunk[] = count($headers) === count($values) ? array_combine($headers, $values) : array();
+                $chunk[] = is_resource($input) ? (count($headers) === count($values) ? array_combine($headers, $values) : array()) : (is_array($row) ? $row : array());
                 ++$total;
                 if (count($chunk) === self::BATCH) {
                     update_option(SEOProStats_Schema::option(self::OPTION . '_' . (int) (($total - 1) / self::BATCH)), $chunk, false);
@@ -133,10 +133,10 @@ final class SEOProStats_Backlinks_Import {
         return '';
     }
 
-    /** Valid HTTP URL, no credentials, fragment or private address. @param string $url URL. @return string */
+    /** HTTP URL without credentials or fragment; fetching uses wp_safe_remote_get. @param string $url URL. @return string */
     private static function url($url) {
         $url = trim($url);
-        if (!wp_http_validate_url($url) || wp_parse_url($url, PHP_URL_USER) !== null || wp_parse_url($url, PHP_URL_PASS) !== null) {
+        if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array(strtolower((string) wp_parse_url($url, PHP_URL_SCHEME)), array('http', 'https'), true) || wp_parse_url($url, PHP_URL_USER) !== null || wp_parse_url($url, PHP_URL_PASS) !== null) {
             return '';
         }
         return explode('#', $url, 2)[0];
@@ -144,7 +144,14 @@ final class SEOProStats_Backlinks_Import {
 
     /** One row to a verified-site target or a referring-page candidate. @param array<string,mixed> $row Row. @param string $source Provider. @return array<string,mixed>|null */
     public static function normalise(array $row, $source) {
-        $row = array_combine(array_map(array(__CLASS__, 'header'), array_keys($row)), array_values($row));
+        $normal = array();
+        foreach ($row as $key => $value) {
+            if (!is_scalar($value) && $value !== null) {
+                return null;
+            }
+            $normal[self::header((string) $key)] = $value;
+        }
+        $row = $normal;
         $url = self::value($row, 'url');
         if ($source === 'gsc' && (isset($row['site']) || isset($row['linkingsite'])) && strpos($url, '://') === false) {
             $url = 'https://' . $url . '/';
@@ -217,8 +224,8 @@ final class SEOProStats_Backlinks_Import {
                 }
                 ++$job[$link === null ? 'skipped' : 'accepted'];
                 ++$job['done'];
-                update_option(SEOProStats_Schema::option(self::OPTION), $job, false);
                 if ($job['done'] % self::BATCH === 0 || $job['done'] === $job['total']) {
+                    update_option(SEOProStats_Schema::option(self::OPTION), $job, false);
                     delete_option(SEOProStats_Schema::option(self::OPTION . '_' . $index));
                 }
                 if ($job['done'] === $job['total']) {
