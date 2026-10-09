@@ -31,7 +31,7 @@ Version: 1.0.0
 <!-- github-only:start -->
 ## Screenshots
 
-**The Overview**: visits against the previous period, with the site's changes marked under the chart.
+**The Overview**: visits against the previous period, the visitors on the site now, and the site's changes marked under the chart.
 
 ![The SEO Pro Stats Overview with its chart and changes lane](.wordpress-org/screenshot-1.png)
 
@@ -47,9 +47,13 @@ Version: 1.0.0
 
 ![The Changes section](.wordpress-org/screenshot-4.png)
 
-**Goals**: conversions, conversion rate and revenue per currency, against the previous period.
+**Goals**: conversions, conversion rate and revenue per currency, against the previous period, with what the figures say and how to improve them.
 
 ![The Goals section](.wordpress-org/screenshot-5.png)
+
+**A shared report**: the sections you chose, read-only for a client or colleague, without wp-admin, ready to print or save as PDF.
+
+![A shared report's Overview](.wordpress-org/screenshot-6.png)
 <!-- github-only:end -->
 
 ## Why SEO Pro Stats
@@ -462,6 +466,10 @@ Read a setting with `SEOProStats_Settings::get( 'key' )`.
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### Unreleased
+
+- Changed: the source code is public on GitHub. The screenshots show the current screens (the live count on the Overview, Info & ideas), and a sixth shows a shared report. Nothing changes in the plugin.
 
 ### 1.0.0
 
