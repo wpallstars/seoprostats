@@ -115,3 +115,77 @@
 	flex-wrap: wrap;
 	gap: 8px;
 }
+
+/* Results: a short verdict, then a compact table of the variants. */
+.spst-ab-results__verdict {
+	margin: 0 0 12px;
+	padding: 8px 12px;
+	border-inline-start: 4px solid #949494;
+	background: #f0f0f0;
+	font-weight: 500;
+}
+
+.spst-ab-results__verdict.is-winner {
+	border-inline-start-color: #00a32a;
+	background: #edfaef;
+}
+
+.spst-ab-results__verdict.is-control {
+	border-inline-start-color: #dba617;
+	background: #fcf9e8;
+}
+
+.spst-ab-results__table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+}
+
+.spst-ab-results__table caption {
+	margin-bottom: 4px;
+	color: #757575;
+	text-align: start;
+}
+
+.spst-ab-results__table th,
+.spst-ab-results__table td {
+	padding: 4px 0;
+	border-bottom: 1px solid #e0e0e0;
+	text-align: end;
+	vertical-align: top;
+}
+
+.spst-ab-results__table th:first-child {
+	padding-inline-end: 8px;
+	font-weight: 400;
+	text-align: start;
+	overflow-wrap: anywhere;
+}
+
+.spst-ab-results__table thead th {
+	color: #757575;
+	font-size: 11px;
+	font-weight: 500;
+}
+
+.spst-ab-results__table td + td,
+.spst-ab-results__table th + th {
+	padding-inline-start: 8px;
+}
+
+.spst-ab-results__links {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	align-items: baseline;
+	margin: 12px 0 0;
+}
+
+.spst-ab-winner__note {
+	margin: 0 0 12px;
+}
+
+.spst-ab-winner__actions {
+	margin-top: 12px;
+}

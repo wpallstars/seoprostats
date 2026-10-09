@@ -592,11 +592,85 @@ final class SEOProStats_AB_Tests {
             self::markers($post_id, $attrs, $variants, $prev, $title);
         }
         foreach ($old as $id => $row) {
-            if (!isset($kept[$id]) && (int) $row['removed'] === 0) {
+            // A test that ended with its winner left the post on purpose (pick_winner()).
+            $won = (int) $row['status'] === self::STATUSES['ended'] && (string) $row['winner'] !== '';
+            if (!isset($kept[$id]) && (int) $row['removed'] === 0 && !$won) {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key, on saving a post.
                 $wpdb->update($table, array('removed' => $now, 'updated' => $now), array('test_id' => (string) $id), array('%d', '%d'), array('%s'));
             }
         }
+    }
+
+    /**
+     * Record the winner picked in the editor: picking one replaces the test
+     * block with that variant's blocks, so once the post is saved the test
+     * is no longer in it, and the editor sends the winner here. The test
+     * ends with that winner (and the timeline's markers); its results stay.
+     * Only for a test that ran, by someone who may edit its post, while the
+     * test is not in the post (else its block's attributes count). Live
+     * data only. Saving the same winner again changes nothing.
+     *
+     * @param string $id   Test id.
+     * @param string $slug The winning variant's slug.
+     * @return array{id:string,status:string,winner:string}|WP_Error
+     */
+    public static function pick_winner($id, $slug) {
+        global $wpdb;
+        if (!self::valid_id($id) || !self::ready()) {
+            return new WP_Error('seoprostats_not_found', __('There is no such A/B test.', 'seoprostats'), array('status' => 404));
+        }
+        $before = SEOProStats_Schema::use_set('live');
+        $table  = SEOProStats_Schema::table('ab_tests');
+        SEOProStats_Schema::use_set($before);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key, on an editor's request; not cached on purpose.
+        $row = $wpdb->get_row($wpdb->prepare('SELECT test_id, post_id, name, variants, goals, status, winner, started, ended, removed FROM %i WHERE test_id = %s', $table, $id), ARRAY_A);
+        if (!is_array($row)) {
+            return new WP_Error('seoprostats_not_found', __('There is no such A/B test.', 'seoprostats'), array('status' => 404));
+        }
+        $post_id = (int) $row['post_id'];
+        if (!current_user_can('edit_post', $post_id)) {
+            return new WP_Error('rest_forbidden', __('You may not edit the post this A/B test is in.', 'seoprostats'), array('status' => rest_authorization_required_code()));
+        }
+        $list     = json_decode((string) $row['variants'], true);
+        $variants = self::variants(is_array($list) ? $list : array());
+        if (!in_array($slug, array_column($variants, 'slug'), true)) {
+            return new WP_Error('seoprostats_invalid', __('The test has no such variant.', 'seoprostats'), array('status' => 400));
+        }
+        if (!(int) $row['started']) {
+            return new WP_Error('seoprostats_never_ran', __('This A/B test never ran, so it has no winner to record.', 'seoprostats'), array('status' => 409));
+        }
+        $post = $post_id ? get_post($post_id) : null;
+        if ($post instanceof WP_Post && has_block(self::TEST, $post)) {
+            foreach (self::find(parse_blocks($post->post_content)) as $test) {
+                if (self::test_attributes(isset($test['attrs']) ? (array) $test['attrs'] : array())['id'] === $id) {
+                    return new WP_Error('seoprostats_still_in_post', __('The A/B test is still in its post: save the post after picking the winner.', 'seoprostats'), array('status' => 409));
+                }
+            }
+        }
+        $now = time();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key, on an editor's request.
+        $wpdb->update(
+            $table,
+            array(
+                'status'  => self::STATUSES['ended'],
+                'winner'  => $slug,
+                'ended'   => (int) $row['ended'] ? (int) $row['ended'] : $now,
+                'removed' => 0,
+                'updated' => $now,
+            ),
+            array('test_id' => $id),
+            array('%d', '%s', '%d', '%d', '%d'),
+            array('%s')
+        );
+        $goals = json_decode((string) $row['goals'], true);
+        self::markers($post_id, array(
+            'id'     => $id,
+            'name'   => (string) $row['name'],
+            'status' => 'ended',
+            'goals'  => is_array($goals) ? array_map('strval', $goals) : array(),
+            'winner' => $slug,
+        ), $variants, $row, $post instanceof WP_Post ? get_the_title($post) : '');
+        return array('id' => $id, 'status' => 'ended', 'winner' => $slug);
     }
 
     /**

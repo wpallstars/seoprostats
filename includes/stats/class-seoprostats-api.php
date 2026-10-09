@@ -520,13 +520,30 @@ final class SEOProStats_API {
     }
 
     /**
-     * Register the A/B test report routes (read with view_seoprostats;
-     * tests are started and ended in the block editor).
+     * Register the A/B test routes: reports read with view_seoprostats;
+     * tests are started and ended in the block editor, which records a
+     * winner picked there for people who may edit the test's post.
      *
      * @param array<string,mixed> $read Read route base.
      * @param array<string,mixed> $args The data and filters arguments.
      */
     private static function ab_test_routes(array $read, array $args) {
+        register_rest_route(SEOProStats_Collection::REST_NAMESPACE, '/ab-tests/(?P<id>[a-z0-9]{6,32})/winner', array(
+            'methods'             => 'POST',
+            'callback'            => array(__CLASS__, 'ab_test_winner'),
+            // The test's own post is checked in SEOProStats_AB_Tests::pick_winner().
+            'permission_callback' => static function () {
+                return current_user_can('edit_posts');
+            },
+            'args'                => array(
+                'variant' => array(
+                    'description' => __('The winning variant\'s slug.', 'seoprostats'),
+                    'type'        => 'string',
+                    'pattern'     => '^[a-z0-9-]{1,64}$',
+                    'required'    => true,
+                ),
+            ),
+        ));
         $ns = SEOProStats_Collection::REST_NAMESPACE;
         register_rest_route($ns, '/ab-tests', $read + array(
             'callback' => array(__CLASS__, 'ab_tests'),
@@ -1896,6 +1913,18 @@ final class SEOProStats_API {
         return self::experiment_answer($request, static function () use ($id, $args) {
             return SEOProStats_AB_Report::get($id, $args);
         });
+    }
+
+    /**
+     * POST /ab-tests/{id}/winner: record the winner picked in the editor,
+     * once the post no longer holds the test (live data only).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function ab_test_winner($request) {
+        $done = SEOProStats_AB_Tests::pick_winner((string) $request->get_param('id'), (string) $request->get_param('variant'));
+        return is_wp_error($done) ? $done : rest_ensure_response($done);
     }
 
     /**

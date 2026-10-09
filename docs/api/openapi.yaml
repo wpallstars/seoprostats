@@ -706,6 +706,69 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /ab-tests/{id}/winner:
+    post:
+      operationId: pickAbTestWinner
+      summary: Record the winner picked in the block editor.
+      description: |
+        Picking a winner in the editor replaces the test block with that
+        variant's blocks; once the post is saved without the test, the
+        editor sends the winner here. The test ends with that winner (its
+        `ended` time and the timeline's `ab_test_ended` and
+        `ab_test_winner` changes) and its results stay. Live data only;
+        for people who may edit the test's post. Sending the same winner
+        again changes nothing.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The test's id.
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{6,32}$'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [variant]
+              properties:
+                variant:
+                  type: string
+                  pattern: '^[a-z0-9-]{1,64}$'
+                  description: The winning variant's slug.
+      responses:
+        '200':
+          description: The test, ended with its winner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status, winner]
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    enum: [ended]
+                  winner:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The test never ran (`seoprostats_never_ran`), or is still in its post (`seoprostats_still_in_post`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /queue:
     get:
       operationId: getQueue

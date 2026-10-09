@@ -62,6 +62,9 @@ export interface BlockEditorActions {
 export interface EditorSelectors {
 	getCurrentPostType(): string | null;
 	getEditedPostAttribute(name: string): unknown;
+	isSavingPost(): boolean;
+	isAutosavingPost(): boolean;
+	didPostSaveRequestSucceed(): boolean;
 }
 
 type Select = (store: string) => unknown;
@@ -101,6 +104,7 @@ interface Wp {
 	data: {
 		select: Select;
 		dispatch(store: string): unknown;
+		subscribe(listener: () => void): () => void;
 		useSelect<T>(map: (select: Select) => T, deps: unknown[]): T;
 	};
 	hooks: {
@@ -132,8 +136,30 @@ export function editor(select: Select = wp.data.select): EditorSelectors | null 
 	return store && typeof store.getCurrentPostType === 'function' ? (store as EditorSelectors) : null;
 }
 
-/** A short note at the foot of the editor (a snackbar). */
-export function notice(text: string): void {
-	const notices = wp.data.dispatch('core/notices') as { createNotice?(status: string, text: string, options: Record<string, unknown>): void } | undefined;
-	notices?.createNotice?.('info', text, { type: 'snackbar', isDismissible: true });
+export interface NoticeAction {
+	label: string;
+	onClick(): void;
+}
+
+interface NoticeActions {
+	createNotice?(status: string, text: string, options: Record<string, unknown>): void;
+	removeNotice?(id: string): void;
+}
+
+/** A short note at the foot of the editor (a snackbar), with actions such as Undo; `id` to remove it later. */
+export function notice(text: string, actions: NoticeAction[] = [], status: 'info' | 'success' | 'error' = 'info', id?: string): void {
+	const notices = wp.data.dispatch('core/notices') as NoticeActions | undefined;
+	// With actions, dismiss only by its close button: a snackbar that closes on
+	// any key press would close before a key reaches Undo.
+	notices?.createNotice?.(status, text, { type: 'snackbar', isDismissible: true, explicitDismiss: actions.length > 0, actions, ...(id ? { id } : {}) });
+}
+
+export function removeNotice(id: string): void {
+	(wp.data.dispatch('core/notices') as NoticeActions | undefined)?.removeNotice?.(id);
+}
+
+/** Undo the editor's last change (the post editor's history). */
+export function undo(): void {
+	const actions = wp.data.dispatch('core/editor') as { undo?(): void } | undefined;
+	actions?.undo?.();
 }
