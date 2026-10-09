@@ -21,14 +21,15 @@ On now:
   and OpenSSF Scorecard (badge in `README.md`).
 - Socket and CodeRabbit review pull requests.
 - SonarCloud (`wpallstars_seoprostats`, Automatic Analysis off, the scan
-  runs from `.github/workflows/sonarcloud.yml` with the repository's own
-  `SONAR_TOKEN`; the organization's older `SONAR_TOKEN` is rejected), Codacy
-  and CodeFactor, with their badges in `README.md`.
+  runs from `.github/workflows/sonarcloud.yml` with `SONAR_TOKEN`, set on
+  the repository and the organization), Codacy and CodeFactor, with their
+  badges in `README.md`.
+- `SYNC_PAT` (the owner's fine-grained token, Contents read and write):
+  Repository metrics logs "SYNC_PAT present" and commits `docs/metrics/` to
+  `main` through the ruleset's admin bypass.
 
-Not yet (owner's accounts, `DEVELOPMENT.md` → Services setup):
+Not yet:
 
-- `SYNC_PAT` is not set, so Repository metrics cannot commit to the
-  protected `main`; regenerate `docs/metrics/` locally until it is.
 - The rest of `DEVELOPMENT.md` → At public launch: fix the reviewers'
   findings by area, then raise the PHPStan level.
 
