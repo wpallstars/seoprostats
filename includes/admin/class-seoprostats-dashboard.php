@@ -261,7 +261,7 @@ final class SEOProStats_Dashboard {
         if (!is_readable($asset_file)) {
             return false;
         }
-        $asset   = require $asset_file;
+        $asset   = require $asset_file; // NOSONAR: the file returns the build's asset array; require_once returns true if it was loaded before.
         $deps    = array_values(array_unique(array_merge(isset($asset['dependencies']) ? (array) $asset['dependencies'] : array(), $extra)));
         $version = isset($asset['version']) ? (string) $asset['version'] : SEOPROSTATS_VERSION;
         $handle  = 'seoprostats-' . $name;

@@ -74,7 +74,7 @@ final class SEOProStats_Editor {
         if (!is_admin() || !is_readable(SEOPROSTATS_DIR . $style) || !is_readable($asset)) {
             return;
         }
-        $asset = require $asset;
+        $asset = require $asset; // NOSONAR: the file returns the build's asset array; require_once returns true if it was loaded before.
         wp_enqueue_style('seoprostats-ab-test-canvas', SEOPROSTATS_URL . $style, array(), isset($asset['version']) ? (string) $asset['version'] : SEOPROSTATS_VERSION);
     }
 

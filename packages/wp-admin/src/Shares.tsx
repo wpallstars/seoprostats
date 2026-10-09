@@ -158,7 +158,7 @@ function SectionOrder({ views, setViews }: { views: ViewState[]; setViews: (view
     // Dragged with a pointer.
     const [dragging, setDragging] = useState<string | null>(null);
     const [said, setSaid] = useState('');
-    const keys = views.map(shareSectionKey);
+    const keys = views.map((view) => shareSectionKey(view));
     const count = views.length;
     const moveTo = (key: string, to: number) => {
         const from = keys.indexOf(key);
@@ -351,7 +351,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
 
     const brand = <K extends keyof ShareBranding>(key: K, value: ShareBranding[K]) => setBranding((was) => ({ ...was, [key]: value }));
     // Every tab, once; Search once for each engine with data.
-    const chosen = new Set(views.map(shareSectionKey));
+    const chosen = new Set(views.map((view) => shareSectionKey(view)));
     type Section = { view: View; engine?: SearchEngine };
     const offered = SHARE_VIEWS.flatMap((view): Section[] => (view === 'search' ? engines.map((engine) => ({ view, engine })) : [{ view }]))
         .filter((section) => !chosen.has(shareSectionKey(section)));
