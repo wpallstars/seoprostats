@@ -2430,9 +2430,12 @@ paths:
       operationId: connect
       summary: Connect a source, or change its property or key.
       description: |
-        Search Console: signs in with the service account's key and lists
-        the properties it can read before anything is stored. The key is
-        stored encrypted and never returned. The import starts in WP-Cron a
+        Search Console: signs in (with the current user's finished Sign in
+        with Google when `google` is true, else with the service account's
+        key) and lists the properties it can read before anything is
+        stored. The refresh token or key is stored encrypted and never
+        returned. Sign in with Google itself starts from Settings →
+        Connections in a browser. The import starts in WP-Cron a
         few seconds later: the 16 months Search Console keeps, newest
         first, then each day once Search Console marks it final. Another
         property starts the import again from the beginning.
@@ -2448,6 +2451,10 @@ paths:
             schema:
               type: object
               properties:
+                google:
+                  type: boolean
+                  default: false
+                  description: Search Console, connect with the current user's finished Sign in with Google (it waits 15 minutes).
                 key:
                   type: string
                   description: Search Console, the service account's JSON key, as text; Bing, the API key. Without it, the saved key is kept (to change the property or site).
@@ -6703,9 +6710,13 @@ components:
           type: string
         connected:
           type: boolean
+        method:
+          type: string
+          enum: [google, key]
+          description: How it is connected, Sign in with Google or a key.
         account:
           type: string
-          description: The service account's address.
+          description: The service account's address (empty with Sign in with Google).
         property:
           type: string
         connected_at:

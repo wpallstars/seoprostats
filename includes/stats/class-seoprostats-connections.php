@@ -60,7 +60,7 @@ final class SEOProStats_Connections {
      * another property starts the import again from the beginning.
      *
      * @param string              $source Source key.
-     * @param array<string,mixed> $input  The source's fields (Search Console: key, property).
+     * @param array<string,mixed> $input  The source's fields (Search Console: google, key, property).
      * @return array<string,mixed>|WP_Error status().
      */
     public static function connect($source, array $input) {
@@ -99,10 +99,16 @@ final class SEOProStats_Connections {
      * @return array<string,mixed>|WP_Error status(), with deleted (rows).
      */
     public static function disconnect($source, $delete = false) {
-        if (!self::source_class($source)) {
+        $class = self::source_class($source);
+        if (!$class) {
             return new WP_Error('seoprostats_source_unknown', __('Unknown source.', 'seoprostats'), array('status' => 404));
         }
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        // A Google sign-in's access is revoked with Google, not only forgotten.
+        $credentials = self::get($source) ? self::credentials($source) : null;
+        if (is_array($credentials) && method_exists($class, 'revoke')) {
+            $class::revoke($credentials);
+        }
         self::remove($source);
         SEOProStats_Search_Import::schedule();
         $deleted = $delete ? SEOProStats_Search_Import::delete_data($source) : 0;
@@ -153,6 +159,7 @@ final class SEOProStats_Connections {
         $next     = $next ? $next : wp_next_scheduled(SEOProStats_Search_Import::HOOK);
         $coverage = SEOProStats_Search_Import::coverage((int) $class::ENGINE);
         return $out + array(
+            'method'       => isset($conn['settings']['method']) ? (string) $conn['settings']['method'] : 'key',
             'account'      => isset($conn['settings']['account']) ? (string) $conn['settings']['account'] : '',
             'property'     => isset($conn['settings']['property']) ? (string) $conn['settings']['property'] : '',
             'connected_at' => $conn['connected'],

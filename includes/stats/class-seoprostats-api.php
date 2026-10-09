@@ -482,6 +482,11 @@ final class SEOProStats_API {
                 'permission_callback' => $settings,
                 'callback'            => array(__CLASS__, 'connect'),
                 'args'                => array(
+                    'google'   => array(
+                        'description' => __('Search Console: connect with the current user\'s finished Sign in with Google (Settings → Connections starts it).', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
                     'key'      => array(
                         'description' => __('Search Console: the service account\'s JSON key, as text; Bing: the API key. Without it, the saved key is kept (to change the property or site).', 'seoprostats'),
                         'type'        => 'string',
@@ -995,6 +1000,7 @@ final class SEOProStats_API {
             return $source;
         }
         $status = SEOProStats_Connections::connect($source, array(
+            'google'   => (bool) $request->get_param('google'),
             'key'      => (string) $request->get_param('key'),
             'property' => (string) $request->get_param('property'),
         ));

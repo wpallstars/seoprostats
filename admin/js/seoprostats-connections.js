@@ -106,12 +106,16 @@
 
 	var actions = {
 		connect: function (card, button, source) {
-			var key = field(card, 'key');
-			var property = field(card, 'property');
+			// After Sign in with Google, the fields are in its own block.
+			var scope = button.closest('[data-spst-google-ready]') || card;
+			var google = button.getAttribute('data-spst-google') === '1';
+			var key = google ? null : field(scope, 'key');
+			var property = field(scope, 'property');
 			request(card, button, {
 				path: base + 'connections/' + source,
 				method: 'POST',
 				data: {
+					google: google,
 					key: key ? key.value : '',
 					property: property ? property.value : ''
 				}
@@ -181,4 +185,18 @@
 		event.preventDefault();
 		action(card, button, card.getAttribute('data-spst-connection'));
 	});
+
+	// Back from Sign in with Google: finish connecting at once. When the
+	// site's property is not found, the error offers the account's ones.
+	function finishSignIn() {
+		var ready = document.querySelector('[data-spst-google-ready] [data-spst-action="connect"]');
+		if (ready) {
+			actions.connect(ready.closest('[data-spst-connection]'), ready, 'search-console');
+		}
+	}
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', finishSignIn);
+	} else {
+		finishSignIn();
+	}
 })(window.wp);
