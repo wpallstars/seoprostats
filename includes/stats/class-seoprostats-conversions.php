@@ -446,13 +446,13 @@ final class SEOProStats_Conversions {
 
     /**
      * The fact table, column and dictionary ids a page or event matches
-     * (`*` is any text).
+     * (`*` is any text). Also SEOProStats_AB_Report's goals.
      *
      * @param string $kind  page or event.
      * @param string $match Path or event name.
      * @return array{0:string,1:string,2:int[]}
      */
-    private static function target($kind, $match) {
+    public static function target($kind, $match) {
         $page = $kind === 'page';
         $ids  = SEOProStats_Query::dict_ids(
             $page ? SEOProStats_Schema::DICT_PATH : SEOProStats_Schema::DICT_EVENT,
@@ -476,7 +476,7 @@ final class SEOProStats_Conversions {
      * @param array<int,array<string,mixed>> $rows Rows.
      * @return array<int,array{currency:string,amount:float,count:int}>
      */
-    private static function money(array $rows) {
+    public static function money(array $rows) {
         $out = array();
         foreach ($rows as $row) {
             $out[] = array(

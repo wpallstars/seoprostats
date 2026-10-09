@@ -74,6 +74,8 @@ final class SEOProStats_Query {
         'category'     => array('page', 'term_id', 'content'),
         'post_type'    => array('page', 'post_type', 'content'),
         'event'        => array('event', 'name_id', SEOProStats_Schema::DICT_EVENT),
+        // A/B test variants seen (ab_exposures): value "test-id:variant-slug".
+        'variant'      => array('variant', 'variant_id', 'variant'),
     );
 
     /** Channel codes (SEOProStats_Channels) by name. */
@@ -533,6 +535,28 @@ final class SEOProStats_Query {
                 continue;
             }
 
+            if ($kind === 'variant') {
+                // Visits that saw the variant (also those that saw others of its test).
+                $pairs = self::variant_pairs($filter);
+                if (!$pairs) {
+                    if (!$negate) {
+                        $where[] = '1 = 0';
+                    }
+                    continue;
+                }
+                list($first, $last) = self::fact_window($range);
+                $days               = array((string) wp_date('Y-m-d', $first), (string) wp_date('Y-m-d', $last));
+                $ors                = array();
+                $sub                = array(SEOProStats_Schema::table('ab_exposures'));
+                foreach ($pairs as $pair) {
+                    $ors[] = '(x.test_id = %d AND x.day >= %s AND x.day <= %s AND x.variant_id = %d)';
+                    $sub   = array_merge($sub, array($pair[0]), $days, array($pair[1]));
+                }
+                $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . ' (SELECT x.session_id FROM %i x WHERE ' . implode(' OR ', $ors) . ')';
+                $args    = array_merge($args, $sub);
+                continue;
+            }
+
             if ($kind === 'content') {
                 // Authors, categories, post types: the addresses that show them.
                 $ids    = self::content_paths($column, $filter);
@@ -837,15 +861,24 @@ final class SEOProStats_Query {
             $args    = array_merge(array($column, $s, SEOProStats_Schema::table('pageviews')), $content ? array(SEOProStats_Schema::table('pages')) : array(), self::fact_window($range), $base, $flag ? array($flag) : array(), $compiled['args'], $pages, array($limit, $offset));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary keys; $value, $join, $cond, $where and $holders are fixed SQL and placeholders.
             $rows = $wpdb->get_results($wpdb->prepare("SELECT $value AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id$join WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$cond$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+        } elseif ($level === 'variant') {
+            $args = array_merge(array($s, SEOProStats_Schema::table('ab_exposures')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT x.test_id AS t, x.variant_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT x.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(x.clicks), 0) AS clicks FROM %i s INNER JOIN %i x ON x.session_id = s.id WHERE x.ts >= %d AND x.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY t, v ORDER BY visits DESC, t, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+            $text = self::texts(array_merge(array_column((array) $rows, 't'), array_column((array) $rows, 'v')));
+            foreach ((array) $rows as $i => $row) {
+                $rows[$i]['v'] = (isset($text[(int) $row['t']]) ? $text[(int) $row['t']] : '') . ':' . (isset($text[(int) $row['v']]) ? $text[(int) $row['v']] : '');
+            }
         } else {
             $args = array_merge(array($s, SEOProStats_Schema::table('events')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
             $rows = $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
         }
 
-        $rows = (array) $rows;
-        $text = is_int($kind) ? self::texts(array_column($rows, 'v')) : ($kind === 'content' ? self::content_names($dimension, array_column($rows, 'v')) : array());
-        $out  = array();
+        $rows    = (array) $rows;
+        $text    = is_int($kind) ? self::texts(array_column($rows, 'v')) : ($kind === 'content' ? self::content_names($dimension, array_column($rows, 'v')) : array());
+        $running = $dimension === 'page' && $rows && class_exists('SEOProStats_AB_Report') ? SEOProStats_AB_Report::running_paths() : array();
+        $out     = array();
         foreach ($rows as $row) {
             list($value, $label) = self::label($dimension, $kind, $row['v'], $text);
             if ($level === 'session') {
@@ -859,12 +892,20 @@ final class SEOProStats_Query {
                     $item['pageviews']    = (int) $row['pageviews'];
                     $item['time_on_page'] = (int) round((float) $row['time_on_page'] / 1000);
                     $item['scroll']       = (int) round((float) $row['scroll']);
+                } elseif ($level === 'variant') {
+                    $item['pageviews'] = (int) $row['pageviews'];
+                    $item['clicks']    = (int) $row['clicks'];
                 } else {
                     $item['events']          = (int) $row['events'];
                     $item['conversion_rate'] = $total_visits ? round($row['visits'] / $total_visits, 4) : 0;
                 }
             }
-            $out[] = array('value' => $value, 'label' => $label) + $item + array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
+            $item += array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
+            if (isset($running[$value])) {
+                // The page has a running A/B test.
+                $item['ab_test'] = true;
+            }
+            $out[] = array('value' => $value, 'label' => $label) + $item;
         }
         return $out;
     }
@@ -981,6 +1022,11 @@ final class SEOProStats_Query {
                 return array($value, __('(none)', 'seoprostats'));
             }
             return array($value, isset($text[$value]) && $text[$value] !== '' ? $text[$value] : $value);
+        }
+        if ($kind === 'variant') {
+            $value  = (string) $raw;
+            $labels = SEOProStats_AB_Report::variant_labels();
+            return array($value, isset($labels[$value]) ? $labels[$value] : $value);
         }
         $value = isset($text[(int) $raw]) ? $text[(int) $raw] : '';
         if ($value !== '') {
@@ -1180,6 +1226,81 @@ final class SEOProStats_Query {
             }
         }
         return array_slice(array_values(array_unique($ids)), 0, self::MAX_IDS);
+    }
+
+    /**
+     * Dictionary id pairs (test, variant) a variant filter selects: "is"
+     * and "is not" by value ("test-id:variant-slug", or "test-id:*" for
+     * every variant of a test); "contains" and "matches" by value or label
+     * ("Test name: Variant B") among the tests in the registry.
+     *
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @return array<int,array{0:int,1:int}>
+     */
+    private static function variant_pairs(array $filter) {
+        $labels = SEOProStats_AB_Report::variant_labels();
+        $wanted = array();
+        foreach ($filter['values'] as $value) {
+            $value = trim((string) $value);
+            if (in_array($filter['op'], array('is', 'is_not'), true)) {
+                if (substr($value, -2) === ':*') {
+                    $test = substr($value, 0, -1);
+                    foreach (array_keys($labels) as $key) {
+                        if (strpos($key, $test) === 0) {
+                            $wanted[$key] = true;
+                        }
+                    }
+                } elseif (strpos($value, ':') !== false) {
+                    $wanted[$value] = true;
+                }
+                continue;
+            }
+            foreach ($labels as $key => $label) {
+                $needle = strtolower($value);
+                if (self::text_matches($filter['op'], strtolower($key), $needle) || self::text_matches($filter['op'], strtolower($label), $needle)) {
+                    $wanted[$key] = true;
+                }
+            }
+        }
+        if (!$wanted) {
+            return array();
+        }
+        $tests    = array();
+        $variants = array();
+        foreach (array_keys($wanted) as $key) {
+            list($test, $variant) = explode(':', (string) $key, 2);
+            $tests[]              = $test;
+            $variants[]           = $variant;
+        }
+        $test_ids    = self::dict_map(SEOProStats_Schema::DICT_AB_TEST, $tests);
+        $variant_ids = self::dict_map(SEOProStats_Schema::DICT_AB_VARIANT, $variants);
+        $out         = array();
+        foreach (array_keys($wanted) as $key) {
+            list($test, $variant) = explode(':', (string) $key, 2);
+            if (isset($test_ids[$test], $variant_ids[$variant])) {
+                $out[] = array($test_ids[$test], $variant_ids[$variant]);
+            }
+            if (count($out) >= 100) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Dictionary ids of texts that are in the dictionary.
+     *
+     * @param int      $kind  Dictionary kind.
+     * @param string[] $texts Texts.
+     * @return array<string,int> Text => id.
+     */
+    private static function dict_map($kind, array $texts) {
+        $ids = SEOProStats_Dict::find($kind, array_values(array_unique($texts)));
+        $out = array();
+        foreach (self::texts($ids) as $id => $text) {
+            $out[(string) $text] = (int) $id;
+        }
+        return $out;
     }
 
     /**

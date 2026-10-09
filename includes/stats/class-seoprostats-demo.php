@@ -521,6 +521,32 @@ final class SEOProStats_Demo {
         array(100, 13, 80, '', 'note', '', 'Moved to a faster host', array()),
     );
 
+    /**
+     * The demo's A/B tests (SEOProStats_AB_Tests): id, page, name, goal
+     * (a GOALS name), days it has run, the page a variant can send more
+     * visits on to, the click inside the test (a CLICKS label, shown as
+     * the variant's label), and its variants: weight, slug, label, chance
+     * of going on to that page. The headline has a clear winner, the
+     * button no clear difference, and the price is too early to call.
+     */
+    const AB_TESTS = array(
+        array('demohead01', '/', 'Home page headline', 'Viewed pricing', 42, '/pricing/', '', array(
+            array(50, 'variant-a', 'Private site statistics', 0.0),
+            array(50, 'variant-b', 'See what moved your traffic', 0.07),
+        )),
+        array('demobtn001', '/pricing/', 'Buy button text', 'Purchase', 28, '', 'Buy Pro', array(
+            array(50, 'variant-a', 'Buy Pro', 0.0),
+            array(50, 'variant-b', 'Start today', 0.0),
+        )),
+        array('demoprice1', '/shop/pro-licence/', 'Price per year or per month', 'Purchase', 3, '', '', array(
+            array(50, 'variant-a', '$99 a year', 0.0),
+            array(50, 'variant-b', '$8.25 a month', 0.0),
+        )),
+    );
+
+    /** @var array<string,int> When each demo A/B test started (Unix), for the visits being made. */
+    private static $ab = array();
+
     /** Plugins updated now and then in the demo data: name, file, first version. */
     const DEMO_PLUGINS = array(
         array('WooCommerce', 'woocommerce/woocommerce.php', array(8, 9)),
@@ -625,7 +651,124 @@ final class SEOProStats_Demo {
             'changes'  => 1,
             'search_v' => self::SEARCH_VERSION,
         ), false);
+        self::run(static function () {
+            self::ab_tests();
+        });
         return true;
+    }
+
+    /**
+     * Write the demo's A/B tests (AB_TESTS) to its registry, with their
+     * start markers, and keep when each started; on the demo tables
+     * (called inside run()), once per demo data. A test starts its days
+     * before now, but not before the visits still to be made (demo data
+     * made before A/B tests gets them from now on).
+     */
+    private static function ab_tests() {
+        global $wpdb;
+        require_once __DIR__ . '/class-seoprostats-goals.php';
+        require_once __DIR__ . '/class-seoprostats-changes.php';
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            return;
+        }
+        $state = self::state();
+        $first = isset($state['upto']) ? (int) $state['upto'] : time();
+        $goals = array();
+        foreach (SEOProStats_Goals::goals() as $goal) {
+            $goals[$goal['name']] = $goal['id'];
+        }
+        $starts = array();
+        foreach (self::AB_TESTS as $test) {
+            list($id, $path, $name, $goal, $days, , , $variants) = $test;
+            $start = max($first, time() - (int) $days * DAY_IN_SECONDS);
+            $list  = array();
+            foreach ($variants as $variant) {
+                $list[] = array('slug' => $variant[1], 'label' => $variant[2], 'weight' => $variant[0]);
+            }
+            $page = self::page($path);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- the demo's own table by its primary key.
+            $wpdb->replace(SEOProStats_Schema::table('ab_tests'), array(
+                'test_id'  => $id,
+                'post_id'  => $page ? $page['post_id'] : 0,
+                'name'     => $name,
+                'variants' => (string) wp_json_encode($list),
+                'goals'    => (string) wp_json_encode(isset($goals[$goal]) ? array($goals[$goal]) : array()),
+                'status'   => SEOProStats_AB_Tests::STATUSES['running'],
+                'winner'   => '',
+                'created'  => $start,
+                'updated'  => time(),
+                'started'  => $start,
+                'ended'    => 0,
+                'removed'  => 0,
+            ), array('%s', '%d', '%s', '%s', '%s', '%d', '%s', '%d', '%d', '%d', '%d', '%d'));
+            SEOProStats_Changes::write(array(
+                'ts'          => $start,
+                'kind'        => SEOProStats_Changes::AB_STARTED,
+                'path'        => $path,
+                'object_type' => 'ab_test',
+                'object_id'   => $page ? $page['post_id'] : 0,
+                'old'         => '',
+                'new'         => $id,
+                'meta'        => array('name' => $name, 'test' => $id),
+                'source'      => 1,
+                'user_id'     => 0,
+            ));
+            $starts[$id] = $start;
+        }
+        $state       = self::state();
+        $state['ab'] = $starts;
+        update_option(self::OPTION, $state, false);
+    }
+
+    /**
+     * Which demo A/B tests the pages of a visit show (a variant per page
+     * load, by weight) and their effect: a variant can send the visit on
+     * to its test's page next. Pages and their context are added to.
+     *
+     * @param string[]                       $paths   The visit's pages, in order.
+     * @param array<int,array<string,mixed>> $context Their context, in the same order.
+     * @param int                            $started When the visit started.
+     * @return array<int,array<string,array{0:int,1:string,2:string,3:float}>> Page index => test id => variant.
+     */
+    private static function ab_shown(array &$paths, array &$context, $started) {
+        $shown = array();
+        for ($i = 0; $i < count($paths) && self::$ab; $i++) {
+            $shown[$i] = array();
+            foreach (self::AB_TESTS as $test) {
+                list($id, $path, , , , $next, , $variants) = $test;
+                // Not on a search results or not found page at the same address.
+                if ($paths[$i] !== $path || !empty($context[$i]['q']) || !empty($context[$i]['n']) || !isset(self::$ab[$id]) || $started < self::$ab[$id]) {
+                    continue;
+                }
+                $variant        = $variants[self::pick_index($variants)];
+                $shown[$i][$id] = $variant;
+                if ($next !== '' && $variant[3] > 0 && (!isset($paths[$i + 1]) || $paths[$i + 1] !== $next) && self::chance($variant[3])) {
+                    array_splice($paths, $i + 1, 0, array($next));
+                    array_splice($context, $i + 1, 0, array(array()));
+                }
+            }
+        }
+        return $shown;
+    }
+
+    /**
+     * The demo page a post ID stands for (page()'s IDs): its path and
+     * title.
+     *
+     * @param int $post_id Demo post ID.
+     * @return array{path:string,title:string}|null
+     */
+    public static function post($post_id) {
+        $paths = array_keys(self::CONTENT);
+        $i     = (int) $post_id - 1000;
+        if ($i < 0 || !isset($paths[$i])) {
+            return null;
+        }
+        $path = $paths[$i];
+        return array(
+            'path'  => $path,
+            'title' => isset(self::PAGE_TEXT[$path]) ? self::PAGE_TEXT[$path][0] : ucfirst(trim(str_replace('-', ' ', $path), '/')),
+        );
     }
 
     /**
@@ -665,6 +808,12 @@ final class SEOProStats_Demo {
             });
             if ($none) {
                 self::examples();
+            }
+            // Demo data made before A/B tests gets them once, from now on.
+            if (!isset(self::state()['ab'])) {
+                self::run(static function () {
+                    self::ab_tests();
+                });
             }
             // Demo data made before the change log gets its changes once.
             $state = self::state();
@@ -858,9 +1007,10 @@ final class SEOProStats_Demo {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
         self::$host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
 
-        $state = self::state();
-        $upto  = isset($state['upto']) ? (int) $state['upto'] : time();
-        $now   = time();
+        $state     = self::state();
+        $upto      = isset($state['upto']) ? (int) $state['upto'] : time();
+        $now       = time();
+        self::$ab  = isset($state['ab']) && is_array($state['ab']) ? array_map('intval', $state['ab']) : array();
         while ($upto < $now && SEOProStats_Feature::more_time($start, $budget)) {
             $to = min($now, $upto + DAY_IN_SECONDS);
             SEOProStats_Processor::ingest(self::lines($upto, $to));
@@ -1541,6 +1691,7 @@ final class SEOProStats_Demo {
                 $context[$i]['l'] = 1;
             }
         }
+        $shown = self::ab_shown($paths, $context, $started);
 
         $lines  = array();
         $ts     = $started;
@@ -1551,6 +1702,13 @@ final class SEOProStats_Demo {
             $hit  = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
             if ($context[$seq]) {
                 $hit['x'] = $context[$seq];
+            }
+            $tests = isset($shown[$seq]) ? $shown[$seq] : array();
+            if ($tests) {
+                $hit['ab'] = array();
+                foreach ($tests as $test => $variant) {
+                    $hit['ab'][] = $test . ':' . $variant[1];
+                }
             }
             if ($seq === 0) {
                 $hit['u'] .= strtr($query, array('{c}' => strtolower($time->format('F')) . '-update', '{id}' => $id));
@@ -1567,6 +1725,20 @@ final class SEOProStats_Demo {
             $events = self::events($path, $who);
             if ($clicks) {
                 $events = array_merge($events, self::clicks($path, $events));
+            }
+            // A click inside a test shows its variant's label, and says which.
+            foreach ($tests as $test => $variant) {
+                foreach (self::AB_TESTS as $def) {
+                    if ($def[0] !== $test || $def[6] === '') {
+                        continue;
+                    }
+                    foreach ($events as $e => $event) {
+                        if ($event['t'] === 'c' && $event['l'] === $def[6]) {
+                            $events[$e]['l']  = $variant[2];
+                            $events[$e]['ab'] = $test . ':' . $variant[1];
+                        }
+                    }
+                }
             }
             foreach ($events as $event) {
                 $event['p'] = $pkey;

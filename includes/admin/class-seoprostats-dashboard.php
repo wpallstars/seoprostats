@@ -126,6 +126,7 @@ final class SEOProStats_Dashboard {
             'funnels'    => __('Funnels', 'seoprostats'),
             'properties' => __('Properties', 'seoprostats'),
             'clicks'     => __('Clicks', 'seoprostats'),
+            'ab-tests'   => __('A/B tests', 'seoprostats'),
             'changes'    => __('Changes', 'seoprostats'),
         );
     }

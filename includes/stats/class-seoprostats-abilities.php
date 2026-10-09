@@ -26,6 +26,9 @@
  *   measured against unchanged pages, with a suggested result (read).
  * - seoprostats/experiment-record: record, decide, note or cancel an
  *   experiment (administrators).
+ * - seoprostats/ab-tests: A/B tests of blocks, their variants side by
+ *   side with uplift, interval, probability to beat the control and a
+ *   verdict (read).
  * - seoprostats/queue: the decision queue, a ranked list of search work
  *   with each item's why and score parts (read).
  * - seoprostats/queue-update: accept, do (opens an experiment), dismiss
@@ -1363,6 +1366,45 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/ab-tests', array(
+            'label'               => __('A/B tests', 'seoprostats'),
+            'description'         => __('A/B tests of blocks on the site\'s pages: each test with its status, variants, visits per variant, leader and verdict (no_data, too_early, winner, control or unclear), running tests first. With id, one test\'s variants side by side: visits, every goal\'s conversions and rate, revenue per currency, bounce rate, engaged time and clicks inside the variant, with the uplift against the control (the first variant), its 95% interval and the Bayesian probability to beat the control. A test\'s numbers cover its life; visits that saw two or more of its variants are counted apart as mixed. thresholds gives the minimum sample before a call. Read-only; tests are started and ended in the block editor. Not the same as seoprostats/experiments.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'id'      => array(
+                        'type'        => 'string',
+                        'pattern'     => '^[a-z0-9]{6,32}$',
+                        'description' => __('One test, by id.', 'seoprostats'),
+                    ),
+                    'status'  => array(
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), array_keys(SEOProStats_AB_Tests::STATUSES)),
+                        'description' => __('Only tests in this state.', 'seoprostats'),
+                    ),
+                    'filters' => array(
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'description' => __('Only these visits: dimension:operator:value strings, as for the statistics (such as device:is:mobile).', 'seoprostats'),
+                    ),
+                    'data'    => $data,
+                ),
+            ),
+            'output_schema'       => array('type' => 'object'),
+            'execute_callback'    => array(__CLASS__, 'ab_tests'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
         wp_register_ability('seoprostats/experiment-record', array(
             'label'               => __('Record or decide an experiment', 'seoprostats'),
             'description'         => __('Record an experiment before its result is known (a change to a page and what it should do: the measure, the direction and the smallest change that counts), or decide one (keep, revise, undo or inconclusive, with a note), or cancel it. Starting from a change in the change log fills in its time and page.', 'seoprostats'),
@@ -1473,6 +1515,26 @@ final class SEOProStats_Abilities {
                 'status' => isset($input['status']) ? (string) $input['status'] : '',
                 'page'   => isset($input['page']) ? (string) $input['page'] : '',
             ));
+        });
+    }
+
+    /**
+     * seoprostats/ab-tests.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function ab_tests($input = null) {
+        $input = is_array($input) ? $input : array();
+        $args  = array(
+            'filters' => isset($input['filters']) && is_array($input['filters']) ? $input['filters'] : array(),
+            'status'  => isset($input['status']) ? (string) $input['status'] : '',
+        );
+        return SEOProStats_API::on_data(self::data($input), static function () use ($input, $args) {
+            if (!empty($input['id'])) {
+                return SEOProStats_AB_Report::get((string) $input['id'], $args);
+            }
+            return SEOProStats_AB_Report::list_tests($args);
         });
     }
 

@@ -718,6 +718,48 @@ feature (a change and its expected effect, above).
   count visitors and conversions per variant by joining `session_id`.
   Rows are pruned with pageviews (visit retention) and dropped with the
   other tables. Nothing new runs on visitor pages.
+- **Reports** (`SEOProStats_AB_Report`, loaded with the report engine).
+  A test's numbers cover its life: from when it first ran (or was made)
+  to when it ended, or now, whatever the period chosen; visit filters
+  apply. Its visits are read from `ab_exposures` through `test_day`,
+  grouped by visit (one derived row: the variant, how many of the test's
+  variants it saw, when it first saw the test, page loads, clicks), then
+  joined to the visits by primary key. A visit that saw two or more of a
+  test's variants (possible while one variant per visit is off) is
+  **mixed**: counted apart and in no variant. A conversion is a visit
+  that reached the goal at or after first seeing the test (the goal's
+  pageviews or events by `session_seq`); event goals add revenue per
+  currency, purchases net of refunds. Per variant: visits, visitors, page
+  loads, bounce rate, engaged time, clicks and visits that clicked, and
+  each goal's conversions, rate and revenue. Each variant is compared
+  with the control (the first variant) on the primary metric, the test's
+  first goal (or, without goals, visits that clicked inside the variant):
+  uplift (relative change in rate) with a 95% interval (the log of the
+  rate ratio, Katz), and the probability that its true rate beats the
+  control's, with a uniform Beta(1, 1) prior on each rate, summed exactly
+  (`prob_beat()`; the normal approximation only past 50,000 conversions).
+  Below 100 visits a side, 10 conversions between the two or 7 days, a
+  comparison is **too early**; at 95% it is better (5%: worse), else
+  unclear. The test's verdict (`no_data`, `too_early`, `winner`,
+  `control`, `unclear`) comes with one plain sentence and its leader.
+  Answers are cached like other reports, keyed on each test's last save.
+- **The `variant` dimension** (value `test-id:variant-slug`, label "Test
+  name: Variant B") filters visits that saw a variant (`test-id:*`: any
+  of a test's) by `ab_exposures` (`test_day`), so every report (Overview,
+  Goals, Funnels, Clicks, Properties) can be narrowed to a variant; as a
+  breakdown (Overview → Events and A/B tests) it counts visits, page
+  loads and clicks per variant by `ts`. The Pages breakdown marks pages
+  with a running test (`ab_test`). Shared reports leave A/B tests out.
+- **Timeline.** Saving a post that starts, resumes, pauses or ends a
+  test, or picks its winner, adds a change (`ab_test_started`,
+  `ab_test_paused`, `ab_test_ended`, `ab_test_winner`, group content) on
+  its page; never on visitor pages.
+- **Where to read them**: the dashboard's A/B tests section (a list, and
+  one test's variants side by side), `GET /ab-tests` and
+  `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]`, and the
+  `seoprostats/ab-tests` ability. The demo data has three running: a
+  headline test with a clear winner, a button test with no clear
+  difference and a price test too early to call.
 - **Without the plugin**, the saved markup has every variant one after
   the other, so a page shows them all while SEO Pro Stats is inactive.
   Picking a winner (part 4) replaces the test with its blocks.
@@ -1539,7 +1581,8 @@ in the future meets the same length of the other period.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
   `opportunities`, `audit`, `links`, `indexation`, `coverage`, `content`,
-  `experiments`, `queue`, `targets`, `loop` (one answer per cycle for an
+  `experiments`, `ab-tests` (and `ab-tests/{id}`; A/B tests above),
+  `queue`, `targets`, `loop` (one answer per cycle for an
   agent: open queue items, experiments due and recently decided, and the
   period's search rows in the aidevops export layout;
   `docs/seo-loop-recipes.md`), `demo`,
@@ -1560,7 +1603,8 @@ in the future meets the same length of the other period.
   [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `coverage
   <page|post> [--missing] [--questions]`, `content [--sort=<sort>]
   [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
-  `cancel`, `note`, `delete`), `queue` (`list`, `accept`, `done`,
+  `cancel`, `note`, `delete`), `ab-tests [<id>] [--status=<status>]
+  [--filter=<filters>]`, `queue` (`list`, `accept`, `done`,
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
   [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
   [--goal=<id>]`, `indexation` (`list [--kind=<kind>] [--days=<n>]`,
@@ -1582,7 +1626,7 @@ in the future meets the same length of the other period.
   `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/links`,
   `seoprostats/indexation`, `seoprostats/coverage`,
   `seoprostats/content`, `seoprostats/experiments`,
-  `seoprostats/experiment-record`, `seoprostats/queue`,
+  `seoprostats/experiment-record`, `seoprostats/ab-tests`, `seoprostats/queue`,
   `seoprostats/queue-update`, `seoprostats/targets`,
   `seoprostats/targets-import`, `seoprostats/loop`,
   `seoprostats/migrate` (plugins found, dry run and leftovers, read
@@ -1635,7 +1679,7 @@ dependencies, so React and `@wordpress/components` are not bundled. WordPress be
 on WordPress's React.
 
 Sections: Overview · Behaviour (Flow, Journeys, Clicks, Funnels, Goals,
-Properties) · Pages (All, New, Not found, Site search, page detail) ·
+Properties, A/B tests) · Pages (All, New, Not found, Site search, page detail) ·
 Search (Rankings, Opportunities, Content, Backlinks) · Health (Speed, Errors,
 Crawlers, Uptime) · Changes (Changes, Anomalies, Annotations).
 
@@ -1644,10 +1688,12 @@ Content (authors, categories, post types); Site search (searches, no
 results); Locations; Map (visits by country, the `country` breakdown
 shaded on a world map, `WORLD_SHAPES` and `mapShades()` in
 `packages/charts`); Devices (devices, browsers, systems, logged in);
-Events. Two cards a row on wide screens.
+Events and A/B tests (events, A/B variants; shared reports show events
+only). Two cards a row on wide screens. Pages with a running A/B test
+are marked A/B in the Pages card.
 
 Built so far: Overview, Search (Rankings, Opportunities, Content), Goals,
-Funnels, Properties, Clicks and Changes, as the settings screen's tabs
+Funnels, Properties, Clicks, A/B tests and Changes, as the settings screen's tabs
 under the header (drawn by the server, `SEOProStats_Dashboard::render()`)
 and as submenu items: links to the hash, which the app marks current and
 whose tabs keep the period and filters. The period, comparison, Live/Demo switch and filters
@@ -1671,6 +1717,15 @@ filters every report by it; choosing it again takes the filter out.
 Administrators add, change and delete goals and funnels in a modal; pages
 and events seen in the last 90 days are offered as they type.
 
+A/B tests lists every test (page, state, start and end, visits per
+variant, the leader and its verdict); choosing one shows its variants
+side by side: the verdict, the primary metric's conversions, rate,
+uplift with its interval, chance to beat the control and each variant's
+verdict; every goal by variant with revenue per currency; and visitors,
+page loads, bounce rate, engaged time and clicks. Choosing a variant
+filters every report by it. Mixed visits and the minimum sample are
+explained under the tables. Shared reports have no A/B tests section.
+
 The view state lives in the URL hash (`#/clicks?kind=dead&page=%2Fshop%2F`),
 so a bookmark, a reload, a copied address or the back button brings back
 the same view. It holds the section; the shared values (period and custom
@@ -1678,10 +1733,11 @@ days, comparison, chart metric, filters); and the section's own choices:
 
 | Section | Address | Default (left out) |
 |---|---|---|
-| Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`: the card's open tab | each card's first tab |
+| Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`, `tab.events`: the card's open tab | each card's first tab |
 | Search | `report` (rankings, opportunities, content), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query`; with Content, `sort` (clicks, visits, conversions) and `goal` (a goal's ID) | rankings, queries, clicks, none; clicks, the first goal |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
+| A/B tests | `test` (a test's id: that test's view) | the list |
 | Changes | `page` (else the page the reports are filtered to), `group` (content, seo, product, site, search, note) | none, all changes |
 
 Only applied choices count: text in a box is a draft until Apply or Enter.

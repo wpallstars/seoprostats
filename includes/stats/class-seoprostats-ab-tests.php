@@ -546,7 +546,7 @@ final class SEOProStats_AB_Tests {
         SEOProStats_Schema::use_set($before);
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its post_id key, on saving a post; not cached on purpose.
-        $rows = $wpdb->get_results($wpdb->prepare('SELECT test_id, status, started, ended, removed FROM %i WHERE post_id = %d', $table, $post_id), ARRAY_A);
+        $rows = $wpdb->get_results($wpdb->prepare('SELECT test_id, status, winner, started, ended, removed FROM %i WHERE post_id = %d', $table, $post_id), ARRAY_A);
         $old  = array();
         foreach ((array) $rows as $row) {
             $old[(string) $row['test_id']] = $row;
@@ -589,12 +589,64 @@ final class SEOProStats_AB_Tests {
                 $started,
                 $ended
             ));
+            self::markers($post_id, $attrs, $variants, $prev, $title);
         }
         foreach ($old as $id => $row) {
             if (!isset($kept[$id]) && (int) $row['removed'] === 0) {
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key, on saving a post.
                 $wpdb->update($table, array('removed' => $now, 'updated' => $now), array('test_id' => (string) $id), array('%d', '%d'), array('%s'));
             }
+        }
+    }
+
+    /**
+     * Timeline markers for a test's status and winner as saved: started
+     * (or resumed), paused, ended and winner set (SEOProStats_Changes).
+     * Only changes: saving a running test again marks nothing.
+     *
+     * @param int                                                 $post_id  Post.
+     * @param array{id:string,name:string,status:string,goals:string[],winner:string} $attrs    The test's attributes now.
+     * @param array<int,array{slug:string,label:string,weight:int}> $variants Its variants now.
+     * @param array<string,mixed>|null                            $prev     Its row before (null: new).
+     * @param string                                              $title    Post title (the name by default).
+     */
+    private static function markers($post_id, array $attrs, array $variants, $prev, $title) {
+        $codes  = array_flip(self::STATUSES);
+        $before = $prev ? (isset($codes[(int) $prev['status']]) ? $codes[(int) $prev['status']] : 'draft') : 'draft';
+        $now    = $attrs['status'];
+        $name   = $attrs['name'] !== '' ? $attrs['name'] : sanitize_text_field((string) $title);
+        $kinds  = array(
+            'running' => SEOProStats_Changes::AB_STARTED,
+            'paused'  => SEOProStats_Changes::AB_PAUSED,
+            'ended'   => SEOProStats_Changes::AB_ENDED,
+        );
+        $link   = get_permalink($post_id);
+        $about  = array(
+            'path'        => is_string($link) && get_post_status($post_id) === 'publish' ? SEOProStats_Changes::path($link) : '',
+            'object_type' => 'ab_test',
+            'object_id'   => $post_id,
+        );
+        // A test ended straight from a draft never ran: no marker.
+        if ($now !== $before && isset($kinds[$now]) && !($now === 'ended' && $before === 'draft')) {
+            SEOProStats_Changes::record($kinds[$now], $about + array(
+                'old'  => $before,
+                'new'  => $attrs['id'],
+                'meta' => array('name' => $name, 'test' => $attrs['id']),
+            ));
+        }
+        $winner = $attrs['winner'];
+        if ($winner !== '' && (!$prev || (string) $prev['winner'] !== $winner)) {
+            $label = $winner;
+            foreach ($variants as $variant) {
+                if ($variant['slug'] === $winner) {
+                    $label = $variant['label'];
+                }
+            }
+            SEOProStats_Changes::record(SEOProStats_Changes::AB_WINNER, $about + array(
+                'old'  => $prev ? (string) $prev['winner'] : '',
+                'new'  => $winner,
+                'meta' => array('name' => $name, 'test' => $attrs['id'], 'label' => $label),
+            ));
         }
     }
 }

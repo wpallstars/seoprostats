@@ -34,6 +34,7 @@ export function viewLabel(view: View): string {
 		funnels: __('Funnels', 'seoprostats'),
 		properties: __('Properties', 'seoprostats'),
 		clicks: __('Clicks', 'seoprostats'),
+		'ab-tests': __('A/B tests', 'seoprostats'),
 		changes: __('Changes', 'seoprostats'),
 	};
 	return labels[view];
@@ -130,6 +131,7 @@ export function dimensionLabel(key: Dimension): string {
 		category: __('Category', 'seoprostats'),
 		post_type: __('Post type', 'seoprostats'),
 		event: __('Event', 'seoprostats'),
+		variant: __('A/B variant', 'seoprostats'),
 	};
 	return labels[key];
 }
