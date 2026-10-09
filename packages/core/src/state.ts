@@ -173,6 +173,7 @@ function oneOf<T extends string>(list: readonly T[], value: string | null, fallb
  * trimmed, no control characters, no longer than the stored names (2048).
  */
 function text(value: string | null): string | undefined {
+	// eslint-disable-next-line no-control-regex -- matching control characters is the point: they are refused.
 	return value && value === value.trim() && value.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined;
 }
 

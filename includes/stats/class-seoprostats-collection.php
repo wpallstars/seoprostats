@@ -507,6 +507,9 @@ final class SEOProStats_Collection {
      * Delete the files in one of our folders (no subfolders), then it.
      *
      * @param string $dir Folder.
+     *
+     * A folder that cannot be removed stays; its warning is not an error here.
+     * @SuppressWarnings("PHPMD.ErrorControlOperator")
      */
     private static function remove_dir($dir) {
         $names = is_dir($dir) ? scandir($dir) : false;

@@ -1409,6 +1409,10 @@ final class SEOProStats_Migrate {
      * Delete a folder and everything in it, without following links.
      *
      * @param string $dir Folder.
+     *
+     * A folder that cannot be removed stays, and the caller does not count
+     * it as removed; its warning is not an error here.
+     * @SuppressWarnings("PHPMD.ErrorControlOperator")
      */
     private static function remove_dir($dir) {
         $items = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
