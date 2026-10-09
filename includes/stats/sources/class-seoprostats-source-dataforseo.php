@@ -1,6 +1,6 @@
 <?php
 /**
- * DataForSEO's account and bounded paid requests. Never used on visitor pages.
+ * DataForSEO's free account check. Paid imports are not enabled yet.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -19,7 +19,6 @@ final class SEOProStats_Source_Dataforseo {
     const SOURCE = 'dataforseo';
     const API = 'https://api.dataforseo.com/v3/';
     const SPEND_OPTION = 'seoprostats_dataforseo_spend';
-    const LOCK_OPTION = 'seoprostats_dataforseo_lock';
 
     /**
      * Validate credentials with the free account endpoint.
@@ -36,11 +35,12 @@ final class SEOProStats_Source_Dataforseo {
         if ($credentials['login'] === '' || $credentials['password'] === '' || strpos($credentials['login'], ':') !== false) {
             return new WP_Error('seoprostats_dataforseo_credentials', __('Enter the API login and password.', 'seoprostats'));
         }
-        $limit = $input['monthly_limit'] ?? 5;
+        $before = SEOProStats_Connections::get(self::SOURCE);
+        $limit = $input['monthly_limit'] ?? ($before['settings']['monthly_limit'] ?? 5);
         if (!is_numeric($limit) || !is_finite((float) $limit) || (float) $limit < 0 || (float) $limit > 1000) {
             return new WP_Error('seoprostats_dataforseo_limit', __('The monthly limit must be between $0 and $1,000.', 'seoprostats'));
         }
-        $account = self::http('appendix/user_data', $credentials);
+        $account = self::http($credentials);
         if (is_wp_error($account)) {
             return $account;
         }
@@ -88,57 +88,15 @@ final class SEOProStats_Source_Dataforseo {
     }
 
     /**
-     * Send one allowlisted paid task, reserving the current public maximum.
-     * The caller holds the provider lock for the entire import. No retries:
-     * a timeout may already have been billed. Integer microdollars avoid
-     * floating-point under-reservations.
+     * Free fixed-host account request, no redirects or raw service errors.
      *
-     * @param string              $path API path.
-     * @param array<string,mixed> $task One task.
+     * @param array<string,mixed> $credentials Login and password.
      * @return array<string,mixed>|WP_Error
      */
-    public static function request($path, array $task) {
-        $caps = array('backlinks/backlinks/live' => 60000, 'backlinks/summary/live' => 25000, 'serp/google/organic/live/advanced' => 2000);
-        if (!isset($caps[$path]) || !get_option(self::LOCK_OPTION)) {
-            return new WP_Error('seoprostats_dataforseo_lock', __('A provider run must hold the spend lock.', 'seoprostats'));
-        }
-        $credentials = SEOProStats_Connections::credentials(self::SOURCE);
-        if (is_wp_error($credentials)) {
-            return $credentials;
-        }
-        $spend = self::spend();
-        $cap   = $caps[$path];
-        if ((int) round($spend['left'] * 1000000) < $cap) {
-            return new WP_Error('seoprostats_dataforseo_budget', __('The monthly spend limit stops this request. Raise the limit or wait until next month.', 'seoprostats'));
-        }
-        $ledger = array('month' => $spend['month'], 'spent' => (int) round($spend['spent'] * 1000000), 'reserved' => (int) round($spend['reserved'] * 1000000) + $cap);
-        if (!update_option(self::SPEND_OPTION, $ledger, false)) {
-            return new WP_Error('seoprostats_dataforseo_ledger', __('The spend reservation could not be saved.', 'seoprostats'));
-        }
-        $cost = null;
-        $got  = self::http($path, $credentials, $task, $cost);
-        if ($cost !== null) {
-            $ledger['spent'] += (int) ceil($cost * 1000000);
-            $ledger['reserved'] -= $cap;
-            update_option(self::SPEND_OPTION, $ledger, false);
-        }
-        return $got;
-    }
-
-    /**
-     * Fixed-host HTTP, no redirects or raw service errors in public output.
-     * Cost is read even for task-level failures and counted exactly once.
-     *
-     * @param string                   $path API path.
-     * @param array<string,mixed>      $credentials Login and password.
-     * @param array<string,mixed>|null $task Paid task, null for free GET.
-     * @param float|null               $cost Returned cost, null if unknown.
-     * @return array<string,mixed>|WP_Error
-     */
-    private static function http($path, array $credentials, $task = null, &$cost = null) {
+    private static function http(array $credentials) {
         $args = array(
-            'method'      => $task === null ? 'GET' : 'POST',
-            'timeout'     => 15,
+            'method'      => 'GET',
+            'timeout'     => 15, // phpcs:ignore WordPressVIPMinimum.Performance.RemoteRequestTimeout.timeout_timeout -- owner-triggered account check or cron import, never a visitor request.
             'redirection' => 0,
             'limit_response_size' => 4194304,
             'headers'     => array(
@@ -146,21 +104,15 @@ final class SEOProStats_Source_Dataforseo {
                 'Content-Type'  => 'application/json',
             ),
         );
-        if ($task !== null) {
-            $args['body'] = wp_json_encode(array($task));
-        }
-        $response = wp_remote_request(self::API . $path, $args);
+        $response = wp_remote_request(self::API . 'appendix/user_data', $args);
         if (!is_wp_error($response)) {
             $body = json_decode(wp_remote_retrieve_body($response), true);
             if (is_array($body)) {
-                if (isset($body['cost']) && is_numeric($body['cost']) && is_finite((float) $body['cost']) && (float) $body['cost'] >= 0) {
-                    $cost = (float) $body['cost'];
-                }
                 if (wp_remote_retrieve_response_code($response) === 200 && ($body['status_code'] ?? 0) === 20000 && ($body['tasks'][0]['status_code'] ?? 0) === 20000 && isset($body['tasks'][0]['result'][0]) && is_array($body['tasks'][0]['result'][0])) {
                     return $body['tasks'][0]['result'][0];
                 }
             }
         }
-        return new WP_Error('seoprostats_dataforseo_request', __('DataForSEO could not complete the request. Check the API credentials, account balance and service status. An unknown charge stays reserved.', 'seoprostats'));
+        return new WP_Error('seoprostats_dataforseo_request', __('DataForSEO could not complete the account check. Check the API credentials and service status.', 'seoprostats'));
     }
 }
