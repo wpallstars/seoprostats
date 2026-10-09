@@ -452,11 +452,37 @@ providers other than posts (no request, at most 5,000 addresses) into
 `sitemap`, with when each address was first listed. The report reads
 `page_facts` by its `published` key and `sitemap` by `first_seen` (the
 newest 5,000 of each), then `gsc_pages` by `path_day` for those pages
-only. Engine URL inspection is not used. Each row is also a queue item
-(kind `index`). `GET /indexation`, `wp seoprostats indexation` and the
-`seoprostats/indexation` ability read it; `wp seoprostats indexation run`
-reads the sitemaps now. The dashboard shows it under Search → Audit,
-after internal links.
+only. Each row is also a queue item (kind `index`). `GET /indexation`,
+`wp seoprostats indexation` and the `seoprostats/indexation` ability read
+it; `wp seoprostats indexation run` reads the sitemaps now. The dashboard
+shows it under Search → Audit, after internal links. With Google, each
+row carries Google's URL Inspection of the page (below).
+
+Search Console sitemaps and URL Inspection (schema v19,
+`SEOProStats_Inspections`, GH#144; design: `docs/seo-loop.md` →
+Indexation) run only while Search Console is connected, from the hourly
+search import after its own work, with a 20-second budget and their own
+lock; never on visitor pages or report requests. Once a day the import
+reads the property's sitemaps (errors, warnings, last download, addresses
+submitted; Google's deprecated indexed count is left out) into an option
+per data set. Then it inspects pages with the URL Inspection API, at most
+the `inspections` setting a day (Settings → Data, default 200, up to
+Google's 2,000 per property, counted per Google day in Pacific time):
+first the pages Indexation lists, then those with search impressions in
+the newest 28 days (`gsc_pages` by its primary key), each again after 14
+days. Each answer is one row of the new `inspections` table (`path_id`
+primary key; Google's values as codes, the coverage state and canonicals
+in the dictionary, finding flags, details as JSON). Findings
+(`robots_blocked`, `not_indexed`, `google_canonical`, `rich_errors`) are
+content audit findings; sitemap problems (errors, not downloaded for
+over 7 days, warnings, the site's own sitemap index not submitted) are
+queue items (kind `sitemap`; done opens no experiment). A verdict change
+on live data is a timeline change (`index_status`). Reports read
+`inspections` by its keys (`checked`, `verdict_checked`,
+`coverage_checked`, `flags`) and by primary key for the pages shown.
+`GET /inspections`, `wp seoprostats inspect [<page>] [--run]
+[--sitemaps]` and the `seoprostats/inspections` ability read it; the
+dashboard shows Google's index under Search → Audit, after Indexation.
 
 Backlinks (schema v18, `SEOProStats_Backlinks`, GH#142) lists pages of
 other sites that link to the site's pages, found without an outside
@@ -1630,7 +1656,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `audit`, `links`, `indexation`, `backlinks`, `coverage`, `content`,
+  `opportunities`, `audit`, `links`, `indexation`, `inspections`, `backlinks`, `coverage`, `content`,
   `experiments`, `ab-tests` (and `ab-tests/{id}`; A/B tests above),
   `queue`, `targets`, `loop` (one answer per cycle for an
   agent: open queue items, experiments due and recently decided, and the
@@ -1658,7 +1684,8 @@ in the future meets the same length of the other period.
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
   [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
   [--goal=<id>]`, `indexation` (`list [--kind=<kind>] [--days=<n>]`,
-  `run`), `backlinks [links|domains|pages|lost|check] [--all]`, `targets` (`list`, `import <file|->`, `delete <query>...`),
+  `run`), `inspect [<page>] [--run] [--sitemaps] [--verdict=<verdict>]
+  [--coverage=<state>] [--finding=<finding>]`, `backlinks [links|domains|pages|lost|check] [--all]`, `targets` (`list`, `import <file|->`, `delete <query>...`),
   `loop [--rows=<n>]` (`--format=toon` writes the export rows as an
   aidevops export file), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
@@ -1674,7 +1701,7 @@ in the future meets the same length of the other period.
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
   `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/links`,
-  `seoprostats/indexation`, `seoprostats/backlinks`, `seoprostats/coverage`,
+  `seoprostats/indexation`, `seoprostats/inspections`, `seoprostats/backlinks`, `seoprostats/coverage`,
   `seoprostats/content`, `seoprostats/experiments`,
   `seoprostats/experiment-record`, `seoprostats/ab-tests`, `seoprostats/queue`,
   `seoprostats/queue-update`, `seoprostats/targets`,

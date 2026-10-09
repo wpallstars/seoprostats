@@ -819,7 +819,8 @@ paths:
           site's CTR at the page's position × the list's share in
           `rules.links_share`; index: `/indexation`'s `typical`, a shown
           page's clicks, × the list's share in `rules.index_share`, so
-          none without search data; refresh: the clicks lost × the
+          none without search data; sitemap: the same typical clicks × the
+          problem's share in `rules.sitemap_share`; refresh: the clicks lost × the
           proposal's share in `rules.refresh_share`; target: wrong_page,
           the search's impressions × the site's CTR at its position ×
           `rules.target.share`, striking, as striking distance's, both ×
@@ -829,13 +830,20 @@ paths:
           `goal` (smoothed toward the site's) ÷ the site's rate, from 1
           to `rules.max_value`; 1 without goals;
         - confidence: the kind's own × √(impressions per 28 days ÷
-          `rules.full_impressions`), the root at most 1; index items have
-          no impressions, so theirs is the kind's own;
+          `rules.full_impressions`), the root at most 1; index and sitemap
+          items have no impressions, so theirs is the kind's own;
         - effort: the kind's (`rules.effort`; an audit finding's in
           `rules.audit_effort`, a links list's in `rules.links_effort`, an
-          indexation list's in `rules.index_effort` and a refresh
-          proposal's in `rules.refresh_effort` when it differs) unless
-          someone set another.
+          indexation list's in `rules.index_effort`, a refresh
+          proposal's in `rules.refresh_effort` and a sitemap problem's in
+          `rules.sitemap_effort` when it differs) unless someone set
+          another.
+
+        Sitemap items (`sitemap`, Google only) come from Search Console's
+        sitemaps (`/inspections`): one per sitemap and problem (`errors`,
+        `stale`, `warnings`), and `missing` when the site's own sitemap
+        index is not submitted. Done records the fix and opens no
+        experiment.
 
         Only items someone acted on are stored. New items on a page with
         a running experiment are left out (`left_out`); dismissed items
@@ -857,7 +865,7 @@ paths:
           description: Only items of this kind; every kind when left out.
           schema:
             type: string
-            enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target]
+            enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target, sitemap]
         - name: goal
           in: query
           description: ID of the goal whose conversions give a page its value; the first goal when left out.
@@ -1608,6 +1616,15 @@ paths:
         makes several) and `images_alt`. Lengths are of what was written:
         an SEO title made of its plugin's variables counts as the post's.
 
+        While Google Search Console is connected (`engine` google), four
+        more come from Google's URL Inspection of the page (the version in
+        Google's index; see `/inspections`): `robots_blocked` (robots.txt
+        stops Google crawling it), `not_indexed` (Google crawled or found
+        it but left it out of its index), `google_canonical` (Google chose
+        another page as canonical than the page's own) and `rich_errors`
+        (Google's rich result report has errors). Each row's `google` gives
+        the inspection, null until the page is inspected.
+
         Pages are listed most impressions first, with their search figures
         from the same imported days as `/search` (one `engine`; cut as
         `/opportunities` is). `counts` gives pages per finding whatever
@@ -1762,6 +1779,12 @@ paths:
         every list's rows whatever `kind` is asked for. Each row also
         becomes a `/queue` item (kind `index`). Page filters apply; other
         filters are listed in `ignored`.
+
+        With `engine` google, each row's `google` is Google's URL
+        Inspection of the page (Google's reason in its words and last
+        crawl; null until inspected), and `sitemaps` and `inspections`
+        give Search Console's sitemaps and the inspections' progress, as
+        `/inspections` does; both null for Bing.
       parameters:
         - $ref: '#/components/parameters/engine'
         - name: kind
@@ -1799,6 +1822,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/IndexationAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /inspections:
+    get:
+      operationId: getInspections
+      summary: Google's index — URL Inspection of the site's pages and Search Console's sitemaps.
+      description: |
+        Reads what the daily Search Console import stored; no request to
+        Google. Google only.
+
+        While Search Console is connected, the import reads the property's
+        sitemaps daily (Google's errors, warnings, when it last downloaded
+        each and the addresses submitted; Google's indexed count is
+        deprecated and left out) and inspects pages with Google's URL
+        Inspection API: first the pages `/indexation` lists, then those
+        with most search impressions, each again after
+        `rules.recheck_days` days, at most `rules.daily` a day (Google's
+        day, Pacific time; set in Settings → Data, 0 for none, up to
+        `rules.max_daily`, Google's own limit per property). Inspections
+        run only in the cron (or `wp seoprostats inspect --run`), never on
+        visitor pages or report requests.
+
+        Each row is Google's view of the version in its index: `verdict`,
+        `coverage` (Google's reason in its words, such as "Crawled -
+        currently not indexed"), `indexing`, `robots`, `page_fetch`,
+        `last_crawl`, `google_canonical` and `user_canonical`, rich
+        results, and `findings` (`InspectionFinding`), which are also
+        `/audit` findings and `/queue` items. A change of verdict is a
+        timeline change (`index_status`). Newest inspections first.
+        `counts` gives pages per verdict whatever is asked for.
+
+        `sitemaps.submitted` is false when the site's own sitemap index
+        (its SEO plugin's, or WordPress's) is not submitted in Search
+        Console; each sitemap lists its `problems` (`errors`, `stale`: not
+        downloaded for over `stale_days` days, `warnings`). Sitemap
+        problems become `/queue` items (kind `sitemap`). Page filters
+        apply; other filters are listed in `ignored`.
+      parameters:
+        - name: verdict
+          in: query
+          description: Only pages with this verdict; all when left out.
+          schema:
+            $ref: '#/components/schemas/InspectionVerdict'
+        - name: coverage
+          in: query
+          description: Only pages with this coverage state, in Google's words (for example "Crawled - currently not indexed").
+          schema:
+            type: string
+        - name: finding
+          in: query
+          description: Only pages with this finding; all when left out.
+          schema:
+            $ref: '#/components/schemas/InspectionFinding'
+        - $ref: '#/components/parameters/filters'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Pages inspected, with the sitemaps and progress.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InspectionsAnswer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2839,7 +2944,9 @@ components:
         plugin_deleted, theme_switched, theme_updated, core_updated,
         search_visibility, permalinks, site_address, front_page;
         search_update (search engine updates, when switched on under
-        Settings → Data); note, experiment (an experiment's start; see
+        Settings → Data), index_status (a page's verdict in Google's
+        URL Inspection changed; old and new are Google's coverage states;
+        see /inspections); note, experiment (an experiment's start; see
         /experiments).
       schema:
         type: string
@@ -3814,21 +3921,23 @@ components:
               description: 16 hex characters, from kind, engine, page and query.
             kind:
               type: string
-              enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target]
+              enum: [ctr, missing, striking, decay, overlap, audit, links, index, refresh, target, sitemap]
             engine:
               $ref: '#/components/schemas/SearchEngine'
             status:
               type: string
               enum: [new, accepted, done, dismissed]
             finding:
-              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page); target, wrong_page or striking (one item per target and finding). Null for other kinds.
-              oneOf:
+              description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page); target, wrong_page or striking (one item per target and finding); sitemap, the problem (one item per sitemap and problem; missing when the site's own sitemap index is not submitted). Null for other kinds.
+              anyOf:
                 - $ref: '#/components/schemas/AuditFinding'
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
                 - $ref: '#/components/schemas/RefreshProposal'
                 - type: string
                   enum: [wrong_page, striking]
+                - type: string
+                  enum: [missing, errors, stale, warnings]
                 - type: 'null'
             found:
               type: boolean
@@ -3956,7 +4065,23 @@ components:
                   $ref: '#/components/schemas/AuditFinding'
                 share:
                   type: number
-                  description: audit and links, the share of the page's expected clicks the finding or list puts at stake; index, the share of a shown page's clicks (typical) the page could earn.
+                  description: audit and links, the share of the page's expected clicks the finding or list puts at stake; index, the share of a shown page's clicks (typical) the page could earn; sitemap, the share of a shown page's clicks the problem puts at stake.
+                sitemap:
+                  type: object
+                  description: sitemap; the sitemap as Search Console read it (the site's own sitemap index for missing). The item's path and url are the sitemap's; Done opens no experiment.
+                  properties:
+                    url:
+                      type: string
+                    errors:
+                      type: integer
+                    warnings:
+                      type: integer
+                    downloaded:
+                      type: [string, 'null']
+                      format: date-time
+                    submitted:
+                      type: [string, 'null']
+                      format: date-time
                 facts:
                   $ref: '#/components/schemas/AuditFacts'
                 same:
@@ -5504,8 +5629,8 @@ components:
 
     AuditFinding:
       type: string
-      enum: [noindex, canonical, thin, title_missing, title_duplicate, title_long, description_missing, description_duplicate, description_long, h1_none, h1_several, images_alt]
-      description: A content audit finding; the list is most serious first.
+      enum: [noindex, canonical, robots_blocked, not_indexed, google_canonical, thin, title_missing, title_duplicate, title_long, description_missing, description_duplicate, description_long, h1_none, h1_several, rich_errors, images_alt]
+      description: A content audit finding; the list is most serious first. robots_blocked, not_indexed, google_canonical and rich_errors come from Google's URL Inspection (InspectionFinding).
 
     AuditFacts:
       type: object
@@ -5566,6 +5691,11 @@ components:
               description: Other pages with the same description (up to five).
               items:
                 type: string
+            google:
+              description: Google's URL Inspection of the page; null until inspected.
+              oneOf:
+                - $ref: '#/components/schemas/InspectionGoogle'
+                - type: 'null'
 
     AuditAnswer:
       allOf:
@@ -5846,6 +5976,11 @@ components:
               type: string
               enum: [taxonomies, users, other]
               description: sitemap; the sitemap provider (category and tag archives, author archives, or another plugin's).
+            google:
+              description: Google's URL Inspection of the page (its reason and last crawl); null until inspected, and for Bing.
+              oneOf:
+                - $ref: '#/components/schemas/InspectionGoogle'
+                - type: 'null'
 
     IndexationAnswer:
       allOf:
@@ -5930,6 +6065,22 @@ components:
               description: Rows per list, whatever kind is asked for.
               additionalProperties:
                 type: integer
+            sitemaps:
+              description: Search Console's sitemaps (Google); null for Bing.
+              oneOf:
+                - $ref: '#/components/schemas/SearchSitemaps'
+                - type: 'null'
+            inspections:
+              description: URL Inspection's progress and pages inspected (Google); null for Bing.
+              oneOf:
+                - allOf:
+                    - $ref: '#/components/schemas/InspectionProgress'
+                    - type: object
+                      required: [inspected]
+                      properties:
+                        inspected:
+                          type: integer
+                - type: 'null'
             rows:
               type: array
               description: Never shown first, then the newest.
@@ -5939,6 +6090,255 @@ components:
               type: integer
             more:
               type: boolean
+
+    InspectionVerdict:
+      type: string
+      enum: [PASS, PARTIAL, FAIL, NEUTRAL]
+      description: Google's verdict of the version in its index (PASS indexed; NEUTRAL excluded; FAIL an error; PARTIAL reserved by Google).
+
+    InspectionFinding:
+      type: string
+      enum: [robots_blocked, not_indexed, google_canonical, rich_errors]
+      description: A finding from Google's URL Inspection; also a content audit finding.
+
+    InspectionGoogle:
+      type: object
+      description: Google's view of a page from URL Inspection, the version in its index. Google's values as it gives them; null when not given.
+      required: [checked, verdict, coverage, indexing, robots, page_fetch, crawled_as, last_crawl, google_canonical, user_canonical, rich_verdict, rich, sitemaps, referring, link, error, findings]
+      properties:
+        checked:
+          type: string
+          format: date-time
+          description: When it was inspected.
+        verdict:
+          oneOf:
+            - $ref: '#/components/schemas/InspectionVerdict'
+            - type: 'null'
+        coverage:
+          type: [string, 'null']
+          description: Google's reason, in its words (for example "Crawled - currently not indexed").
+        indexing:
+          type: [string, 'null']
+          description: Google's indexingState, such as INDEXING_ALLOWED or BLOCKED_BY_META_TAG.
+        robots:
+          type: [string, 'null']
+          description: Google's robotsTxtState, ALLOWED or DISALLOWED.
+        page_fetch:
+          type: [string, 'null']
+          description: Google's pageFetchState, such as SUCCESSFUL or NOT_FOUND.
+        crawled_as:
+          type: [string, 'null']
+          enum: [DESKTOP, MOBILE, null]
+        last_crawl:
+          type: [string, 'null']
+          format: date-time
+        google_canonical:
+          type: [string, 'null']
+          description: The canonical Google chose.
+        user_canonical:
+          type: [string, 'null']
+          description: The canonical the page declares.
+        rich_verdict:
+          oneOf:
+            - $ref: '#/components/schemas/InspectionVerdict'
+            - type: 'null'
+        rich:
+          type: array
+          description: Rich result types Google detected, with their issues.
+          items:
+            type: object
+            required: [type, items, errors, warnings, issues]
+            properties:
+              type:
+                type: string
+              items:
+                type: integer
+              errors:
+                type: integer
+              warnings:
+                type: integer
+              issues:
+                type: array
+                items:
+                  type: object
+                  required: [message, severity]
+                  properties:
+                    message:
+                      type: string
+                    severity:
+                      type: string
+                      enum: [error, warning]
+        sitemaps:
+          type: array
+          description: Sitemaps Google knows the page from (up to five).
+          items:
+            type: string
+        referring:
+          type: array
+          description: Pages Google knows the page from (up to five).
+          items:
+            type: string
+        link:
+          type: [string, 'null']
+          description: The inspection in Search Console.
+        error:
+          type: [string, 'null']
+          description: Google's message when it would not inspect the address.
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/InspectionFinding'
+
+    InspectionProgress:
+      type: object
+      required: [daily, used, day, last, error, error_at]
+      properties:
+        daily:
+          type: integer
+          description: Inspections a day at most (Settings → Data); 0 for none.
+        used:
+          type: integer
+          description: Inspections today.
+        day:
+          type: string
+          format: date
+          description: Google's day (Pacific time).
+        last:
+          type: [string, 'null']
+          format: date-time
+          description: The last run.
+        error:
+          type: [string, 'null']
+          description: Google's message when it stopped the last run.
+        error_at:
+          type: [string, 'null']
+          format: date-time
+
+    SearchSitemap:
+      type: object
+      description: A sitemap submitted in Search Console, as Google read it.
+      required: [path, type, index, pending, submitted, downloaded, errors, warnings, contents, problems]
+      properties:
+        path:
+          type: string
+          description: The sitemap's address.
+        type:
+          type: string
+        index:
+          type: boolean
+          description: Whether it is a sitemap index.
+        pending:
+          type: boolean
+        submitted:
+          type: [string, 'null']
+          format: date-time
+        downloaded:
+          type: [string, 'null']
+          format: date-time
+          description: When Google last downloaded it.
+        errors:
+          type: integer
+        warnings:
+          type: integer
+        contents:
+          type: array
+          description: Addresses submitted, by type (Google's indexed count is deprecated and left out).
+          items:
+            type: object
+            required: [type, submitted]
+            properties:
+              type:
+                type: string
+              submitted:
+                type: integer
+        problems:
+          type: array
+          items:
+            type: string
+            enum: [errors, stale, warnings]
+
+    SearchSitemaps:
+      type: object
+      required: [read, error, own, submitted, stale_days, rows]
+      properties:
+        read:
+          type: [string, 'null']
+          format: date-time
+          description: When the sitemaps were last read.
+        error:
+          type: [string, 'null']
+          description: Google's message when the last read failed.
+        own:
+          type: [string, 'null']
+          description: The site's own sitemap index (its SEO plugin's, or WordPress's); null without one.
+        submitted:
+          type: boolean
+          description: False when the site's own sitemap index is not submitted.
+        stale_days:
+          type: integer
+          description: Days without a download after which a sitemap is stale.
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchSitemap'
+
+    InspectionsAnswer:
+      type: object
+      required: [connected, ignored, verdict, coverage, finding, progress, rules, sitemaps, inspected, counts, rows, total, more]
+      properties:
+        connected:
+          type: boolean
+          description: Whether Search Console is connected.
+        ignored:
+          type: array
+          items:
+            type: string
+        verdict:
+          type: string
+        coverage:
+          type: string
+        finding:
+          type: string
+        progress:
+          $ref: '#/components/schemas/InspectionProgress'
+        rules:
+          type: object
+          required: [daily, max_daily, recheck_days, budget, stale_days]
+          properties:
+            daily:
+              type: integer
+            max_daily:
+              type: integer
+              description: Google's own limit per property a day.
+            recheck_days:
+              type: integer
+              description: Days before a page is inspected again.
+            budget:
+              type: integer
+              description: Seconds a cron run inspects at most.
+            stale_days:
+              type: integer
+        sitemaps:
+          $ref: '#/components/schemas/SearchSitemaps'
+        inspected:
+          type: integer
+          description: Pages inspected.
+        counts:
+          type: object
+          description: Pages per verdict, whatever is asked for.
+          additionalProperties:
+            type: integer
+        rows:
+          type: array
+          description: Newest inspections first.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/OpportunityPage'
+              - $ref: '#/components/schemas/InspectionGoogle'
+        total:
+          type: integer
+        more:
+          type: boolean
 
     BacklinkKind:
       type: string

@@ -39,7 +39,12 @@
  * (SEOProStats_Targets) are one per search target and finding: shown with
  * another page than the one meant for it (wrong_page), or a high-priority
  * target in striking distance, in place of its plain striking item (the
- * key's query is the finding and the query).
+ * key's query is the finding and the query). Sitemap items
+ * (SEOProStats_Inspections, Google only) are one per Search Console
+ * sitemap and problem: errors, warnings, not downloaded lately, or the
+ * site's own sitemap not submitted (the key's query is the problem and
+ * the sitemap's address); potential clicks a typical shown page's ×
+ * SEOProStats_Inspections::SITEMAP_SHARE, and done opens no experiment.
  *
  * Items are worked out when the list is read; only those a person or
  * agent acted on (accepted, done, dismissed, or given an effort or note)
@@ -79,6 +84,7 @@ final class SEOProStats_Queue {
         8 => 'index',
         9 => 'refresh',
         10 => 'target',
+        11 => 'sitemap',
     );
 
     /** States stored: code => name. 0 (new) is stored only with an effort or note. */
@@ -96,22 +102,24 @@ final class SEOProStats_Queue {
     const ACTIONS = array('accept', 'done', 'dismiss', 'restore', 'effort', 'note');
 
     /** Effort by kind (1 least), and the most a person can set. */
-    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2, 'refresh' => 3, 'target' => 2);
+    const EFFORT     = array('ctr' => 1, 'missing' => 2, 'striking' => 2, 'decay' => 3, 'overlap' => 3, 'audit' => 1, 'links' => 1, 'index' => 2, 'refresh' => 3, 'target' => 2, 'sitemap' => 1);
     const MAX_EFFORT = 5;
 
-    /** Effort of audit findings and links and indexation lists other than their kind's. */
-    const AUDIT_EFFORT = array('thin' => 3);
-    const LINKS_EFFORT = array('converting' => 2);
-    const INDEX_EFFORT = array('sitemap' => 1);
+    /** Effort of audit findings, links and indexation lists and sitemap problems other than their kind's. */
+    const AUDIT_EFFORT   = array('thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'rich_errors' => 2);
+    const LINKS_EFFORT   = array('converting' => 2);
+    const INDEX_EFFORT   = array('sitemap' => 1);
+    const SITEMAP_EFFORT = array('errors' => 2, 'stale' => 2);
 
     /**
      * The kind's own confidence, before the impressions are weighed;
-     * indexation items have no impressions, so theirs is not weighed.
+     * indexation and sitemap items have no impressions, so theirs is not
+     * weighed.
      */
-    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3, 'refresh' => 0.8, 'target' => 0.6);
+    const CONFIDENCE = array('decay' => 0.8, 'ctr' => 0.7, 'striking' => 0.6, 'missing' => 0.5, 'overlap' => 0.4, 'audit' => 0.5, 'links' => 0.4, 'index' => 0.3, 'refresh' => 0.8, 'target' => 0.6, 'sitemap' => 0.4);
 
-    /** The measure of the experiment done opens, by kind (target: by finding, TARGET_METRIC). */
-    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions', 'refresh' => 'clicks', 'target' => 'clicks');
+    /** The measure of the experiment done opens, by kind (target: by finding, TARGET_METRIC; sitemap items open none). */
+    const METRIC = array('ctr' => 'ctr', 'missing' => 'clicks', 'striking' => 'position', 'decay' => 'clicks', 'overlap' => 'clicks', 'audit' => 'clicks', 'links' => 'clicks', 'index' => 'impressions', 'refresh' => 'clicks', 'target' => 'clicks', 'sitemap' => 'impressions');
 
     /** Search target findings measured otherwise than the target kind's. */
     const TARGET_METRIC = array('striking' => 'position');
@@ -138,6 +146,9 @@ final class SEOProStats_Queue {
     const AUDIT_METRIC = array(
         'noindex'               => 'impressions',
         'canonical'             => 'impressions',
+        'robots_blocked'        => 'impressions',
+        'not_indexed'           => 'impressions',
+        'google_canonical'      => 'impressions',
         'title_missing'         => 'ctr',
         'title_duplicate'       => 'ctr',
         'title_long'            => 'ctr',
@@ -261,6 +272,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-indexation.php';
         require_once __DIR__ . '/class-seoprostats-refresh.php';
         require_once __DIR__ . '/class-seoprostats-targets.php';
+        require_once __DIR__ . '/class-seoprostats-inspections.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -349,6 +361,15 @@ final class SEOProStats_Queue {
                 unset($items[self::key('striking', $engine, (string) $item['path'], (string) $item['query'])]);
                 $items[$item['key']] = $item;
             }
+            // Search Console's sitemap problems (Google only).
+            if ($engine === 'google') {
+                foreach (SEOProStats_Inspections::sitemap_problems() as $problem) {
+                    $item = self::sitemap_item($engine, $problem, $typical);
+                    if ($item && !isset($items[$item['key']])) {
+                        $items[$item['key']] = $item;
+                    }
+                }
+            }
         }
 
         return array(
@@ -372,6 +393,8 @@ final class SEOProStats_Queue {
                     'links_share'      => self::LINKS_SHARE,
                     'index_effort'     => self::INDEX_EFFORT,
                     'index_share'      => self::INDEX_SHARE,
+                    'sitemap_effort'   => self::SITEMAP_EFFORT,
+                    'sitemap_share'    => SEOProStats_Inspections::SITEMAP_SHARE,
                     'refresh_effort'   => SEOProStats_Refresh::EFFORT,
                     'refresh_share'    => SEOProStats_Refresh::SHARE,
                     'refresh'          => array(
@@ -751,6 +774,68 @@ final class SEOProStats_Queue {
     }
 
     /**
+     * One item from a Search Console sitemap problem
+     * (SEOProStats_Inspections::sitemap_problems()): errors, warnings, not
+     * downloaded lately, or the site's own sitemap not submitted. Potential
+     * clicks: what a page shown in search earns here per 28 days × the
+     * problem's share (SEOProStats_Inspections::SITEMAP_SHARE); confidence
+     * the kind's own. Done opens no experiment: a sitemap is about the
+     * whole site. Null without potential clicks.
+     *
+     * @param string              $engine  Engine name.
+     * @param array<string,mixed> $problem The problem.
+     * @param float               $typical A shown page's clicks per 28 days.
+     * @return array<string,mixed>|null
+     */
+    private static function sitemap_item($engine, array $problem, $typical) {
+        $name   = (string) $problem['problem'];
+        $share  = isset(SEOProStats_Inspections::SITEMAP_SHARE[$name]) ? SEOProStats_Inspections::SITEMAP_SHARE[$name] : 0.0;
+        $clicks = (float) $typical * $share;
+        if ($clicks < 1) {
+            return null;
+        }
+        $parts = array(
+            'clicks'     => round($clicks, 1),
+            'value'      => 1.0,
+            'confidence' => self::CONFIDENCE['sitemap'],
+            'effort'     => self::effort_of('sitemap', $name),
+        );
+        return array(
+            'key'      => self::key('sitemap', $engine, (string) $problem['path'], $name . ' ' . (string) $problem['url']),
+            'kind'     => 'sitemap',
+            'engine'   => $engine,
+            'status'   => 'new',
+            'found'    => true,
+            'path_id'  => 0,
+            'path'     => (string) $problem['path'],
+            'url'      => (string) $problem['url'],
+            'post_id'  => 0,
+            'edit_url' => null,
+            'query'    => null,
+            'finding'  => $name,
+            'why'      => SEOProStats_Inspections::why($problem),
+            'todo'     => SEOProStats_Inspections::todo($name),
+            'figures'  => array(
+                'clicks'      => 0,
+                'impressions' => 0,
+                'position'    => null,
+                'typical'     => (float) $typical,
+                'share'       => $share,
+                'sitemap'     => array(
+                    'url'        => (string) $problem['url'],
+                    'errors'     => (int) $problem['errors'],
+                    'warnings'   => (int) $problem['warnings'],
+                    'downloaded' => $problem['downloaded'],
+                    'submitted'  => $problem['submitted'],
+                ),
+            ),
+            'metric'   => self::METRIC['sitemap'],
+            'parts'    => $parts,
+            'score'    => self::score($parts),
+        );
+    }
+
+    /**
      * One refresh item from a losing page with content facts
      * (SEOProStats_Refresh): update, leave, protect or merge. Potential
      * clicks: those lost × the proposal's share; confidence the kind's,
@@ -933,6 +1018,9 @@ final class SEOProStats_Queue {
         }
         if ($kind === 'index' && $finding !== null && isset(self::INDEX_EFFORT[$finding])) {
             return self::INDEX_EFFORT[$finding];
+        }
+        if ($kind === 'sitemap' && $finding !== null && isset(self::SITEMAP_EFFORT[$finding])) {
+            return self::SITEMAP_EFFORT[$finding];
         }
         if ($kind === 'refresh' && $finding !== null && isset(SEOProStats_Refresh::EFFORT[$finding])) {
             return SEOProStats_Refresh::EFFORT[$finding];
@@ -1451,13 +1539,14 @@ final class SEOProStats_Queue {
 
     /**
      * Whether doing an item changes nothing on its pages (a refresh
-     * proposal to leave the page as it is): done opens no experiment.
+     * proposal to leave the page as it is, or a sitemap fixed, which is
+     * about the whole site): done opens no experiment.
      *
      * @param array<string,mixed> $item Item.
      * @return bool
      */
     private static function no_change(array $item) {
-        return $item['kind'] === 'refresh' && in_array((string) $item['finding'], self::NO_CHANGE, true);
+        return $item['kind'] === 'sitemap' || ($item['kind'] === 'refresh' && in_array((string) $item['finding'], self::NO_CHANGE, true));
     }
 
     /**

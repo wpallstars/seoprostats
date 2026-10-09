@@ -22,7 +22,10 @@
  * description as another page (by the hash keys), no H1 or several, a
  * thin page (few words, with impressions but no clicks), images without
  * alt text, and noindex or a canonical address elsewhere on a page with
- * search impressions. Lengths are of what was written: an SEO title or
+ * search impressions; and from Google's URL Inspection of the page
+ * (SEOProStats_Inspections, by its flags key): blocked by robots.txt,
+ * crawled but not indexed, Google chose another canonical, rich result
+ * errors. Lengths are of what was written: an SEO title or
  * description made of its plugin's variables counts as the post's title
  * or excerpt. Themes show the post title as the page's H1, so an H1 in the
  * text makes several.
@@ -75,7 +78,10 @@ final class SEOProStats_Audit {
     const MAX_LIMIT = 500;
 
     /** Findings, most serious first. */
-    const FINDINGS = array('noindex', 'canonical', 'thin', 'title_missing', 'title_duplicate', 'title_long', 'description_missing', 'description_duplicate', 'description_long', 'h1_none', 'h1_several', 'images_alt');
+    const FINDINGS = array('noindex', 'canonical', 'robots_blocked', 'not_indexed', 'google_canonical', 'thin', 'title_missing', 'title_duplicate', 'title_long', 'description_missing', 'description_duplicate', 'description_long', 'h1_none', 'h1_several', 'rich_errors', 'images_alt');
+
+    /** Findings from Google's URL Inspection (SEOProStats_Inspections::FLAGS), whatever the page's impressions. */
+    const GOOGLE = array('robots_blocked', 'not_indexed', 'google_canonical', 'rich_errors');
 
     /** The flags column: findings of the page alone, and short (thin when it has impressions and no clicks). */
     const FLAGS = array(
@@ -98,6 +104,9 @@ final class SEOProStats_Audit {
     const SHARE = array(
         'noindex'               => 1.0,
         'canonical'             => 1.0,
+        'robots_blocked'        => 1.0,
+        'not_indexed'           => 1.0,
+        'google_canonical'      => 0.8,
         'thin'                  => 0.3,
         'title_missing'         => 0.2,
         'title_duplicate'       => 0.15,
@@ -107,6 +116,7 @@ final class SEOProStats_Audit {
         'description_long'      => 0.05,
         'h1_none'               => 0.05,
         'h1_several'            => 0.02,
+        'rich_errors'           => 0.1,
         'images_alt'            => 0.02,
     );
 
@@ -543,7 +553,7 @@ final class SEOProStats_Audit {
         }
         $engine = SEOProStats_Search::engine_name($engine);
         $live   = SEOProStats_Schema::set() === 'live';
-        $answer = SEOProStats_Query::cached('audit', $req + array('engine' => $engine, 'finding' => $finding, 'imports' => SEOProStats_Search::version(), 'facts' => self::state()['version']), static function () use ($req, $engine, $finding) {
+        $answer = SEOProStats_Query::cached('audit', $req + array('engine' => $engine, 'finding' => $finding, 'imports' => SEOProStats_Search::version(), 'facts' => self::state()['version'], 'inspections' => SEOProStats_Inspections::state()['version']), static function () use ($req, $engine, $finding) {
             return self::build($req, $engine, $finding);
         });
         $answer['connected'] = !$live || SEOProStats_Search::connected($engine);
@@ -613,7 +623,7 @@ final class SEOProStats_Audit {
         $list = array();
         foreach ($read['rows'] as $path_id => $row) {
             $sum   = isset($sums[(string) $path_id]) ? $sums[(string) $path_id] : $zero;
-            $found = self::findings($row, isset($read['same'][$path_id]) ? $read['same'][$path_id] : array(), $sum, $rules);
+            $found = self::findings($row, isset($read['same'][$path_id]) ? $read['same'][$path_id] : array(), $sum, $rules, isset($read['google'][$path_id]) ? $read['google'][$path_id] : 0);
             if (!$found) {
                 continue;
             }
@@ -636,11 +646,12 @@ final class SEOProStats_Audit {
 
     /**
      * Facts rows to judge: those with a finding of their own (by the flags
-     * key) and those sharing a title or description (by the hash keys),
-     * with the duplicate groups.
+     * key), those sharing a title or description (by the hash keys) and
+     * those with a finding of Google's URL Inspection (by the inspections
+     * flags key), with the duplicate groups and Google's flags.
      *
      * @param int[]|null $pages Path ids, or null for every page.
-     * @return array{rows:array<int,array<string,mixed>>,same:array<int,array<string,string>>,groups:array<string,int[]>}
+     * @return array{rows:array<int,array<string,mixed>>,same:array<int,array<string,string>>,groups:array<string,int[]>,google:array<int,int>}
      */
     private static function read($pages) {
         global $wpdb;
@@ -671,7 +682,12 @@ final class SEOProStats_Audit {
                 $groups[$what . ':' . $row['h']][] = $path_id;
             }
         }
-        $need = array_values(array_diff(array_keys($same), array_keys($rows)));
+        // Pages with a finding of Google's (only the pages with facts are judged: published posts).
+        $google = SEOProStats_Inspections::flagged();
+        if ($only !== null) {
+            $google = array_intersect_key($google, $only);
+        }
+        $need = array_values(array_diff(array_unique(array_merge(array_keys($same), array_keys($google))), array_keys($rows)));
         foreach (array_chunk($need, 500) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '%d'));
             foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i WHERE path_id IN ($holders)", array_merge(array($table), $chunk)), ARRAY_A) as $row) {
@@ -690,7 +706,7 @@ final class SEOProStats_Audit {
                 }
             }
         }
-        return array('rows' => $rows, 'same' => $same, 'groups' => $groups);
+        return array('rows' => $rows, 'same' => $same, 'groups' => $groups, 'google' => $google);
     }
 
     /**
@@ -700,16 +716,24 @@ final class SEOProStats_Audit {
      * @param array<string,string>    $same  title and description: the hash it shares.
      * @param array{c:int,i:int,p:int} $sum  Its search sums.
      * @param array<string,int>       $rules Rules.
+     * @param int                     $google Its flags from Google's URL Inspection (SEOProStats_Inspections::FLAGS).
      * @return string[]
      */
-    private static function findings(array $row, array $same, array $sum, array $rules) {
+    private static function findings(array $row, array $same, array $sum, array $rules, $google = 0) {
         $flags = (int) $row['flags'];
         $has   = static function ($name) use ($flags) {
             return (bool) ($flags & self::FLAGS[$name]);
         };
+        $by = static function ($name) use ($google) {
+            return (bool) ((int) $google & SEOProStats_Inspections::FLAGS[$name]);
+        };
         $on = array(
             'noindex'               => $has('noindex') && $sum['i'] > 0,
             'canonical'             => $has('canonical') && $sum['i'] > 0,
+            // A page that asks not to be indexed or names another canonical is not a Google finding as well.
+            'robots_blocked'        => $by('robots_blocked'),
+            'not_indexed'           => $by('not_indexed') && !(int) $row['noindex'],
+            'google_canonical'      => $by('google_canonical') && !(int) $row['canonical_away'],
             'thin'                  => $has('short') && $sum['i'] >= (int) $rules['thin_impressions'] && $sum['c'] === 0,
             'title_missing'         => $has('title_missing'),
             'title_duplicate'       => isset($same['title']),
@@ -719,6 +743,7 @@ final class SEOProStats_Audit {
             'description_long'      => $has('description_long'),
             'h1_none'               => $has('h1_none'),
             'h1_several'            => $has('h1_several'),
+            'rich_errors'           => $by('rich_errors'),
             'images_alt'            => $has('images_alt'),
         );
         return array_keys(array_filter($on));
@@ -740,9 +765,10 @@ final class SEOProStats_Audit {
                 }
             }
         }
-        $text = SEOProStats_Query::texts(array_unique($ids));
-        $live = SEOProStats_Schema::set() === 'live';
-        $out  = array();
+        $text   = SEOProStats_Query::texts(array_unique($ids));
+        $live   = SEOProStats_Schema::set() === 'live';
+        $google = SEOProStats_Inspections::of_pages(array_column($list, 'path_id'));
+        $out    = array();
         foreach ($list as $item) {
             $row  = $item['row'];
             $id   = (int) $item['path_id'];
@@ -782,6 +808,8 @@ final class SEOProStats_Audit {
                 ),
                 'same_title'       => $same['title'],
                 'same_description' => $same['description'],
+                // Google's URL Inspection of the page; null until inspected.
+                'google'           => isset($google[$id]) ? $google[$id] : null,
             );
         }
         return $out;
@@ -835,6 +863,9 @@ final class SEOProStats_Audit {
         $num   = static function ($key) use ($facts) {
             return number_format_i18n(isset($facts[$key]) ? (int) $facts[$key] : 0);
         };
+        if (in_array($finding, self::GOOGLE, true)) {
+            return SEOProStats_Inspections::phrase($finding, isset($row['google']) && is_array($row['google']) ? $row['google'] : array());
+        }
         switch ($finding) {
             case 'noindex':
                 return __('it asks search engines not to index it', 'seoprostats');
@@ -884,6 +915,9 @@ final class SEOProStats_Audit {
         $do = array(
             'noindex'               => __('Let search engines index the page, or remove it from search on purpose.', 'seoprostats'),
             'canonical'             => __('Point its canonical address at itself, unless the other page is meant to rank.', 'seoprostats'),
+            'robots_blocked'        => SEOProStats_Inspections::fix('robots_blocked'),
+            'not_indexed'           => SEOProStats_Inspections::fix('not_indexed'),
+            'google_canonical'      => SEOProStats_Inspections::fix('google_canonical'),
             'thin'                  => __('Answer the searches it shows for in more depth.', 'seoprostats'),
             'title_missing'         => __('Write a title.', 'seoprostats'),
             'title_duplicate'       => __('Give it a title of its own.', 'seoprostats'),
@@ -896,6 +930,7 @@ final class SEOProStats_Audit {
             'description_long'      => sprintf(__('Shorten the description to %d characters.', 'seoprostats'), self::DESCRIPTION_MAX),
             'h1_none'               => __('Give it one main heading.', 'seoprostats'),
             'h1_several'            => __('Keep one H1 (the title) and make the others H2.', 'seoprostats'),
+            'rich_errors'           => SEOProStats_Inspections::fix('rich_errors'),
             'images_alt'            => __('Describe its images in their alt text.', 'seoprostats'),
         );
         $out = array();
@@ -922,6 +957,7 @@ final class SEOProStats_Audit {
         require_once __DIR__ . '/class-seoprostats-coverage.php';
         require_once __DIR__ . '/class-seoprostats-opportunities.php';
         require_once __DIR__ . '/class-seoprostats-demo.php';
+        require_once __DIR__ . '/class-seoprostats-inspections.php';
     }
 
     /**

@@ -4,7 +4,8 @@
  * impressions in the engine's newest days (published before them), and
  * other addresses in the site's sitemaps (category, tag and author
  * archives) with none. Never shown first, then the newest; each row also
- * goes to Plan.
+ * goes to Plan. With Google, each page's URL Inspection (./Inspections)
+ * gives Google's reason and last crawl.
  *
  * Choosing a page opens it in Rankings.
  *
@@ -18,6 +19,7 @@ import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, INDEXATION_KINDS, serializeFilter, singleEngine, type IndexationAnswer, type IndexationKind, type IndexationRow, type SearchEngine, type SitemapSource } from '@seoprostats/core';
 import { errorMessage, useIndexation } from './api';
 import { locale } from './boot';
+import { GoogleCell } from './Inspections';
 import { longLabel } from './dates';
 import { PageCell } from './Opportunities';
 import type { SearchPick, SearchReportProps } from './components/SearchSetup';
@@ -92,7 +94,7 @@ export function Indexation({ state, update, open }: IndexationProps) {
 						<p>{empty(kind, answer)}</p>
 					</div>
 				)}
-				{rows.length > 0 && <RowsTable rows={rows} kind={kind} open={open} refreshing={query.isFetching} />}
+				{rows.length > 0 && <RowsTable rows={rows} kind={kind} open={open} refreshing={query.isFetching} google={answer?.inspections != null} />}
 				{answer && <Notes answer={answer} />}
 				{answer && answer.total > PER_PAGE && (
 					<nav className="spst-changes__pager" aria-label={__('Pages of the indexation list', 'seoprostats')}>
@@ -201,7 +203,22 @@ function Notes({ answer }: { answer: IndexationAnswer }) {
 			)
 		);
 	}
-	notes.push(__('From the site’s own search data; search engines’ URL inspection is not used.', 'seoprostats'));
+	if (answer.inspections) {
+		notes.push(
+			sprintf(
+				/* translators: %s: number of pages. */
+				_n(
+					'From the site’s own search data; Google’s column is its URL Inspection (%s page inspected so far, see Google’s index below).',
+					'From the site’s own search data; Google’s column is its URL Inspection (%s pages inspected so far, see Google’s index below).',
+					answer.inspections.inspected,
+					'seoprostats'
+				),
+				number(answer.inspections.inspected)
+			)
+		);
+	} else {
+		notes.push(__('From the site’s own search data; search engines’ URL inspection is not used.', 'seoprostats'));
+	}
 	return (
 		<div className="spst-note">
 			{notes.map((note) => (
@@ -211,7 +228,7 @@ function Notes({ answer }: { answer: IndexationAnswer }) {
 	);
 }
 
-function RowsTable({ rows, kind, open, refreshing }: { rows: IndexationRow[]; kind: IndexationKind; open: IndexationProps['open']; refreshing: boolean }) {
+function RowsTable({ rows, kind, open, refreshing, google }: { rows: IndexationRow[]; kind: IndexationKind; open: IndexationProps['open']; refreshing: boolean; google: boolean }) {
 	return (
 		<TableScroll label={indexationName(kind)}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>
@@ -219,6 +236,7 @@ function RowsTable({ rows, kind, open, refreshing }: { rows: IndexationRow[]; ki
 					<tr>
 						<th scope="col">{kind === 'sitemap' ? __('Address', 'seoprostats') : __('Page', 'seoprostats')}</th>
 						<th scope="col">{__('Search', 'seoprostats')}</th>
+						{google && <th scope="col">{__('Google', 'seoprostats')}</th>}
 						<th scope="col">{kind === 'sitemap' ? __('First listed', 'seoprostats') : __('Published', 'seoprostats')}</th>
 						{kind === 'sitemap' ? (
 							<th scope="col">{__('Kind', 'seoprostats')}</th>
@@ -251,6 +269,11 @@ function RowsTable({ rows, kind, open, refreshing }: { rows: IndexationRow[]; ki
 												row.last_impression ? longLabel(row.last_impression, 'day') : '–'
 											)}
 								</td>
+								{google && (
+									<td>
+										<GoogleCell google={row.google} />
+									</td>
+								)}
 								<td>
 									{since ? longLabel(since, 'day') : '–'}
 									<span className="spst-meta">

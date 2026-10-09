@@ -185,6 +185,7 @@ or agent has acted on are stored.
 | `links` | Internal links (one item per page and list) | orphans, converting pages with few links in, missing links | clicks | 1 (converting 2) |
 | `index` | Indexation (one item per page and list) | published or in the sitemap, never or no longer shown by search | impressions | 2 (sitemap 1) |
 | `refresh` | Refresh planner (one item per losing page with content facts, in place of `decay`) | update, leave, protect or merge, with the reason | clicks (merge: both pages); leave: none | 3 (leave 1) |
+| `sitemap` | Search Console sitemaps (one item per sitemap and problem; Google) | errors, not downloaded lately, warnings, or the site's sitemap not submitted | none | 1 (errors, stale 2) |
 | later kinds | targets | each feature below | | |
 
 Each item names its page (and query where it has one), the numbers behind
@@ -403,9 +404,9 @@ Built (GH#78), schema v11:
 Published pages (from `pages` and `page_facts`) with no impressions after
 N days (default 28) since publishing, by `gsc_pages` `path_day`; addresses
 in the site's own sitemaps (WordPress's sitemap providers, read in cron,
-no fetch) that never had impressions. Engine URL inspection (Search
-Console's has a daily quota) is a later opt-in step for chosen pages only.
-Queue kind `index`.
+no fetch) that never had impressions. Google's URL Inspection, within a
+daily cap, adds Google's reason for each (GH#144, below). Queue kind
+`index`.
 
 Built (GH#79), schema v12:
 
@@ -447,6 +448,64 @@ Built (GH#79), schema v12:
   search data; the sitemap has two category archives and an author page
   listed for 120 days with none, and a category listed 10 days ago, too
   new to list.
+
+### Search Console sitemaps and URL Inspection
+
+Built (GH#144), schema v19. While Google Search Console is connected the
+hourly import, after the search data and with its own budget (20
+seconds a run):
+
+- Reads the property's sitemaps once a day (`sitemaps.list`): path, type,
+  index or not, pending, when submitted and last downloaded, errors,
+  warnings and addresses submitted per type. Google's indexed count is
+  deprecated and not shown. Problems: `errors`, `stale` (not downloaded
+  for over 7 days), `warnings`, and `missing` when the site's own sitemap
+  index (the SEO plugin's, else WordPress's `wp-sitemap.xml`) is not
+  submitted and no other index on the site is. Kept in an option per
+  data set.
+- Inspects pages with the URL Inspection API (`index:inspect`, language
+  `en-US` so coverage states are Google's English words): at most the
+  `inspections` setting a day (Settings → Data, default 200, 0 to 2,000,
+  Google's own limit per property; counted per Google day, Pacific time),
+  first the pages Indexation lists, then those with search impressions
+  in the newest 28 days (never inspected first, then the oldest), each
+  again after 14 days. Never on visitor pages or report requests; `wp
+  seoprostats inspect --run` runs it now. Google's quota or permission
+  errors stop the run and are shown.
+- `inspections` table: one row per page (`path_id` primary key) with
+  `checked`, codes of the verdict, indexing, robots.txt, page fetch,
+  crawler and rich result verdict, the coverage state (dictionary),
+  Google's and the page's canonical (dictionary), the last crawl,
+  finding `flags` and `details` (rich result types and issues, up to five
+  sitemaps and referring pages, the Search Console link); keys `checked`,
+  `verdict_checked`, `coverage_checked`, `flags`.
+- Findings: `robots_blocked` (robots.txt disallows, or the page or fetch
+  is blocked by it), `not_indexed` (coverage "Crawled - currently not
+  indexed"), `google_canonical` (Google chose another canonical than the
+  page's own, or the page when it declares none) and `rich_errors` (a
+  rich result type with errors). They are content audit findings, so
+  queue kind `audit` items, with the audit's effort and shares.
+- A verdict change on live data is a timeline change (`index_status`,
+  old and new coverage state).
+- Sitemap problems are queue kind `sitemap` (code 11): potential clicks a
+  shown page's clicks per 28 days × the problem's share (errors and
+  missing 1, stale 0.5, warnings 0.2); confidence 0.4; effort 1 (errors
+  and stale 2); done opens no experiment.
+- REST `GET /inspections` (`verdict`, `coverage`, `finding`, page filters,
+  `limit`, `offset`); `/indexation` and `/audit` rows carry `google`;
+  WP-CLI `wp seoprostats inspect [<page>] [--run] [--sitemaps]
+  [--verdict=<verdict>] [--coverage=<state>] [--finding=<finding>]`;
+  `wp seoprostats doctor` shows the run; ability
+  `seoprostats/inspections`. Dashboard: Search → Audit, **Google's
+  index** under Indexation (sitemaps and pages inspected, with a verdict
+  switch), a Google column in Indexation, and the four findings in the
+  audit.
+- Demo data: twelve pages inspected (indexed, a page blocked by
+  robots.txt, noindex, an alternate, a duplicate where Google chose the
+  pricing page, three crawled or discovered but not indexed, product
+  snippet errors), a verdict change on the timeline, and three sitemaps:
+  the site's index, a child with warnings and an old one with an error
+  that Google has not downloaded for a month.
 
 ## 7. Refresh planner
 
@@ -595,7 +654,7 @@ routes read them.
 |---|---|
 | E-E-A-T scoring | Dropped: judging authorship, originality and effort is an agent's or person's job; the audit gives the facts (authors, dates, words) |
 | AI answers (captures of AI search answers) | Deferred to Phase 5 with crawlers and AI bots; kept apart from search ranking |
-| Engine URL inspection | Deferred: an opt-in follow-up to indexation, within each engine's quota |
+| Engine URL inspection | Built for Google (GH#144), within a daily cap below Google's quota; Bing's is not used |
 | A full crawl of the site | Dropped: WordPress already knows its pages, titles, links and fields; reading them in cron costs less and needs no outside request |
 | Statistical significance tests | Deferred: daily search data is noisy and pages are few; the comparison group's spread is the honest bar for now. A/B tests of blocks (issue #29) are where sample sizes belong |
 | Separate digest work | Joined to Phase 6 alerts and email reports |

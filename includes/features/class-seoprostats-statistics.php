@@ -300,6 +300,16 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Check pages that send visitors for links', 'seoprostats'),
                 'description' => __('Once a day the site opens the pages of other sites that sent visitors (the address the browser gave, often only the other site\'s home page), at most for 20 seconds, and keeps the links on them to this site, with their text, so Search → Backlinks lists them and new and lost links show on the timeline. Each page is checked again weekly. The request names SEO Pro Stats and this site, and sends nothing about visitors. Off: no page is opened.', 'seoprostats'),
             ),
+            'inspections'             => array(
+                'type'        => 'int',
+                'default'     => 200,
+                'min'         => 0,
+                'max'         => 2000,
+                'unit'        => __('a day', 'seoprostats'),
+                'tab'         => 'data',
+                'label'       => __('Google URL inspections', 'seoprostats'),
+                'description' => __('While Search Console is connected, the hourly import asks Google how it indexed this many pages a day at most (Google allows 2,000 a day per property): first the pages Search → Audit, Indexation lists, then pages with search traffic, each again after 14 days. Each answer gives Google\'s reason a page is or is not indexed, its last crawl, the canonical Google chose and rich result issues. Only from cron, never on a visitor page. 0: none.', 'seoprostats'),
+            ),
             'viewers'                 => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -575,6 +585,15 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function backlinks() {
         return (bool) SEOProStats_Settings::get('backlinks');
+    }
+
+    /**
+     * Google URL inspections a day at most (0: none).
+     *
+     * @return int
+     */
+    public static function inspections() {
+        return max(0, (int) SEOProStats_Settings::get('inspections'));
     }
 
     /**

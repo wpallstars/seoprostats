@@ -1,0 +1,1232 @@
+<?php
+/**
+ * Search Console site data: the sitemaps submitted for the property and
+ * Google's URL Inspection of the site's pages (the version in Google's
+ * index, not a live test).
+ *
+ * Sitemaps: read once a day by the hourly import job while Search
+ * Console is connected (one request), kept in the OPTION: each sitemap's
+ * path, type, last submitted and downloaded, pending, errors, warnings
+ * and contents (Google's indexed count is deprecated and not kept).
+ * Errors or warnings, a sitemap Google has not downloaded for STALE_DAYS
+ * days, or the site's own sitemap index not submitted at all are
+ * problems: the Indexation report's Sitemaps card shows them and the
+ * decision queue lists each (SEOProStats_Queue).
+ *
+ * URL Inspection: from cron only (and WP-CLI), never on a visitor page,
+ * at most the inspections setting a day (Google's own day, Pacific
+ * time; Google allows 2,000 a day per property), within BUDGET seconds a
+ * run. Order: the Indexation lists' pages (never shown first), then the
+ * pages with search impressions in the newest 28 days whose inspection is
+ * oldest (never inspected first, most impressions first); each page again
+ * after RECHECK_DAYS days. One inspections row per page, Google's values
+ * as codes and dictionary ids; findings in its flags (FLAGS): Google
+ * chose another canonical, blocked by robots.txt, crawled but not
+ * indexed, rich result errors. A page whose verdict changes is a change
+ * (index_status) on the timeline.
+ *
+ * Reads: inspections by its primary key (pages listed), its checked,
+ * verdict_checked and flags keys; gsc_pages by its primary key's
+ * (engine, day) prefix. Design: docs/seo-loop.md → Indexation.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ *
+ * @package SEOProStats
+ * @since 1.0.0
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+final class SEOProStats_Inspections {
+
+    /** Search Console's source key (SEOProStats_Connections::SOURCES). */
+    const SOURCE = 'search-console';
+
+    /** Google's verdicts: code => value (0: unspecified). Codes never change meaning. */
+    const VERDICTS = array(1 => 'PASS', 2 => 'PARTIAL', 3 => 'FAIL', 4 => 'NEUTRAL');
+
+    /** Whether the page blocks indexing (indexingState). */
+    const INDEXING = array(1 => 'INDEXING_ALLOWED', 2 => 'BLOCKED_BY_META_TAG', 3 => 'BLOCKED_BY_HTTP_HEADER', 4 => 'BLOCKED_BY_ROBOTS_TXT');
+
+    /** Whether robots.txt blocks Google (robotsTxtState). */
+    const ROBOTS = array(1 => 'ALLOWED', 2 => 'DISALLOWED');
+
+    /** Whether Google could fetch the page (pageFetchState). */
+    const FETCH = array(
+        1  => 'SUCCESSFUL',
+        2  => 'SOFT_404',
+        3  => 'BLOCKED_ROBOTS_TXT',
+        4  => 'NOT_FOUND',
+        5  => 'ACCESS_DENIED',
+        6  => 'SERVER_ERROR',
+        7  => 'REDIRECT_ERROR',
+        8  => 'ACCESS_FORBIDDEN',
+        9  => 'BLOCKED_4XX',
+        10 => 'INTERNAL_CRAWL_ERROR',
+        11 => 'INVALID_URL',
+    );
+
+    /** Google's primary crawler (crawledAs). */
+    const CRAWLED_AS = array(1 => 'DESKTOP', 2 => 'MOBILE');
+
+    /** Findings, most serious first: bit in the flags column. */
+    const FLAGS = array(
+        'robots_blocked'   => 1,
+        'not_indexed'      => 2,
+        'google_canonical' => 4,
+        'rich_errors'      => 8,
+    );
+
+    /** Sitemap problems (queue findings are sitemap_ and the problem). */
+    const SITEMAP_PROBLEMS = array('errors', 'missing', 'stale', 'warnings');
+
+    /** Share of a typical shown page's clicks a sitemap problem puts at stake (the decision queue's potential clicks). */
+    const SITEMAP_SHARE = array('errors' => 1.0, 'missing' => 1.0, 'stale' => 0.5, 'warnings' => 0.2);
+
+    /** Progress, per data set (autoload off): sitemaps, sitemaps_read, sitemaps_error, day, used, last, error, version. */
+    const OPTION = 'seoprostats_inspections';
+
+    /** One run at a time (autoload off): the time it started. */
+    const LOCK_OPTION = 'seoprostats_inspections_lock';
+
+    /** Seconds after which a run's lock counts as left behind. */
+    const LOCK_TIME = 10 * MINUTE_IN_SECONDS;
+
+    /** Seconds per cron run. */
+    const BUDGET = 20;
+
+    /** Days before a page is inspected again. */
+    const RECHECK_DAYS = 14;
+
+    /** Days without Google downloading a sitemap before it is a problem. */
+    const STALE_DAYS = 7;
+
+    /** Pages with search impressions read for the order, most impressions first; days of impressions. */
+    const TRAFFIC_PAGES = 2000;
+    const TRAFFIC_DAYS  = 28;
+
+    /** Sitemaps kept at most; rich result types, issues, sitemaps and referring addresses kept per page. */
+    const MAX_SITEMAPS = 100;
+    const MAX_LIST     = 5;
+
+    /** Rows read at most per report, and per IN list. */
+    const MAX_ROWS = 5000;
+    const CHUNK    = 500;
+
+    /** Rows listed: default and most. */
+    const LIMIT     = 50;
+    const MAX_LIMIT = 500;
+
+    /** The sitemap index of each SEO plugin, under the home address (WordPress's own: get_sitemap_url()). */
+    const PLUGIN_SITEMAPS = array(
+        'yoast'     => '/sitemap_index.xml',
+        'rank-math' => '/sitemap_index.xml',
+        'seopress'  => '/sitemaps.xml',
+        'aioseo'    => '/sitemap.xml',
+    );
+
+    // ------------------------------------------------------------------
+    // Cron.
+
+    /**
+     * Hourly import job, while Search Console is connected: the sitemaps
+     * once a day, then inspections within the daily cap and BUDGET.
+     * Live data only.
+     */
+    public static function cron() {
+        if (SEOProStats_Schema::set() !== 'live' || !SEOProStats_Schema::is_current() || !self::lock()) {
+            return;
+        }
+        try {
+            $start = microtime(true);
+            if (self::state()['sitemaps_read'] < time() - DAY_IN_SECONDS + 10 * MINUTE_IN_SECONDS) {
+                self::read_sitemaps();
+            }
+            if (self::daily() > 0) {
+                self::inspect_due(self::BUDGET, $start);
+            }
+        } finally {
+            self::unlock();
+        }
+    }
+
+    /**
+     * Read the property's sitemaps from Search Console and keep them.
+     *
+     * @return array{sitemaps:int}|WP_Error
+     */
+    public static function read_sitemaps() {
+        $ready = self::ready();
+        if (is_wp_error($ready)) {
+            return $ready;
+        }
+        list($class, $token, $property) = $ready;
+        $found = $class::sitemaps($token, $property);
+        if (is_wp_error($found)) {
+            self::save(array('sitemaps_read' => time(), 'sitemaps_error' => $found->get_error_message()));
+            return $found;
+        }
+        $rows = array();
+        foreach (array_slice($found, 0, self::MAX_SITEMAPS) as $one) {
+            $rows[] = self::sitemap_row($one);
+        }
+        self::write_sitemaps($rows);
+        return array('sitemaps' => count($rows));
+    }
+
+    /**
+     * Keep sitemaps as read (also the demo's).
+     *
+     * @param array<int,array<string,mixed>> $rows From sitemap_row().
+     * @param int                            $read When they were read.
+     */
+    public static function write_sitemaps(array $rows, $read = 0) {
+        self::save(array(
+            'sitemaps'       => array_values($rows),
+            'sitemaps_read'  => $read ? (int) $read : time(),
+            'sitemaps_error' => null,
+            'version'        => time(),
+        ));
+    }
+
+    /**
+     * One sitemap as Google gives it, as kept.
+     *
+     * @param array<string,mixed> $one WmxSitemap.
+     * @return array<string,mixed>
+     */
+    public static function sitemap_row(array $one) {
+        $contents = array();
+        foreach (isset($one['contents']) && is_array($one['contents']) ? $one['contents'] : array() as $content) {
+            if (is_array($content)) {
+                // indexed is deprecated: not kept.
+                $contents[] = array(
+                    'type'      => isset($content['type']) ? sanitize_key((string) $content['type']) : '',
+                    'submitted' => isset($content['submitted']) ? (int) $content['submitted'] : 0,
+                );
+            }
+        }
+        $time = static function ($key) use ($one) {
+            $ts = isset($one[$key]) ? strtotime((string) $one[$key]) : false;
+            return $ts ? (int) $ts : 0;
+        };
+        return array(
+            'path'       => isset($one['path']) ? esc_url_raw((string) $one['path']) : '',
+            'type'       => isset($one['type']) ? sanitize_key((string) $one['type']) : '',
+            'index'      => !empty($one['isSitemapsIndex']),
+            'pending'    => !empty($one['isPending']),
+            'submitted'  => $time('lastSubmitted'),
+            'downloaded' => $time('lastDownloaded'),
+            'errors'     => isset($one['errors']) ? (int) $one['errors'] : 0,
+            'warnings'   => isset($one['warnings']) ? (int) $one['warnings'] : 0,
+            'contents'   => $contents,
+        );
+    }
+
+    /**
+     * Inspect the pages due (or those given), within the daily cap and a
+     * time budget. Stops at Google's first error that is not about one
+     * address (quota, access, server), and records it.
+     *
+     * @param int                     $budget Seconds (0: no limit, for WP-CLI).
+     * @param float|null              $start  When the run began (microtime(true)); null now.
+     * @param array<int,string>|null  $pages  Path id => path to inspect now; null for those due.
+     * @return array{inspected:int,failed:int,left:int,daily:int,used:int,more:bool,error:string|null}|WP_Error
+     */
+    public static function inspect_due($budget = self::BUDGET, $start = null, $pages = null) {
+        $start = $start === null ? microtime(true) : (float) $start;
+        $ready = self::ready();
+        if (is_wp_error($ready)) {
+            return $ready;
+        }
+        list($class, $token, $property) = $ready;
+        $daily = self::daily();
+        $used  = self::used();
+        $out   = array('inspected' => 0, 'failed' => 0, 'left' => max(0, $daily - $used), 'daily' => $daily, 'used' => $used, 'more' => false, 'error' => null);
+        if ($out['left'] < 1) {
+            $out['more'] = true;
+            return $out;
+        }
+        $pages = $pages === null ? self::due($out['left']) : array_slice($pages, 0, $out['left'], true);
+        $done  = 0;
+        foreach ($pages as $path_id => $path) {
+            if ($done > 0 && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+                break;
+            }
+            if (self::used() >= $daily) {
+                break;
+            }
+            ++$done;
+            self::count_one();
+            $url    = self::url((string) $path);
+            $result = $url === '' ? new WP_Error('seoprostats_inspect_url', __('Not an address on this site.', 'seoprostats'), array('status' => 400)) : $class::inspect($token, $property, $url);
+            if (is_wp_error($result)) {
+                $data   = $result->get_error_data();
+                $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
+                // An address Google will not inspect (not in the property, not valid): kept as tried, and the run goes on.
+                if ($status === 400 || $status === 404) {
+                    self::store((int) $path_id, (string) $path, array(), time(), $result->get_error_message());
+                    ++$out['failed'];
+                    continue;
+                }
+                $out['error'] = $result->get_error_message();
+                self::save(array('last' => time(), 'error' => $out['error'], 'error_at' => time(), 'version' => time()));
+                break;
+            }
+            self::store((int) $path_id, (string) $path, $result, time());
+            ++$out['inspected'];
+        }
+        $out['used'] = self::used();
+        $out['left'] = max(0, $daily - $out['used']);
+        $out['more'] = $done < count($pages) || ($pages && $out['left'] < 1);
+        if ($out['error'] === null) {
+            self::save(array('last' => time(), 'error' => null, 'error_at' => null, 'version' => time()));
+        }
+        return $out;
+    }
+
+    /**
+     * Pages to inspect, in order, at most $limit: the Indexation lists'
+     * pages, then pages with search impressions, those not inspected in
+     * RECHECK_DAYS days only.
+     *
+     * @param int $limit Most pages.
+     * @return array<int,string> Path id => path.
+     */
+    public static function due($limit) {
+        self::load();
+        $limit = max(0, (int) $limit);
+        if (!$limit) {
+            return array();
+        }
+        $listed = array();
+        $req    = SEOProStats_Query::request(array('limit' => SEOProStats_Indexation::MAX_LIMIT));
+        if (!is_wp_error($req)) {
+            foreach (SEOProStats_Indexation::KINDS as $kind) {
+                $answer = SEOProStats_Indexation::report((array) $req, 'google', $kind);
+                foreach (is_wp_error($answer) ? array() : $answer['rows'] as $row) {
+                    if ((string) $row['path'] !== '' && !isset($listed[(int) $row['path_id']])) {
+                        $listed[(int) $row['path_id']] = (string) $row['path'];
+                    }
+                }
+            }
+        }
+        $traffic = self::traffic();
+        $checked = self::checked_of(array_merge(array_keys($listed), array_keys($traffic)));
+        $old     = time() - self::RECHECK_DAYS * DAY_IN_SECONDS;
+        $due     = static function ($path_id) use ($checked, $old) {
+            return !isset($checked[$path_id]) || $checked[$path_id] < $old;
+        };
+        $out = array();
+        foreach ($listed as $path_id => $path) {
+            if ($due($path_id)) {
+                $out[$path_id] = $path;
+            }
+        }
+        $rest = array();
+        foreach ($traffic as $path_id => $impressions) {
+            if (!isset($out[$path_id]) && $due($path_id)) {
+                $rest[] = array($path_id, isset($checked[$path_id]) ? $checked[$path_id] : 0, $impressions);
+            }
+        }
+        // Never inspected first, then the oldest inspection; most impressions first.
+        usort($rest, static function ($a, $b) {
+            return array($a[1], $b[2], $a[0]) <=> array($b[1], $a[2], $b[0]);
+        });
+        $need = array_slice(array_column($rest, 0), 0, max(0, $limit - count($out)));
+        $text = SEOProStats_Query::texts($need);
+        foreach ($need as $path_id) {
+            $path = isset($text[$path_id]) ? (string) $text[$path_id] : '';
+            if ($path !== '' && $path[0] === '/') {
+                $out[$path_id] = $path;
+            }
+        }
+        return array_slice($out, 0, $limit, true);
+    }
+
+    /**
+     * Pages with Google impressions in the newest TRAFFIC_DAYS days of
+     * search data, most first, by gsc_pages's primary key.
+     *
+     * @return array<int,int> Path id => impressions.
+     */
+    private static function traffic() {
+        global $wpdb;
+        $bounds = SEOProStats_Search::bounds(SEOProStats_Schema::ENGINE_GOOGLE);
+        if ($bounds['to'] === '') {
+            return array();
+        }
+        $from = (new DateTimeImmutable($bounds['to'], wp_timezone()))->modify('-' . (self::TRAFFIC_DAYS - 1) . ' days')->format('Y-m-d');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its primary key's (engine, day) prefix.
+        $rows = (array) $wpdb->get_results($wpdb->prepare('SELECT path_id, SUM(impressions) AS i FROM %i FORCE INDEX (`PRIMARY`) WHERE engine = %d AND day >= %s AND day <= %s AND impressions > 0 GROUP BY path_id ORDER BY NULL', SEOProStats_Schema::table('gsc_pages'), SEOProStats_Schema::ENGINE_GOOGLE, $from, $bounds['to']), ARRAY_A);
+        $out  = array();
+        foreach ($rows as $row) {
+            $out[(int) $row['path_id']] = (int) $row['i'];
+        }
+        arsort($out);
+        return array_slice($out, 0, self::TRAFFIC_PAGES, true);
+    }
+
+    /**
+     * When pages were last inspected, by the primary key.
+     *
+     * @param int[] $ids Path ids.
+     * @return array<int,int> Path id => checked.
+     */
+    private static function checked_of(array $ids) {
+        global $wpdb;
+        $out = array();
+        foreach (array_chunk(array_values(array_unique(array_map('intval', $ids))), self::CHUNK) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), '%d'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $holders holds only placeholders.
+            foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT path_id, checked FROM %i WHERE path_id IN ($holders)", array_merge(array(SEOProStats_Schema::table('inspections')), $chunk)), ARRAY_A) as $row) {
+                $out[(int) $row['path_id']] = (int) $row['checked'];
+            }
+        }
+        return $out;
+    }
+
+    // ------------------------------------------------------------------
+    // Storing.
+
+    /**
+     * Keep one page's inspection (Google's inspectionResult), and record
+     * a change when its verdict changed (live data).
+     *
+     * @param int                 $path_id Path id (0: found from the path).
+     * @param string              $path    Path.
+     * @param array<string,mixed> $result  inspectionResult; empty when Google would not inspect it.
+     * @param int                 $checked When it was inspected.
+     * @param string              $error   Google's message when it would not.
+     * @return bool
+     */
+    public static function store($path_id, $path, array $result, $checked, $error = '') {
+        global $wpdb;
+        require_once __DIR__ . '/class-seoprostats-dict.php';
+        require_once __DIR__ . '/class-seoprostats-query.php';
+        $path_id = (int) $path_id;
+        if (!$path_id) {
+            $ids     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array((string) $path));
+            $path_id = isset($ids[SEOProStats_Dict::clean((string) $path)]) ? (int) $ids[SEOProStats_Dict::clean((string) $path)] : 0;
+        }
+        if (!$path_id) {
+            return false;
+        }
+        $row   = self::parse($result, self::url((string) $path));
+        $urls  = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array($row['google_canonical'], $row['user_canonical']));
+        $cover = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_COVERAGE, array($row['coverage']));
+        $id_of = static function (array $ids, $text) {
+            $clean = SEOProStats_Dict::clean((string) $text);
+            return isset($ids[$clean]) ? (int) $ids[$clean] : 0;
+        };
+        $details = $row['details'];
+        if ($error !== '') {
+            $details['error'] = sanitize_text_field($error);
+        }
+        $table  = SEOProStats_Schema::table('inspections');
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table, by its primary key.
+        $before = $wpdb->get_row($wpdb->prepare('SELECT verdict, coverage_id FROM %i WHERE path_id = %d', $table, $path_id), ARRAY_A);
+        $done   = $wpdb->query($wpdb->prepare(
+            'INSERT INTO %i (path_id, checked, verdict, coverage_id, indexing, robots, page_fetch, crawled_as, crawled, google_canonical_id, user_canonical_id, rich, flags, details) VALUES (%d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %s)'
+            . ' ON DUPLICATE KEY UPDATE checked = VALUES(checked), verdict = VALUES(verdict), coverage_id = VALUES(coverage_id), indexing = VALUES(indexing), robots = VALUES(robots), page_fetch = VALUES(page_fetch), crawled_as = VALUES(crawled_as), crawled = VALUES(crawled), google_canonical_id = VALUES(google_canonical_id), user_canonical_id = VALUES(user_canonical_id), rich = VALUES(rich), flags = VALUES(flags), details = VALUES(details)',
+            $table,
+            $path_id,
+            (int) $checked,
+            $row['verdict'],
+            $id_of($cover, $row['coverage']),
+            $row['indexing'],
+            $row['robots'],
+            $row['page_fetch'],
+            $row['crawled_as'],
+            $row['crawled'],
+            $id_of($urls, $row['google_canonical']),
+            $id_of($urls, $row['user_canonical']),
+            $row['rich'],
+            $row['flags'],
+            (string) wp_json_encode($details, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+        ));
+        // phpcs:enable
+        if (is_array($before) && $row['verdict'] && (int) $before['verdict'] && (int) $before['verdict'] !== $row['verdict'] && SEOProStats_Schema::set() === 'live') {
+            require_once __DIR__ . '/class-seoprostats-changes.php';
+            $old = SEOProStats_Query::texts(array((int) $before['coverage_id']));
+            SEOProStats_Changes::record(SEOProStats_Changes::INDEX_STATUS, array(
+                'ts'          => (int) $checked,
+                'path'        => (string) $path,
+                'object_type' => 'inspection',
+                'old'         => isset($old[(int) $before['coverage_id']]) ? (string) $old[(int) $before['coverage_id']] : '',
+                'new'         => $row['coverage'],
+                'meta'        => array('name' => (string) $path, 'verdict' => isset(self::VERDICTS[$row['verdict']]) ? self::VERDICTS[$row['verdict']] : '', 'verdict_before' => isset(self::VERDICTS[(int) $before['verdict']]) ? self::VERDICTS[(int) $before['verdict']] : ''),
+                // WP-CLI (2) or the import cron (4).
+                'source'      => defined('WP_CLI') && WP_CLI ? 2 : 4,
+                'user_id'     => 0,
+            ));
+        }
+        return $done !== false;
+    }
+
+    /**
+     * An inspectionResult as kept: codes, texts, findings and details.
+     *
+     * @param array<string,mixed> $result inspectionResult.
+     * @param string              $url    The address inspected.
+     * @return array{verdict:int,coverage:string,indexing:int,robots:int,page_fetch:int,crawled_as:int,crawled:int,google_canonical:string,user_canonical:string,rich:int,flags:int,details:array<string,mixed>}
+     */
+    public static function parse(array $result, $url) {
+        $index = isset($result['indexStatusResult']) && is_array($result['indexStatusResult']) ? $result['indexStatusResult'] : array();
+        $rich  = isset($result['richResultsResult']) && is_array($result['richResultsResult']) ? $result['richResultsResult'] : array();
+        $text  = static function (array $from, $key) {
+            return isset($from[$key]) && is_scalar($from[$key]) ? (string) $from[$key] : '';
+        };
+        $code  = static function (array $codes, $value) {
+            $found = array_search((string) $value, $codes, true);
+            return $found === false ? 0 : (int) $found;
+        };
+        $types   = array();
+        $errors  = false;
+        foreach (isset($rich['detectedItems']) && is_array($rich['detectedItems']) ? $rich['detectedItems'] : array() as $detected) {
+            if (!is_array($detected)) {
+                continue;
+            }
+            $type = array('type' => sanitize_text_field($text($detected, 'richResultType')), 'items' => 0, 'errors' => 0, 'warnings' => 0, 'issues' => array());
+            foreach (isset($detected['items']) && is_array($detected['items']) ? $detected['items'] : array() as $item) {
+                if (!is_array($item)) {
+                    continue;
+                }
+                ++$type['items'];
+                foreach (isset($item['issues']) && is_array($item['issues']) ? $item['issues'] : array() as $issue) {
+                    $severity = is_array($issue) ? $text($issue, 'severity') : '';
+                    if ($severity === 'ERROR') {
+                        ++$type['errors'];
+                    } elseif ($severity === 'WARNING') {
+                        ++$type['warnings'];
+                    }
+                    $message = is_array($issue) ? sanitize_text_field($text($issue, 'issueMessage')) : '';
+                    if ($message !== '' && count($type['issues']) < self::MAX_LIST && !in_array($message, array_column($type['issues'], 'message'), true)) {
+                        $type['issues'][] = array('message' => $message, 'severity' => $severity === 'ERROR' ? 'error' : 'warning');
+                    }
+                }
+            }
+            $errors  = $errors || $type['errors'] > 0;
+            $types[] = $type;
+        }
+        $list = static function ($values) {
+            return array_slice(array_values(array_filter(array_map('esc_url_raw', array_map('strval', is_array($values) ? array_filter($values, 'is_scalar') : array())))), 0, self::MAX_LIST);
+        };
+        $google   = esc_url_raw($text($index, 'googleCanonical'));
+        $user     = esc_url_raw($text($index, 'userCanonical'));
+        $coverage = sanitize_text_field($text($index, 'coverageState'));
+        $robots   = $code(self::ROBOTS, $text($index, 'robotsTxtState'));
+        $indexing = $code(self::INDEXING, $text($index, 'indexingState'));
+        $fetch    = $code(self::FETCH, $text($index, 'pageFetchState'));
+        $crawled  = strtotime($text($index, 'lastCrawlTime'));
+        $flags    = 0;
+        if ($robots === 2 || $indexing === 4 || $fetch === 3) {
+            $flags |= self::FLAGS['robots_blocked'];
+        }
+        // Google's state in English (the request asks for en-US): "Crawled - currently not indexed".
+        if (preg_match('/^crawled\b.*\bnot indexed/i', $coverage)) {
+            $flags |= self::FLAGS['not_indexed'];
+        }
+        // Google chose another canonical than the page's own (declared, else the page itself).
+        if ($google !== '' && self::same_url($google, $user !== '' ? $user : (string) $url) === false) {
+            $flags |= self::FLAGS['google_canonical'];
+        }
+        if ($errors) {
+            $flags |= self::FLAGS['rich_errors'];
+        }
+        return array(
+            'verdict'          => $code(self::VERDICTS, $text($index, 'verdict')),
+            'coverage'         => $coverage,
+            'indexing'         => $indexing,
+            'robots'           => $robots,
+            'page_fetch'       => $fetch,
+            'crawled_as'       => $code(self::CRAWLED_AS, $text($index, 'crawledAs')),
+            'crawled'          => $crawled ? (int) $crawled : 0,
+            'google_canonical' => $google,
+            'user_canonical'   => $user,
+            'rich'             => $code(self::VERDICTS, $text($rich, 'verdict')),
+            'flags'            => $flags,
+            'details'          => array(
+                'rich'      => $types,
+                'sitemaps'  => $list(isset($index['sitemap']) ? $index['sitemap'] : array()),
+                'referring' => $list(isset($index['referringUrls']) ? $index['referringUrls'] : array()),
+                'link'      => esc_url_raw($text($result, 'inspectionResultLink')),
+            ),
+        );
+    }
+
+    /**
+     * Whether two addresses are the same page: scheme, host (with or
+     * without www) and path with or without a trailing slash; the query
+     * counts.
+     *
+     * @param string $a Address.
+     * @param string $b Address.
+     * @return bool
+     */
+    public static function same_url($a, $b) {
+        $norm = static function ($url) {
+            $parts = wp_parse_url((string) $url);
+            if (!is_array($parts)) {
+                return (string) $url;
+            }
+            $host = strtolower((string) preg_replace('/^www\./i', '', isset($parts['host']) ? (string) $parts['host'] : ''));
+            $path = isset($parts['path']) && $parts['path'] !== '' ? rtrim((string) $parts['path'], '/') : '';
+            return strtolower(isset($parts['scheme']) ? (string) $parts['scheme'] : '') . '://' . $host . $path . (isset($parts['query']) ? '?' . $parts['query'] : '');
+        };
+        return $norm($a) === $norm($b);
+    }
+
+    // ------------------------------------------------------------------
+    // Reading.
+
+    /**
+     * The inspections report: pages inspected, newest first, with the
+     * sitemaps and the run's progress.
+     *
+     * @param array<string,mixed> $req      From SEOProStats_Query::request() (filters, limit, offset).
+     * @param string              $verdict  Only this verdict (VERDICTS), '' for all.
+     * @param string              $coverage Only this coverage state (Google's words), '' for all.
+     * @param string              $finding  Only pages with this finding (FLAGS), '' for all.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function report(array $req, $verdict = '', $coverage = '', $finding = '') {
+        global $wpdb;
+        self::load();
+        $verdict  = strtoupper(trim((string) $verdict));
+        $coverage = trim((string) $coverage);
+        $finding  = trim((string) $finding);
+        if ($verdict !== '' && !in_array($verdict, self::VERDICTS, true)) {
+            /* translators: %s: list of verdicts */
+            return new WP_Error('seoprostats_inspections_verdict', sprintf(__('The verdict is one of: %s.', 'seoprostats'), implode(', ', self::VERDICTS)), array('status' => 400));
+        }
+        if ($finding !== '' && !isset(self::FLAGS[$finding])) {
+            /* translators: %s: list of findings */
+            return new WP_Error('seoprostats_inspections_finding', sprintf(__('The finding is one of: %s.', 'seoprostats'), implode(', ', array_keys(self::FLAGS))), array('status' => 400));
+        }
+        $limit   = max(1, min(self::MAX_LIMIT, isset($req['limit']) ? (int) $req['limit'] : self::LIMIT));
+        $offset  = max(0, isset($req['offset']) ? (int) $req['offset'] : 0);
+        $ignored = array();
+        $pages   = SEOProStats_Search::page_ids(isset($req['filters']) ? (array) $req['filters'] : array(), '', $ignored);
+        $table   = SEOProStats_Schema::table('inspections');
+        $cols    = 'path_id, checked, verdict, coverage_id, indexing, robots, page_fetch, crawled_as, crawled, google_canonical_id, user_canonical_id, rich, flags, details';
+        $rows    = array();
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its primary, verdict_checked, coverage_checked, flags and checked keys; $cols is a fixed column list and $holders only placeholders.
+        if ($pages !== null) {
+            foreach (array_chunk(array_map('intval', $pages), self::CHUNK) as $chunk) {
+                $holders = implode(', ', array_fill(0, count($chunk), '%d'));
+                $rows    = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i WHERE path_id IN ($holders)", array_merge(array($table), $chunk)), ARRAY_A));
+            }
+        } elseif ($verdict !== '') {
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`verdict_checked`) WHERE verdict = %d ORDER BY checked DESC LIMIT %d", $table, (int) array_search($verdict, self::VERDICTS, true), self::MAX_ROWS), ARRAY_A);
+        } elseif ($coverage !== '') {
+            $ids  = SEOProStats_Dict::find(SEOProStats_Schema::DICT_COVERAGE, array($coverage));
+            $rows = $ids ? (array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`coverage_checked`) WHERE coverage_id = %d ORDER BY checked DESC LIMIT %d", $table, (int) $ids[0], self::MAX_ROWS), ARRAY_A) : array();
+        } elseif ($finding !== '') {
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`flags`) WHERE flags > 0 LIMIT %d", $table, self::MAX_ROWS), ARRAY_A);
+        } else {
+            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`checked`) WHERE checked > 0 ORDER BY checked DESC LIMIT %d", $table, self::MAX_ROWS), ARRAY_A);
+        }
+        $counts = array();
+        foreach (self::VERDICTS as $code => $name) {
+            $counts[$name] = (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i FORCE INDEX (`verdict_checked`) WHERE verdict = %d', $table, $code));
+        }
+        // phpcs:enable
+        $inspected = self::inspected();
+        $cover_ids = $coverage !== '' ? SEOProStats_Dict::find(SEOProStats_Schema::DICT_COVERAGE, array($coverage)) : array();
+        $rows      = array_values(array_filter($rows, static function ($row) use ($verdict, $coverage, $cover_ids, $finding) {
+            return ($verdict === '' || (int) $row['verdict'] === (int) array_search($verdict, self::VERDICTS, true))
+                && ($coverage === '' || in_array((int) $row['coverage_id'], $cover_ids, true))
+                && ($finding === '' || ((int) $row['flags'] & self::FLAGS[$finding]));
+        }));
+        usort($rows, static function ($a, $b) {
+            return array((int) $b['checked'], (int) $a['path_id']) <=> array((int) $a['checked'], (int) $b['path_id']);
+        });
+        $total = count($rows);
+        $shown = self::rows(array_slice($rows, $offset, $limit));
+        foreach ($shown as &$row) {
+            if ((int) $row['post_id']) {
+                $row = SEOProStats_Clicks::with_edit_url($row);
+            }
+        }
+        unset($row);
+        return array(
+            'connected' => SEOProStats_Schema::set() !== 'live' || SEOProStats_Search::connected('google'),
+            'ignored'   => array_values(array_unique($ignored)),
+            'verdict'   => $verdict,
+            'coverage'  => $coverage,
+            'finding'   => $finding,
+            'progress'  => self::progress(),
+            'rules'     => self::rules(),
+            'sitemaps'  => self::sitemaps(),
+            'inspected' => $inspected,
+            'counts'    => $counts,
+            'rows'      => $shown,
+            'total'     => $total,
+            'more'      => $offset + $limit < $total,
+        );
+    }
+
+    /**
+     * Rows as the answer gives them.
+     *
+     * @param array<int,array<string,mixed>> $rows Table rows.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function rows(array $rows) {
+        $ids = array();
+        foreach ($rows as $row) {
+            array_push($ids, (int) $row['path_id'], (int) $row['coverage_id'], (int) $row['google_canonical_id'], (int) $row['user_canonical_id']);
+        }
+        $text = SEOProStats_Query::texts($ids);
+        $live = SEOProStats_Schema::set() === 'live';
+        $out  = array();
+        foreach ($rows as $row) {
+            $path = isset($text[(int) $row['path_id']]) ? (string) $text[(int) $row['path_id']] : '';
+            $info = $live && $path !== '' ? SEOProStats_Clicks::page_info($path) : null;
+            $out[] = array(
+                'path_id'  => (int) $row['path_id'],
+                'path'     => $path,
+                'url'      => self::url($path),
+                'post_id'  => is_array($info) && isset($info['post_id']) ? (int) $info['post_id'] : 0,
+                'edit_url' => null,
+            ) + self::google($row, $text);
+        }
+        return $out;
+    }
+
+    /**
+     * Google's view of a page from its row, as reports give it.
+     *
+     * @param array<string,mixed> $row  Table row.
+     * @param array<int,string>   $text Dictionary texts by id.
+     * @return array<string,mixed>
+     */
+    private static function google(array $row, array $text) {
+        $details = json_decode((string) $row['details'], true);
+        $details = is_array($details) ? $details : array();
+        $value   = static function (array $codes, $code) {
+            return isset($codes[(int) $code]) ? $codes[(int) $code] : null;
+        };
+        $string  = static function ($id) use ($text) {
+            return (int) $id && isset($text[(int) $id]) ? (string) $text[(int) $id] : null;
+        };
+        $findings = array();
+        foreach (self::FLAGS as $name => $bit) {
+            if ((int) $row['flags'] & $bit) {
+                $findings[] = $name;
+            }
+        }
+        return array(
+            'checked'          => gmdate('c', (int) $row['checked']),
+            'verdict'          => $value(self::VERDICTS, $row['verdict']),
+            'coverage'         => $string($row['coverage_id']),
+            'indexing'         => $value(self::INDEXING, $row['indexing']),
+            'robots'           => $value(self::ROBOTS, $row['robots']),
+            'page_fetch'       => $value(self::FETCH, $row['page_fetch']),
+            'crawled_as'       => $value(self::CRAWLED_AS, $row['crawled_as']),
+            'last_crawl'       => (int) $row['crawled'] ? gmdate('c', (int) $row['crawled']) : null,
+            'google_canonical' => $string($row['google_canonical_id']),
+            'user_canonical'   => $string($row['user_canonical_id']),
+            'rich_verdict'     => $value(self::VERDICTS, $row['rich']),
+            'rich'             => isset($details['rich']) && is_array($details['rich']) ? array_values($details['rich']) : array(),
+            'sitemaps'         => isset($details['sitemaps']) && is_array($details['sitemaps']) ? array_values($details['sitemaps']) : array(),
+            'referring'        => isset($details['referring']) && is_array($details['referring']) ? array_values($details['referring']) : array(),
+            'link'             => isset($details['link']) && $details['link'] !== '' ? (string) $details['link'] : null,
+            'error'            => isset($details['error']) ? (string) $details['error'] : null,
+            'findings'         => $findings,
+        );
+    }
+
+    /**
+     * Google's view of pages, for other reports (Indexation, Audit), by
+     * the primary key.
+     *
+     * @param int[] $ids Path ids.
+     * @return array<int,array<string,mixed>> Path id => google().
+     */
+    public static function of_pages(array $ids) {
+        global $wpdb;
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (!$ids || !SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        $rows = array();
+        foreach (array_chunk($ids, self::CHUNK) as $chunk) {
+            $holders = implode(', ', array_fill(0, count($chunk), '%d'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $holders holds only placeholders.
+            $rows = array_merge($rows, (array) $wpdb->get_results($wpdb->prepare("SELECT * FROM %i WHERE path_id IN ($holders)", array_merge(array(SEOProStats_Schema::table('inspections')), $chunk)), ARRAY_A));
+        }
+        $text = array();
+        foreach ($rows as $row) {
+            array_push($text, (int) $row['coverage_id'], (int) $row['google_canonical_id'], (int) $row['user_canonical_id']);
+        }
+        $text = SEOProStats_Query::texts($text);
+        $out  = array();
+        foreach ($rows as $row) {
+            $out[(int) $row['path_id']] = self::google($row, $text);
+        }
+        return $out;
+    }
+
+    /**
+     * Pages inspected, by the checked key.
+     *
+     * @return int
+     */
+    public static function inspected() {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return 0;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its checked key.
+        return (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i FORCE INDEX (`checked`) WHERE checked > 0', SEOProStats_Schema::table('inspections')));
+    }
+
+    /**
+     * Pages with a finding, by the flags key (the content audit).
+     *
+     * @param int $limit Most rows.
+     * @return array<int,int> Path id => flags.
+     */
+    public static function flagged($limit = self::MAX_ROWS) {
+        global $wpdb;
+        if (!SEOProStats_Schema::is_current()) {
+            return array();
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its flags key.
+        $rows = (array) $wpdb->get_results($wpdb->prepare('SELECT path_id, flags FROM %i FORCE INDEX (`flags`) WHERE flags > 0 LIMIT %d', SEOProStats_Schema::table('inspections'), (int) $limit), ARRAY_A);
+        $out  = array();
+        foreach ($rows as $row) {
+            $out[(int) $row['path_id']] = (int) $row['flags'];
+        }
+        return $out;
+    }
+
+    /**
+     * The sitemaps as Google read them, each with its problems, and
+     * whether the site's own sitemap index is submitted.
+     *
+     * @return array<string,mixed>
+     */
+    public static function sitemaps() {
+        $state = self::state();
+        $now   = time();
+        $own   = self::own_sitemap();
+        $found = false;
+        $index = false;
+        $rows  = array();
+        foreach ($state['sitemaps'] as $one) {
+            $problems = array();
+            if ((int) $one['errors'] > 0) {
+                $problems[] = 'errors';
+            }
+            $since = (int) $one['downloaded'] ? (int) $one['downloaded'] : (int) $one['submitted'];
+            if ($since && $since < $now - self::STALE_DAYS * DAY_IN_SECONDS) {
+                $problems[] = 'stale';
+            }
+            if ((int) $one['warnings'] > 0) {
+                $problems[] = 'warnings';
+            }
+            $found = $found || ($own !== '' && self::same_url((string) $one['path'], $own));
+            $index = $index || (!empty($one['index']) && self::on_site((string) $one['path']));
+            $rows[] = array(
+                'path'       => (string) $one['path'],
+                'type'       => (string) $one['type'],
+                'index'      => !empty($one['index']),
+                'pending'    => !empty($one['pending']),
+                'submitted'  => (int) $one['submitted'] ? gmdate('c', (int) $one['submitted']) : null,
+                'downloaded' => (int) $one['downloaded'] ? gmdate('c', (int) $one['downloaded']) : null,
+                'errors'     => (int) $one['errors'],
+                'warnings'   => (int) $one['warnings'],
+                'contents'   => isset($one['contents']) && is_array($one['contents']) ? array_values($one['contents']) : array(),
+                'problems'   => $problems,
+            );
+        }
+        $read = (bool) $state['sitemaps_read'] && $state['sitemaps_error'] === null;
+        return array(
+            'read'       => $state['sitemaps_read'] ? gmdate('c', $state['sitemaps_read']) : null,
+            'error'      => $state['sitemaps_error'],
+            'own'        => $own !== '' ? $own : null,
+            // The site's own index, or another index on the site, is submitted.
+            'submitted'  => !$read || $own === '' || $found || $index,
+            'stale_days' => self::STALE_DAYS,
+            'rows'       => $rows,
+        );
+    }
+
+    /**
+     * The sitemap problems, one per sitemap and problem (and one for the
+     * site's own index not submitted), for the decision queue.
+     *
+     * @return array<int,array{problem:string,url:string,path:string,errors:int,warnings:int,downloaded:string|null,submitted:string|null}>
+     */
+    public static function sitemap_problems() {
+        $all = self::sitemaps();
+        $out = array();
+        if ($all['read'] !== null && $all['error'] === null && !$all['submitted']) {
+            $out[] = array('problem' => 'missing', 'url' => (string) $all['own'], 'path' => self::path_of((string) $all['own']), 'errors' => 0, 'warnings' => 0, 'downloaded' => null, 'submitted' => null);
+        }
+        foreach ($all['rows'] as $row) {
+            foreach ($row['problems'] as $problem) {
+                $out[] = array(
+                    'problem'    => (string) $problem,
+                    'url'        => (string) $row['path'],
+                    'path'       => self::path_of((string) $row['path']),
+                    'errors'     => (int) $row['errors'],
+                    'warnings'   => (int) $row['warnings'],
+                    'downloaded' => $row['downloaded'] !== null ? (string) $row['downloaded'] : null,
+                    'submitted'  => $row['submitted'] !== null ? (string) $row['submitted'] : null,
+                );
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Why a sitemap problem is listed, in a sentence.
+     *
+     * @param array<string,mixed> $problem From sitemap_problems().
+     * @return string
+     */
+    public static function why(array $problem) {
+        switch ($problem['problem']) {
+            case 'missing':
+                /* translators: %s: the site's sitemap address */
+                return sprintf(__('The site’s sitemap %s is not submitted in Search Console, so Google may find new pages late.', 'seoprostats'), (string) $problem['url']);
+            case 'errors':
+                /* translators: 1: number of errors, 2: sitemap address */
+                return sprintf(_n('Google found %1$s error in the sitemap %2$s; it may not read it.', 'Google found %1$s errors in the sitemap %2$s; it may not read it.', (int) $problem['errors'], 'seoprostats'), number_format_i18n((int) $problem['errors']), (string) $problem['url']);
+            case 'stale':
+                /* translators: 1: sitemap address, 2: number of days */
+                return sprintf(__('Google has not downloaded the sitemap %1$s for over %2$s days.', 'seoprostats'), (string) $problem['url'], number_format_i18n(self::STALE_DAYS));
+        }
+        /* translators: 1: number of warnings, 2: sitemap address */
+        return sprintf(_n('Google found %1$s warning in the sitemap %2$s.', 'Google found %1$s warnings in the sitemap %2$s.', (int) $problem['warnings'], 'seoprostats'), number_format_i18n((int) $problem['warnings']), (string) $problem['url']);
+    }
+
+    /**
+     * What to do about a sitemap problem.
+     *
+     * @param string $problem One of SITEMAP_PROBLEMS.
+     * @return string
+     */
+    public static function todo($problem) {
+        switch ($problem) {
+            case 'missing':
+                return __('Submit it in Search Console → Sitemaps.', 'seoprostats');
+            case 'errors':
+                return __('Open the sitemap in Search Console → Sitemaps, fix what it names (often an address that fails or a sitemap too large), and submit it again.', 'seoprostats');
+            case 'stale':
+                return __('Check that the sitemap opens without an error or a redirect and is allowed in robots.txt, then submit it again.', 'seoprostats');
+        }
+        return __('Open the sitemap in Search Console → Sitemaps and check the addresses it warns about.', 'seoprostats');
+    }
+
+    /**
+     * Why a page's inspection finding matters, in a few words (the content
+     * audit's phrase).
+     *
+     * @param string              $finding One of FLAGS.
+     * @param array<string,mixed> $google  google() of the page, or empty.
+     * @return string
+     */
+    public static function phrase($finding, array $google) {
+        switch ($finding) {
+            case 'robots_blocked':
+                return __('robots.txt stops Google crawling it', 'seoprostats');
+            case 'not_indexed':
+                return __('Google crawled it but did not index it', 'seoprostats');
+            case 'google_canonical':
+                /* translators: %s: the address Google chose as canonical */
+                return isset($google['google_canonical']) && $google['google_canonical'] ? sprintf(__('Google chose %s as its canonical', 'seoprostats'), (string) $google['google_canonical']) : __('Google chose another page as its canonical', 'seoprostats');
+        }
+        $types = array();
+        foreach (isset($google['rich']) ? (array) $google['rich'] : array() as $type) {
+            if (is_array($type) && !empty($type['errors'])) {
+                $types[] = (string) $type['type'];
+            }
+        }
+        /* translators: %s: rich result types, e.g. "Breadcrumbs, FAQ" */
+        return $types ? sprintf(__('rich result errors (%s)', 'seoprostats'), implode(', ', $types)) : __('rich result errors', 'seoprostats');
+    }
+
+    /**
+     * What to do about a page's inspection finding.
+     *
+     * @param string $finding One of FLAGS.
+     * @return string
+     */
+    public static function fix($finding) {
+        switch ($finding) {
+            case 'robots_blocked':
+                return __('Allow the page in robots.txt, unless it is kept out of search on purpose.', 'seoprostats');
+            case 'not_indexed':
+                return __('Make the page clearly worth indexing (more of its own content, links from related pages), then ask Google to index it.', 'seoprostats');
+            case 'google_canonical':
+                return __('Make the page distinct from the one Google chose, or point the canonical address at that page and link to it.', 'seoprostats');
+        }
+        return __('Fix the structured data issues Search Console names, then test the page again.', 'seoprostats');
+    }
+
+    // ------------------------------------------------------------------
+    // Progress and helpers.
+
+    /**
+     * The daily cap and today's use, the last run and its error.
+     *
+     * @return array<string,mixed>
+     */
+    public static function progress() {
+        $state = self::state();
+        return array(
+            'daily'    => self::daily(),
+            'used'     => self::used(),
+            'day'      => self::today(),
+            'last'     => $state['last'] ? gmdate('c', $state['last']) : null,
+            'error'    => $state['error'],
+            'error_at' => $state['error_at'] ? gmdate('c', $state['error_at']) : null,
+        );
+    }
+
+    /**
+     * The rules the run keeps.
+     *
+     * @return array<string,int>
+     */
+    public static function rules() {
+        return array(
+            'daily'        => self::daily(),
+            'max_daily'    => 2000,
+            'recheck_days' => self::RECHECK_DAYS,
+            'budget'       => self::BUDGET,
+            'stale_days'   => self::STALE_DAYS,
+        );
+    }
+
+    /**
+     * Inspections a day at most (the setting; the demo shows the default).
+     *
+     * @return int
+     */
+    public static function daily() {
+        return class_exists('SEOProStats_Statistics') ? SEOProStats_Statistics::inspections() : 200;
+    }
+
+    /**
+     * Inspections asked for today (Google's day).
+     *
+     * @return int
+     */
+    public static function used() {
+        $state = self::state();
+        return $state['day'] === self::today() ? $state['used'] : 0;
+    }
+
+    /**
+     * Count one inspection against today's cap.
+     */
+    private static function count_one() {
+        self::save(array('day' => self::today(), 'used' => self::used() + 1));
+    }
+
+    /**
+     * Today in Google's time zone (Pacific), where its daily quota starts.
+     *
+     * @return string Y-m-d.
+     */
+    private static function today() {
+        return (new DateTimeImmutable('now', new DateTimeZone('America/Los_Angeles')))->format('Y-m-d');
+    }
+
+    /**
+     * Progress of the current data set.
+     *
+     * @return array{sitemaps:array<int,array<string,mixed>>,sitemaps_read:int,sitemaps_error:string|null,day:string,used:int,last:int,error:string|null,error_at:int,version:int}
+     */
+    public static function state() {
+        $state = get_option(SEOProStats_Schema::option(self::OPTION), array());
+        $state = is_array($state) ? $state : array();
+        return array(
+            'sitemaps'       => isset($state['sitemaps']) && is_array($state['sitemaps']) ? $state['sitemaps'] : array(),
+            'sitemaps_read'  => isset($state['sitemaps_read']) ? (int) $state['sitemaps_read'] : 0,
+            'sitemaps_error' => isset($state['sitemaps_error']) ? (string) $state['sitemaps_error'] : null,
+            'day'            => isset($state['day']) ? (string) $state['day'] : '',
+            'used'           => isset($state['used']) ? (int) $state['used'] : 0,
+            'last'           => isset($state['last']) ? (int) $state['last'] : 0,
+            'error'          => isset($state['error']) ? (string) $state['error'] : null,
+            'error_at'       => isset($state['error_at']) ? (int) $state['error_at'] : 0,
+            'version'        => isset($state['version']) ? (int) $state['version'] : 0,
+        );
+    }
+
+    /**
+     * Change some of the progress (null removes a value).
+     *
+     * @param array<string,mixed> $values Values.
+     */
+    private static function save(array $values) {
+        $state = get_option(SEOProStats_Schema::option(self::OPTION), array());
+        $state = is_array($state) ? $state : array();
+        foreach ($values as $key => $value) {
+            if ($value === null) {
+                unset($state[$key]);
+            } else {
+                $state[$key] = $value;
+            }
+        }
+        update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
+    }
+
+    /**
+     * Note that inspections were written (the demo), so cached reports are
+     * made again.
+     */
+    public static function touch() {
+        self::save(array('version' => time()));
+    }
+
+    /**
+     * Delete the current data set's progress and sitemaps (demo removal,
+     * uninstall); the live run's lock only with live data.
+     */
+    public static function reset() {
+        delete_option(SEOProStats_Schema::option(self::OPTION));
+        if (SEOProStats_Schema::set() === 'live') {
+            delete_option(self::LOCK_OPTION);
+        }
+    }
+
+    /**
+     * Search Console's class, an access token and the property.
+     *
+     * @return array{0:string,1:string,2:string}|WP_Error
+     */
+    private static function ready() {
+        if (SEOProStats_Schema::set() !== 'live') {
+            return new WP_Error('seoprostats_inspections_demo', __('Google is asked about live data only.', 'seoprostats'), array('status' => 400));
+        }
+        require_once __DIR__ . '/class-seoprostats-connections.php';
+        require_once __DIR__ . '/class-seoprostats-search-import.php';
+        if (!SEOProStats_Connections::get(self::SOURCE)) {
+            return new WP_Error('seoprostats_not_connected', __('Search Console is not connected. Connect it in SEO Pro Stats → Settings → Connections.', 'seoprostats'), array('status' => 400));
+        }
+        self::load();
+        return SEOProStats_Search_Import::ready(self::SOURCE);
+    }
+
+    /**
+     * The site's own sitemap index: its SEO plugin's, else WordPress's
+     * when its sitemaps are on, else ''.
+     *
+     * @return string
+     */
+    private static function own_sitemap() {
+        if (SEOProStats_Schema::set() === 'demo') {
+            return home_url('/wp-sitemap.xml');
+        }
+        require_once __DIR__ . '/class-seoprostats-coverage.php';
+        $plugin = SEOProStats_Coverage::seo_plugin();
+        if (isset(self::PLUGIN_SITEMAPS[$plugin])) {
+            return home_url(self::PLUGIN_SITEMAPS[$plugin]);
+        }
+        $url = function_exists('get_sitemap_url') ? get_sitemap_url('index') : false;
+        return is_string($url) ? $url : '';
+    }
+
+    /**
+     * Whether an address is on this site.
+     *
+     * @param string $url Address.
+     * @return bool
+     */
+    private static function on_site($url) {
+        $host = strtolower((string) preg_replace('/^www\./i', '', (string) wp_parse_url((string) $url, PHP_URL_HOST)));
+        $home = strtolower((string) preg_replace('/^www\./i', '', (string) wp_parse_url(home_url('/'), PHP_URL_HOST)));
+        return $host !== '' && $host === $home;
+    }
+
+    /**
+     * An address's path (the queue's page), '' when it is not on the site.
+     *
+     * @param string $url Address.
+     * @return string
+     */
+    private static function path_of($url) {
+        if (!self::on_site($url)) {
+            return '';
+        }
+        $path = (string) wp_parse_url((string) $url, PHP_URL_PATH);
+        return $path !== '' ? $path : '/';
+    }
+
+    /**
+     * A page's address on this site, or '' for a path that is not one.
+     *
+     * @param string $path Path.
+     * @return string
+     */
+    public static function url($path) {
+        $info = $path !== '' && $path[0] === '/' ? wp_parse_url(home_url('/')) : null;
+        if (!is_array($info) || !isset($info['scheme'], $info['host'])) {
+            return '';
+        }
+        return esc_url_raw($info['scheme'] . '://' . $info['host'] . (isset($info['port']) ? ':' . $info['port'] : '') . $path);
+    }
+
+    /**
+     * Load the classes used.
+     */
+    private static function load() {
+        require_once __DIR__ . '/class-seoprostats-dict.php';
+        require_once __DIR__ . '/class-seoprostats-query.php';
+        require_once __DIR__ . '/class-seoprostats-search.php';
+        require_once __DIR__ . '/class-seoprostats-clicks.php';
+        require_once __DIR__ . '/class-seoprostats-indexation.php';
+    }
+
+    /**
+     * Take the run lock.
+     *
+     * @return bool Whether this request has it.
+     */
+    private static function lock() {
+        if (add_option(self::LOCK_OPTION, time(), '', false)) {
+            return true;
+        }
+        if ((int) get_option(self::LOCK_OPTION, 0) > time() - self::LOCK_TIME) {
+            return false;
+        }
+        delete_option(self::LOCK_OPTION);
+        return add_option(self::LOCK_OPTION, time(), '', false);
+    }
+
+    /**
+     * Give the run lock back.
+     */
+    private static function unlock() {
+        delete_option(self::LOCK_OPTION);
+    }
+
+    /**
+     * Run with the lock (WP-CLI): inspect now.
+     *
+     * @param int                    $budget Seconds (0: no limit).
+     * @param array<int,string>|null $pages  Path id => path, or null for those due.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function run_now($budget, $pages = null) {
+        if (!self::lock()) {
+            return new WP_Error('seoprostats_inspections_busy', __('Inspections are running. Try again in a few minutes.', 'seoprostats'));
+        }
+        try {
+            return self::inspect_due((int) $budget, null, $pages);
+        } finally {
+            self::unlock();
+        }
+    }
+}

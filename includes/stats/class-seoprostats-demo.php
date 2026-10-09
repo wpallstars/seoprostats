@@ -410,6 +410,45 @@ final class SEOProStats_Demo {
     /** Backlinks made by this version of the demo; older ones are made again. */
     const BACKLINKS_VERSION = 1;
 
+    /**
+     * Google's URL Inspection of demo pages (SEOProStats_Inspections), as
+     * Search Console would give it: path => verdict, coverage state,
+     * robots.txt state, indexing state, Google's canonical path ('' none,
+     * else Google's choice), the page's own canonical path, rich result
+     * type and its issues (message => ERROR or WARNING), days since
+     * inspected, days since crawled.
+     */
+    const INSPECTIONS = array(
+        '/'                                   => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/', '/', 'Breadcrumbs', array(), 2, 3),
+        '/features/'                          => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/features/', '/features/', 'Breadcrumbs', array(), 3, 6),
+        '/pricing/'                           => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/pricing/', '/pricing/', 'Product snippets', array('Either "offers", "review", or "aggregateRating" should be specified' => 'ERROR', 'Missing field "brand"' => 'WARNING'), 3, 5),
+        '/blog/core-web-vitals-explained/'    => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/blog/core-web-vitals-explained/', '/blog/core-web-vitals-explained/', 'Breadcrumbs', array(), 5, 9),
+        '/blog/how-to-read-search-rankings/'  => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/blog/how-to-read-search-rankings/', '/blog/how-to-read-search-rankings/', '', array(), 6, 12),
+        '/blog/what-changed-after-an-update/' => array('PARTIAL', 'Indexed, though blocked by robots.txt', 'DISALLOWED', 'INDEXING_ALLOWED', '', '', '', array(), 4, 0),
+        '/docs/'                              => array('NEUTRAL', 'Excluded by ‘noindex’ tag', 'ALLOWED', 'BLOCKED_BY_META_TAG', '', '/docs/', '', array(), 7, 8),
+        '/docs/faq/'                          => array('NEUTRAL', 'Alternate page with proper canonical tag', 'ALLOWED', 'INDEXING_ALLOWED', '/docs/', '/docs/', '', array(), 8, 15),
+        '/shop/pro-licence/'                  => array('NEUTRAL', 'Duplicate, Google chose different canonical than user', 'ALLOWED', 'INDEXING_ALLOWED', '/pricing/', '/shop/pro-licence/', 'Product snippets', array(), 9, 10),
+        '/docs/indexing-checklist/'           => array('NEUTRAL', 'Crawled - currently not indexed', 'ALLOWED', 'INDEXING_ALLOWED', '', '/docs/indexing-checklist/', '', array(), 1, 20),
+        '/category/news/'                     => array('NEUTRAL', 'Discovered - currently not indexed', 'ALLOWED', 'INDEXING_ALLOWED', '', '', '', array(), 2, 0),
+        '/author/jonas-weber/'                => array('NEUTRAL', 'Crawled - currently not indexed', 'ALLOWED', 'INDEXING_ALLOWED', '', '/author/jonas-weber/', '', array(), 10, 30),
+    );
+
+    /**
+     * Search Console's sitemaps for the demo property: path under the home
+     * address => type, whether an index, days since submitted, days since
+     * downloaded, errors, warnings, addresses submitted. The site's own
+     * index is read daily; a child has warnings; an old sitemap is stale
+     * with an error.
+     */
+    const SEARCH_SITEMAPS = array(
+        '/wp-sitemap.xml'              => array('sitemap', true, 210, 1, 0, 0, 0),
+        '/wp-sitemap-posts-page-1.xml' => array('sitemap', false, 210, 1, 0, 2, 13),
+        '/old-sitemap.xml'             => array('sitemap', false, 420, 34, 1, 0, 9),
+    );
+
+    /** Inspections and sitemaps made by this version of the demo; older ones are made again. */
+    const INSPECTIONS_VERSION = 1;
+
     /** Content audit facts made by this version of the demo; older ones are made again. */
     const AUDIT_VERSION = 2;
 
@@ -883,6 +922,7 @@ final class SEOProStats_Demo {
         require_once __DIR__ . '/class-seoprostats-indexation.php';
         require_once __DIR__ . '/class-seoprostats-targets.php';
         require_once __DIR__ . '/class-seoprostats-backlinks.php';
+        require_once __DIR__ . '/class-seoprostats-inspections.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
             SEOProStats_Goals::forget();
@@ -890,6 +930,7 @@ final class SEOProStats_Demo {
             SEOProStats_Indexation::reset();
             SEOProStats_Targets::reset();
             SEOProStats_Backlinks::reset();
+            SEOProStats_Inspections::reset();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
@@ -1091,6 +1132,13 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::backlinks();
         }
+        // Google's URL Inspection and Search Console's sitemaps (again when they change).
+        $state = self::state();
+        if (!$more && (empty($state['inspections']) || (int) $state['inspections'] < self::INSPECTIONS_VERSION)) {
+            $state['inspections'] = self::INSPECTIONS_VERSION;
+            update_option(self::OPTION, $state, false);
+            self::inspections();
+        }
         // Then the decision queue: one item accepted, one done (once).
         $state = self::state();
         if (!$more && empty($state['queue'])) {
@@ -1204,6 +1252,91 @@ final class SEOProStats_Demo {
                 'user_id'     => 0,
             ));
         }
+    }
+
+    /**
+     * Write the demo's URL inspections (INSPECTIONS) in Google's own
+     * format, as the import would keep them, one verdict change on the
+     * timeline, and Search Console's sitemaps (SEARCH_SITEMAPS); on the
+     * demo tables (called inside run()).
+     */
+    private static function inspections() {
+        require_once __DIR__ . '/class-seoprostats-inspections.php';
+        require_once __DIR__ . '/class-seoprostats-changes.php';
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            return;
+        }
+        $now  = time();
+        $home = static function ($path) {
+            return $path !== '' ? home_url($path) : '';
+        };
+        foreach (self::INSPECTIONS as $path => $one) {
+            list($verdict, $coverage, $robots, $indexing, $google, $user, $rich_type, $issues, $checked, $crawled) = $one;
+            $index = array(
+                'verdict'        => $verdict,
+                'coverageState'  => $coverage,
+                'robotsTxtState' => $robots,
+                'indexingState'  => $indexing,
+                'pageFetchState' => $robots === 'DISALLOWED' ? 'BLOCKED_ROBOTS_TXT' : ($crawled ? 'SUCCESSFUL' : 'PAGE_FETCH_STATE_UNSPECIFIED'),
+                'crawledAs'      => 'MOBILE',
+                'sitemap'        => array(home_url(strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0 ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml')),
+                'referringUrls'  => $path === '/' ? array() : array(home_url('/')),
+            );
+            if ($crawled) {
+                $index['lastCrawlTime'] = gmdate('Y-m-d\TH:i:s\Z', $now - $crawled * DAY_IN_SECONDS);
+            }
+            if ($google !== '') {
+                $index['googleCanonical'] = $home($google);
+            }
+            if ($user !== '') {
+                $index['userCanonical'] = $home($user);
+            }
+            $result = array(
+                'inspectionResultLink' => 'https://search.google.com/search-console/inspect?resource_id=' . rawurlencode(home_url('/')) . '&id=' . rawurlencode(md5($path)),
+                'indexStatusResult'    => $index,
+            );
+            if ($rich_type !== '') {
+                $items = array();
+                foreach ($issues as $message => $severity) {
+                    $items[] = array('issueMessage' => $message, 'severity' => $severity);
+                }
+                $result['richResultsResult'] = array(
+                    'verdict'       => in_array('ERROR', $issues, true) ? 'FAIL' : 'PASS',
+                    'detectedItems' => array(array('richResultType' => $rich_type, 'items' => array(array('name' => 'Unnamed item', 'issues' => $items)))),
+                );
+            }
+            SEOProStats_Inspections::store(0, $path, $result, $now - $checked * DAY_IN_SECONDS);
+        }
+        // The duplicate shop page was indexed until Google chose the pricing page as canonical.
+        $today = new DateTimeImmutable('today', wp_timezone());
+        SEOProStats_Changes::write(array(
+            'ts'          => $today->modify('-9 days')->setTime(5, 10)->getTimestamp(),
+            'kind'        => SEOProStats_Changes::INDEX_STATUS,
+            'path'        => '/shop/pro-licence/',
+            'object_type' => 'inspection',
+            'object_id'   => 0,
+            'old'         => 'Submitted and indexed',
+            'new'         => 'Duplicate, Google chose different canonical than user',
+            'meta'        => array('name' => '/shop/pro-licence/', 'verdict' => 'NEUTRAL', 'verdict_before' => 'PASS'),
+            'source'      => 4,
+            'user_id'     => 0,
+        ));
+        $sitemaps = array();
+        foreach (self::SEARCH_SITEMAPS as $path => $one) {
+            $sitemaps[] = array(
+                'path'       => home_url($path),
+                'type'       => $one[0],
+                'index'      => $one[1],
+                'pending'    => false,
+                'submitted'  => $now - $one[2] * DAY_IN_SECONDS,
+                'downloaded' => $now - $one[3] * DAY_IN_SECONDS,
+                'errors'     => $one[4],
+                'warnings'   => $one[5],
+                'contents'   => $one[6] ? array(array('type' => 'web', 'submitted' => $one[6])) : array(),
+            );
+        }
+        SEOProStats_Inspections::write_sitemaps($sitemaps, $now - HOUR_IN_SECONDS);
+        SEOProStats_Inspections::touch();
     }
 
     /**

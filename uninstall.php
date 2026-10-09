@@ -26,6 +26,7 @@ require_once __DIR__ . '/includes/stats/class-seoprostats-audit.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-indexation.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-targets.php';
 require_once __DIR__ . '/includes/stats/class-seoprostats-backlinks.php';
+require_once __DIR__ . '/includes/stats/class-seoprostats-inspections.php';
 
 /**
  * Delete the plugin's tables (live and demo), collector folder, cron job,
@@ -41,6 +42,7 @@ function seoprostats_uninstall_site() {
     SEOProStats_Indexation::reset();
     SEOProStats_Targets::reset();
     SEOProStats_Backlinks::reset();
+    SEOProStats_Inspections::reset();
     SEOProStats_Purchases::forget();
     SEOProStats_Search_Import::forget();
     SEOProStats_Connections::forget();

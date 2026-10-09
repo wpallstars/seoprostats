@@ -38,7 +38,13 @@ final class SEOProStats_Source_Search_Console {
     /** The Search Console API. */
     const API = 'https://searchconsole.googleapis.com/webmasters/v3/';
 
-    /** Read-only access. */
+    /** URL Inspection (the version in Google's index, not a live test). */
+    const INSPECT_URL = 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect';
+
+    /** Language of URL Inspection's texts (coverage states), so they read the same on every site. */
+    const INSPECT_LANGUAGE = 'en-US';
+
+    /** Read-only access (enough for search data, sitemaps and URL Inspection). */
     const SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
 
     /** Months of history Search Console keeps, imported on connecting. */
@@ -379,6 +385,45 @@ final class SEOProStats_Source_Search_Console {
     }
 
     /**
+     * The sitemaps submitted for the property, as Google read them: path,
+     * type, lastSubmitted, lastDownloaded, isPending, isSitemapsIndex,
+     * errors, warnings and contents (type, submitted; indexed is
+     * deprecated and not kept).
+     *
+     * @param string $token    Access token.
+     * @param string $property Property.
+     * @return array<int,array<string,mixed>>|WP_Error
+     */
+    public static function sitemaps($token, $property) {
+        $answer = self::request('GET', 'sites/' . rawurlencode($property) . '/sitemaps', $token);
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        return isset($answer['sitemap']) && is_array($answer['sitemap']) ? array_values(array_filter($answer['sitemap'], 'is_array')) : array();
+    }
+
+    /**
+     * Inspect one address: the version in Google's index (inspectionResult:
+     * indexStatusResult, richResultsResult, inspectionResultLink).
+     *
+     * @param string $token    Access token.
+     * @param string $property Property.
+     * @param string $url      Address on the property.
+     * @return array<string,mixed>|WP_Error inspectionResult.
+     */
+    public static function inspect($token, $property, $url) {
+        $answer = self::request('POST', self::INSPECT_URL, $token, array(
+            'inspectionUrl' => (string) $url,
+            'siteUrl'       => (string) $property,
+            'languageCode'  => self::INSPECT_LANGUAGE,
+        ));
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        return isset($answer['inspectionResult']) && is_array($answer['inspectionResult']) ? $answer['inspectionResult'] : array();
+    }
+
+    /**
      * A Search Analytics query.
      *
      * @param string              $token    Access token.
@@ -394,7 +439,7 @@ final class SEOProStats_Source_Search_Console {
      * A request to the Search Console API.
      *
      * @param string                   $method GET or POST.
-     * @param string                   $path   Path after API.
+     * @param string                   $path   Path after API, or a full address of the same service.
      * @param string                   $token  Access token.
      * @param array<string,mixed>|null $body   JSON body.
      * @return array<string,mixed>|WP_Error
@@ -414,7 +459,7 @@ final class SEOProStats_Source_Search_Console {
             $args['headers']['Content-Type'] = 'application/json';
             $args['body']                    = $json;
         }
-        return self::answer(wp_remote_request(self::API . $path, $args));
+        return self::answer(wp_remote_request(strpos($path, 'https://') === 0 ? $path : self::API . $path, $args));
     }
 
     /**
