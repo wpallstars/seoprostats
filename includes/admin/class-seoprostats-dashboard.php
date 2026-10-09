@@ -179,8 +179,9 @@ final class SEOProStats_Dashboard {
      * The screen: the settings screen's header (name, version, feature
      * search and links), the tab bar, then the app. The bar holds the
      * sections as the settings screen's tabs and, on the right, the app's
-     * period, comparison, live count and Live/Demo switch
-     * (#spst-dashboard-controls). The app marks the section shown and
+     * Live/Demo switch, period, comparison and Share
+     * (#spst-dashboard-controls); the live count is the Overview's own.
+     * The app marks the section shown and
      * keeps the period and filters in the tabs' links
      * (packages/wp-admin/src/App.tsx).
      */

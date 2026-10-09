@@ -290,8 +290,8 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'parent'      => 'search_updates',
                 'rows'        => 3,
                 'label'       => __('Other feeds', 'seoprostats'),
-                'description' => __('RSS, Atom or JSON Feed addresses of other sources you trust, such as a search engine\'s blog, one per line; after a space, the name to show (without one, the domain). Their posts whose title names an update are added once a day, one request to each.', 'seoprostats'),
-                'placeholder' => 'https://example.com/feed/ Bing',
+                'description' => __('RSS, Atom or JSON Feed addresses of other sources you trust, such as a search engine\'s blog, one per line; after a space, the name to show (without one, the domain). Their posts whose title names an update are added once a day, one request to each. For Bing, add its Search blog: https://blogs.bing.com/search/feed/ Bing (Bing announces few updates there; its product news is left out).', 'seoprostats'),
+                'placeholder' => 'https://blogs.bing.com/search/feed/ Bing',
             ),
             'backlinks'               => array(
                 'type'        => 'bool',

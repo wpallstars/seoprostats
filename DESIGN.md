@@ -160,7 +160,7 @@ Open (new window).
 
 ### Header
 
-The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). On the statistics screen the bar's right holds the live count, the Live/Demo switch, the period and comparison, then Share (on every tab, for administrators; with demo data it shows but cannot be pressed, so screenshots show every control); on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load.
+The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). On the statistics screen the bar's right holds the Live/Demo switch, the period and comparison, then Share (on every tab, for administrators; with demo data it shows but cannot be pressed, so screenshots show every control); on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load. The live count (visitors in the last 30 minutes, a green pulsing dot when there are any) belongs to the Overview only: it ends the period row at the top of the summary card, wrapping under the period on a phone, so the tab bar keeps its room for the tabs and controls. Shared reports show it there too unless hidden or filters are locked; printed reports never do.
 
 ### Markers
 
@@ -180,6 +180,10 @@ The Overview's Map card sits beside Locations: countries in the border grey, tho
 ### Tiles and tables
 
 Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with ↓ (most first) and `aria-sort`; other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
+
+### Info & ideas
+
+Each section of the statistics screen, and each Search tab, ends with an **Info & ideas** card (`packages/wp-admin/src/components/InfoPanel.tsx`): a 24 px gap above it, the usual card header, then **What does the data say?** (one or two sentences on how to read the section's figures and what a rise or fall points to) and **How can you improve?** (three short actions, naming the screen's own controls where they help), side by side above 782 px and stacked below. Its small headings are muted uppercase 12 px. Text is plain advice in the user guide's words, never figures. It is for the site's owner, so shared and printed reports leave it out.
 
 ### Query coverage
 
