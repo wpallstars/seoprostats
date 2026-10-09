@@ -74,6 +74,10 @@ final class SEOProStats_Abilities {
      * The category, unless another plugin made it first.
      */
     public static function register_category() {
+        // The Abilities API is WordPress 6.9 and later; these hooks fire only there.
+        if (!function_exists('wp_register_ability_category')) {
+            return;
+        }
         if (function_exists('wp_has_ability_category') && wp_has_ability_category(self::CATEGORY)) {
             return;
         }
@@ -87,6 +91,9 @@ final class SEOProStats_Abilities {
      * The abilities.
      */
     public static function register() {
+        if (!function_exists('wp_register_ability')) {
+            return;
+        }
         SEOProStats_API::load();
         $data = array(
             'type'        => 'string',
