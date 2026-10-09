@@ -212,7 +212,7 @@ async function postBack(site, fields) {
 	const inputs = Object.entries(fields).map(([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`);
 	const form = html`<form id="f" method="post" action="${site.href}">${inputs}<p>Returning you to ${site.host}…</p><noscript><button type="submit">Continue</button></noscript></form>`;
 	const csp = ["default-src 'none'", "style-src 'unsafe-inline'", "script-src 'sha256-" + hash + "'", 'form-action ' + site.origin, "base-uri 'none'", "frame-ancestors 'none'"].join('; ');
-	return page('Returning to your site', html`${form}${new Safe(SUBMIT_TAG)}`, 200, { 'Content-Security-Policy': csp });
+	return page('Returning to your site', form, 200, { 'Content-Security-Policy': csp }, true);
 }
 
 /** Signed state: base64url(JSON).base64url(HMAC-SHA256). */
@@ -291,9 +291,11 @@ function html(strings, ...values) {
 
 const STYLE = 'body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:36em;margin:4em auto;padding:0 1em;color:#1e1e1e}h1{font-size:1.4em}.button{display:inline-block;background:#2271b1;color:#fff;padding:.5em 1em;border-radius:3px;text-decoration:none;margin-right:1em}@media (prefers-color-scheme:dark){body{background:#1e1e1e;color:#f0f0f0}a{color:#72aee6}}';
 
-function page(title, body, status = 200, headers = {}) {
+/** An HTML page; submit adds the fixed SUBMIT_TAG before </body> (the post-back page). */
+function page(title, body, status = 200, headers = {}, submit = false) {
 	const document = html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><style>${new Safe(STYLE)}</style></head><body><h1>${title}</h1>${body}</body></html>`;
-	return new Response(document.text, {
+	const markup = submit ? document.text.replace(/<\/body><\/html>$/, SUBMIT_TAG + '</body></html>') : document.text;
+	return new Response(markup, {
 		status,
 		headers: {
 			'Content-Type': 'text/html; charset=utf-8',
