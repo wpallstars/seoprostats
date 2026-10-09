@@ -1,8 +1,9 @@
 /**
  * The SEO Pro Stats screen: the period and comparison, the Live/Demo
  * switch and filters (shared by every section), then the section the URL
- * hash names. The tab bar above it is the server's: its tabs are marked by
- * useNavCurrent, and the controls go on its right (#spst-dashboard-controls).
+ * hash names and its Info & ideas. The tab bar above it is the server's:
+ * its tabs are marked by useNavCurrent, and the controls go on its right
+ * (#spst-dashboard-controls).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -19,7 +20,7 @@ import { useViewState } from './hash';
 import { Controls } from './components/Controls';
 import { DemoNotice, DemoSwitch } from './components/Demo';
 import { FilterBar } from './components/FilterBar';
-import { Realtime } from './components/Realtime';
+import { InfoPanel } from './components/InfoPanel';
 import { Overview } from './Overview';
 import { Search } from './Search';
 import { Goals } from './Goals';
@@ -106,14 +107,14 @@ export function App() {
 		section = <Changes {...props} />;
 	}
 
-	// The live count, the Live/Demo switch, the period and comparison, then
-	// Share: on the right of the tab bar when the screen has its slot. Share
+	// The Live/Demo switch, the period and comparison, then Share: on the
+	// right of the tab bar when the screen has its slot (the live count is
+	// the Overview's, so the bar keeps its room for the tabs). Share
 	// shows with demo data too (so screenshots show every control), but only
 	// live statistics can be shared, so there it cannot be pressed.
 	const shareable = boot.canManage;
 	const controls = (
 		<>
-			{!waiting && <Realtime />}
 			<DemoSwitch />
 			{!waiting && <Controls state={state} update={update} />}
 			{shareable && (
@@ -143,6 +144,7 @@ export function App() {
 				<>
 					<FilterBar filters={state.filters} update={update} />
 					{section}
+					<InfoPanel state={state} />
 				</>
 			)}
 		</div>

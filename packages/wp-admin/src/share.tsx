@@ -15,7 +15,7 @@ import type { SharedReport } from './Shares';
 import { groupLabel } from './changelog';
 import { Controls } from './components/Controls';
 import { FilterBar } from './components/FilterBar';
-import { Realtime } from './components/Realtime';
+import { RealtimeShown } from './components/Realtime';
 import { longLabel, rangeText } from './dates';
 import { filterLabel, sectionLabel } from './labels';
 import { Overview } from './Overview';
@@ -260,10 +260,13 @@ function Report({ share }: { share: Opened }) {
                     </nav>
                 )}
                 <ShareSection.Provider value={section.view}>
-                    <div className="spst-toolbar"><Controls state={state} update={update} />{!share.hide_realtime && !share.locked_filters.length && state.view === 'overview' && <Realtime />}</div>
+                    <div className="spst-toolbar"><Controls state={state} update={update} /></div>
                     {!!share.locked_filters.length && <p className="spst-share-locks">{__('This report shows only:', 'seoprostats')} {share.locked_filters.map(filterLabel).join('; ')}</p>}
                     <FilterBar filters={state.filters} update={update} />
-                    <div key={dark ? 'dark' : 'light'} className="spst-share-body"><SectionBody state={state} update={update} /></div>
+                    {/* The live count is site-wide: never beside locked filters. */}
+                    <RealtimeShown.Provider value={!share.hide_realtime && !share.locked_filters.length}>
+                        <div key={dark ? 'dark' : 'light'} className="spst-share-body"><SectionBody state={state} update={update} /></div>
+                    </RealtimeShown.Provider>
                     {(state.view === 'overview' || state.view === 'search') && <PrintedChanges state={state} />}
                 </ShareSection.Provider>
             </>

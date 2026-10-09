@@ -89,9 +89,11 @@ Version: 1.0.0
 
 ### Overview
 
-**SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick (the day, hour or month still being counted is dotted), where visits came from, what they viewed (with the addresses that were not found, to find broken links), views by author, category and post type, what people searched the site for and which searches found nothing, where (with a world map shaded by visits; choose a country to filter by it) and on what (and whether logged in), and their events with the share of visits that had each. Choose a period and comparison at the top; choose any row to show only those visits, and choose it again (or use the bar above the chart) to remove the filter. Tabs at the top, also in the menu, open the other sections, below.
+**SEO Pro Stats** in the admin menu, under Dashboard, opens the **Overview**: the visitors in the last 30 minutes (beside the period, refreshed every 30 seconds), then visitors, visits, pageviews, views per visit, bounce rate and visit duration against the previous period, a chart of the one you pick (the day, hour or month still being counted is dotted), where visits came from, what they viewed (with the addresses that were not found, to find broken links), views by author, category and post type, what people searched the site for and which searches found nothing, where (with a world map shaded by visits; choose a country to filter by it) and on what (and whether logged in), and their events with the share of visits that had each. Choose a period and comparison at the top; choose any row to show only those visits, and choose it again (or use the bar above the chart) to remove the filter. Tabs at the top, also in the menu, open the other sections, below.
 
 Under the Overview's chart, a lane marks the changes in the period, coloured by group; changes closer than a marker's width share one with their count. Hover over or focus a marker to list its changes, use the arrow keys to move between them, and choose one to read its changes in a window (close it with Close or Escape), with **Open in Changes** for the same days and page. With the reports filtered to one page, the lane shows that page's changes and the site-wide ones.
+
+At the bottom of each section (and each Search tab), **Info & ideas** says what the section is for and gives a few ideas for acting on what it shows. Shared and printed reports leave it out.
 
 Goals and funnels belong to the data you are looking at: demo data has example ones of its own. The period, comparison and filters stay as you move between sections. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days; it starts at the top of the right-most column, and stays where you put it once you move a box.
 
@@ -241,7 +243,7 @@ to pages against pages you did not change.
 
 **Changes**: the change log for the period, newest first: what changed, when, on which page and by whom, for the whole site or one page (with the site-wide changes), and for one group (content, SEO, products, site, search engines or notes). Choose a page to see its statistics; a search engine update links to its source. Administrators add notes for what the log cannot see, such as a newsletter sent or a sale, and delete them.
 
-**Search engine updates** (off until you switch them on under Settings → Data): Google's ranking updates (core, spam, reviews and others) and its crawling, indexing and serving incidents show in the lane, with a bar for how long each rolled out, and in Changes. Once a day the site asks Google's [Search Status Dashboard](https://status.search.google.com) for them, one request that sends nothing about the site or its visitors; the first time, it adds the past updates the dashboard still lists. Add other sources you trust, such as a search engine's blog, as RSS, Atom or JSON Feed addresses under **Other feeds**; their posts whose title names an update are added too. Bing's webmaster blog does not list its updates, so for Bing add a feed you trust.
+**Search engine updates** (off until you switch them on under Settings → Data): Google's ranking updates (core, spam, reviews and others) and its crawling, indexing and serving incidents show in the lane, with a bar for how long each rolled out, and in Changes. Once a day the site asks Google's [Search Status Dashboard](https://status.search.google.com) for them, one request that sends nothing about the site or its visitors; the first time, it adds the past updates the dashboard still lists. Add other sources you trust, such as a search engine's blog, as RSS, Atom or JSON Feed addresses under **Other feeds**; their posts whose title names an update are added too. For Bing, add its Search blog, `https://blogs.bing.com/search/feed/ Bing`: Bing announces few updates there, and its product news is left out.
 
 ### Shared reports
 
@@ -469,6 +471,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### 1.0.0
 
+- Changed: the live count moves from the tab bar into the Overview, beside the period, leaving more room for the tabs on smaller screens. New: **Info & ideas** at the bottom of each section and Search tab says what it is for and how to act on it. Settings → Data → Other feeds suggests Bing's Search blog feed.
 - Fixed: the Read Me tab shows a paragraph written over several lines as one paragraph, as GitHub does (the A/B tests section showed a paragraph for every line), and fenced code blocks as code (core files from the starter, with `STYLING.md`). The Rankings screenshot caption and section name Bing Webmaster Tools beside Google Search Console.
 The first release. Everything below is new since the starter it was made from.
 

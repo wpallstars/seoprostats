@@ -1,5 +1,6 @@
 /**
- * Overview: headline metrics, the chart, and where visits came from, what
+ * Overview: the period and the live count, headline metrics, the chart,
+ * and where visits came from, what
  * they viewed (pages, pages not found, content by author, category and
  * type), what they searched for, where (with a world map) and on what,
  * and what they did (events): two cards a row on wide screens.
@@ -18,6 +19,7 @@ import { BreakdownCard } from './components/BreakdownCard';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { MetricTiles } from './components/MetricTiles';
+import { Realtime, useRealtimeShown } from './components/Realtime';
 import { WorldMap } from './components/WorldMap';
 import { metricLabel } from './labels';
 import { METRICS, type Marker } from '@seoprostats/core';
@@ -33,6 +35,7 @@ export function Overview({ state, update }: ViewProps) {
 	const failed = stats.isError ? stats.error : series.isError ? series.error : null;
 	const answer = stats.data;
 	const empty = answer && answer.metrics.visits === 0;
+	const realtime = useRealtimeShown();
 
 	return (
 		<>
@@ -43,7 +46,10 @@ export function Overview({ state, update }: ViewProps) {
 			)}
 
 			<Card className="spst-summary">
-				{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+				<div className="spst-summary__head">
+					{answer && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+					{realtime && <Realtime />}
+				</div>
 				<MetricTiles
 					stats={answer}
 					series={series.data}
