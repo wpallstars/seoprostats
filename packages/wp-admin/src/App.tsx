@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Button, Notice } from '@wordpress/components';
+import { Button } from '@wordpress/components';
 import { createPortal } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
 import { buildHash, switchView, type View, type ViewState } from '@seoprostats/core';

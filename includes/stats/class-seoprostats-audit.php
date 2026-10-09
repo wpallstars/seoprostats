@@ -774,7 +774,7 @@ final class SEOProStats_Audit {
             $id   = (int) $item['path_id'];
             $path = isset($text[$id]) ? (string) $text[$id] : '';
             $same = array('title' => array(), 'description' => array());
-            foreach ($same as $what => $paths) {
+            foreach (array_keys($same) as $what) {
                 if (!isset($read['same'][$id][$what])) {
                     continue;
                 }

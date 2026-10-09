@@ -267,6 +267,10 @@ final class SEOProStats_Collector {
      * @param string $dir  The site's collector folder.
      * @param string $line JSON and a newline.
      * @return bool
+     *
+     * A file that cannot be opened returns false, with no PHP warning on a
+     * visitor's page.
+     * @SuppressWarnings("PHPMD.ErrorControlOperator")
      */
     public static function append($dir, $line) {
         $file = rtrim($dir, '/') . '/' . self::BUFFER;
