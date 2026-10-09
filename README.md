@@ -41,7 +41,7 @@ Version: 1.0.0
 
 ![The SEO Pro Stats Overview with its chart and changes lane](.wordpress-org/screenshot-1.png)
 
-**Search → Rankings**: Google Search Console clicks, impressions, CTR and position by query and page.
+**Search → Rankings**: Google Search Console and Bing Webmaster Tools clicks, impressions, CTR and position by query and page.
 
 ![Search Rankings with queries and pages](.wordpress-org/screenshot-2.png)
 
@@ -97,7 +97,7 @@ Goals and funnels belong to the data you are looking at: demo data has example o
 
 ### Search
 
-**Search → Rankings** shows Google Search Console's clicks, impressions, click-through rate (CTR) and average position for the period, against the previous one, with a chart of the one you pick (and the changes lane under it), then the search queries, pages, countries and devices, sorted by clicks. Choose a page to list the queries it showed for, or a query to list the pages it showed; choose it again to go back. The period stops at the newest day Search Console has made final (about three days ago), and the comparison has as many days, so days not imported yet never look like a drop. A lower position is better. Until Search Console is connected, it links to Settings → Connections; demo data has made-up search data to try it with. With Bing Webmaster Tools connected too, **Google** and **Bing** buttons at the end of the tabs switch every Search tab to that engine (the address keeps the choice). Bing gives its pages and queries by week and no countries or devices, so with Bing the period is whole weeks ending on Bing's newest week, and a page's or query's chart is by week. With both, a **Combined** button adds them up on Rankings, Opportunities and Content: clicks and impressions summed, CTR and position over both, a query or page shown on both as one row, and the period ending at the earlier of their newest days, in whole weeks (each engine counts its own days: Google's in Pacific time, Bing's in UTC).
+**Search → Rankings** shows search clicks, impressions, click-through rate (CTR) and average position from Google Search Console (and Bing Webmaster Tools, below) for the period, against the previous one, with a chart of the one you pick (and the changes lane under it), then the search queries, pages, countries and devices, sorted by clicks. Choose a page to list the queries it showed for, or a query to list the pages it showed; choose it again to go back. The period stops at the newest day Search Console has made final (about three days ago), and the comparison has as many days, so days not imported yet never look like a drop. A lower position is better. Until Search Console is connected, it links to Settings → Connections; demo data has made-up search data to try it with. With Bing Webmaster Tools connected too, **Google** and **Bing** buttons at the end of the tabs switch every Search tab to that engine (the address keeps the choice). Bing gives its pages and queries by week and no countries or devices, so with Bing the period is whole weeks ending on Bing's newest week, and a page's or query's chart is by week. With both, a **Combined** button adds them up on Rankings, Opportunities and Content: clicks and impressions summed, CTR and position over both, a query or page shown on both as one row, and the period ending at the earlier of their newest days, in whole weeks (each engine counts its own days: Google's in Pacific time, Bing's in UTC).
 
 **Search → Rankings → Appearance** shows Google Search Console clicks,
 impressions, CTR and average position by result type, such as video,
@@ -469,6 +469,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### 1.0.0
 
+- Fixed: the Read Me tab shows a paragraph written over several lines as one paragraph, as GitHub does (the A/B tests section showed a paragraph for every line), and fenced code blocks as code (core files from the starter, with `STYLING.md`). The Rankings screenshot caption and section name Bing Webmaster Tools beside Google Search Console.
 The first release. Everything below is new since the starter it was made from.
 
 - New: Search Console sitemaps and URL Inspection. While Search Console is connected, the hourly import reads the property's sitemaps once a day (errors, warnings, when Google last downloaded each) and asks Google how it indexed up to 200 pages a day (setting Settings → Data → Google URL inspections, 0 to 2,000): first the pages Indexation lists, then pages with search traffic, each again after 14 days. Search → Audit gains **Google's index** after Indexation, Google's reason and last crawl in Indexation, and four findings: blocked by robots.txt, crawled but not indexed, Google picked another canonical and rich result errors. Sitemap problems (errors, warnings, not downloaded for a week, the site's sitemap not submitted) are Plan items; a page's verdict changing is a change on the timeline. New `inspections` table (schema v19). REST route `inspections`, `wp seoprostats inspect [<page>] [--run] [--sitemaps]` and the ability `seoprostats/inspections`; the demo data has twelve pages inspected and three sitemaps.
