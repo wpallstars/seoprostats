@@ -514,6 +514,9 @@ now for two minutes, even when the setting is off. The dashboard shows it
 under Search → Backlinks (not in shared reports).
 
 CSV exports (GH#146, schema v20) use `SEOProStats_Backlinks_Import`:
+the job/lease facade delegates header and row parsing to `Backlinks_CSV`,
+bounded staging to `Backlinks_Stage` and idempotent upserts to `Backlinks_Store`
+(all classes have the `SEOProStats_` prefix). Each component has one responsibility.
 UTF-8 comma-separated header detection, or explicit source; multipart and JSON
 `POST /backlinks/import`, progress `GET /backlinks/import`, CLI `backlinks import
 <file>`. Settings → Import has a Links card. Staging uses non-autoloaded options,
