@@ -472,7 +472,8 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
-- Changed: the source code is public on GitHub. The screenshots show the current screens (the live count on the Overview, Info & ideas), and a sixth shows a shared report. Nothing changes in the plugin.
+- Fixed: a report filter value that ends in a backslash no longer runs into the next one. In a filter's text form, `\\` is a backslash in a value, as `\,` is a comma; any other backslash stays as written, so existing links still work.
+- Changed: the source code is public on GitHub. The screenshots show the current screens (the live count on the Overview, Info & ideas), and a sixth shows a shared report.
 
 ### 1.0.0
 
