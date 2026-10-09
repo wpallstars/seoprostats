@@ -106,7 +106,7 @@ Use **Support** on the settings screen, or ask aidevops.
 == Screenshots ==
 
 1. The Overview: visits against the previous period, with the site's changes under the chart.
-2. Search → Rankings: Google Search Console clicks, impressions, CTR and position by query and page.
+2. Search → Rankings: Google Search Console and Bing Webmaster Tools clicks, impressions, CTR and position by query and page.
 3. Search → Plan: search work from every report in one list, best first, with its score.
 4. Changes: what changed on the site, when and on which page.
 5. Goals: conversions, conversion rate and revenue per currency, against the previous period.
