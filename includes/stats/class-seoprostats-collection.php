@@ -48,6 +48,9 @@ final class SEOProStats_Collection {
     /** Cron hook: an import from another statistics plugin (SEOProStats_Migrate; only while one runs). */
     const MIGRATE_HOOK = 'seoprostats_migrate';
 
+    /** Cron hook: staged backlink CSV imports, only while a job runs. */
+    const BACKLINK_IMPORT_HOOK = 'seoprostats_backlinks_import';
+
     /** Transient: the statistics plugins found on the site (SEOProStats_Migrate::found()). */
     const MIGRATE_FOUND = 'seoprostats_migrate_found';
 
@@ -79,6 +82,7 @@ final class SEOProStats_Collection {
         add_action(self::DAILY_HOOK, array(__CLASS__, 'daily'));
         add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
         add_action(self::MIGRATE_HOOK, array(__CLASS__, 'migrate'));
+        add_action(self::BACKLINK_IMPORT_HOOK, array(__CLASS__, 'backlinks_import'));
         add_action(self::MIGRATE_SCAN_HOOK, array(__CLASS__, 'migrate_scan'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'migrate_scan_due'));
         // Plugins switched on, off or deleted: look for statistics plugins again.
@@ -178,6 +182,12 @@ final class SEOProStats_Collection {
     public static function migrate() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
         SEOProStats_Migrate::cron();
+    }
+
+    /** Cron: move a staged backlink export on within its budget. */
+    public static function backlinks_import() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-import.php';
+        SEOProStats_Backlinks_Import::run();
     }
 
     /**

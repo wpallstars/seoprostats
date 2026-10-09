@@ -63,6 +63,13 @@ final class SEOProStats_Backlinks {
     const FOUND = array(
         'referrer'   => 1,
         'dataforseo' => 2,
+        'gsc'       => 4,
+        'ahrefs'    => 8,
+        'semrush'   => 16,
+        'majestic'  => 32,
+        'moz'       => 64,
+        'bing'      => 128,
+        'generic'   => 256,
     );
 
     /** Progress, per data set (autoload off): upto, last, pages, checked, errors, version. */
@@ -850,6 +857,8 @@ final class SEOProStats_Backlinks {
      * Delete the current data set's progress (demo removal, uninstall).
      */
     public static function reset() {
+        require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        SEOProStats_Backlinks_Import::reset();
         delete_option(SEOProStats_Schema::option(self::OPTION));
     }
 
