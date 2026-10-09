@@ -39,7 +39,7 @@ final class SEOProStats_Collection {
     /** Cron hook, every minute: the processor (one file check when idle). */
     const PROCESS_HOOK = 'seoprostats_process';
 
-    /** Daily cron hook: search engine updates (only while that setting is on). */
+    /** Daily cron hook: search engine updates, the content audit, sitemaps and backlinks (each only while its setting is on). */
     const DAILY_HOOK = 'seoprostats_daily';
 
     /** Cron hook: search data imports (SEOProStats_Search_Import; only while a source is connected). */
@@ -105,12 +105,9 @@ final class SEOProStats_Collection {
         if (!wp_next_scheduled(self::PROCESS_HOOK)) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, 'seoprostats_minute', self::PROCESS_HOOK);
         }
-        // Search engine updates: the first run a minute after the setting is switched on.
-        $daily = wp_next_scheduled(self::DAILY_HOOK);
-        if (SEOProStats_Statistics::search_updates() && !$daily) {
+        // The daily jobs (each checks its own setting): the first run a minute after.
+        if (!wp_next_scheduled(self::DAILY_HOOK)) {
             wp_schedule_event(time() + MINUTE_IN_SECONDS, 'daily', self::DAILY_HOOK);
-        } elseif ($daily && !SEOProStats_Statistics::search_updates()) {
-            wp_clear_scheduled_hook(self::DAILY_HOOK);
         }
         if (get_option(self::ENDPOINT_OPTION) === false) {
             // Sites from before the option: the last test's answer, until the next test.
@@ -150,8 +147,8 @@ final class SEOProStats_Collection {
 
     /**
      * Daily cron: search engine updates, the content audit's next batch
-     * of pages and the site's sitemap addresses, for indexation (the
-     * classes load only here and in WP-CLI).
+     * of pages, the site's sitemap addresses, for indexation, and the
+     * backlinks check (the classes load only here and in WP-CLI).
      */
     public static function daily() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
@@ -160,6 +157,8 @@ final class SEOProStats_Collection {
         SEOProStats_Audit::batch();
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         SEOProStats_Indexation::read_sitemaps();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
+        SEOProStats_Backlinks::run();
     }
 
     /**

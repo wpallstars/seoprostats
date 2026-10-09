@@ -1499,6 +1499,121 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Backlinks: pages of other sites that link to the site's pages.
+     *
+     * Found by opening the pages that sent visits (Referral channel; the
+     * other site's home page when the browser gave only its address) and
+     * reading their links to the site. The daily cron checks new pages
+     * and each page again weekly, within 20 seconds; `check` does it now,
+     * for up to two minutes, even when the setting is off. A link missing
+     * on two checks in a row, or on a page that is gone, is lost.
+     *
+     * ## OPTIONS
+     *
+     * [<kind>]
+     * : links (live links, newest first), domains (the sites linking), pages (the site's pages linked to), lost (links lost in the period), or check (check the pages now).
+     * ---
+     * default: links
+     * options:
+     *   - links
+     *   - domains
+     *   - pages
+     *   - lost
+     *   - check
+     * ---
+     *
+     * [--all]
+     * : With check: open every referring page now, not only those due.
+     *
+     * [--range=<range>]
+     * : Period for new and lost links, and the sites' visits (30d when left out).
+     *
+     * [--limit=<limit>]
+     * : Most rows (20 when left out).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats backlinks
+     *     wp seoprostats backlinks domains --range=90d
+     *     wp seoprostats backlinks lost --range=12mo
+     *     wp seoprostats backlinks check
+     *     wp seoprostats backlinks check --all
+     *     wp seoprostats backlinks --data=demo --format=json
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function backlinks($args, $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
+        $kind = isset($args[0]) ? (string) $args[0] : 'links';
+        if ($kind === 'check') {
+            if (!SEOProStats_Schema::maybe_upgrade()) {
+                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+            }
+            $done = SEOProStats_Backlinks::run(120, true, !empty($assoc['all']));
+            if ($this->format($assoc) === 'json') {
+                WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                return;
+            }
+            /* translators: 1: referring pages read from visits, 2: pages opened, 3: new links, 4: lost links, 5: pages that could not be opened, 6: pages skipped (no link and no visit since their last check) */
+            WP_CLI::success(sprintf(__('Referring pages from visits: %1$d. Opened: %2$d. New links: %3$d. Lost links: %4$d. Could not open: %5$d. Skipped: %6$d.', 'seoprostats'), $done['new_pages'], $done['checked'], $done['links_new'], $done['links_lost'], $done['errors'], $done['skipped']) . ($done['more'] ? ' ' . __('More pages are due; run it again.', 'seoprostats') : ''));
+            return;
+        }
+        $req    = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
+        $answer = $this->on_data($assoc, static function () use ($req, $kind) {
+            return SEOProStats_Backlinks::report($req, $kind);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $this->range_line($answer['range']);
+        $t    = $answer['totals'];
+        $read = $answer['read'];
+        /* translators: 1: referring sites, 2: live links, 3: new links in the period, 4: lost links in the period */
+        WP_CLI::log(sprintf(__('Referring sites: %1$d. Live links: %2$d. New in the period: %3$d. Lost in the period: %4$d.', 'seoprostats'), $t['domains'], $t['links'], $t['new'], $t['lost']));
+        /* translators: 1: referring pages checked, 2: referring pages known */
+        WP_CLI::log(sprintf(__('Referring pages checked: %1$d of %2$d.', 'seoprostats'), $read['checked'], $read['pages']) . ($read['enabled'] ? '' : ' ' . __('The check is off (Settings → Data).', 'seoprostats')));
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No backlinks.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['rows'] as $row) {
+            switch ($answer['kind']) {
+                case 'domains':
+                    $rows[] = array('host' => $row['host'], 'links' => $row['links'], 'followed' => $row['followed'], 'pages' => $row['pages'], 'new' => $row['new'], 'lost' => $row['lost'], 'visits' => $row['visits'], 'first_seen' => substr((string) $row['first_seen'], 0, 10));
+                    break;
+                case 'pages':
+                    $rows[] = array('page' => $row['page'], 'domains' => $row['domains'], 'links' => $row['links'], 'new' => $row['new'], 'first_seen' => substr((string) $row['first_seen'], 0, 10));
+                    break;
+                default:
+                    $line = array('source' => $row['source'], 'page' => $row['page'], 'anchor' => $row['anchor'], 'rel' => implode(' ', $row['rel']), 'first_seen' => substr((string) $row['first_seen'], 0, 10), 'last_seen' => substr((string) $row['last_seen'], 0, 10));
+                    if ($answer['kind'] === 'lost') {
+                        $line['lost'] = substr((string) $row['lost'], 0, 10);
+                    }
+                    $rows[] = $line;
+            }
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * Search targets: the searches the site chose to win and the page
      * meant for each, with how search treats them now.
      *
@@ -3999,10 +4114,18 @@ final class SEOProStats_CLI {
         }
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         $updates = SEOProStats_Search_Updates::state();
+        $next    = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
+        $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
+        $backlinks = SEOProStats_Backlinks::state();
+        if (!SEOProStats_Statistics::backlinks()) {
+            $add('backlinks check', true, 'off (SEO Pro Stats → Settings → Data)');
+        } else {
+            $add('backlinks check', true, $backlinks['last'] ? 'last run ' . human_time_diff($backlinks['last']) . ' ago: ' . $backlinks['checked'] . ' page(s) opened, ' . $backlinks['errors'] . ' could not be opened' : 'not run yet');
+        }
         if (!SEOProStats_Statistics::search_updates()) {
             $add('search engine updates', true, 'off (SEO Pro Stats → Settings → Data)');
         } else {
-            $next   = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
             $failed = array();
             foreach ($updates['sources'] as $source) {
                 if (empty($source['ok'])) {
@@ -4010,7 +4133,6 @@ final class SEOProStats_CLI {
                 }
             }
             $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
-            $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
             $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
         }
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';

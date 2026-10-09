@@ -90,6 +90,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
     }
@@ -382,6 +383,19 @@ final class SEOProStats_API {
                     'default'     => SEOProStats_Indexation::DAYS,
                 ),
                 'limit'  => array('maximum' => SEOProStats_Indexation::MAX_LIMIT, 'default' => SEOProStats_Indexation::LIMIT) + self::args(true)['limit'],
+                'offset' => self::args(true)['offset'],
+            ),
+        ));
+        register_rest_route($ns, '/backlinks', $read + array(
+            'callback' => array(__CLASS__, 'backlinks'),
+            'args'     => $base + array(
+                'kind'   => array(
+                    'description' => __('Backlinks: links (pages of other sites linking to the site\'s pages now, newest first), domains (the sites linking, with their visits in the period), pages (the site\'s pages they link to) or lost (links lost in the period). New and lost are counted in the period.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => SEOProStats_Backlinks::KINDS,
+                    'default'     => 'links',
+                ),
+                'limit'  => array('maximum' => SEOProStats_Backlinks::MAX_LIMIT, 'default' => SEOProStats_Backlinks::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
             ),
         ));
@@ -1756,6 +1770,20 @@ final class SEOProStats_API {
         $days   = (int) $request->get_param('days');
         return self::report($request, static function ($req) use ($engine, $kind, $days) {
             return SEOProStats_Indexation::report($req, $engine, $kind, $days);
+        });
+    }
+
+    /**
+     * GET /backlinks: pages of other sites linking to the site's pages,
+     * found by checking the pages that sent visits.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function backlinks($request) {
+        $kind = (string) $request->get_param('kind');
+        return self::report($request, static function ($req) use ($kind) {
+            return SEOProStats_Backlinks::report($req, $kind);
         });
     }
 

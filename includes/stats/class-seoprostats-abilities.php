@@ -584,6 +584,76 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/backlinks', array(
+            'label'               => __('Backlinks', 'seoprostats'),
+            'description'         => __('Pages of other sites that link to the site\'s pages, found without an outside service: once a day the site opens the pages that sent visits (Referral channel; the other site\'s home page when the browser gave only its address) and reads their links to the site, with anchor text and rel (nofollow, sponsored, ugc). Each page is checked again weekly; a link missing on two checks in a row, or on a page that is gone, is lost. Four lists. links: live links, newest first, each with source (the page linking), host, page (the site\'s page it links to), anchor, rel, first_seen, last_seen and new (first found in the period). domains: the sites linking, with links, followed (without nofollow, sponsored or ugc), pages, new and lost in the period, and their visits in the period, most visits first. pages: the site\'s pages linked to, with domains and links, most domains first. lost: links lost in the period, with lost. totals counts each; read says how many referring pages were checked, the last run and whether the check is on. Links from sites that never sent a visit are not found. New and lost links are also changes on the timeline (seoprostats/markers).', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'default'              => array(),
+                'additionalProperties' => false,
+                'properties'           => array(
+                    'kind'   => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Backlinks::KINDS,
+                        'default'     => 'links',
+                        'description' => __('Which list.', 'seoprostats'),
+                    ),
+                    'range'  => array(
+                        'type'        => 'string',
+                        'enum'        => SEOProStats_Query::RANGES,
+                        'default'     => '30d',
+                        'description' => __('Period for new and lost links and the sites\' visits, in the site time zone.', 'seoprostats'),
+                    ),
+                    'from'   => array(
+                        'type'        => 'string',
+                        'description' => __('First day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'to'     => array(
+                        'type'        => 'string',
+                        'description' => __('Last day of a custom range (YYYY-MM-DD).', 'seoprostats'),
+                    ),
+                    'limit'  => array(
+                        'type'    => 'integer',
+                        'minimum' => 1,
+                        'maximum' => SEOProStats_Backlinks::MAX_LIMIT,
+                        'default' => 25,
+                    ),
+                    'offset' => array(
+                        'type'    => 'integer',
+                        'minimum' => 0,
+                        'default' => 0,
+                    ),
+                    'data'   => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'range'  => array('type' => 'object'),
+                    'totals' => array('type' => 'object'),
+                    'read'   => array('type' => 'object'),
+                    'rules'  => array('type' => 'object'),
+                    'kind'   => array('type' => 'string'),
+                    'rows'   => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                    'total'  => array('type' => 'integer'),
+                    'more'   => array('type' => 'boolean'),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'backlinks'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
         wp_register_ability('seoprostats/coverage', array(
             'label'               => __('Query coverage of a page', 'seoprostats'),
             'description'         => __('The Google Search Console queries one page shows for (most impressions first, up to 200), each with how far the page\'s own words cover it: title (every word in the title or SEO title), heading, text, partial or none, the words missing, and whether it is a question. Also the focus keywords of Rank Math, Yoast SEO, SEOPress or All in One SEO when one is active, with their search figures. Queries the page does not cover are cheap wins: add the words, or answer the question in a heading. Works without any SEO plugin. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
@@ -1672,6 +1742,24 @@ final class SEOProStats_Abilities {
         $engine = isset($input['engine']) ? (string) $input['engine'] : 'google';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $days, $engine) {
             return SEOProStats_Indexation::report((array) $req, $engine, $kind, $days);
+        });
+    }
+
+    /**
+     * seoprostats/backlinks.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function backlinks($input = null) {
+        $input = is_array($input) ? $input : array();
+        $req   = SEOProStats_Query::request(array_diff_key($input, array('kind' => 1)) + array('range' => '30d', 'limit' => 25));
+        if (is_wp_error($req)) {
+            return $req;
+        }
+        $kind = isset($input['kind']) ? (string) $input['kind'] : 'links';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
+            return SEOProStats_Backlinks::report((array) $req, $kind);
         });
     }
 

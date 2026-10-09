@@ -388,6 +388,28 @@ final class SEOProStats_Demo {
     /** Search targets made by this version of the demo; older ones are made again. */
     const TARGETS_VERSION = 1;
 
+    /**
+     * Backlinks (SEOProStats_Backlinks), as the check would have found
+     * them on the demo's referring pages (SOURCES): referring page, the
+     * page it links to, anchor text, rel bits (1 nofollow, 2 sponsored,
+     * 4 ugc), days since first found, days since lost (0: live). One is
+     * new this week and one was lost lately.
+     */
+    const BACKLINKS = array(
+        array('https://example.org/best-wordpress-plugins/', '/features/', 'SEO Pro Stats', 0, 140, 0),
+        array('https://example.org/best-wordpress-plugins/', '/pricing/', 'see the pricing', 0, 140, 0),
+        array('https://example.org/best-wordpress-plugins/', '/blog/core-web-vitals-explained/', 'Core Web Vitals explained', 0, 35, 0),
+        array('https://wordpress.org/support/', '/docs/getting-started/', 'getting started guide', 5, 70, 0),
+        array('https://wordpress.org/support/', '/docs/faq/', 'FAQ', 5, 45, 12),
+        array('https://github.com/', '/docs/', 'Documentation', 1, 210, 0),
+        array('https://news.ycombinator.com/', '/blog/privacy-friendly-analytics/', 'Privacy-friendly analytics without cookies', 1, 22, 0),
+        array('https://example.org/speed-guide/', '/blog/speed-up-wordpress/', 'speed up WordPress', 0, 4, 0),
+        array('https://example.org/speed-guide/', '/', '[image]', 0, 4, 0),
+    );
+
+    /** Backlinks made by this version of the demo; older ones are made again. */
+    const BACKLINKS_VERSION = 1;
+
     /** Content audit facts made by this version of the demo; older ones are made again. */
     const AUDIT_VERSION = 2;
 
@@ -860,12 +882,14 @@ final class SEOProStats_Demo {
         require_once __DIR__ . '/class-seoprostats-audit.php';
         require_once __DIR__ . '/class-seoprostats-indexation.php';
         require_once __DIR__ . '/class-seoprostats-targets.php';
+        require_once __DIR__ . '/class-seoprostats-backlinks.php';
         self::run(static function () {
             SEOProStats_Schema::drop();
             SEOProStats_Goals::forget();
             SEOProStats_Audit::reset();
             SEOProStats_Indexation::reset();
             SEOProStats_Targets::reset();
+            SEOProStats_Backlinks::reset();
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION));
             delete_option(SEOProStats_Schema::option(SEOProStats_Collection::ROLLUP_OPTION));
         });
@@ -1060,6 +1084,13 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::targets();
         }
+        // The backlinks (again when they change).
+        $state = self::state();
+        if (!$more && (empty($state['backlinks']) || (int) $state['backlinks'] < self::BACKLINKS_VERSION)) {
+            $state['backlinks'] = self::BACKLINKS_VERSION;
+            update_option(self::OPTION, $state, false);
+            self::backlinks();
+        }
         // Then the decision queue: one item accepted, one done (once).
         $state = self::state();
         if (!$more && empty($state['queue'])) {
@@ -1122,6 +1153,57 @@ final class SEOProStats_Demo {
             $rows[] = array('query' => $target[0], 'page' => $target[1], 'priority' => (string) $target[2], 'status' => $target[3]);
         }
         SEOProStats_Targets::import($rows, 'demo', true);
+    }
+
+    /**
+     * Write the demo's backlinks (BACKLINKS); on the demo tables (called
+     * inside run()).
+     */
+    private static function backlinks() {
+        require_once __DIR__ . '/class-seoprostats-backlinks.php';
+        $now   = time();
+        $links = array();
+        foreach (self::BACKLINKS as $link) {
+            $lost    = $link[5] ? $now - (int) $link[5] * DAY_IN_SECONDS : 0;
+            $links[] = array(
+                'url'        => $link[0],
+                'path'       => $link[1],
+                'anchor'     => $link[2],
+                'rel'        => (int) $link[3],
+                'first_seen' => $now - (int) $link[4] * DAY_IN_SECONDS,
+                'last_seen'  => $lost ? $lost - 7 * DAY_IN_SECONDS : $now - DAY_IN_SECONDS,
+                'lost'       => $lost,
+            );
+        }
+        SEOProStats_Backlinks::write_links($links);
+        // Their changes on the timeline, as the daily check writes them: one per referring site and day.
+        require_once __DIR__ . '/class-seoprostats-changes.php';
+        $by = array();
+        foreach (self::BACKLINKS as $link) {
+            $host  = (string) wp_parse_url($link[0], PHP_URL_HOST);
+            $lost  = (int) $link[5];
+            $days  = $lost ? $lost : (int) $link[4];
+            $kind  = $lost ? SEOProStats_Changes::BACKLINK_LOST : SEOProStats_Changes::BACKLINK_NEW;
+            $key   = $kind . ' ' . $host . ' ' . $days;
+            $by[$key] = isset($by[$key]) ? $by[$key] : array('kind' => $kind, 'host' => $host, 'days' => $days, 'links' => array());
+            $by[$key]['links'][] = array('from' => $link[0], 'to' => $link[1], 'anchor' => $lost ? '' : $link[2]);
+        }
+        $today = new DateTimeImmutable('today', wp_timezone());
+        foreach ($by as $change) {
+            $paths = array_values(array_unique(array_column($change['links'], 'to')));
+            SEOProStats_Changes::write(array(
+                'ts'          => $today->modify('-' . $change['days'] . ' days')->setTime(6, 30)->getTimestamp(),
+                'kind'        => $change['kind'],
+                'path'        => count($paths) === 1 ? (string) $paths[0] : '',
+                'object_type' => 'backlink',
+                'object_id'   => 0,
+                'old'         => '',
+                'new'         => $change['host'],
+                'meta'        => array('host' => $change['host'], 'count' => count($change['links']), 'links' => $change['links']),
+                'source'      => 4,
+                'user_id'     => 0,
+            ));
+        }
     }
 
     /**

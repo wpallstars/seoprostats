@@ -386,7 +386,7 @@ export type SearchKind = (typeof SEARCH_KINDS)[number];
 export const SEARCH_ANY_KINDS: readonly SearchKind[] = ['queries', 'pages', 'days'];
 
 /** The Search section's reports; the first is the default. */
-export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'targets', 'plan', 'experiments'] as const;
+export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'backlinks', 'targets', 'plan', 'experiments'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
 
 /**
@@ -1205,6 +1205,71 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 	counts: Record<IndexationKind, number>;
 	/** Never shown first, then the newest. */
 	rows: IndexationRow[];
+	total: number;
+	more: boolean;
+}
+
+/** Backlinks lists: live links, the sites linking, the site's pages linked to, links lost in the period. */
+export const BACKLINK_KINDS = ['links', 'domains', 'pages', 'lost'] as const;
+export type BacklinkKind = (typeof BACKLINK_KINDS)[number];
+
+/** A link's rel words kept. */
+export type BacklinkRel = 'nofollow' | 'sponsored' | 'ugc';
+
+/** A link from a page of another site to one of the site's pages. */
+export interface BacklinkRow {
+	/** The page linking (https://host/path). */
+	source: string;
+	host: string;
+	/** The site's page it links to. */
+	page: string;
+	/** Its text ([alt] for an image, [image] without one). */
+	anchor: string;
+	rel: BacklinkRel[];
+	/** How it was found: referrer (a page that sent visits), or a provider. */
+	found: string[];
+	/** ISO times: first and last check that found it. */
+	first_seen: string | null;
+	last_seen: string | null;
+	/** First found in the period. */
+	new: boolean;
+	authority: number;
+	/** lost list: when it was lost. */
+	lost?: string | null;
+}
+
+/** A site linking to the site. */
+export interface BacklinkDomainRow {
+	host: string;
+	links: number;
+	/** Links without nofollow, sponsored or ugc. */
+	followed: number;
+	pages: number;
+	new: number;
+	lost: number;
+	/** Its visits in the period. */
+	visits: number;
+	first_seen: string | null;
+	last_seen: string | null;
+}
+
+/** One of the site's pages that other sites link to. */
+export interface BacklinkPageRow {
+	page: string;
+	links: number;
+	domains: number;
+	new: number;
+	first_seen: string | null;
+}
+
+export interface BacklinksAnswer extends Answer {
+	range: Range;
+	kind: BacklinkKind;
+	totals: { domains: number; links: number; pages: number; new: number; new_domains: number; lost: number };
+	/** Referring pages known and checked, the last run, failed requests then, and whether the check is on. */
+	read: { enabled: boolean; pages: number; checked: number; last: string | null; errors: number };
+	rules: { recheck_days: number; misses: number; budget: number; max_rows: number };
+	rows: (BacklinkRow | BacklinkDomainRow | BacklinkPageRow)[];
 	total: number;
 	more: boolean;
 }

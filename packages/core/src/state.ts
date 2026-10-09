@@ -14,6 +14,7 @@
 import { parseFilter, serializeFilter, type Filter } from './filters';
 import {
 	AUDIT_FINDINGS,
+	BACKLINK_KINDS,
 	CHANGE_GROUPS,
 	CLICK_KINDS,
 	COMPARE_KEYS,
@@ -29,6 +30,7 @@ import {
 	TARGET_FILTERS,
 	singleEngine,
 	type AuditFinding,
+	type BacklinkKind,
 	type ChangeGroup,
 	type ClickKind,
 	type CompareKey,
@@ -51,7 +53,7 @@ export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'c
 export type View = (typeof VIEWS)[number];
 /** Every tab but A/B tests (the owner's work in progress) can be shared; Search once per engine. */
 export const SHARE_VIEWS: readonly View[] = VIEWS.filter((view) => view !== 'ab-tests');
-/** The Search reports a shared report shows (not Targets, Plan or Experiments: the owner's chosen searches, work list and notes). */
+/** The Search reports a shared report shows (not Backlinks, Targets, Plan or Experiments: the owner's research, chosen searches, work list and notes). */
 export const SHARE_SEARCH_REPORTS: readonly SearchReport[] = ['rankings', 'opportunities', 'audit', 'content'];
 
 /** Normalize saved public views with exactly the address reader's rules. */
@@ -70,6 +72,7 @@ export function shareView(state: ViewState): ViewState | null {
         delete view.change;
         delete view.goal;
         delete view.targets;
+        delete view.backlinks;
     }
     return view;
 }
@@ -114,8 +117,10 @@ export interface ViewState {
 	key?: string;
 	/** Properties: only properties sent with this event. */
 	event?: string;
-	/** Search: Rankings (the default), Opportunities, Audit, Content, Targets, Plan or Experiments. */
+	/** Search: Rankings (the default), Opportunities, Audit, Content, Backlinks, Targets, Plan or Experiments. */
 	report?: SearchReport;
+	/** Search → Backlinks: the list shown (links when left out). */
+	backlinks?: BacklinkKind;
 	/** Search → Targets: the targets shown (all when left out). */
 	targets?: TargetFilter;
 	/** Search → Audit: only pages with this finding (all when left out). */
@@ -147,7 +152,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'backlinks', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -214,6 +219,10 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		if (report === 'targets') {
 			const targets = oneOf(TARGET_FILTERS, params.get('targets'), 'all');
 			set('targets', targets === 'all' ? undefined : targets);
+		}
+		if (report === 'backlinks') {
+			const backlinks = oneOf(BACKLINK_KINDS, params.get('backlinks'), 'links');
+			set('backlinks', backlinks === 'links' ? undefined : backlinks);
 		}
 		if (report === 'audit') {
 			const finding = params.get('finding');

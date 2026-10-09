@@ -151,7 +151,11 @@ long-term record.
       (`--format=toon` for the aidevops export layout), the ability
       `seoprostats/loop` and `docs/seo-loop-recipes.md` (GH#82, after
       GH#75).
-- [ ] Backlinks from verified referrers; optional provider.
+- [x] Backlinks from verified referrers: the daily check opens pages that
+      sent visits and keeps their links to the site; Search → Backlinks,
+      new and lost links on the timeline (GH#142).
+- [ ] Backlinks from a provider (DataForSEO; GH#141), and the other data
+      sources in GH#37 (#144–#150).
 - [ ] Referral spikes and mentions.
 
 ## Phase 5: health (depends on 1)
