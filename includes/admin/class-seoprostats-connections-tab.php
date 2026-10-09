@@ -542,7 +542,18 @@ final class SEOProStats_Connections_Tab {
         <?php endif; ?>
 
         <details>
-            <summary><?php $bing ? esc_html_e('Change the site or key', 'seoprostats') : esc_html_e('Change the property or key', 'seoprostats'); ?></summary>
+            <?php $signed_in = isset($status['method']) && $status['method'] === 'google'; ?>
+            <summary>
+                <?php
+                if ($bing) {
+                    esc_html_e('Change the site or key', 'seoprostats');
+                } elseif ($signed_in) {
+                    esc_html_e('Change the property, or use a key instead', 'seoprostats');
+                } else {
+                    esc_html_e('Change the property or key', 'seoprostats');
+                }
+                ?>
+            </summary>
             <p>
                 <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
                 <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" value="<?php echo esc_attr((string) $status['property']); ?>">
@@ -554,7 +565,7 @@ final class SEOProStats_Connections_Tab {
                     <input type="password" class="regular-text" id="<?php echo esc_attr($id . '-key'); ?>" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>">
                 <?php else : ?>
                     <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('New service account key (JSON)', 'seoprostats'); ?></strong></label>
-                    <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
+                    <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php $signed_in ? esc_attr_e('Leave empty to keep the Google sign-in.', 'seoprostats') : esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
                 <?php endif; ?>
             </p>
             <div class="spst-connection__actions">

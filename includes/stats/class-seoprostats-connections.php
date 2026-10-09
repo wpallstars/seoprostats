@@ -78,6 +78,10 @@ final class SEOProStats_Connections {
         if (is_wp_error($saved)) {
             return $saved;
         }
+        // Replaced sign-in (a key instead, or a new sign-in): revoke the old one with Google.
+        if (is_array($existing) && $existing !== $result['credentials'] && method_exists($class, 'revoke')) {
+            $class::revoke($existing);
+        }
         $reset = array('error' => null, 'error_at' => null, 'properties' => count($result['properties']));
         if (!$before || (isset($before['settings']['property']) ? (string) $before['settings']['property'] : '') !== $result['settings']['property']) {
             $reset += array('through' => null, 'back' => null, 'first' => null, 'final' => null, 'checked' => null, 'pairs_from' => null, 'pairs_to' => null, 'pairs_queue' => null);
