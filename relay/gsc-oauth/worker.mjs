@@ -48,10 +48,10 @@ export default {
 			if (request.method === 'POST' && url.pathname === '/refresh') {
 				return await refresh(request, env);
 			}
-			return page('Not found', '<p>There is nothing here.</p>', 404);
+			return page('Not found', html`<p>There is nothing here.</p>`, 404);
 		} catch {
 			// No details: they could hold a token.
-			return page('Something went wrong', '<p>Please go back to your site and try again.</p>', 500);
+			return page('Something went wrong', html`<p>Please go back to your site and try again.</p>`, 500);
 		}
 	},
 };
@@ -60,9 +60,9 @@ export default {
 function home(env) {
 	return page(
 		'SEO Pro Stats: Sign in with Google',
-		`<p>This service lets the SEO Pro Stats WordPress plugin connect a site to Google Search Console with one sign-in. It passes Google's answer straight to the site that asked and keeps nothing.</p>
+		html`<p>This service lets the SEO Pro Stats WordPress plugin connect a site to Google Search Console with one sign-in. It passes Google's answer straight to the site that asked and keeps nothing.</p>
 <p>It asks Google only for read access to Search Console. Your site stores its access, encrypted, and can disconnect at any time.</p>
-<p><a href="${esc(env.PRIVACY_URL)}">Privacy policy</a> · <a href="${esc(env.PLUGIN_URL)}">SEO Pro Stats</a></p>`
+<p><a href="${env.PRIVACY_URL}">Privacy policy</a> · <a href="${env.PLUGIN_URL}">SEO Pro Stats</a></p>`
 	);
 }
 
@@ -71,7 +71,7 @@ async function start(url, env) {
 	const site = returnAddress(url.searchParams.get('site'));
 	const nonce = url.searchParams.get('nonce') || '';
 	if (!site || !NONCE.test(nonce)) {
-		return page('This link is not valid', '<p>Start again from Settings → Connections on your site.</p>', 400);
+		return page('This link is not valid', html`<p>Start again from Settings → Connections on your site.</p>`, 400);
 	}
 	const state = await sign(env, { s: site.href, n: nonce, t: Math.floor(Date.now() / 1000) });
 	const auth = new URL(GOOGLE_AUTH);
@@ -87,9 +87,9 @@ async function start(url, env) {
 	}).toString();
 	return page(
 		'Connect Google Search Console',
-		`<p>SEO Pro Stats on <strong>${esc(site.host)}</strong> asks to read your Search Console data (search clicks, impressions, position, sitemaps and URL inspections). It cannot change anything.</p>
+		html`<p>SEO Pro Stats on <strong>${site.host}</strong> asks to read your Search Console data (search clicks, impressions, position, sitemaps and URL inspections). It cannot change anything.</p>
 <p>Continue only if you started this from that site's wp-admin.</p>
-<p><a class="button" href="${esc(auth.href)}">Continue with Google</a> <a href="${esc(site.origin)}">Cancel</a></p>`
+<p><a class="button" href="${auth.href}">Continue with Google</a> <a href="${site.origin}">Cancel</a></p>`
 	);
 }
 
@@ -98,7 +98,7 @@ async function callback(url, env) {
 	const state = await verify(env, url.searchParams.get('state') || '');
 	const site = state ? returnAddress(state.s) : null;
 	if (!site || !NONCE.test(state.n || '')) {
-		return page('This sign-in has expired', '<p>Start again from Settings → Connections on your site.</p>', 400);
+		return page('This sign-in has expired', html`<p>Start again from Settings → Connections on your site.</p>`, 400);
 	}
 	const fail = (error) => postBack(site, { nonce: state.n, error });
 	if (url.searchParams.get('error')) {
@@ -204,10 +204,8 @@ function callbackAddress(url) {
 /** A page that posts the fields to the site at once (a button without JavaScript). */
 function postBack(site, fields) {
 	const nonce = crypto.randomUUID();
-	const inputs = Object.entries(fields)
-		.map(([name, value]) => `<input type="hidden" name="${esc(name)}" value="${esc(value)}">`)
-		.join('');
-	const body = `<form id="f" method="post" action="${esc(site.href)}">${inputs}<p>Returning you to ${esc(site.host)}…</p><noscript><button type="submit">Continue</button></noscript></form>
+	const inputs = Object.entries(fields).map(([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`);
+	const body = html`<form id="f" method="post" action="${site.href}">${inputs}<p>Returning you to ${site.host}…</p><noscript><button type="submit">Continue</button></noscript></form>
 <script nonce="${nonce}">document.getElementById('f').submit();</script>`;
 	return page('Returning to your site', body, 200, {
 		'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; form-action ${site.origin}; base-uri 'none'; frame-ancestors 'none'`,
@@ -268,11 +266,31 @@ function esc(value) {
 	return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+/** Markup made by html``: inserted into other html`` as it is. */
+class Safe {
+	constructor(text) {
+		this.text = text;
+	}
+	toString() {
+		return this.text;
+	}
+}
+
+/** Tagged template for HTML: every value is escaped, unless it is html`` already (or a list of them). */
+function html(strings, ...values) {
+	let out = strings[0];
+	values.forEach((value, i) => {
+		const parts = Array.isArray(value) ? value : [value];
+		out += parts.map((part) => (part instanceof Safe ? part.text : esc(part))).join('') + strings[i + 1];
+	});
+	return new Safe(out);
+}
+
 const STYLE = 'body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;max-width:36em;margin:4em auto;padding:0 1em;color:#1e1e1e}h1{font-size:1.4em}.button{display:inline-block;background:#2271b1;color:#fff;padding:.5em 1em;border-radius:3px;text-decoration:none;margin-right:1em}@media (prefers-color-scheme:dark){body{background:#1e1e1e;color:#f0f0f0}a{color:#72aee6}}';
 
 function page(title, body, status = 200, headers = {}) {
-	const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><h1>${esc(title)}</h1>${body}</body></html>`;
-	return new Response(html, {
+	const document = html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${title}</title><style>${new Safe(STYLE)}</style></head><body><h1>${title}</h1>${body}</body></html>`;
+	return new Response(document.text, {
 		status,
 		headers: {
 			'Content-Type': 'text/html; charset=utf-8',
