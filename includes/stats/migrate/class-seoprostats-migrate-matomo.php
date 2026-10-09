@@ -532,7 +532,7 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
         if ($name === '' || strpos($name, '//') !== false) {
             return $name;
         }
-        return $name[0] === '/' ? 'http://localhost' . $name : 'http://' . $name;
+        return $name[0] === '/' ? 'http://localhost' . $name : 'http://' . $name; // NOSONAR: only parsed for its path and query, never requested.
     }
 
     /**

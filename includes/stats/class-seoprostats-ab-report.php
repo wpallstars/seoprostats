@@ -195,7 +195,7 @@ final class SEOProStats_AB_Report {
         foreach ($tests as $test) {
             $parts[] = $test['id'] . ':' . $test['updated'];
         }
-        return md5(implode(',', $parts));
+        return md5(implode(',', $parts)); // NOSONAR nosemgrep: a change fingerprint, not security.
     }
 
     // ------------------------------------------------------------------

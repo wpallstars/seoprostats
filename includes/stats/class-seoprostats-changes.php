@@ -289,7 +289,7 @@ final class SEOProStats_Changes {
             // Only people who edit the site: a customer whose order took the last item is not named.
             'user_id'     => isset($change['user_id']) ? (int) $change['user_id'] : (current_user_can('edit_posts') ? get_current_user_id() : 0),
         );
-        $key = md5(implode("\0", array($row['kind'], $row['object_type'], $row['object_id'], $row['path'], $row['old'], $row['new'])));
+        $key = md5(implode("\0", array($row['kind'], $row['object_type'], $row['object_id'], $row['path'], $row['old'], $row['new']))); // NOSONAR nosemgrep: a duplicate check within one request, not security.
         if (isset(self::$done[$key])) {
             return false;
         }

@@ -2859,8 +2859,9 @@ components:
       in: query
       description: |
         Every filter must match (AND). Each is
-        `dimension:operator:value`, where a comma means any of (OR) and `\,`
-        is a comma in a value; `dimension:value` means `is`. Repeat the
+        `dimension:operator:value`, where a comma means any of (OR), `\,`
+        is a comma and `\\` a backslash in a value (any other backslash is
+        itself); `dimension:value` means `is`. Repeat the
         parameter as `filters[]=` for several, or send a JSON list of
         `{dimension, op, values}`. Operators: is, is_not, contains (anywhere,
         case-insensitive per the database collation), matches (glob: `*` is

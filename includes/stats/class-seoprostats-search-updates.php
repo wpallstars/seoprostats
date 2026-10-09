@@ -302,7 +302,7 @@ final class SEOProStats_Search_Updates {
             $url   = esc_url_raw($item['url'], array('http', 'https'));
             $out[] = array(
                 // The post's id or address; hashed to fit the column.
-                'id'      => md5($item['id'] !== '' ? $item['id'] : $url . "\0" . $title),
+                'id'      => md5($item['id'] !== '' ? $item['id'] : $url . "\0" . $title), // NOSONAR nosemgrep: an ID that fits the column, not security.
                 'title'   => $title,
                 'type'    => $type,
                 'started' => (int) $started,

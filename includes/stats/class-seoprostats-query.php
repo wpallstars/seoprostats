@@ -172,9 +172,39 @@ final class SEOProStats_Query {
     }
 
     /**
+     * Split a filter's values on commas, reading "\," as a comma and "\\" as
+     * a backslash in a value; any other backslash is itself. A scan, not a
+     * lookbehind, so a value that ends in a backslash cannot swallow the
+     * comma after it (the same rule as packages/core/src/filters.ts).
+     *
+     * @param string $text The values part of "dimension:operator:values".
+     * @return string[]
+     */
+    private static function split_values($text) {
+        $values  = array();
+        $current = '';
+        $length  = strlen($text);
+        for ($i = 0; $i < $length; $i++) {
+            $c    = $text[$i];
+            $next = $i + 1 < $length ? $text[$i + 1] : '';
+            if ($c === '\\' && ($next === ',' || $next === '\\')) {
+                $current .= $next;
+                $i++;
+            } elseif ($c === ',') {
+                $values[] = $current;
+                $current  = '';
+            } else {
+                $current .= $c;
+            }
+        }
+        $values[] = $current;
+        return $values;
+    }
+
+    /**
      * Read filters: a list of "dimension:operator:value" strings (comma
-     * means any of; "\," is a comma in a value), a list of
-     * {dimension, op, values} objects, or either as a JSON string.
+     * means any of; "\," is a comma and "\\" a backslash in a value), a list
+     * of {dimension, op, values} objects, or either as a JSON string.
      *
      * @param mixed $raw Filters.
      * @return array<int,array{dimension:string,op:string,values:string[]}>|WP_Error
@@ -202,14 +232,7 @@ final class SEOProStats_Query {
                 if (count($parts) !== 3) {
                     return self::filter_error($filter);
                 }
-                $split = preg_split('/(?<!\\\\),/', $parts[2]);
-                if (!is_array($split)) {
-                    return self::filter_error($filter);
-                }
-                $values = array_map(static function ($v) {
-                    return str_replace('\\,', ',', $v);
-                }, $split);
-                $filter = array('dimension' => $parts[0], 'op' => $parts[1], 'values' => $values);
+                $filter = array('dimension' => $parts[0], 'op' => $parts[1], 'values' => self::split_values($parts[2]));
             }
             if (!is_array($filter) || !isset($filter['dimension'], $filter['values'])) {
                 $json = wp_json_encode($filter);
@@ -1438,7 +1461,7 @@ final class SEOProStats_Query {
      * @return array<string,mixed>
      */
     public static function cached($name, array $req, callable $work) {
-        $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string() . SEOProStats_Schema::set());
+        $key     = 'seoprostats_q_' . md5($name . wp_json_encode($req) . get_locale() . wp_timezone_string() . SEOProStats_Schema::set()); // NOSONAR nosemgrep: a cache key, not security.
         $state   = get_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array());
         // New hits, or days imported or undone (SEOProStats_Migrate).
         require_once __DIR__ . '/class-seoprostats-rollup.php';

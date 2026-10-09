@@ -1,6 +1,7 @@
 /**
  * Filters as the API reads them: `dimension:operator:value,value`, where a
- * comma means "any of" and `\,` is a comma inside a value.
+ * comma means "any of", `\,` is a comma inside a value and `\\` a backslash
+ * (any other backslash is itself).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -24,7 +25,8 @@ export function isOperator(value: string): value is Operator {
 
 /** The API's text form; always three parts, so values may hold colons. */
 export function serializeFilter(filter: Filter): string {
-	const values = filter.values.map((v) => v.replace(/,/g, '\\,')).join(',');
+	// Backslashes first, so a value ending in one cannot escape the next comma.
+	const values = filter.values.map((v) => v.replace(/\\/g, '\\\\').replace(/,/g, '\\,')).join(',');
 	return `${filter.dimension}:${filter.op}:${values}`;
 }
 
@@ -51,14 +53,19 @@ export function parseFilter(text: string): Filter | null {
 	return { dimension, op, values: splitValues(rest) };
 }
 
-/** Split on commas not escaped as `\,` (no lookbehind: older Safari lacks it). */
+/**
+ * Split on commas, reading `\,` as a comma and `\\` as a backslash in a
+ * value (a scan, not a lookbehind: older Safari lacks it, and a lookbehind
+ * misreads a value that ends in a backslash).
+ */
 function splitValues(text: string): string[] {
 	const values: string[] = [];
 	let current = '';
 	for (let i = 0; i < text.length; i++) {
 		const c = text[i];
-		if (c === '\\' && text[i + 1] === ',') {
-			current += ',';
+		const next = text[i + 1];
+		if (c === '\\' && (next === ',' || next === '\\')) {
+			current += next;
 			i++;
 		} else if (c === ',') {
 			values.push(current);
