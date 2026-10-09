@@ -472,6 +472,8 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- Fixed: the Read Me tab keeps a line's text, unformatted, when its formatting cannot be read, instead of showing nothing.
+- Developers: PHPStan runs at level 8 (`phpstan.neon.dist`).
 - Fixed: no PHP warnings when an excluded-paths line holds only spaces, when a search source is disconnected while it imports, or when a search report's period has no days with data.
 - Fixed: a report filter value that ends in a backslash no longer runs into the next one. In a filter's text form, `\\` is a backslash in a value, as `\,` is a comma; any other backslash stays as written, so existing links still work.
 - Fixed: screen readers announce the row labels in Settings → Connections (a search connection's status) and Settings → Import (each plugin's facts) again.
