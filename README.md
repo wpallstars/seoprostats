@@ -116,7 +116,22 @@ Saving a post keeps a list of its tests; a test taken out of a post is
 kept as removed, so its results stay.
 
 Each pageview records the variants it showed, and clicks inside a
-variant count for it; results by variant come in a later version. To show
+variant count for it. **SEO Pro Stats → A/B tests** lists every test with
+its visits per variant and its leader; open one to see its variants side
+by side over the test's whole life: visits, conversions and rate on its
+first goal (or, without goals, visits that clicked inside the variant),
+the uplift over Variant A with a 95% interval, the chance to beat it, and
+every goal with revenue, bounce rate, engaged time and clicks. A variant
+is called better or worse at a 95% chance, once each side has 100 visits,
+the two have 10 conversions and the test has run 7 days; before that the
+test says it is too early. A visit that saw more than one variant (when
+each page load picks again) is counted apart, in no variant. Choosing a
+variant filters every report by it (the **A/B variant** filter), the
+Overview's Events card has an A/B variants tab, the Pages card marks pages
+with a running test, and starting, pausing, ending a test or picking its
+winner shows on the timeline. Scripts and agents read the same from `GET
+/ab-tests`, `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]` and the
+`seoprostats/ab-tests` ability. To show
 a visitor the same variant on every page of a visit, turn on **Settings →
 Tracking → Show each visit one variant of an A/B test** (off by default).
 It keeps the variant in the browser tab's session storage until the tab is
@@ -388,6 +403,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: A/B tests of blocks, part 3: reports. **SEO Pro Stats → A/B tests** (under Behaviour) lists every test and shows one test's variants side by side over its whole life: visits, conversions, rate, uplift over Variant A with a 95% interval, chance to beat it, a plain verdict (too early, a winner, Variant A still best, or no clear difference), every goal with revenue per currency, bounce rate, engaged time and clicks. Visits that saw more than one variant are counted apart. New **A/B variant** filter and breakdown, an A/B mark on pages with a running test, and timeline changes when a test starts, pauses, ends or gets a winner. New `GET /ab-tests`, `GET /ab-tests/{id}`, `wp seoprostats ab-tests [<id>]` and the `seoprostats/ab-tests` ability; the demo data has three tests.
 - New: A/B tests of blocks, part 2: what each visitor saw. Each pageview sends the A/B test variants it shows and each click inside a variant says which, into a new `ab_exposures` table (schema v17): one row per page load and test, with its visit and clicks, only for tests and variants the site has. Kept as long as visits. New opt-in setting, **Settings → Tracking → Show each visit one variant of an A/B test**: off, each page load picks again and nothing is stored; on, the variant is kept in the tab's session storage, which may need consent.
 - New: A/B tests of blocks, part 1: the blocks, the editor and the site. Choose **A/B test** on any block or selection in the block editor; Variant A holds it and Variant B starts as a copy. Pick the variant to edit from the test's toolbar, and set the name, status, goals and each variant's label and weight in the sidebar. A running test shows each page load one variant, picked by weight before the page is drawn, with no cookie, storage or query; search engines, visitors without JavaScript and page caches see Variant A. Saving a post keeps its tests in a new `ab_tests` table (schema v16). Results come in later parts.
 - New: Settings → Import also reads Jetpack Stats (Jetpack or the standalone Jetpack Stats plugin), built from Jetpack 16.3's published code and to be tested by people who use it. Its history is on WordPress.com: while Jetpack is active, connected and has Stats on, SEO Pro Stats looks up the daily views and visitors in the background, then imports each day's views of posts and pages, referrers and countries, in cron and WP-CLI only, without filling Jetpack's caches, waiting and trying again when WordPress.com is busy. The Import tab and `wp seoprostats migrate list` say when Jetpack needs connecting or updating; `wp seoprostats migrate run jetpack --dry-run --requests` lists each request for problem reports (never tokens or statistics). After importing, switch off Stats in Jetpack; Remove leftover data lists only its statistics caches.

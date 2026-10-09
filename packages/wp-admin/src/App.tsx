@@ -26,6 +26,7 @@ import { Goals } from './Goals';
 import { Funnels } from './Funnels';
 import { Properties } from './Properties';
 import { Clicks } from './Clicks';
+import { AbTests } from './AbTests';
 import { Changes } from './Changes';
 import { boot } from './boot';
 import { ShareEditor, ShareLink, Shares } from './Shares';
@@ -99,6 +100,8 @@ export function App() {
 		section = <Properties {...props} />;
 	} else if (state.view === 'clicks') {
 		section = <Clicks {...props} />;
+	} else if (state.view === 'ab-tests') {
+		section = <AbTests {...props} />;
 	} else if (state.view === 'changes') {
 		section = <Changes {...props} />;
 	}

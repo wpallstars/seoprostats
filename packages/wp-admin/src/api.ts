@@ -13,6 +13,8 @@ import { QueryClient, keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
 	apiArgs,
 	singleEngine,
+	type AbTestAnswer,
+	type AbTestsAnswer,
 	type AuditAnswer,
 	type AuditFinding,
 	type BreakdownAnswer,
@@ -386,6 +388,31 @@ export function useExperiments() {
 		queryFn: () => get<ExperimentsAnswer>('experiments', args),
 		placeholderData: keepPreviousData,
 		enabled,
+	});
+}
+
+/** A/B tests over each one's life (not the period), running first; the view's filters apply. */
+export function useAbTests(filters: ViewState['filters']) {
+	const { data, enabled } = useReportData();
+	const args = withData(filters.length ? { filters: apiArgs({ range: '30d', filters }).filters! } : {}, data);
+	return useQuery({
+		queryKey: ['ab-tests', args],
+		queryFn: () => get<AbTestsAnswer>('ab-tests', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** One A/B test's variants side by side. */
+export function useAbTest(id: string, filters: ViewState['filters']) {
+	const { data, enabled } = useReportData();
+	const args = withData(filters.length ? { filters: apiArgs({ range: '30d', filters }).filters! } : {}, data);
+	return useQuery({
+		queryKey: ['ab-test', id, args],
+		queryFn: () => get<AbTestAnswer>(`ab-tests/${encodeURIComponent(id)}`, args),
+		// The last answer while filters change, never another test's.
+		placeholderData: (previous, last) => (last?.queryKey[1] === id ? previous : undefined),
+		enabled: enabled && id !== '',
 	});
 }
 

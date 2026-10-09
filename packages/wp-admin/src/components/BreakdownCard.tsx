@@ -58,6 +58,8 @@ function emptyText(dimension: Dimension): string {
 		case 'category':
 		case 'post_type':
 			return __('No views of posts or pages in this period.', 'seoprostats');
+		case 'variant':
+			return __('No visits saw an A/B test in this period. Add an A/B test block to a page to start one.', 'seoprostats');
 		default:
 			return __('Nothing in this period.', 'seoprostats');
 	}
@@ -129,7 +131,14 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 								onClick={() => update({ filters: toggleFilterValue(state.filters, dimension, value) })}
 							>
 								<span className="spst-row__bar" style={{ width: `${(count / top) * 100}%` }} aria-hidden="true" />
-								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>{label}</span>
+								<span className={`spst-row__label${isPath ? ' is-path' : ''}`}>
+									{label}
+									{row.ab_test && (
+										<span className="spst-badge" title={__('This page has a running A/B test.', 'seoprostats')}>
+											{__('A/B', 'seoprostats')}
+										</span>
+									)}
+								</span>
 								<span className="spst-row__value">
 									{formatNumber(count, locale)}
 									<span className="screen-reader-text"> {metricLabel(metric)}</span>

@@ -10,7 +10,7 @@
 
 import { Card, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
-import { errorMessage, useMarkers, useStats, useTimeseries } from './api';
+import { errorMessage, shareAccess, useMarkers, useStats, useTimeseries } from './api';
 import { filteredPage } from './changelog';
 import { rangeText } from './dates';
 import type { ViewProps } from './App';
@@ -146,10 +146,14 @@ export function Overview({ state, update }: ViewProps) {
 				/>
 				<BreakdownCard
 					card="events"
-					title={__('Events', 'seoprostats')}
+					title={shareAccess.token ? __('Events', 'seoprostats') : __('Events and A/B tests', 'seoprostats')}
 					state={state}
 					update={update}
-					tabs={[{ dimension: 'event', title: __('Events', 'seoprostats') }]}
+					tabs={[
+						{ dimension: 'event', title: __('Events', 'seoprostats') },
+						// A/B tests are the owner's work in progress: not in shared reports.
+						...(shareAccess.token ? [] : [{ dimension: 'variant' as const, title: __('A/B variants', 'seoprostats') }]),
+					]}
 				/>
 			</div>
 		</>

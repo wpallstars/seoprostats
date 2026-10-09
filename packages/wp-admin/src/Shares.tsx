@@ -11,7 +11,7 @@ import apiFetch from '@wordpress/api-fetch';
 import { Button, CheckboxControl, Modal, Notice, SelectControl, TextControl, TextareaControl } from '@wordpress/components';
 import { addQueryArgs } from '@wordpress/url';
 import { __, sprintf } from '@wordpress/i18n';
-import { shareSectionKey, shareView, switchView, VIEWS, type SearchEngine, type View, type ViewState } from '@seoprostats/core';
+import { shareSectionKey, shareView, switchView, SHARE_VIEWS, type SearchEngine, type View, type ViewState } from '@seoprostats/core';
 import { errorMessage } from './api';
 import { boot, locale } from './boot';
 import { filterLabel, sectionLabel } from './labels';
@@ -325,7 +325,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
             return first;
         }
         const [view, engine] = key.split(':') as [View, SearchEngine | undefined];
-        if (!VIEWS.includes(view)) {
+        if (!SHARE_VIEWS.includes(view)) {
             return null;
         }
         const next = { ...switchView(first, view), ...(engine && engine !== 'google' ? { engine } : {}) };
@@ -353,7 +353,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
     // Every tab, once; Search once for each engine with data.
     const chosen = new Set(views.map(shareSectionKey));
     type Section = { view: View; engine?: SearchEngine };
-    const offered = VIEWS.flatMap((view): Section[] => (view === 'search' ? engines.map((engine) => ({ view, engine })) : [{ view }]))
+    const offered = SHARE_VIEWS.flatMap((view): Section[] => (view === 'search' ? engines.map((engine) => ({ view, engine })) : [{ view }]))
         .filter((section) => !chosen.has(shareSectionKey(section)));
     const add = (key: string) => {
         const next = offered.some((s) => shareSectionKey(s) === key) && views.length < MAX_SECTIONS ? sectionView(key) : null;

@@ -85,6 +85,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-content.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-experiments.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-ab-report.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-queue.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-links.php';
@@ -420,6 +421,7 @@ final class SEOProStats_API {
             ),
         ));
         self::experiment_routes($read, $manage, $data);
+        self::ab_test_routes($read, $data + array('filters' => $base['filters']));
         self::queue_routes($read, $manage, $base, $engine);
         self::target_routes($read, $manage, $base, $engine);
         // Outside data sources (administrators who may change the settings).
@@ -514,6 +516,32 @@ final class SEOProStats_API {
             'permission_callback' => array(__CLASS__, 'can_read'),
             'callback'            => array(__CLASS__, 'view'),
             'args'                => array('data' => array('required' => true) + array_diff_key($base['data'], array('default' => true))),
+        ));
+    }
+
+    /**
+     * Register the A/B test report routes (read with view_seoprostats;
+     * tests are started and ended in the block editor).
+     *
+     * @param array<string,mixed> $read Read route base.
+     * @param array<string,mixed> $args The data and filters arguments.
+     */
+    private static function ab_test_routes(array $read, array $args) {
+        $ns = SEOProStats_Collection::REST_NAMESPACE;
+        register_rest_route($ns, '/ab-tests', $read + array(
+            'callback' => array(__CLASS__, 'ab_tests'),
+            'args'     => $args + array(
+                'status' => array(
+                    'description' => __('Only tests in this state: draft, running, paused or ended.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), array_keys(SEOProStats_AB_Tests::STATUSES)),
+                    'default'     => '',
+                ),
+            ),
+        ));
+        register_rest_route($ns, '/ab-tests/(?P<id>[a-z0-9]{6,32})', $read + array(
+            'callback' => array(__CLASS__, 'ab_test'),
+            'args'     => $args,
         ));
     }
 
@@ -1380,7 +1408,8 @@ final class SEOProStats_API {
         if ($report === 'realtime' && ($share['hide_realtime'] || $share['locked_filters'])) {
             return rest_ensure_response(array('visitors' => 0));
         }
-        if ($report === 'breakdown' && $share['hide_sensitive'] && in_array($req['dimension'], SEOProStats_Shares::SENSITIVE_DIMENSIONS, true)) {
+        // A/B variants (the owner's tests in progress) are never in shared reports.
+        if ($report === 'breakdown' && ($req['dimension'] === 'variant' || ($share['hide_sensitive'] && in_array($req['dimension'], SEOProStats_Shares::SENSITIVE_DIMENSIONS, true)))) {
             return rest_ensure_response(array('dimension' => $req['dimension'], 'rows' => array(), 'total' => 0, 'range' => SEOProStats_Query::range_out(SEOProStats_Query::range($req))));
         }
         if ($report === 'markers' || $report === 'changes') {
@@ -1838,6 +1867,34 @@ final class SEOProStats_API {
                 return new WP_Error('seoprostats_not_found', __('There is no such experiment.', 'seoprostats'), array('status' => 404));
             }
             return array('deleted' => true, 'id' => $id);
+        });
+    }
+
+    /**
+     * GET /ab-tests: every A/B test with its visits per variant, leader
+     * and verdict; running tests first.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function ab_tests($request) {
+        $args = array('status' => (string) $request->get_param('status'), 'filters' => $request->get_param('filters'));
+        return self::experiment_answer($request, static function () use ($args) {
+            return SEOProStats_AB_Report::list_tests($args);
+        });
+    }
+
+    /**
+     * GET /ab-tests/{id}: one A/B test's variants side by side.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function ab_test($request) {
+        $id   = (string) $request->get_param('id');
+        $args = array('filters' => $request->get_param('filters'));
+        return self::experiment_answer($request, static function () use ($id, $args) {
+            return SEOProStats_AB_Report::get($id, $args);
         });
     }
 

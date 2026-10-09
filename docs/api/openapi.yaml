@@ -626,6 +626,86 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /ab-tests:
+    get:
+      operationId: getAbTests
+      summary: A/B tests, running first, each with its visits per variant, leader and verdict.
+      description: |
+        Every test made with the A/B test block (up to 500), running first,
+        then the newest. Each test's numbers cover its life: from when it
+        first ran (or was made) to when it ended, or now; the range is not
+        used. Filters narrow the visits. A visit that saw two or more of a
+        test's variants is mixed: counted apart, in no variant. Variants are
+        compared with the control (the first) on the primary metric: the
+        test's first goal, or visits that clicked inside the variant. Not
+        the same as /experiments (a change and its expected effect on
+        search).
+      parameters:
+        - $ref: '#/components/parameters/data'
+        - $ref: '#/components/parameters/filters'
+        - name: status
+          in: query
+          description: Only tests in this state.
+          schema:
+            type: string
+            enum: ['', draft, running, paused, ended]
+      responses:
+        '200':
+          description: The tests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbTestsAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /ab-tests/{id}:
+    get:
+      operationId: getAbTest
+      summary: One A/B test's variants side by side.
+      description: |
+        Per variant: visits, visitors, page loads, bounce rate, engaged
+        time and clicks; for each of the test's goals, conversions (visits
+        that reached the goal at or after first seeing the test), the
+        conversion rate and revenue per currency (never added across
+        currencies). Each variant is compared with the control: uplift (the
+        relative change in rate) with a 95% interval (log of the rate
+        ratio), and the probability that its true rate beats the control's
+        (Bayesian, a uniform Beta(1, 1) prior on each rate, worked out
+        exactly). Below the minimum sample (`thresholds`) a comparison is
+        too early to call.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The test's id.
+          schema:
+            type: string
+            pattern: '^[a-z0-9]{6,32}$'
+        - $ref: '#/components/parameters/data'
+        - $ref: '#/components/parameters/filters'
+      responses:
+        '200':
+          description: The test.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbTestAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /queue:
     get:
       operationId: getQueue
@@ -2619,8 +2699,9 @@ components:
       description: |
         Only these kinds or groups of change, comma-separated. Groups:
         content, seo, product, site, search, note. Kinds: published,
-        unpublished, address, title, content, links, external_links;
-        seo_title, meta_description, robots, canonical; out_of_stock,
+        unpublished, address, title, content, links, external_links,
+        ab_test_started, ab_test_paused, ab_test_ended, ab_test_winner
+        (an A/B test's state saved in the editor; see /ab-tests); seo_title, meta_description, robots, canonical; out_of_stock,
         back_in_stock, price_up, price_down, sale_started, sale_ended,
         coupon_published, coupon_changed, coupon_removed; plugin_installed,
         plugin_updated, plugin_activated, plugin_deactivated,
@@ -2771,7 +2852,7 @@ components:
             credit: {type: boolean}
     Dimension:
       type: string
-      enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type, event]
+      enum: [channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type, event, variant]
       description: |
         channel: direct, organic_search, paid_search, ai, organic_social,
         paid_social, email, referral, paid_other. source: referring host.
@@ -2786,7 +2867,13 @@ components:
         and a filter also takes the name. Pageview dimensions count views
         (pageviews); not_found, search, no_results, author, category and
         post_type are read from the visits, not the daily summaries.
-        event: event name.
+        event: event name. variant: an A/B test variant seen, as
+        `test-id:variant-slug` (label "Test name: Variant B"); a filter
+        selects visits that saw it (also those that saw other variants of
+        the test), and `test-id:*` every variant of a test; contains and
+        matches look in values and labels. Its rows count visits and add
+        pageviews (page loads that showed it) and clicks (inside it). Not
+        in shared reports.
 
     Range:
       type: object
@@ -2935,6 +3022,12 @@ components:
         conversion_rate:
           type: number
           description: event only. Visits with the event as a fraction of all visits.
+        clicks:
+          type: integer
+          description: variant only. Clicks inside the variant.
+        ab_test:
+          type: boolean
+          description: page only, and only when true. The page has a running A/B test.
 
     BreakdownAnswer:
       allOf:
@@ -3356,6 +3449,228 @@ components:
             $ref: '#/components/schemas/Experiment'
         total:
           type: integer
+
+    AbThresholds:
+      type: object
+      description: The minimum sample before a comparison is called, and the probability that calls it.
+      required: [visits, conversions, days, confidence]
+      properties:
+        visits: {type: integer, description: Visits each side of a comparison needs.}
+        conversions: {type: integer, description: Conversions the two sides need together.}
+        days: {type: integer, description: Days the test has run.}
+        confidence: {type: number, description: Probability to beat the control that calls a variant better (1 − this calls it worse).}
+
+    AbTestPost:
+      type: object
+      required: [id, title, path, edit_url]
+      properties:
+        id: {type: integer}
+        title: {type: string}
+        path: {type: [string, 'null'], description: Null while not published.}
+        edit_url: {type: [string, 'null'], description: For people who may edit it.}
+
+    AbPrimary:
+      type: object
+      description: What the variants are compared on.
+      required: [kind, id, name]
+      properties:
+        kind: {type: string, enum: [goal, clicks], description: 'goal: the test''s first goal; clicks: visits that clicked inside the variant (a test with no goals).'}
+        id: {type: string, description: The goal's id ('' for clicks).}
+        name: {type: string}
+
+    AbComparison:
+      type: object
+      description: A variant against the control. All null for the control.
+      required: [uplift, interval, probability]
+      properties:
+        uplift: {type: [number, 'null'], description: Relative change in the rate (0.12 is +12%); null when the control's rate is 0.}
+        interval:
+          type: [array, 'null']
+          description: The uplift's 95% interval (log of the rate ratio); null without a conversion on either side.
+          items: {type: number}
+          minItems: 2
+          maxItems: 2
+        probability: {type: [number, 'null'], description: 'Probability that the variant''s true rate beats the control''s (Bayesian, Beta(1, 1) priors).'}
+
+    AbVerdict:
+      type: object
+      required: [code, text]
+      properties:
+        code: {type: string, enum: [no_data, too_early, winner, control, unclear]}
+        text: {type: string, description: One sentence, in the site's language.}
+
+    AbMixed:
+      type: object
+      description: Visits that saw two or more of the test's variants; counted apart, in no variant.
+      required: [visits, share]
+      properties:
+        visits: {type: integer}
+        share: {type: number, description: Of every visit that saw the test.}
+
+    AbLeader:
+      type: [object, 'null']
+      description: The variant called better with the highest probability, else the control when every other is worse, else the highest rate; null with no data.
+      required: [slug, label]
+      properties:
+        slug: {type: string}
+        label: {type: string}
+
+    AbTestRow:
+      type: object
+      required: [id, name, status, post, started, ended, removed, winner, primary, visits, mixed, variants, leader, verdict]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        status: {type: string, enum: [draft, running, paused, ended]}
+        post: {$ref: '#/components/schemas/AbTestPost'}
+        started: {type: [string, 'null'], format: date-time, description: When it first ran.}
+        ended: {type: [string, 'null'], format: date-time}
+        removed: {type: [string, 'null'], format: date-time, description: When its block was taken out of the post.}
+        winner: {type: string, description: The winner chosen in the editor (a variant slug), or ''.}
+        primary: {$ref: '#/components/schemas/AbPrimary'}
+        visits: {type: integer, description: Visits that saw the test (mixed included).}
+        mixed: {$ref: '#/components/schemas/AbMixed'}
+        variants:
+          type: array
+          items:
+            type: object
+            required: [slug, label, weight, control, visits, conversions, rate, probability, verdict]
+            properties:
+              slug: {type: string}
+              label: {type: string}
+              weight: {type: integer}
+              control: {type: boolean}
+              visits: {type: integer}
+              conversions: {type: integer, description: On the primary metric.}
+              rate: {type: number}
+              probability: {type: [number, 'null']}
+              verdict: {type: string, enum: [control, too_early, better, worse, unclear]}
+        leader: {$ref: '#/components/schemas/AbLeader'}
+        verdict: {$ref: '#/components/schemas/AbVerdict'}
+
+    AbTestsAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [thresholds, tests]
+          properties:
+            thresholds: {$ref: '#/components/schemas/AbThresholds'}
+            tests:
+              type: array
+              items:
+                $ref: '#/components/schemas/AbTestRow'
+
+    AbGoalResult:
+      allOf:
+        - $ref: '#/components/schemas/AbComparison'
+        - type: object
+          required: [id, name, conversions, completions, rate, revenue]
+          properties:
+            id: {type: string}
+            name: {type: string}
+            conversions: {type: integer, description: Visits that reached the goal at or after first seeing the test.}
+            completions: {type: integer}
+            rate: {type: number, description: conversions ÷ the variant's visits.}
+            revenue:
+              type: array
+              description: Per currency, never added across currencies (event goals).
+              items:
+                $ref: '#/components/schemas/Revenue'
+
+    AbVariantReport:
+      type: object
+      required: [slug, label, weight, control, winner, visits, share, visitors, pageviews, clicks, clicked, click_rate, bounce_rate, engaged_time, goals, primary]
+      properties:
+        slug: {type: string}
+        label: {type: string}
+        weight: {type: integer}
+        control: {type: boolean}
+        winner: {type: boolean, description: The winner chosen in the editor.}
+        visits: {type: integer, description: Visits that saw this variant only.}
+        share: {type: number, description: Of every visit that saw the test.}
+        visitors: {type: integer}
+        pageviews: {type: integer, description: Page loads that showed it.}
+        clicks: {type: integer, description: Clicks inside it.}
+        clicked: {type: integer, description: Visits that clicked inside it.}
+        click_rate: {type: number}
+        bounce_rate: {type: number}
+        engaged_time: {type: integer, description: Seconds per visit with the site on screen.}
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/AbGoalResult'
+        primary:
+          allOf:
+            - $ref: '#/components/schemas/AbComparison'
+            - type: object
+              required: [conversions, rate, verdict]
+              properties:
+                conversions: {type: integer}
+                rate: {type: number}
+                verdict: {type: string, enum: [control, too_early, better, worse, unclear]}
+
+    AbTestAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [test, thresholds, period, primary, goals, visits, mixed, variants, leader, verdict]
+          properties:
+            test:
+              type: object
+              required: [id, name, status, post, variants, goals, winner, created, updated, started, ended, removed]
+              properties:
+                id: {type: string}
+                name: {type: string}
+                status: {type: string, enum: [draft, running, paused, ended]}
+                post: {$ref: '#/components/schemas/AbTestPost'}
+                variants:
+                  type: array
+                  items:
+                    type: object
+                    required: [slug, label, weight]
+                    properties:
+                      slug: {type: string}
+                      label: {type: string}
+                      weight: {type: integer}
+                goals:
+                  type: array
+                  description: Goal ids in order; the first is the primary metric.
+                  items: {type: string}
+                winner: {type: string}
+                created: {type: [string, 'null'], format: date-time}
+                updated: {type: integer, description: Unix time of the last save.}
+                started: {type: [string, 'null'], format: date-time}
+                ended: {type: [string, 'null'], format: date-time}
+                removed: {type: [string, 'null'], format: date-time}
+            thresholds: {$ref: '#/components/schemas/AbThresholds'}
+            period:
+              type: object
+              description: The span measured.
+              required: [from, to, days]
+              properties:
+                from: {type: string, format: date-time}
+                to: {type: string, format: date-time}
+                days: {type: integer, description: Whole days run (0 before it first ran).}
+            primary: {$ref: '#/components/schemas/AbPrimary'}
+            goals:
+              type: array
+              description: The test's goals that still exist, in its order.
+              items:
+                type: object
+                required: [id, name, kind, match]
+                properties:
+                  id: {type: string}
+                  name: {type: string}
+                  kind: {type: string, enum: [page, event]}
+                  match: {type: string}
+            visits: {type: integer}
+            mixed: {$ref: '#/components/schemas/AbMixed'}
+            variants:
+              type: array
+              items:
+                $ref: '#/components/schemas/AbVariantReport'
+            leader: {$ref: '#/components/schemas/AbLeader'}
+            verdict: {$ref: '#/components/schemas/AbVerdict'}
 
     QueueItem:
       allOf:

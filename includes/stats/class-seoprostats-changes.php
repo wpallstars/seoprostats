@@ -58,6 +58,10 @@ final class SEOProStats_Changes {
         26 => array('coupon_published', 'product'),
         27 => array('coupon_changed', 'product'),
         28 => array('coupon_removed', 'product'),
+        30 => array('ab_test_started', 'content'),
+        31 => array('ab_test_paused', 'content'),
+        32 => array('ab_test_ended', 'content'),
+        33 => array('ab_test_winner', 'content'),
         40 => array('plugin_installed', 'site'),
         41 => array('plugin_updated', 'site'),
         42 => array('plugin_activated', 'site'),
@@ -90,6 +94,18 @@ final class SEOProStats_Changes {
      * object_type experiment, object_id its id, new its name.
      */
     const EXPERIMENT = 81;
+
+    /**
+     * Kind codes of an A/B test's start (or restart after a pause), pause,
+     * end and winner (SEOProStats_AB_Tests, on saving its post):
+     * object_type ab_test, object_id its post, old the status before, new
+     * its id (the winner's slug for a winner); meta name, test, and label
+     * (the winner's).
+     */
+    const AB_STARTED = 30;
+    const AB_PAUSED  = 31;
+    const AB_ENDED   = 32;
+    const AB_WINNER  = 33;
 
     /** Groups of kinds, for filters. */
     const GROUPS = array('content', 'seo', 'product', 'site', 'search', 'note');
@@ -1673,6 +1689,21 @@ final class SEOProStats_Changes {
             case 'coupon_removed':
                 /* translators: %s: coupon code */
                 return sprintf(__('Coupon removed: %s', 'seoprostats'), $title);
+            case 'ab_test_started':
+                return $old === 'paused'
+                    /* translators: %s: A/B test name */
+                    ? sprintf(__('A/B test resumed: %s', 'seoprostats'), $title)
+                    /* translators: %s: A/B test name */
+                    : sprintf(__('A/B test started: %s', 'seoprostats'), $title);
+            case 'ab_test_paused':
+                /* translators: %s: A/B test name */
+                return sprintf(__('A/B test paused: %s', 'seoprostats'), $title);
+            case 'ab_test_ended':
+                /* translators: %s: A/B test name */
+                return sprintf(__('A/B test ended: %s', 'seoprostats'), $title);
+            case 'ab_test_winner':
+                /* translators: 1: A/B test name, 2: the winning variant's label */
+                return sprintf(__('A/B test winner: %1$s (%2$s)', 'seoprostats'), $title, isset($meta['label']) && $meta['label'] !== '' ? (string) $meta['label'] : $new);
             case 'plugin_installed':
                 /* translators: 1: plugin or theme name, 2: version */
                 return sprintf(__('Installed: %1$s %2$s', 'seoprostats'), $title, $new);

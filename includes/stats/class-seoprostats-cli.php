@@ -229,7 +229,7 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * <dimension>
-     * : channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type or event.
+     * : channel, source, utm_source, utm_medium, utm_campaign, utm_term, utm_content, country, device, browser, os, language, login, entry, exit, page, not_found, search, no_results, author, category, post_type, event or variant (A/B test variants seen, as test-id:variant-slug).
      *
      * [--range=<range>]
      * : As for stats.
@@ -2311,6 +2311,149 @@ final class SEOProStats_CLI {
             /* translators: 1: experiment id, 2: its state */
             WP_CLI::success(sprintf(__('Experiment %1$d: %2$s.', 'seoprostats'), $answer['id'], $answer['result'] !== null ? $answer['status'] . ' (' . $answer['result'] . ')' : $answer['status']));
         }
+    }
+
+    /**
+     * A/B tests of blocks: every test with its visits per variant, leader
+     * and verdict, or one test's variants side by side (every goal,
+     * revenue, bounce rate, engaged time, clicks, uplift with its 95%
+     * interval and the probability to beat the control). A test's numbers
+     * cover its life; visits that saw two or more of its variants are
+     * counted apart as mixed. Tests are started and ended in the block
+     * editor. Not to be confused with experiments (a change and its
+     * expected effect on search).
+     *
+     * ## OPTIONS
+     *
+     * [<id>]
+     * : A test's id (from the list): show that test.
+     *
+     * [--status=<status>]
+     * : For the list: draft, running, paused or ended.
+     *
+     * [--filter=<filters>]
+     * : Only these visits, as for stats (such as channel:organic_search).
+     *
+     * [--data=<data>]
+     * : live or demo.
+     * ---
+     * default: live
+     * options:
+     *   - live
+     *   - demo
+     * ---
+     *
+     * [--format=<format>]
+     * : table, json, csv or yaml.
+     * ---
+     * default: table
+     * ---
+     *
+     * ## EXAMPLES
+     *
+     *     wp seoprostats ab-tests
+     *     wp seoprostats ab-tests --status=running --data=demo
+     *     wp seoprostats ab-tests demohead01 --data=demo
+     *     wp seoprostats ab-tests k3j9x2ab --filter="device:mobile" --format=json
+     *
+     * @subcommand ab-tests
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function ab_tests($args, $assoc) {
+        $id      = isset($args[0]) ? (string) $args[0] : '';
+        $filters = array();
+        if (isset($assoc['filter'])) {
+            $filter  = trim((string) $assoc['filter']);
+            $filters = $filter !== '' && $filter[0] === '[' ? $filter : array_values(array_filter(array_map('trim', explode(';', $filter))));
+        }
+        $status = isset($assoc['status']) ? (string) $assoc['status'] : '';
+        $answer = $this->on_data($assoc, static function () use ($id, $filters, $status) {
+            return $id !== ''
+                ? SEOProStats_AB_Report::get($id, array('filters' => $filters))
+                : SEOProStats_AB_Report::list_tests(array('filters' => $filters, 'status' => $status));
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        if ($id === '') {
+            if (!$answer['tests']) {
+                WP_CLI::line(__('No A/B tests yet: add an A/B test block to a post or page and start it.', 'seoprostats'));
+                return;
+            }
+            $rows = array();
+            foreach ($answer['tests'] as $test) {
+                $rows[] = array(
+                    'id'       => $test['id'],
+                    'name'     => $test['name'],
+                    'status'   => $test['status'],
+                    'page'     => (string) $test['post']['path'],
+                    'started'  => substr((string) $test['started'], 0, 10),
+                    'visits'   => $test['visits'],
+                    'mixed'    => $test['mixed']['visits'],
+                    'variants' => implode(', ', array_map(static function ($v) {
+                        return sprintf('%s %d (%s)', $v['label'], $v['visits'], self::percent_text($v['rate']));
+                    }, $test['variants'])),
+                    'metric'   => $test['primary']['name'],
+                    'leader'   => $test['leader'] ? $test['leader']['label'] : '',
+                    'verdict'  => $test['verdict']['code'],
+                );
+            }
+            WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+            return;
+        }
+        $test = $answer['test'];
+        /* translators: 1: test id, 2: name, 3: status */
+        WP_CLI::log(sprintf(__('A/B test %1$s: %2$s (%3$s)', 'seoprostats'), $test['id'], $test['name'], $test['status']));
+        /* translators: 1: first day, 2: last day, 3: days, 4: visits, 5: mixed visits */
+        WP_CLI::log(sprintf(__('%1$s to %2$s (%3$d days): %4$d visits saw it; %5$d saw more than one variant (left out).', 'seoprostats'), substr($answer['period']['from'], 0, 10), substr($answer['period']['to'], 0, 10), $answer['period']['days'], $answer['visits'], $answer['mixed']['visits']));
+        $rows = array();
+        foreach ($answer['variants'] as $v) {
+            $row = array(
+                'variant'     => $v['label'] . ($v['control'] ? ' ' . __('(control)', 'seoprostats') : ''),
+                'visits'      => $v['visits'],
+                'bounce_rate' => self::percent_text($v['bounce_rate']),
+                'engaged'     => $v['engaged_time'] . 's',
+                'clicked'     => self::percent_text($v['click_rate']),
+            );
+            foreach ($v['goals'] as $goal) {
+                $row[$goal['name']] = sprintf('%d (%s)', $goal['conversions'], self::percent_text($goal['rate']));
+                if ($goal['revenue']) {
+                    $row[$goal['name'] . ' revenue'] = self::money_text($goal['revenue']);
+                }
+            }
+            $p                  = $v['primary'];
+            $row['uplift']      = $p['uplift'] === null ? '' : sprintf('%+.1f%%', $p['uplift'] * 100);
+            $row['interval']    = $p['interval'] === null ? '' : sprintf('%+.1f%% to %+.1f%%', $p['interval'][0] * 100, $p['interval'][1] * 100);
+            $row['beats']       = $p['probability'] === null ? '' : self::percent_text($p['probability']);
+            $row['verdict']     = $p['verdict'];
+            $rows[]             = $row;
+        }
+        $keys = array();
+        foreach ($rows as $row) {
+            $keys = array_merge($keys, array_keys($row));
+        }
+        $keys = array_values(array_unique($keys));
+        foreach ($rows as $i => $row) {
+            $rows[$i] = array_merge(array_fill_keys($keys, ''), $row);
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, $keys);
+        WP_CLI::log($answer['verdict']['text']);
+    }
+
+    /**
+     * A rate as a percentage with one decimal.
+     *
+     * @param float|int $rate 0 to 1.
+     * @return string
+     */
+    private static function percent_text($rate) {
+        return sprintf('%.1f%%', (float) $rate * 100);
     }
 
     /**

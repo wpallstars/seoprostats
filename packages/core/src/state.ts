@@ -47,10 +47,10 @@ import {
 } from './types';
 import { CHART_METRICS, SEARCH_METRICS } from './metrics';
 
-export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'changes'] as const;
+export const VIEWS = ['overview', 'search', 'goals', 'funnels', 'properties', 'clicks', 'ab-tests', 'changes'] as const;
 export type View = (typeof VIEWS)[number];
-/** Every tab can be shared; Search once per engine. */
-export const SHARE_VIEWS: readonly View[] = VIEWS;
+/** Every tab but A/B tests (the owner's work in progress) can be shared; Search once per engine. */
+export const SHARE_VIEWS: readonly View[] = VIEWS.filter((view) => view !== 'ab-tests');
 /** The Search reports a shared report shows (not Targets, Plan or Experiments: the owner's chosen searches, work list and notes). */
 export const SHARE_SEARCH_REPORTS: readonly SearchReport[] = ['rankings', 'opportunities', 'audit', 'content'];
 
@@ -87,7 +87,7 @@ export const VIEW_TABS = {
 	search: ['search', 'no_results'],
 	locations: ['country', 'language'],
 	devices: ['device', 'browser', 'os', 'login'],
-	events: ['event'],
+	events: ['event', 'variant'],
 } as const satisfies Record<string, readonly Dimension[]>;
 export type ViewCard = keyof typeof VIEW_TABS;
 
@@ -140,12 +140,14 @@ export interface ViewState {
 	query?: string;
 	/** Search → Experiments: start one on this change (its id), from Changes. */
 	change?: string;
+	/** A/B tests: the test shown (its id); the list when left out. */
+	test?: string;
 	/** Overview: each card's open tab. */
 	tabs?: Partial<Record<ViewCard, Dimension>>;
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -188,6 +190,9 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		set('page', text(params.get('page')));
 		const group = oneOf([...CHANGE_GROUPS, ''] as const, params.get('group'), '');
 		set('group', group || undefined);
+	} else if (state.view === 'ab-tests') {
+		const test = params.get('test') ?? '';
+		set('test', /^[a-z0-9]{6,32}$/.test(test) ? test : undefined);
 	} else if (state.view === 'properties') {
 		set('key', text(params.get('key')));
 		set('event', text(params.get('event')));

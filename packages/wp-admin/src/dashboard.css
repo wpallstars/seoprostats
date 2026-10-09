@@ -1535,6 +1535,28 @@ code.spst-meta {
 	border-radius: 2px;
 }
 
+/* A/B tests: a test's variants in the list, and a section's subtitle. */
+.spst-ab-variants {
+	margin: 0;
+	list-style: none;
+}
+
+.spst-ab-variants li {
+	margin: 0;
+	white-space: nowrap;
+}
+
+.spst-subtitle {
+	margin: 16px 0 8px;
+	font-size: 13px;
+	font-weight: 600;
+}
+
+.spst-row__label .spst-badge {
+	margin-inline-start: 6px;
+	line-height: 18px;
+}
+
 .spst-step-fields {
 	display: grid;
 	grid-template-columns: minmax(140px, 1fr) 2fr;

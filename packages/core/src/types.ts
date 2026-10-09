@@ -36,6 +36,8 @@ export const DIMENSIONS = [
 	'category',
 	'post_type',
 	'event',
+	/** A/B test variants seen: value "test-id:variant-slug" ("test-id:*" filters every variant of a test). */
+	'variant',
 ] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
 
@@ -98,6 +100,10 @@ export interface BreakdownRow extends Partial<Metrics> {
 	time_on_page?: number;
 	scroll?: number;
 	conversion_rate?: number;
+	/** Variants: clicks inside the variant. */
+	clicks?: number;
+	/** Pages: the page has a running A/B test. */
+	ab_test?: boolean;
 }
 
 export interface BreakdownAnswer extends Answer {
@@ -818,6 +824,175 @@ export interface Experiment {
 export interface ExperimentsAnswer {
 	experiments: Experiment[];
 	total: number;
+}
+
+/** An A/B test's state (set in the block editor). */
+export const AB_TEST_STATUSES = ['draft', 'running', 'paused', 'ended'] as const;
+export type AbTestStatus = (typeof AB_TEST_STATUSES)[number];
+
+/**
+ * A comparison's verdict: for a variant (control, too_early, better,
+ * worse, unclear) and for a test (no_data, too_early, winner, control,
+ * unclear).
+ */
+export type AbVariantVerdict = 'control' | 'too_early' | 'better' | 'worse' | 'unclear';
+export type AbTestVerdictCode = 'no_data' | 'too_early' | 'winner' | 'control' | 'unclear';
+
+/** The minimum sample before a call, and the probability that calls it. */
+export interface AbThresholds {
+	/** Visits each side of a comparison needs. */
+	visits: number;
+	/** Conversions the two sides need together. */
+	conversions: number;
+	/** Days the test has run. */
+	days: number;
+	/** Probability to beat the control that calls a variant better (1 − this: worse). */
+	confidence: number;
+}
+
+/** The post a test is in. */
+export interface AbTestPost {
+	id: number;
+	title: string;
+	path: string | null;
+	/** For people who may edit it. */
+	edit_url: string | null;
+}
+
+/** What the variants are compared on: the test's first goal, or clicks inside the variant. */
+export interface AbPrimary {
+	kind: 'goal' | 'clicks';
+	/** The goal's id ('' for clicks). */
+	id: string;
+	name: string;
+}
+
+/** A variant against the control: uplift (relative change in rate) with its 95% interval, and the probability to beat the control. All null for the control. */
+export interface AbComparison {
+	uplift: number | null;
+	interval: [number, number] | null;
+	probability: number | null;
+}
+
+export interface AbTestVerdict {
+	code: AbTestVerdictCode;
+	/** One sentence, in the site's language. */
+	text: string;
+}
+
+/** Visits that saw two or more of a test's variants: counted apart, in no variant. */
+export interface AbMixed {
+	visits: number;
+	/** Of every visit that saw the test. */
+	share: number;
+}
+
+/** A test in the list. */
+export interface AbTestRow {
+	id: string;
+	name: string;
+	status: AbTestStatus;
+	post: AbTestPost;
+	/** ISO, site time zone; null before it first ran. */
+	started: string | null;
+	ended: string | null;
+	/** When its block was taken out of the post. */
+	removed: string | null;
+	/** The winner chosen in the editor (a variant slug), or ''. */
+	winner: string;
+	primary: AbPrimary;
+	visits: number;
+	mixed: AbMixed;
+	variants: {
+		slug: string;
+		label: string;
+		weight: number;
+		control: boolean;
+		visits: number;
+		conversions: number;
+		rate: number;
+		probability: number | null;
+		verdict: AbVariantVerdict;
+	}[];
+	leader: { slug: string; label: string } | null;
+	verdict: AbTestVerdict;
+}
+
+export interface AbTestsAnswer extends Answer {
+	thresholds: AbThresholds;
+	tests: AbTestRow[];
+}
+
+/** A goal's numbers for one variant. */
+export interface AbGoalResult extends AbComparison {
+	id: string;
+	name: string;
+	/** Visits that reached the goal after seeing the test. */
+	conversions: number;
+	completions: number;
+	/** conversions ÷ the variant's visits. */
+	rate: number;
+	/** Per currency, never added across currencies. */
+	revenue: Revenue[];
+}
+
+/** One variant of a test, in full. */
+export interface AbVariantReport {
+	slug: string;
+	label: string;
+	weight: number;
+	control: boolean;
+	/** The winner chosen in the editor. */
+	winner: boolean;
+	/** Visits that saw this variant only. */
+	visits: number;
+	/** Of every visit that saw the test. */
+	share: number;
+	visitors: number;
+	/** Page loads that showed it. */
+	pageviews: number;
+	/** Clicks inside the variant. */
+	clicks: number;
+	/** Visits that clicked inside it. */
+	clicked: number;
+	click_rate: number;
+	bounce_rate: number;
+	/** Seconds per visit. */
+	engaged_time: number;
+	goals: AbGoalResult[];
+	primary: AbComparison & { conversions: number; rate: number; verdict: AbVariantVerdict };
+}
+
+/** A test as the registry holds it. */
+export interface AbTest {
+	id: string;
+	name: string;
+	status: AbTestStatus;
+	post: AbTestPost;
+	variants: { slug: string; label: string; weight: number }[];
+	/** Goal ids, in order; the first is the primary metric. */
+	goals: string[];
+	winner: string;
+	created: string | null;
+	/** Unix time of the last save. */
+	updated: number;
+	started: string | null;
+	ended: string | null;
+	removed: string | null;
+}
+
+export interface AbTestAnswer extends Answer {
+	test: AbTest;
+	thresholds: AbThresholds;
+	/** The span measured: from its start (or creation) to its end, or now. */
+	period: { from: string; to: string; days: number };
+	primary: AbPrimary;
+	goals: { id: string; name: string; kind: GoalKind; match: string }[];
+	visits: number;
+	mixed: AbMixed;
+	variants: AbVariantReport[];
+	leader: { slug: string; label: string } | null;
+	verdict: AbTestVerdict;
 }
 
 /** A new experiment: from a change (its time and page), or a start and pages. */
