@@ -111,7 +111,7 @@ final class SEOProStats_Search {
             $scope   = self::scope($code, $now, $pages, $queries);
             $grain   = self::grain($engine, $now, $scope);
             // Combined weeks end on the period's last day, so each holds one week of every engine.
-            $anchor  = $grain !== 'week' ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
+            $anchor  = $grain !== 'week' || !$now ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
             $totals  = self::totals($scope);
             $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
             if ($kind !== 'days') {

@@ -190,7 +190,7 @@ final class SEOProStats_Search_Import {
             return self::failed($source, $ready);
         }
         list($class, $token, $property) = $ready;
-        $state = SEOProStats_Connections::get($source)['state'];
+        $state = self::state($source);
         $today = $class::today();
 
         // New final days: not before two days ago, and at most every few hours.
@@ -272,7 +272,7 @@ final class SEOProStats_Search_Import {
         if (!$span || $class !== 'SEOProStats_Source_Search_Console') {
             return;
         }
-        $state = SEOProStats_Connections::get($source)['state'];
+        $state = self::state($source);
         $from = min($span);
         $to = max($span);
         if (!empty($state['appearance_from'])) {
@@ -300,7 +300,7 @@ final class SEOProStats_Search_Import {
         }
         global $wpdb;
         require_once __DIR__ . '/class-seoprostats-query.php';
-        $state = SEOProStats_Connections::get($source)['state'];
+        $state = self::state($source);
         $from = isset($state['appearance_from']) ? (string) $state['appearance_from'] : '';
         $to = isset($state['appearance_to']) ? (string) $state['appearance_to'] : '';
         if ($from === '' || $to === '') {
@@ -429,7 +429,7 @@ final class SEOProStats_Search_Import {
         if (!$span || !self::by_page($class)) {
             return;
         }
-        $state = SEOProStats_Connections::get($source)['state'];
+        $state = self::state($source);
         $from  = self::shift((string) min($span), -(int) constant($class . '::PAIR_LAG_DAYS'));
         $to    = (string) max($span);
         if (!empty($state['pairs_from'])) {
@@ -457,7 +457,7 @@ final class SEOProStats_Search_Import {
         if (!self::by_page($class)) {
             return $result;
         }
-        $state = SEOProStats_Connections::get($source)['state'];
+        $state = self::state($source);
         $from  = isset($state['pairs_from']) ? (string) $state['pairs_from'] : '';
         $to    = isset($state['pairs_to']) ? (string) $state['pairs_to'] : '';
         if ($from === '' || $to === '') {
@@ -635,6 +635,18 @@ final class SEOProStats_Search_Import {
         self::pairs_due($source, $class, $span);
         self::appearance_due($source, $class, $span);
         return self::run_extra($source, $class, $token, $property, microtime(true), 0, array('days' => count($span), 'rows' => $rows, 'import' => $import, 'done' => true));
+    }
+
+    /**
+     * A source's saved import state; empty once it is disconnected, which can
+     * happen while a run is under way.
+     *
+     * @param string $source Source key.
+     * @return array<string,mixed>
+     */
+    private static function state($source) {
+        $conn = SEOProStats_Connections::get($source);
+        return $conn ? $conn['state'] : array();
     }
 
     /**
