@@ -501,7 +501,10 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
         }
         $out = array();
         foreach (self::lines('exclude_paths') as $line) {
-            $line  = preg_replace('/\s+/', '', $line);
+            $line = (string) preg_replace('/\s+/', '', $line);
+            if ($line === '') {
+                continue;
+            }
             $out[] = $line[0] === '/' || $line[0] === '*' ? $line : '/' . $line;
         }
         return array_values(array_unique($out));

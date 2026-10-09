@@ -269,7 +269,7 @@ final class SEOProStats_AB_Tests {
         $status = isset($attrs['status']) && is_string($attrs['status']) && isset(self::STATUSES[$attrs['status']]) ? $attrs['status'] : 'draft';
         $goals  = array();
         foreach (isset($attrs['goals']) && is_array($attrs['goals']) ? $attrs['goals'] : array() as $goal) {
-            $goal = is_scalar($goal) ? preg_replace('/[^a-z0-9]/', '', strtolower((string) $goal)) : '';
+            $goal = is_scalar($goal) ? (string) preg_replace('/[^a-z0-9]/', '', strtolower((string) $goal)) : '';
             if ($goal !== '' && !in_array($goal, $goals, true) && count($goals) < self::MAX_GOALS) {
                 $goals[] = $goal;
             }
