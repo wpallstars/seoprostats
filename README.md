@@ -150,7 +150,19 @@ Last, **Google's index** (Search Console only) shows the sitemaps submitted in S
 
 #### Backlinks
 
-**Backlinks**, after Content, lists pages of other sites that link to yours, found without an outside service: once a day the site opens the pages that sent visitors (often only the other site's home page, as browsers usually send just its address) for up to 20 seconds and keeps their links to your pages, with the link text and whether they are nofollow, sponsored or ugc. Four lists: **links** (newest first), **sites linking** (with their visits in the period), **pages linked to** and **lost links**. Each page is checked again weekly; a link missing on two checks in a row, or on a page that is gone, is lost. New and lost links show on the timeline. Links from sites that never sent a visitor are not found. Switch it off under Settings → Data → Check pages that send visitors for links.
+**Backlinks**, after Content, lists pages of other sites that link to yours, found from visits or imported exports. Once a day the site opens referring pages for up to 20 seconds and keeps their links to your pages, with text and rel. Four lists: **links**, **sites linking**, **pages linked to** and **lost links**. Each page is checked again weekly; a link missing on two checks in a row, or on a page that is gone, is lost. New and lost verified links show on the timeline. Switch checking off under Settings → Data → Check pages that send visitors for links; importing does not switch it on.
+
+**Import links** in Settings → Import → Links. Choose a comma-separated UTF-8 CSV with its header row; the headers identify the source where possible. Up to 100,000 rows and 50 MB per export, imported in background batches with progress. Targets must be on this site's own hosts. Exports with only referring pages or domains add candidates for the next check, not assumed links to the home page. Re-importing rows does not duplicate links or reset a verified loss. Missing rows in another export never mean lost links: exports are samples.
+
+1. **Search Console**: select the property → Links → External links → Export external links → Latest links or More sample links → Download CSV. For Top linking sites, open its table → Export → Download CSV; domain counts become candidates, not individual links. Search Console has no links API.
+2. **Ahrefs**: open Site Explorer for the site → Backlinks → Export → CSV (UTF-8); include referring page URL, target URL, anchor, rel flags and dates, with Domain Rating where available.
+3. **Semrush**: open Backlink Analytics for the domain → Backlinks → Export → CSV; keep source URL, target URL, anchor, flags, dates and Authority Score.
+4. **Majestic**: open Site Explorer → Backlinks → Export data → CSV; keep SourceURL, TargetURL, AnchorText, FirstIndexedDate, LastSeenDate and TrustFlow where given.
+5. **Moz**: open Link Explorer → Inbound Links → Export CSV; keep URL, Target URL, Anchor Text, Date First Seen and Domain Authority or Page Authority.
+6. **Bing Webmaster Tools**: select the site → Backlinks → All links → export the detailed backlink list as CSV, including linking URL and linked page. A report containing only counts cannot establish an individual backlink.
+7. **Generic**: use headers `source URL,target URL,anchor,rel,first seen,last seen`. Dates are parsed as dates; absent dates and scores stay unknown.
+
+Search → Backlinks shows **How found** and a source filter. Each provider's score (0–100) and last-seen date are kept separately; scores from different tools are not comparable. The report filters its bounded 5,000-row window before counting and paging. Headers shared by several tools cannot identify a provider reliably: use `wp seoprostats backlinks import <file> --source=bing` (or `gsc`, `ahrefs`, `semrush`, `majestic`, `moz`, `generic`) to name it. `wp seoprostats backlinks --source=bing --format=json` reads it. Administrators can also `POST /seoprostats/v1/backlinks/import` with multipart field `file`, or JSON `rows` (objects with the same headers) and optional `source`; `GET` on that route reads progress. Staging stays out of the public media library and is removed as batches finish and on uninstall.
 
 #### Targets
 
@@ -472,6 +484,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: backlink CSV exports from Search Console and backlink tools, with background progress, per-source scores and dates, REST and CLI imports, and How found filtering.
 - Fixed: the Read Me tab keeps a line's text, unformatted, when its formatting cannot be read, instead of showing nothing.
 - Developers: PHPStan runs at level 8 (`phpstan.neon.dist`).
 - Developers: Codacy reads `.eslintrc.json` and `phpmd.xml.dist`, rules that fit a WordPress plugin (`DEVELOPMENT.md` → Services setup).

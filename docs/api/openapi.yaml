@@ -1913,6 +1913,72 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /backlinks/import:
+    get:
+      operationId: getBacklinkImport
+      summary: Read the current backlink export import's progress (administrators).
+      responses:
+        '200':
+          description: Import progress; cron does the work.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinkImportJob'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: importBacklinks
+      summary: Stage a backlink CSV or JSON rows (administrators, live data only).
+      description: |
+        Up to 100,000 rows and 50 MB. UTF-8 comma-separated CSV headers detect
+        the source where possible; source overrides ambiguous headers. Rows
+        with targets outside the site's own hosts are skipped. Search Console
+        rows without targets become referring-page candidates, not links.
+        Cron imports within 20 seconds per run with progress. Re-importing
+        rows adds no duplicates; missing export rows never mark links lost.
+        Verification remains opt-in. Scores stay separate per provider.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                source:
+                  type: string
+                  enum: [gsc, ahrefs, semrush, majestic, moz, bing, generic]
+          application/json:
+            schema:
+              type: object
+              required: [rows]
+              properties:
+                rows:
+                  type: array
+                  maxItems: 100000
+                  items:
+                    type: object
+                    additionalProperties: true
+                source:
+                  type: string
+                  enum: [gsc, ahrefs, semrush, majestic, moz, bing, generic]
+      responses:
+        '202':
+          description: Staged; GET this route for progress.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinkImportJob'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Another import is running or live storage is unavailable.
+
   /backlinks:
     get:
       operationId: getBacklinks
@@ -1929,8 +1995,10 @@ paths:
         `rules.misses` checks in a row, or on a page that answers 404 or
         410, is lost; failed requests count for nothing. New and lost
         links are also changes (`backlink_new`, `backlink_lost`, one per
-        referring site and day) on `/markers`. Links from sites that never
-        sent a visit are not found.
+        referring site and day) on `/markers`. CSV exports can add referring
+        pages and links too; see `/backlinks/import`. Missing rows in a newer
+        sample never mark a link lost. Imported pages are rechecked weekly
+        even after a first miss, while checking is on.
 
         - `links`: live links, newest first.
         - `domains`: the sites linking, with their visits in the period,
@@ -1946,6 +2014,12 @@ paths:
           description: Which list.
           schema:
             $ref: '#/components/schemas/BacklinkKind'
+        - name: source
+          in: query
+          description: How found; filters the bounded 5,000-row window before aggregation and pagination.
+          schema:
+            type: string
+            enum: ['', referrer, dataforseo, gsc, ahrefs, semrush, majestic, moz, bing, generic, verified]
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'
@@ -6384,10 +6458,42 @@ components:
         authority:
           type: integer
           description: A provider's score; 0 without one.
+        providers:
+          type: object
+          description: Export scores and freshness kept separately by provider; scores are not comparable across tools.
+          additionalProperties:
+            type: object
+            properties:
+              authority:
+                type: [integer, 'null']
+                minimum: 0
+                maximum: 100
+              last_seen:
+                type: [string, 'null']
+                format: date-time
         lost:
           type: [string, 'null']
           format: date-time
           description: lost; when it was lost.
+
+    BacklinkImportJob:
+      type: object
+      required: [status, source, total, done, accepted, skipped]
+      properties:
+        status:
+          type: string
+          enum: [idle, running, done, error]
+        source:
+          type: string
+        total:
+          type: integer
+        done:
+          type: integer
+        accepted:
+          type: integer
+          description: Valid rows processed, including known links and referring-page candidates.
+        skipped:
+          type: integer
 
     BacklinkDomainRow:
       type: object

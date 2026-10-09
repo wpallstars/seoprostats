@@ -50,8 +50,9 @@ final class SEOProStats_Schema {
      *      pages, SEOProStats_Backlinks).
      * v19: inspections (Google's URL Inspection of each page,
      *      SEOProStats_Inspections).
+     * v20: links export source bits and per-provider scores and dates.
      */
-    const VERSION = 19;
+    const VERSION = 20;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -755,7 +756,7 @@ final class SEOProStats_Schema {
   path_id int unsigned NOT NULL DEFAULT 0,
   anchor_id int unsigned NOT NULL DEFAULT 0,
   rel tinyint unsigned NOT NULL DEFAULT 0,
-  found tinyint unsigned NOT NULL DEFAULT 0,
+  found smallint unsigned NOT NULL DEFAULT 0,
   status tinyint unsigned NOT NULL DEFAULT 0,
   first_seen int unsigned NOT NULL DEFAULT 0,
   last_seen int unsigned NOT NULL DEFAULT 0,
@@ -763,6 +764,7 @@ final class SEOProStats_Schema {
   checked int unsigned NOT NULL DEFAULT 0,
   misses tinyint unsigned NOT NULL DEFAULT 0,
   authority smallint unsigned NOT NULL DEFAULT 0,
+  providers text DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY lkey (lkey),
   KEY path_checked (path_id,checked),

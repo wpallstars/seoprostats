@@ -63,6 +63,14 @@ final class SEOProStats_Backlinks {
     const FOUND = array(
         'referrer'   => 1,
         'dataforseo' => 2,
+        'gsc'       => 4,
+        'ahrefs'    => 8,
+        'semrush'   => 16,
+        'majestic'  => 32,
+        'moz'       => 64,
+        'bing'      => 128,
+        'generic'   => 256,
+        'verified'  => 512,
     );
 
     /** Progress, per data set (autoload off): upto, last, pages, checked, errors, version. */
@@ -129,7 +137,7 @@ final class SEOProStats_Backlinks {
                     break 2;
                 }
                 // No link at the last check and no visit since: not worth opening yet.
-                if (!$all && (int) $page['checked'] > 0 && (int) $page['status'] === self::PAGE_NONE && (int) $page['last_seen'] <= (int) $page['checked']) {
+                if (!$all && ((int) $page['found'] & ~self::FOUND['referrer']) === 0 && (int) $page['checked'] > 0 && (int) $page['status'] === self::PAGE_NONE && (int) $page['last_seen'] <= (int) $page['checked']) {
                     self::touch((int) $page['id']);
                     ++$out['skipped'];
                     continue;
@@ -239,7 +247,7 @@ final class SEOProStats_Backlinks {
     private static function due($before) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its path_checked key in its order.
-        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, last_seen FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
+        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, last_seen, found, providers FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
     }
 
     /**
@@ -284,6 +292,17 @@ final class SEOProStats_Backlinks {
         $ids   = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links)) : array();
         $anchors = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor')) : array();
         $seen  = array();
+        $found = self::FOUND['verified'] | ((int) $page['found'] & self::FOUND['referrer']);
+        $providers = json_decode((string) $page['providers'], true);
+        // A source-only export led us to this page; target-specific exports
+        // retain their bits on the exact link, never on every link of its page.
+        if (is_array($providers)) {
+            foreach ($providers as $source => $facts) {
+                if (!empty($facts['candidate']) && isset(self::FOUND[$source])) {
+                    $found |= self::FOUND[$source];
+                }
+            }
+        }
         foreach ($links as $path => $link) {
             $path_id = isset($ids[SEOProStats_Dict::clean($path)]) ? (int) $ids[SEOProStats_Dict::clean($path)] : 0;
             if (!$path_id) {
@@ -303,7 +322,7 @@ final class SEOProStats_Backlinks {
                 $path_id,
                 $anchor_id,
                 (int) $link['rel'],
-                self::FOUND['referrer'],
+                $found,
                 self::LINK_LIVE,
                 $now,
                 $now,
@@ -546,14 +565,19 @@ final class SEOProStats_Backlinks {
             /* translators: %s: list of kinds */
             return new WP_Error('seoprostats_backlinks_kind', sprintf(__('The kind is one of: %s.', 'seoprostats'), implode(', ', self::KINDS)), array('status' => 400));
         }
+        $source = isset($req['source']) ? (string) $req['source'] : '';
+        if ($source !== '' && !isset(self::FOUND[$source])) {
+            return new WP_Error('seoprostats_backlinks_source', __('Unknown backlink source.', 'seoprostats'), array('status' => 400));
+        }
         $range = SEOProStats_Query::range($req);
         $key   = array(
             'from'    => $range['from'],
             'to'      => $range['to'],
             'version' => self::state()['version'],
+            'source'  => $source,
         );
-        $all    = SEOProStats_Query::cached('backlinks', $key, static function () use ($range) {
-            return self::build($range);
+        $all    = SEOProStats_Query::cached('backlinks', $key, static function () use ($range, $source) {
+            return self::build($range, $source);
         });
         $limit  = max(1, min(self::MAX_LIMIT, isset($req['limit']) ? (int) $req['limit'] : self::LIMIT));
         $offset = max(0, isset($req['offset']) ? (int) $req['offset'] : 0);
@@ -571,22 +595,23 @@ final class SEOProStats_Backlinks {
      * The shared part of the answer, with every list (cached).
      *
      * @param array<string,mixed> $range From SEOProStats_Query::range().
+     * @param string $source Optional source, applied within the bounded report window.
      * @return array<string,mixed>
      */
-    private static function build(array $range) {
+    private static function build(array $range, $source = '') {
         global $wpdb;
         $table = SEOProStats_Schema::table('links');
         $from  = (int) $range['from'];
         $to    = (int) $range['to'];
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its status_first key in its order.
-        $live = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, authority FROM %i FORCE INDEX (`status_first`) WHERE status = %d ORDER BY first_seen DESC LIMIT %d', $table, self::LINK_LIVE, self::MAX_ROWS), ARRAY_A);
+        $live = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, authority, providers FROM %i FORCE INDEX (`status_first`) WHERE status = %d ORDER BY first_seen DESC LIMIT %d', $table, self::LINK_LIVE, self::MAX_ROWS), ARRAY_A);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, a range of its lost key in its order.
-        $lost = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
-        $live = array_values(array_filter($live, static function ($row) {
-            return (int) $row['path_id'] > 0;
+        $lost = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost, providers FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
+        $live = array_values(array_filter($live, static function ($row) use ($source) {
+            return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
         }));
-        $lost = array_values(array_filter($lost, static function ($row) {
-            return (int) $row['path_id'] > 0;
+        $lost = array_values(array_filter($lost, static function ($row) use ($source) {
+            return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
         }));
         $ids = array();
         foreach (array_merge($live, $lost) as $row) {
@@ -600,6 +625,12 @@ final class SEOProStats_Backlinks {
             return (int) $ts ? (string) wp_date('c', (int) $ts) : null;
         };
         $link   = static function (array $row) use ($text, $date, $from, $to) {
+            $providers = json_decode(isset($row['providers']) ? (string) $row['providers'] : '', true);
+            $providers = is_array($providers) ? $providers : array();
+            foreach ($providers as &$provider) {
+                $provider['last_seen'] = $date($provider['last_seen']);
+            }
+            unset($provider);
             return array(
                 'source'     => $text($row['source_url_id']),
                 'host'       => $text($row['source_host_id']),
@@ -611,6 +642,7 @@ final class SEOProStats_Backlinks {
                 'last_seen'  => $date($row['last_seen']),
                 'new'        => (int) $row['first_seen'] >= $from && (int) $row['first_seen'] < $to,
                 'authority'  => isset($row['authority']) ? (int) $row['authority'] : 0,
+                'providers'  => (object) $providers,
             );
         };
         $links = array_map($link, $live);
@@ -850,6 +882,8 @@ final class SEOProStats_Backlinks {
      * Delete the current data set's progress (demo removal, uninstall).
      */
     public static function reset() {
+        require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        SEOProStats_Backlinks_Import::reset();
         delete_option(SEOProStats_Schema::option(self::OPTION));
     }
 
