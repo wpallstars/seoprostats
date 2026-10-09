@@ -467,7 +467,7 @@ final class SEOProStats_Collection {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-collector.php';
         $dir = self::dir();
         // The written config (cached by OPcache) costs no query per hit.
-        $config = is_file($dir . '/config.php') ? include $dir . '/config.php' : null;
+        $config = is_file($dir . '/config.php') ? include $dir . '/config.php' : null; // NOSONAR: the file returns the config; include_once returns true if it was loaded before.
         $status = SEOProStats_Collector::handle(
             is_array($config) ? $config : self::config(),
             $dir,

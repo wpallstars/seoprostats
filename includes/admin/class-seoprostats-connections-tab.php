@@ -365,7 +365,8 @@ final class SEOProStats_Connections_Tab {
                 </p>
             </div>
         <?php endif; ?>
-        <table class="form-table" role="presentation">
+        <?php // A table of facts with row headers, so not role="presentation" (it would hide the headers from screen readers). ?>
+        <table class="form-table">
             <tbody>
                 <?php if ((string) $status['account'] !== '') : ?>
                     <tr>

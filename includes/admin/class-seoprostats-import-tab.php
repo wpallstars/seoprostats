@@ -212,7 +212,8 @@ final class SEOProStats_Import_Tab {
                 <?php echo esc_html((string) $source['name']); ?>
                 <span class="spst-badge"><?php echo esc_html(self::state_label($state)); ?></span>
             </h3>
-            <table class="form-table" role="presentation">
+            <?php // A table of facts with row headers, so not role="presentation" (it would hide the headers from screen readers). ?>
+            <table class="form-table">
                 <tbody>
                     <tr>
                         <th scope="row"><?php esc_html_e('Statistics', 'seoprostats'); ?></th>
