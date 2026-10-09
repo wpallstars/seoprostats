@@ -108,12 +108,14 @@
 		connect: function (card, button, source) {
 			var key = field(card, 'key');
 			var property = field(card, 'property');
+			var pages = field(card, 'pages');
 			request(card, button, {
 				path: base + 'connections/' + source,
 				method: 'POST',
 				data: {
 					key: key ? key.value : '',
-					property: property ? property.value : ''
+					property: property ? property.value : '',
+					pages: pages ? Number(pages.value) : 100
 				}
 			}, function () {
 				if (key) {

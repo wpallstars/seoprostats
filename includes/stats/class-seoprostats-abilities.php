@@ -95,6 +95,16 @@ final class SEOProStats_Abilities {
             return;
         }
         SEOProStats_API::load();
+        wp_register_ability('seoprostats/vitals', array(
+            'label' => __('Page experience', 'seoprostats'),
+            'description' => __('Read locally stored Chrome UX Report field metrics, origin history and failing pages. Never runs a lab test.', 'seoprostats'),
+            'category' => self::CATEGORY,
+            'input_schema' => array('type' => 'object', 'additionalProperties' => false, 'properties' => array('page' => array('type' => 'string', 'default' => ''), 'data' => array('type' => 'string', 'enum' => SEOProStats_Schema::SETS, 'default' => 'live'))),
+            'output_schema' => array('type' => 'object'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'execute_callback' => array(__CLASS__, 'vitals'),
+            'meta' => array('show_in_rest' => true),
+        ));
         $data = array(
             'type'        => 'string',
             'enum'        => SEOProStats_Schema::SETS,

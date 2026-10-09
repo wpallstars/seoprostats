@@ -156,6 +156,10 @@ final class SEOProStats_Connections_Tab {
      * @param string $id     Card id.
      */
     private static function render_connect($source, $id) {
+        if ($source === 'crux') {
+            self::render_crux(array(), $id);
+            return;
+        }
         if ($source === 'bing') {
             self::render_connect_bing($id);
             return;
@@ -226,6 +230,39 @@ final class SEOProStats_Connections_Tab {
         </p>
         <div class="spst-connection__actions">
             <button type="button" class="button button-primary" data-spst-action="connect"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
+        </div>
+        <?php
+    }
+
+    /**
+     * CrUX uses an API key, not a Search Console service account.
+     *
+     * @param array<string,mixed> $status Saved status, or empty.
+     * @param string $id Card ID.
+     */
+    private static function render_crux(array $status, $id) {
+        ?>
+        <p><?php esc_html_e('Real Chrome users, over rolling 28-day windows: LCP, INP, CLS, FCP and TTFB for phone and desktop. Enable Chrome UX Report API in your Google Cloud project and make an API key restricted to that API (and PageSpeed Insights API if you use Lighthouse). No record means too little eligible Chrome traffic, not a performance failure.', 'seoprostats'); ?></p>
+        <?php if (!empty($status['error'])) : ?>
+            <p role="alert"><?php echo esc_html((string) $status['error']); ?></p>
+        <?php endif; ?>
+        <p>
+            <label for="<?php echo esc_attr($id . '-key'); ?>"><?php esc_html_e('Google Cloud API key', 'seoprostats'); ?></label><br>
+            <input type="password" id="<?php echo esc_attr($id . '-key'); ?>" class="regular-text" data-spst-field="key" autocomplete="new-password">
+            <span class="description"><?php esc_html_e('Leave blank to keep the saved key.', 'seoprostats'); ?></span>
+        </p>
+        <p>
+            <label for="<?php echo esc_attr($id . '-pages'); ?>"><?php esc_html_e('Top pages to monitor (0–1000)', 'seoprostats'); ?></label><br>
+            <input type="number" min="0" max="1000" id="<?php echo esc_attr($id . '-pages'); ?>" data-spst-field="pages" value="<?php echo esc_attr((string) ($status['pages'] ?? 100)); ?>">
+        </p>
+        <p><?php esc_html_e('The origin is checked daily; pages at most weekly, selected from visits and search clicks. Origin history is imported once on connection. All reads run within a background budget, never on visitor pages.', 'seoprostats'); ?></p>
+        <div class="spst-connection__actions">
+            <button type="button" class="button button-primary" data-spst-action="connect"><?php esc_html_e('Save connection', 'seoprostats'); ?></button>
+            <?php if (!empty($status['connected'])) : ?>
+                <button type="button" class="button" data-spst-action="import"><?php esc_html_e('Read due data now', 'seoprostats'); ?></button>
+                <label><input type="checkbox" data-spst-field="delete_data"> <?php esc_html_e('Delete imported field data', 'seoprostats'); ?></label>
+                <button type="button" class="button" data-spst-action="disconnect"><?php esc_html_e('Disconnect', 'seoprostats'); ?></button>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -323,6 +360,10 @@ final class SEOProStats_Connections_Tab {
      * @param string              $id     Card id.
      */
     private static function render_connected(array $status, $id) {
+        if ($status['source'] === 'crux') {
+            self::render_crux($status, $id);
+            return;
+        }
         $imported = $status['imported'];
         $format   = get_option('date_format');
         $day      = static function ($ymd) use ($format) {

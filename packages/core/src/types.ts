@@ -6,6 +6,29 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+export type VitalMetric = 'lcp' | 'inp' | 'cls' | 'fcp' | 'ttfb';
+export type VitalSample = {
+	day: string;
+	form_factor: 'PHONE' | 'DESKTOP';
+	metric: VitalMetric;
+	p75: number;
+	good: number;
+	ni: number;
+	poor: number;
+	status: 'good' | 'needs_improvement' | 'poor';
+	stale: boolean;
+};
+export type VitalsAnswer = {
+	connected: boolean;
+	source: 'crux';
+	window_days: number;
+	traffic_days: number;
+	origin: VitalSample[];
+	series: VitalSample[];
+	rows: { path_id: number; path: string; clicks: number; visits: number; samples: VitalSample[]; available: boolean; failing: boolean }[];
+};
+export type LighthouseAnswer = { source: 'lighthouse'; url: string; score: number | null; opportunities: { id: string; title: string; display: string; saved_ms: number }[] };
+
 export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
 

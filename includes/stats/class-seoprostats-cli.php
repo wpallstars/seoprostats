@@ -37,6 +37,48 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Read Chrome UX Report field data; optionally run a Lighthouse lab test.
+     *
+     * ## OPTIONS
+     *
+     * [<page>]
+     * : Local page path; omit for monitored pages and origin history.
+     *
+     * [--run]
+     * : Explicit Lighthouse lab test for this page (administrator only).
+     *
+     * [--data=<data>]
+     * : live or demo (no lab tests on demo).
+     *
+     * @param string[] $args Arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function vitals($args, $assoc) {
+        SEOProStats_API::load();
+        $page = $args[0] ?? '';
+        if (isset($assoc['run'])) {
+            if (!current_user_can('manage_options') || ($assoc['data'] ?? 'live') === 'demo' || $page === '') {
+                WP_CLI::error('Use --user with an administrator and a local page path on live data for --run.');
+            }
+            $request = new WP_REST_Request('POST');
+            $request->set_param('page', $page);
+            $answer = SEOProStats_API::lighthouse($request);
+            if ($answer instanceof WP_REST_Response) {
+                $answer = $answer->get_data();
+            }
+        } else {
+            if ($page !== '' && SEOProStats_Vitals::local_url($page) === '') {
+                WP_CLI::error('Use a local page path.');
+            }
+            $answer = SEOProStats_API::on_data($assoc['data'] ?? 'live', static function () use ($page) { return SEOProStats_Vitals::report($page); });
+        }
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
      * Manage private report links (use --user with an administrator).
      *
      * ## OPTIONS
