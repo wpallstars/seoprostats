@@ -1,5 +1,9 @@
 <?php
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ *
  * The decision queue (Search → Plan): one ranked list of things to do,
  * made from what Opportunities finds, each with why it is listed and how
  * its score is made:
@@ -57,10 +61,6 @@
  * Reads: the Opportunities and Content reports (cached), the running
  * experiments by key status_review, and the queue by its unique ikey and
  * by status_updated. Design: docs/seo-loop.md → Decision queue.
- *
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2026 Marcus Quinn
- * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
  * @package SEOProStats
  * @since 0.9.0

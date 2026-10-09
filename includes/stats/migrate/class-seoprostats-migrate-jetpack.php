@@ -1,5 +1,9 @@
 <?php
 /**
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ *
  * Jetpack Stats (the jetpack plugin, or the standalone jetpack-stats),
  * built from Jetpack's open-source code without a connected test site.
  * People who use Jetpack Stats test it; `wp seoprostats migrate run
@@ -60,10 +64,6 @@
  * (counts only), refreshed daily. The lists are fetched a day at a time
  * by the import job, which waits and tries again after errors and rate
  * limits.
- *
- * SPDX-License-Identifier: GPL-3.0-or-later
- * SPDX-FileCopyrightText: 2026 Marcus Quinn
- * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  *
  * @package SEOProStats
  * @since 0.9.0

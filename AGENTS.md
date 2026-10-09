@@ -28,6 +28,8 @@ Development: `DEVELOPMENT.md`. Releases: `RELEASING.md`; launch state:
 | Doc | Read before |
 |---|---|
 | `docs/architecture.md` | Any change to collection, storage, reports, the REST API, WP-CLI, abilities or the dashboard app. |
+| `docs/seo-loop.md` | Any change to Search → Plan, Experiments, Targets or the loop export (the SEO decision loop's design). |
+| `docs/seo-loop-recipes.md` | Any change to the routes, commands or abilities an agent uses to work the loop. |
 
 ## Rules for any change
 
