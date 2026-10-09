@@ -166,6 +166,10 @@ final class SEOProStats_Search_Import {
             return self::busy();
         }
         try {
+            if ($source === 'crux') {
+                SEOProStats_API::load();
+                return SEOProStats_Vitals::run($budget);
+            }
             return self::run_days($source, $budget, $check);
         } finally {
             self::unlock();

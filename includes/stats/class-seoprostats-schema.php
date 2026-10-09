@@ -51,7 +51,7 @@ final class SEOProStats_Schema {
      * v19: inspections (Google's URL Inspection of each page,
      *      SEOProStats_Inspections).
      */
-    const VERSION = 19;
+    const VERSION = 20;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -121,7 +121,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'vitals');
     }
 
     /**
@@ -782,6 +782,19 @@ final class SEOProStats_Schema {
             // last crawl. flags: findings (SEOProStats_Inspections::FLAGS).
             // details: JSON of rich result types and issues, the sitemaps
             // Google knows it from and Search Console's link.
+            'vitals' => "CREATE TABLE {$t['vitals']} (
+  day date NOT NULL,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  form_factor varchar(7) NOT NULL,
+  metric varchar(4) NOT NULL,
+  p75 decimal(12,4) NOT NULL,
+  good decimal(7,6) NOT NULL,
+  ni decimal(7,6) NOT NULL,
+  poor decimal(7,6) NOT NULL,
+  PRIMARY KEY  (day,path_id,form_factor,metric),
+  KEY path_day (path_id,form_factor,metric,day)
+) $charset;",
+
             'inspections' => "CREATE TABLE {$t['inspections']} (
   path_id int unsigned NOT NULL,
   checked int unsigned NOT NULL DEFAULT 0,

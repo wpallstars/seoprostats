@@ -37,6 +37,48 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Read Chrome UX Report field data; optionally run a Lighthouse lab test.
+     *
+     * ## OPTIONS
+     *
+     * [<page>]
+     * : Local page path; omit for monitored pages and origin history.
+     *
+     * [--run]
+     * : Explicit Lighthouse lab test for this page (administrator only).
+     *
+     * [--data=<data>]
+     * : live or demo (no lab tests on demo).
+     *
+     * @param string[] $args Arguments.
+     * @param array<string,string> $assoc Options.
+     */
+    public function vitals($args, $assoc) {
+        SEOProStats_API::load();
+        $page = $args[0] ?? '';
+        if (isset($assoc['run'])) {
+            if (!current_user_can('manage_options') || ($assoc['data'] ?? 'live') === 'demo' || $page === '') {
+                WP_CLI::error('Use --user with an administrator and a local page path on live data for --run.');
+            }
+            $request = new WP_REST_Request('POST');
+            $request->set_param('page', $page);
+            $answer = SEOProStats_API::lighthouse($request);
+            if ($answer instanceof WP_REST_Response) {
+                $answer = $answer->get_data();
+            }
+        } else {
+            if ($page !== '' && SEOProStats_Vitals::local_url($page) === '') {
+                WP_CLI::error('Use a local page path.');
+            }
+            $answer = SEOProStats_API::on_data($assoc['data'] ?? 'live', static function () use ($page) { return SEOProStats_Vitals::report($page); });
+        }
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
      * Manage private report links (use --user with an administrator).
      *
      * ## OPTIONS
@@ -3537,6 +3579,7 @@ final class SEOProStats_CLI {
      * options:
      *   - search-console
      *   - bing
+     *   - crux
      * ---
      *
      * [--key-file=<file>]
@@ -3548,6 +3591,9 @@ final class SEOProStats_CLI {
      * : Search Console: the property to import (https://example.com/ or
      * sc-domain:example.com); Bing: the site (https://example.com/).
      * Without it, the one for this site.
+     *
+     * [--pages=<pages>]
+     * : CrUX monitored page cap (0–1000, default 100).
      *
      * [--format=<format>]
      * : table or json.
@@ -3581,6 +3627,7 @@ final class SEOProStats_CLI {
         $status = SEOProStats_Connections::connect($args[0], array(
             'key'      => $key,
             'property' => isset($assoc['property']) ? (string) $assoc['property'] : '',
+            'pages'    => isset($assoc['pages']) ? (int) $assoc['pages'] : 100,
         ));
         if (is_wp_error($status)) {
             $data = $status->get_error_data();
@@ -3616,6 +3663,7 @@ final class SEOProStats_CLI {
      * options:
      *   - search-console
      *   - bing
+     *   - crux
      * ---
      *
      * [--delete-data]
@@ -4201,6 +4249,15 @@ final class SEOProStats_CLI {
             WP_CLI::log(sprintf(__('%s is not connected.', 'seoprostats'), $status['name']));
             return;
         }
+        if ($status['source'] === 'crux') {
+            WP_CLI\Utils\format_items('table', array(
+                array('field' => 'origin', 'value' => $status['property']),
+                array('field' => 'pages', 'value' => $status['pages']),
+                array('field' => 'last run', 'value' => $status['last_run']),
+                array('field' => 'last error', 'value' => $status['error']),
+            ), array('field', 'value'));
+            return;
+        }
         $imported = $status['imported'];
         $rows     = array(
             array('field' => 'account', 'value' => $status['account'] !== '' ? $status['account'] : 'API key (stored encrypted)'),
@@ -4337,6 +4394,16 @@ final class SEOProStats_CLI {
         foreach (SEOProStats_Connections::statuses() as $source) {
             if (empty($source['connected'])) {
                 $add(strtolower($source['name']), true, 'not connected (SEO Pro Stats → Settings → Connections)');
+                continue;
+            }
+            if ($source['source'] === 'crux') {
+                $detail = $source['property'] . ': ' . ($source['last_run'] ? 'field data checked ' . human_time_diff($source['last_run']) . ' ago' : 'field data not checked yet');
+                if ($source['error'] !== '') {
+                    $detail .= '; last error: ' . $source['error'];
+                } elseif (!$source['next_run']) {
+                    $detail .= '; collection job is not scheduled (reconnect, or open the Connections tab)';
+                }
+                $add(strtolower($source['name']), $source['error'] === '' && (bool) $source['next_run'], $detail, 'warn');
                 continue;
             }
             $imported = $source['imported'];

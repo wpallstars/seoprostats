@@ -36,6 +36,56 @@ Principles, in order:
 
 ## Layers
 
+### Chrome UX Report page experience
+
+`SEOProStats_Source_Crux` requests field data directly from the CrUX Current
+and History APIs, never from PageSpeed Insights. `SEOProStats_Vitals` uses
+the existing Connections encrypted store (`crux`) and the Search Import
+cron and run lock, but not its search-day importer. All collection happens
+in cron or an explicit import request; no visitor-page hooks are added.
+
+Connection checks the site's origin (404 means no eligible record, not a
+bad credential). The reader imports origin history once for PHONE and
+DESKTOP, then current origin data daily and selected URLs weekly. Successful
+and no-data attempts are persisted per path and form factor. Candidates
+interleave top search-click and visit rankings from the last 30 days; the
+connection's page cap defaults to 100 (0–1000). Runs reserve a 10-second
+request budget, pace requests to at most 100/minute, and continue through
+the existing cron when unfinished. Errors stop the run and are shown on
+the connection card; credentials and provider bodies never enter errors.
+
+Schema v20 adds `vitals`: `day` is the collection window's last date,
+`path_id` is 0 for the origin, then `form_factor`, `metric`, `p75`, and the
+good/needs-improvement/poor histogram fractions. Primary key:
+`(day,path_id,form_factor,metric)`; `path_day`:
+`(path_id,form_factor,metric,day)` for per-metric ordered reads. Time
+metrics are milliseconds, CLS is unitless. Missing/null/NaN metrics are
+not stored as zero. Samples older than 400 days are pruned in bounded
+batches; uninstall and demo removal use the schema's existing table list.
+
+Reports are read-only local data. Each page metric reads its newest sample
+by the index; the origin reads bounded history per metric. Samples older
+than 14 days remain labelled stale but generate no poor-page finding.
+Only LCP, INP and CLS determine Core Web Vitals failures, using p75
+thresholds 4000 ms, 500 ms and 0.25 (strictly greater is poor). Changes in
+classification write change kind 52 (`vitals_status`, group site), with
+metric, device and collection end date. History imports create no live
+markers; demo rows never write live changes.
+
+The queue joins current poor monitored pages to the selected engine's
+Content report and page filters. It creates audit finding
+`page_experience` only where search clicks exist, with measured field
+samples in its evidence. Its stake estimate is max(1, 10% of observed
+clicks scaled to 28 days), conversion value, confidence 0.5 and effort 2.
+It is a prioritisation rule, not an expected ranking gain. Existing queue
+states, experiment exclusion and done-to-experiment handling apply.
+
+`GET /vitals`, WP-CLI `vitals`, and ability `seoprostats/vitals` read the
+same report, including on demo tables. Only an explicit administrator
+`POST /vitals/lighthouse` or CLI `vitals <page> --run` calls PSI, with a
+validated local path and no automatic field-data fallback. PSI lab
+opportunities stay separate. Neither endpoint is in shared reports.
+
 ```text
 browser tracker ──► collector (no WordPress) ──► buffer files
                                                     │ cron, every minute

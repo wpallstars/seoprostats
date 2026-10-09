@@ -106,7 +106,7 @@ final class SEOProStats_Queue {
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings, links and indexation lists and sitemap problems other than their kind's. */
-    const AUDIT_EFFORT   = array('thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'rich_errors' => 2);
+    const AUDIT_EFFORT   = array('thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'rich_errors' => 2, 'page_experience' => 2);
     const LINKS_EFFORT   = array('converting' => 2);
     const INDEX_EFFORT   = array('sitemap' => 1);
     const SITEMAP_EFFORT = array('errors' => 2, 'stale' => 2);
@@ -273,6 +273,7 @@ final class SEOProStats_Queue {
         require_once __DIR__ . '/class-seoprostats-refresh.php';
         require_once __DIR__ . '/class-seoprostats-targets.php';
         require_once __DIR__ . '/class-seoprostats-inspections.php';
+        require_once __DIR__ . '/class-seoprostats-vitals.php';
         $engine = SEOProStats_Search::engine_name($engine);
         $ask    = array_merge($req, array('limit' => self::PER_KIND, 'offset' => 0));
 
@@ -334,6 +335,27 @@ final class SEOProStats_Queue {
                     if ($item && !isset($items[$item['key']])) {
                         $items[$item['key']] = $item;
                     }
+                }
+            }
+            $failing = array();
+            foreach (SEOProStats_Vitals::report()['rows'] as $row) {
+                if ($row['failing']) {
+                    $failing[(int) $row['path_id']] = $row['samples'];
+                }
+            }
+            foreach (SEOProStats_Content::report($ask, 'clicks', $goal, $engine)['rows'] as $row) {
+                if ((int) $row['clicks'] > 0 && isset($failing[(int) $row['path_id']])) {
+                    $parts = array('clicks' => max(1.0, round((int) $row['clicks'] * 28 / max(1, $days) * 0.1, 1)), 'value' => round(self::worth((int) $row['path_id'], $value), 2), 'confidence' => 0.5, 'effort' => 2);
+                    $key = self::key('audit', $engine, (string) $row['path'], 'page_experience');
+                    $items[$key] = array(
+                        'key' => $key, 'kind' => 'audit', 'engine' => $engine, 'status' => 'new', 'found' => true,
+                        'path_id' => (int) $row['path_id'], 'path' => (string) $row['path'], 'url' => (string) $row['url'],
+                        'post_id' => (int) $row['post_id'], 'edit_url' => $row['edit_url'] ?? null, 'query' => null,
+                        'finding' => 'page_experience', 'metric' => 'clicks', 'parts' => $parts, 'score' => self::score($parts),
+                        'why' => __('CrUX reports a poor p75 for LCP, INP or CLS on a page receiving search clicks. The score is a prioritisation estimate, not a predicted ranking gain.', 'seoprostats'),
+                        'todo' => __('Review the field metrics and run an optional Lighthouse lab test to investigate the cause. Record a measured experiment before changing the page.', 'seoprostats'),
+                        'figures' => array('finding' => 'page_experience', 'clicks' => (int) $row['clicks'], 'impressions' => (int) $row['impressions'], 'position' => $row['position'], 'samples' => $failing[(int) $row['path_id']]),
+                    );
                 }
             }
             foreach ($links as $list => $rows) {

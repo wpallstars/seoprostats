@@ -77,6 +77,7 @@ final class SEOProStats_Changes {
         49 => array('permalinks', 'site'),
         50 => array('site_address', 'site'),
         51 => array('front_page', 'site'),
+        52 => array('vitals_status', 'site'),
         60 => array('search_update', 'search'),
         80 => array('note', 'note'),
         81 => array('experiment', 'note'),

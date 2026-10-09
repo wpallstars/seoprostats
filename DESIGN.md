@@ -334,6 +334,19 @@ The shape language is defined by **{Architectural Sharpness | Soft Modernism | P
 
 ### Canonical examples
 
+#### Page experience: field evidence and optional lab tests
+
+Reference: `packages/wp-admin/src/Vitals.tsx`. Search → Audit uses a
+WordPress Card and a scrollable table, with page row headers, clicks and
+visits beside dated field samples. Poor Core Web Vitals are named in text,
+not conveyed by colour alone. No-data and stale samples are explicit.
+Overview and Rankings use a collapsed origin-metrics card and the existing
+accessible MainChart; metric and form-factor controls never imply that
+overlapping 28-day field windows are daily measurements. Lighthouse is an
+administrator-only action on a page row, disabled while a request runs,
+with its lab opportunities and failures labelled separately. These cards
+are omitted from shared report shells.
+
 <!-- Specific examples apply to a component type or use case. Reference approved implementations instead of pasting transcripts. -->
 
 #### {Element type}: {variant or use case}

@@ -95,6 +95,16 @@ final class SEOProStats_Abilities {
             return;
         }
         SEOProStats_API::load();
+        wp_register_ability('seoprostats/vitals', array(
+            'label' => __('Page experience', 'seoprostats'),
+            'description' => __('Read locally stored Chrome UX Report field metrics, origin history and failing pages. Never runs a lab test.', 'seoprostats'),
+            'category' => self::CATEGORY,
+            'input_schema' => array('type' => 'object', 'additionalProperties' => false, 'properties' => array('page' => array('type' => 'string', 'default' => ''), 'data' => array('type' => 'string', 'enum' => SEOProStats_Schema::SETS, 'default' => 'live'))),
+            'output_schema' => array('type' => 'object'),
+            'permission_callback' => array('SEOProStats_API', 'can_read'),
+            'execute_callback' => array(__CLASS__, 'vitals'),
+            'meta' => array('show_in_rest' => true),
+        ));
         $data = array(
             'type'        => 'string',
             'enum'        => SEOProStats_Schema::SETS,
@@ -1782,6 +1792,21 @@ final class SEOProStats_Abilities {
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $finding, $engine) {
             return SEOProStats_Audit::report((array) $req, $engine, $finding);
         });
+    }
+
+    /**
+     * seoprostats/vitals: read only, including on demo tables.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function vitals($input = null) {
+        $input = is_array($input) ? $input : array();
+        $page = (string) ($input['page'] ?? '');
+        if ($page !== '' && SEOProStats_Vitals::local_url($page) === '') {
+            return new WP_Error('seoprostats_vitals_page', __('Use a local page path.', 'seoprostats'));
+        }
+        return SEOProStats_API::on_data(self::data($input), static function () use ($page) { return SEOProStats_Vitals::report($page); });
     }
 
     /**

@@ -92,6 +92,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-vitals.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
     }
@@ -142,6 +143,16 @@ final class SEOProStats_API {
         register_rest_route($ns, '/stats', $read + array(
             'callback' => array(__CLASS__, 'stats'),
             'args'     => $base,
+        ));
+        register_rest_route($ns, '/vitals', $read + array(
+            'callback' => array(__CLASS__, 'vitals'),
+            'args' => array('page' => array('type' => 'string', 'default' => ''), 'data' => array('type' => 'string', 'enum' => SEOProStats_Schema::SETS, 'default' => 'live')),
+        ));
+        register_rest_route($ns, '/vitals/lighthouse', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+            'callback' => array(__CLASS__, 'lighthouse'),
+            'args' => array('page' => array('type' => 'string', 'required' => true)),
         ));
         register_rest_route($ns, '/timeseries', $read + array(
             'callback' => array(__CLASS__, 'timeseries'),
@@ -482,6 +493,7 @@ final class SEOProStats_API {
                 'permission_callback' => $settings,
                 'callback'            => array(__CLASS__, 'connect'),
                 'args'                => array(
+                    'pages' => array('type' => 'integer', 'default' => 100, 'minimum' => 0, 'maximum' => 1000),
                     'key'      => array(
                         'description' => __('Search Console: the service account\'s JSON key, as text; Bing: the API key. Without it, the saved key is kept (to change the property or site).', 'seoprostats'),
                         'type'        => 'string',
@@ -997,6 +1009,7 @@ final class SEOProStats_API {
         $status = SEOProStats_Connections::connect($source, array(
             'key'      => (string) $request->get_param('key'),
             'property' => (string) $request->get_param('property'),
+            'pages'    => (int) $request->get_param('pages'),
         ));
         return self::with_status($status, 400);
     }
@@ -1014,6 +1027,42 @@ final class SEOProStats_API {
             return $source;
         }
         return self::with_status(SEOProStats_Connections::disconnect($source, (bool) $request->get_param('delete_data')), 400);
+    }
+
+    /**
+     * GET /vitals: local field data only.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function vitals($request) {
+        $page = (string) $request->get_param('page');
+        if ($page !== '' && SEOProStats_Vitals::local_url($page) === '') {
+            return new WP_Error('seoprostats_vitals_page', __('Use a local page path.', 'seoprostats'), array('status' => 400));
+        }
+        return rest_ensure_response(self::on_data((string) $request->get_param('data'), static function () use ($page) {
+            return SEOProStats_Vitals::report($page);
+        }));
+    }
+
+    /**
+     * POST /vitals/lighthouse: explicit owner request, never cron.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function lighthouse($request) {
+        $url = SEOProStats_Vitals::local_url((string) $request->get_param('page'));
+        if ($url === '') {
+            return new WP_Error('seoprostats_vitals_page', __('Use a local page path.', 'seoprostats'), array('status' => 400));
+        }
+        self::load_connections();
+        $credentials = SEOProStats_Connections::credentials('crux');
+        if (is_wp_error($credentials)) {
+            return self::with_status($credentials, 400);
+        }
+        require_once __DIR__ . '/sources/class-seoprostats-source-crux.php';
+        return self::with_status(SEOProStats_Source_Crux::lighthouse($url, (string) ($credentials['key'] ?? '')), 502);
     }
 
     /**

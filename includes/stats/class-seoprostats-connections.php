@@ -32,6 +32,7 @@ final class SEOProStats_Connections {
     const SOURCES = array(
         'search-console' => 'SEOProStats_Source_Search_Console',
         'bing'           => 'SEOProStats_Source_Bing',
+        'crux'           => 'SEOProStats_Source_Crux',
     );
 
     /** Prefix of an encrypted value, so a later scheme can be told apart. */
@@ -105,6 +106,12 @@ final class SEOProStats_Connections {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
         self::remove($source);
         SEOProStats_Search_Import::schedule();
+        if ($source === 'crux') {
+            global $wpdb;
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- explicitly confirmed connection data deletion, own table.
+            $deleted = $delete ? $wpdb->query($wpdb->prepare('DELETE FROM %i', SEOProStats_Schema::table('vitals'))) : 0;
+            return self::status($source) + array('deleted' => (int) $deleted);
+        }
         $deleted = $delete ? SEOProStats_Search_Import::delete_data($source) : 0;
         return self::status($source) + array('deleted' => $deleted);
     }
@@ -140,6 +147,10 @@ final class SEOProStats_Connections {
         );
         if (!$class || !$conn) {
             return $out;
+        }
+        if ($source === 'crux') {
+            $next = wp_next_scheduled(SEOProStats_Search_Import::HOOK, array('more'));
+            return $out + array('property' => $conn['settings']['property'], 'pages' => $conn['settings']['pages'], 'last_run' => (int) ($conn['state']['last_run'] ?? 0), 'error' => (string) ($conn['state']['error'] ?? ''), 'next_run' => $next ? $next : wp_next_scheduled(SEOProStats_Search_Import::HOOK), 'imports' => array());
         }
         $state    = $conn['state'];
         $today    = $class::today();

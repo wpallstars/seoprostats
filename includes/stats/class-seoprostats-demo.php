@@ -1139,6 +1139,12 @@ final class SEOProStats_Demo {
             update_option(self::OPTION, $state, false);
             self::inspections();
         }
+        $state = self::state();
+        if (!$more && ($state['vitals_day'] ?? '') !== gmdate('Y-m-d')) {
+            self::vitals();
+            $state['vitals_day'] = gmdate('Y-m-d');
+            update_option(self::OPTION, $state, false);
+        }
         // Then the decision queue: one item accepted, one done (once).
         $state = self::state();
         if (!$more && empty($state['queue'])) {
@@ -1251,6 +1257,28 @@ final class SEOProStats_Demo {
                 'source'      => 4,
                 'user_id'     => 0,
             ));
+        }
+    }
+
+    /** Synthetic field samples on demo tables only, without remote calls. */
+    private static function vitals() {
+        require_once __DIR__ . '/class-seoprostats-vitals.php';
+        require_once __DIR__ . '/sources/class-seoprostats-source-crux.php';
+        $targets = array_merge(array(array('path_id' => 0, 'path' => '')), SEOProStats_Vitals::pages(8));
+        foreach ($targets as $at => $target) {
+            foreach (SEOProStats_Vitals::FORMS as $form) {
+                for ($week = 0; $week < ($target['path_id'] === 0 ? 25 : 1); ++$week) {
+                    $date = gmdate('Y-m-d', time() - ($week * 7 + 1) * DAY_IN_SECONDS);
+                    $parts = array_map('intval', explode('-', $date));
+                    $metrics = array();
+                    foreach (SEOProStats_Source_Crux::METRICS as $metric => $name) {
+                        $poor = $at % 3 === 1 && $form === 'PHONE';
+                        $p75 = SEOProStats_Vitals::THRESHOLDS[$metric][$poor ? 1 : 0] * ($poor ? 1.2 : 0.8 + $week / 100);
+                        $metrics[$name] = array('percentiles' => array('p75' => $p75), 'histogram' => array(array('density' => $poor ? 0.4 : 0.8), array('density' => 0.1), array('density' => $poor ? 0.5 : 0.1)));
+                    }
+                    SEOProStats_Vitals::store(array('collectionPeriod' => array('lastDate' => array('year' => $parts[0], 'month' => $parts[1], 'day' => $parts[2])), 'metrics' => $metrics), (int) $target['path_id'], $form, (string) $target['path']);
+                }
+            }
         }
     }
 

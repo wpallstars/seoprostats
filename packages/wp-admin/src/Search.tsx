@@ -63,6 +63,7 @@ import { Change } from './components/Change';
 import { ChangeDots } from './components/ChangeDots';
 import { useChangesModal, type MarkerPick } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
+import { Vitals } from './Vitals';
 import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 import { Opportunities } from './Opportunities';
@@ -488,6 +489,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 				)}
 			</Card>
 			{changes.modal}
+			<Vitals chartOnly />
 
 			{printAll ? (
 				<PrintedSearches state={state} kinds={kinds} page={page} query={query} choose={choose} />

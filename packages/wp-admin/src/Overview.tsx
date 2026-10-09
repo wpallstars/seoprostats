@@ -18,6 +18,7 @@ import type { ViewProps } from './App';
 import { BreakdownCard } from './components/BreakdownCard';
 import { useChangesModal } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
+import { Vitals } from './Vitals';
 import { MetricTiles } from './components/MetricTiles';
 import { Realtime, useRealtimeShown } from './components/Realtime';
 import { WorldMap } from './components/WorldMap';
@@ -39,6 +40,7 @@ export function Overview({ state, update }: ViewProps) {
 
 	return (
 		<>
+			<Vitals chartOnly />
 			{failed && (
 				<Notice status="error" isDismissible={false}>
 					{errorMessage(failed, __('The statistics could not be loaded. Reload the page to try again.', 'seoprostats'))}

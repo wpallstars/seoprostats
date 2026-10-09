@@ -39,6 +39,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Rankings**: queries, pages, countries, devices and search appearance, for Google, Bing or both combined.
 * **Opportunities**: striking-distance queries, low CTR, pages losing clicks with the likely cause, queries missing from the page and overlapping pages.
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
+* **Page experience**: optional Chrome UX Report field metrics by page and origin, against search clicks and visits; owner-triggered Lighthouse lab tests stay separate.
 * **Backlinks**: links from the pages that sent you visitors, found without an outside service.
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
@@ -66,6 +67,7 @@ Off by default, except the first:
 * **Google Search Console API and sign-in** (searchconsole.googleapis.com, oauth2.googleapis.com), after you connect with your own service account key: search data by day, page, query, device and country, sitemaps once a day, and URL Inspection of your own pages (200 a day by default, Settings → Data). Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
 * **Bing Webmaster API** (ssl.bing.com), after you connect with your own API key: the site's search data by day and week. Microsoft [terms](https://www.microsoft.com/servicesagreement) and [privacy statement](https://privacy.microsoft.com/privacystatement).
 * **WordPress.com** (public-api.wordpress.com), only while you import Jetpack Stats, through Jetpack's own connection: the site's daily statistics.
+* **Chrome UX Report and PageSpeed Insights** (chromeuxreport.googleapis.com, pagespeedonline.googleapis.com), after you connect a Google Cloud API key: origin field data daily, top pages weekly, and origin history once. Lighthouse runs only when an administrator asks. Sends the origin or local page URL, never visitor data. Disconnect stops reads; field samples are retained for 400 days. Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
 
 Search requests run in WP-Cron, WP-CLI or when you choose Import now, never on visitor pages, and send nothing about visitors. Disconnecting stops them.
 
@@ -113,6 +115,9 @@ Use **Support** on the settings screen, or ask aidevops.
 6. A shared report: the sections you chose, read-only for a client or colleague, without wp-admin, ready to print or save as PDF.
 
 == Changelog ==
+
+= Unreleased =
+* Added: optional Chrome UX Report page experience, origin history, poor-page Plan findings, REST/CLI/ability reports and owner-triggered Lighthouse lab tests.
 
 = 1.0.0 =
 * First release: cookie-free statistics, goals, funnels, purchases, clicks and the change log; Google Search Console and Bing Webmaster Tools with rankings, opportunities, audit, backlinks, plan, experiments and A/B tests; imports from eight statistics plugins; shared reports; REST API, WP-CLI and abilities.

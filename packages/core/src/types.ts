@@ -6,6 +6,29 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+export type VitalMetric = 'lcp' | 'inp' | 'cls' | 'fcp' | 'ttfb';
+export type VitalSample = {
+	day: string;
+	form_factor: 'PHONE' | 'DESKTOP';
+	metric: VitalMetric;
+	p75: number;
+	good: number;
+	ni: number;
+	poor: number;
+	status: 'good' | 'needs_improvement' | 'poor';
+	stale: boolean;
+};
+export type VitalsAnswer = {
+	connected: boolean;
+	source: 'crux';
+	window_days: number;
+	traffic_days: number;
+	origin: VitalSample[];
+	series: VitalSample[];
+	rows: { path_id: number; path: string; clicks: number; visits: number; samples: VitalSample[]; available: boolean; failing: boolean }[];
+};
+export type LighthouseAnswer = { source: 'lighthouse'; url: string; score: number | null; opportunities: { id: string; title: string; display: string; saved_ms: number }[] };
+
 export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
 
@@ -1532,7 +1555,8 @@ export interface QueueFigures {
 	/** overlap: the pages sharing the query; refresh, merge: this page and the one that overtook it (with its share of the query). */
 	pages?: { path_id: number; path: string; clicks: number; impressions: number; position: number | null; share: number | null }[];
 	/** audit: the finding, its share of the page's expected clicks, the page's facts and the other pages with the same title or description. */
-	finding?: AuditFinding;
+	finding?: AuditFinding | 'page_experience';
+	samples?: VitalSample[];
 	share?: number;
 	facts?: AuditFacts;
 	same?: string[];
@@ -1583,7 +1607,7 @@ export interface QueueItem extends OpportunityPage {
 	found: boolean;
 	query: string | null;
 	/** audit: the finding (the item is one per page and finding); links and index: the list; refresh: the proposal; target: wrong_page or striking; sitemap: the problem; else null. */
-	finding: AuditFinding | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | null;
+	finding: AuditFinding | 'page_experience' | LinksKind | IndexationKind | RefreshProposal | TargetFinding | QueueSitemapProblem | null;
 	/** Why it is listed, in the site's language. */
 	why: string;
 	/** What to do, in the site's language. */
@@ -1632,7 +1656,7 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		scale_days: number;
 		effort: Record<QueueKind, number>;
 		/** Audit findings whose effort is not the audit kind's. */
-		audit_effort: Partial<Record<AuditFinding, number>>;
+		audit_effort: Partial<Record<AuditFinding | 'page_experience', number>>;
 		/** Internal links lists whose effort is not the links kind's, and each list's share of the expected clicks. */
 		links_effort: Partial<Record<LinksKind, number>>;
 		links_share: Record<LinksKind, number>;
