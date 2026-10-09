@@ -486,7 +486,7 @@ final class SEOProStats_AB_Tests {
      */
     private static function derived_id($old, $post_id, array $seen, array $taken) {
         for ($n = 0; ; $n++) {
-            $id = substr(md5($old . ':' . (int) $post_id . ':' . $n . ':' . count($seen)), 0, 12);
+            $id = substr(md5($old . ':' . (int) $post_id . ':' . $n . ':' . count($seen)), 0, 12); // NOSONAR nosemgrep: a short stable ID, not security.
             if (!isset($seen[$id]) && !isset($taken[$id])) {
                 return $id;
             }

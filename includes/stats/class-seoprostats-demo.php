@@ -1292,7 +1292,7 @@ final class SEOProStats_Demo {
                 $index['userCanonical'] = $home($user);
             }
             $result = array(
-                'inspectionResultLink' => 'https://search.google.com/search-console/inspect?resource_id=' . rawurlencode(home_url('/')) . '&id=' . rawurlencode(md5($path)),
+                'inspectionResultLink' => 'https://search.google.com/search-console/inspect?resource_id=' . rawurlencode(home_url('/')) . '&id=' . rawurlencode(md5($path)), // NOSONAR nosemgrep: a made-up ID in demo data, not security.
                 'indexStatusResult'    => $index,
             );
             if ($rich_type !== '') {
