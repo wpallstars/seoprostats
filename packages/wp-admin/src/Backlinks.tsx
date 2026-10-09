@@ -72,7 +72,7 @@ type BacklinksProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Backlinks({ state, update, open }: BacklinksProps) {
+export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 	const kind: BacklinkKind = state.backlinks ?? 'links';
 	const [source, setSource] = useState<(typeof BACKLINK_SOURCES)[number] | ''>('');
 	// Back to the first rows when the period or list change.
@@ -181,7 +181,7 @@ function empty(kind: BacklinkKind, answer: BacklinksAnswer): string {
 }
 
 /** Notes under the list: what was checked, and how. */
-function Notes({ answer }: { answer: BacklinksAnswer }) {
+function Notes({ answer }: Readonly<{ answer: BacklinksAnswer }>) {
 	const notes: string[] = [];
 	notes.push(
 		sprintf(
@@ -228,7 +228,7 @@ function foundLabel(found: string[]): string {
 }
 
 /** The site's page: opens in Rankings. */
-function PageButton({ page, open }: { page: string; open: BacklinksProps['open'] }) {
+function PageButton({ page, open }: Readonly<{ page: string; open: BacklinksProps['open'] }>) {
 	return (
 		<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page, query: '' })}>
 			{page}
@@ -237,7 +237,7 @@ function PageButton({ page, open }: { page: string; open: BacklinksProps['open']
 }
 
 /** The other site's page, in a new tab, never followed from here. */
-function SourceLink({ url }: { url: string }) {
+function SourceLink({ url }: Readonly<{ url: string }>) {
 	return (
 		<a href={url} target="_blank" rel="noopener noreferrer nofollow" className="spst-link">
 			{url.replace(/^https:\/\//, '')}
@@ -246,7 +246,7 @@ function SourceLink({ url }: { url: string }) {
 	);
 }
 
-function LinksTable({ rows, kind, open, refreshing }: { rows: BacklinkRow[]; kind: BacklinkKind; open: BacklinksProps['open']; refreshing: boolean }) {
+function LinksTable({ rows, kind, open, refreshing }: Readonly<{ rows: BacklinkRow[]; kind: BacklinkKind; open: BacklinksProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={backlinkKindName(kind)}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -284,7 +284,7 @@ function LinksTable({ rows, kind, open, refreshing }: { rows: BacklinkRow[]; kin
 	);
 }
 
-function DomainsTable({ rows, refreshing }: { rows: BacklinkDomainRow[]; refreshing: boolean }) {
+function DomainsTable({ rows, refreshing }: Readonly<{ rows: BacklinkDomainRow[]; refreshing: boolean }>) {
 	return (
 		<TableScroll label={backlinkKindName('domains')}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -331,7 +331,7 @@ function DomainsTable({ rows, refreshing }: { rows: BacklinkDomainRow[]; refresh
 	);
 }
 
-function PagesTable({ rows, open, refreshing }: { rows: BacklinkPageRow[]; open: BacklinksProps['open']; refreshing: boolean }) {
+function PagesTable({ rows, open, refreshing }: Readonly<{ rows: BacklinkPageRow[]; open: BacklinksProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={backlinkKindName('pages')}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>

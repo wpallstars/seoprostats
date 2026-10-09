@@ -48,7 +48,7 @@ export function hasStep(filters: ViewState['filters'], step: GoalStep): boolean 
 
 const EMPTY: GoalStep = { name: '', kind: 'event', match: '' };
 
-function GoalEditor({ goal, onClose }: { goal: GoalRow | null; onClose: () => void }) {
+function GoalEditor({ goal, onClose }: Readonly<{ goal: GoalRow | null; onClose: () => void }>) {
 	const data = useDataSet();
 	const [step, setStep] = useState<GoalStep>(goal ? { name: goal.name, kind: goal.kind, match: goal.match } : EMPTY);
 	return (
@@ -86,7 +86,7 @@ export async function confirmDelete(data: ReturnType<typeof useDataSet>, type: '
 	}
 }
 
-export function Goals({ state, update }: ViewProps) {
+export function Goals({ state, update }: Readonly<ViewProps>) {
 	const data = useDataSet();
 	const query = useGoals(state);
 	const [editing, setEditing] = useState<GoalRow | null | 'new'>(null);

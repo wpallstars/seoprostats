@@ -16,7 +16,7 @@ import { TestEdit } from './test-block';
 import { wp, type BlockEditorSelectors, type EditProps } from './wp';
 import './ab-test.css';
 
-function VariantEdit({ clientId, attributes }: EditProps<VariantAttributes>) {
+function VariantEdit({ clientId, attributes }: Readonly<EditProps<VariantAttributes>>) {
 	const { useBlockProps, useInnerBlocksProps } = wp.blockEditor;
 	const { root, index } = wp.data.useSelect(
 		(select) => {

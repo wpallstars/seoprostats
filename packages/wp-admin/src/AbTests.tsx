@@ -82,7 +82,7 @@ function chance(p: number | null): string {
 }
 
 /** The uplift and its 95% interval: +12% (−3% to +29%). */
-function Uplift({ value, control }: { value: AbComparison; control: boolean }) {
+function Uplift({ value, control }: Readonly<{ value: AbComparison; control: boolean }>) {
 	if (control) {
 		return <span className="spst-muted">{__('Control', 'seoprostats')}</span>;
 	}
@@ -132,7 +132,7 @@ function thresholdsText(t: AbThresholds): string {
 	);
 }
 
-function PageCell({ test }: { test: Pick<AbTestRow, 'post' | 'removed'> }) {
+function PageCell({ test }: Readonly<{ test: Pick<AbTestRow, 'post' | 'removed'> }>) {
 	const title = test.post.title || test.post.path || __('(no page)', 'seoprostats');
 	return (
 		<span className="spst-meta">
@@ -143,11 +143,11 @@ function PageCell({ test }: { test: Pick<AbTestRow, 'post' | 'removed'> }) {
 	);
 }
 
-export function AbTests({ state, update }: ViewProps) {
+export function AbTests({ state, update }: Readonly<ViewProps>) {
 	return state.test ? <Detail id={state.test} state={state} update={update} /> : <List state={state} update={update} />;
 }
 
-function List({ state, update }: ViewProps) {
+function List({ state, update }: Readonly<ViewProps>) {
 	const query = useAbTests(state.filters);
 	const answer = query.data;
 	const tests = answer?.tests ?? [];
@@ -247,7 +247,7 @@ function List({ state, update }: ViewProps) {
 }
 
 /** Show reports for visits that saw one variant (choosing it again takes the filter out). */
-function VariantFilter({ value, label, state, update }: { value: string; label: string; state: ViewState; update: ViewProps['update'] }) {
+function VariantFilter({ value, label, state, update }: Readonly<{ value: string; label: string; state: ViewState; update: ViewProps['update'] }>) {
 	const active = hasFilterValue(state.filters, 'variant', value);
 	return (
 		<button
@@ -266,7 +266,7 @@ function VariantFilter({ value, label, state, update }: { value: string; label: 
 	);
 }
 
-function Detail({ id, state, update }: ViewProps & { id: string }) {
+function Detail({ id, state, update }: Readonly<ViewProps & { id: string }>) {
 	const query = useAbTest(id, state.filters);
 	const answer = query.data;
 	const back = (
@@ -300,7 +300,7 @@ function Detail({ id, state, update }: ViewProps & { id: string }) {
 	);
 }
 
-function Report({ answer, refreshing, state, update }: ViewProps & { answer: AbTestAnswer; refreshing: boolean }) {
+function Report({ answer, refreshing, state, update }: Readonly<ViewProps & { answer: AbTestAnswer; refreshing: boolean }>) {
 	const { test, variants, primary } = answer;
 	const name = test.name || test.id;
 	const table = `widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`;

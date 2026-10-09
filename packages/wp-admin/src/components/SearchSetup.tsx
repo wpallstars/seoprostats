@@ -72,7 +72,7 @@ export function sourceName(engine: SearchEngineChoice, engines: SearchEngine[] =
 	return engine === 'bing' ? __('Bing Webmaster Tools', 'seoprostats') : __('Google Search Console', 'seoprostats');
 }
 
-export function SearchSetup({ answer }: { answer: { through: string; connected: boolean; engine?: SearchEngineChoice } }) {
+export function SearchSetup({ answer }: Readonly<{ answer: { through: string; connected: boolean; engine?: SearchEngineChoice } }>) {
 	const demo = useDataSet() === 'demo';
 	if (demo || answer.through) {
 		return null;
@@ -109,13 +109,13 @@ export function EngineSwitch({
 	choose,
 	combined,
 	combinable,
-}: {
+}: Readonly<{
 	engines: SearchEngine[];
 	engine: SearchEngineChoice;
 	choose: (engine: SearchEngineChoice) => void;
 	combined: boolean;
 	combinable: boolean;
-}) {
+}>) {
 	const chosen: SearchEngineChoice = combined || engine !== 'all' ? engine : 'google';
 	const one: SearchEngine[] = chosen === 'all' || engines.includes(chosen) ? engines : [...engines, chosen];
 	const shown: SearchEngineChoice[] = combined && (combinable || chosen === 'all') ? [...one, 'all'] : one;
