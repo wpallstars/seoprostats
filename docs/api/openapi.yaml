@@ -1808,6 +1808,72 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /backlinks:
+    get:
+      operationId: getBacklinks
+      summary: Backlinks — pages of other sites linking to the site's pages.
+      description: |
+        Found without an outside service. Once a day (and with
+        `wp seoprostats backlinks check`) the site reads the pages that
+        sent visits (Referral channel; browsers often give only the other
+        site's address, so its home page is read then), opens each with
+        a request naming the plugin and the site (public addresses only,
+        5 seconds, 1 MB at most), and keeps its links to the site's hosts
+        with their text and rel. Each page is checked again weekly; a page
+        with no link only after it sends another visit. A link missing on
+        `rules.misses` checks in a row, or on a page that answers 404 or
+        410, is lost; failed requests count for nothing. New and lost
+        links are also changes (`backlink_new`, `backlink_lost`, one per
+        referring site and day) on `/markers`. Links from sites that never
+        sent a visit are not found.
+
+        - `links`: live links, newest first.
+        - `domains`: the sites linking, with their visits in the period,
+          most visits first.
+        - `pages`: the site's pages linked to, most sites first.
+        - `lost`: links lost in the period, newest first.
+
+        The period counts `new` and `lost`, and the sites' visits; filters
+        do not apply.
+      parameters:
+        - name: kind
+          in: query
+          description: Which list.
+          schema:
+            $ref: '#/components/schemas/BacklinkKind'
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: One backlinks list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinksAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
   /targets:
     get:
       operationId: getTargets
@@ -2764,7 +2830,9 @@ components:
         content, seo, product, site, search, note. Kinds: published,
         unpublished, address, title, content, links, external_links,
         ab_test_started, ab_test_paused, ab_test_ended, ab_test_winner
-        (an A/B test's state saved in the editor; see /ab-tests); seo_title, meta_description, robots, canonical; out_of_stock,
+        (an A/B test's state saved in the editor; see /ab-tests); seo_title, meta_description, robots, canonical,
+        backlink_new, backlink_lost (links from other sites found or lost
+        by the daily check; see /backlinks); out_of_stock,
         back_in_stock, price_up, price_down, sale_started, sale_ended,
         coupon_published, coupon_changed, coupon_removed; plugin_installed,
         plugin_updated, plugin_activated, plugin_deactivated,
@@ -5867,6 +5935,174 @@ components:
               description: Never shown first, then the newest.
               items:
                 $ref: '#/components/schemas/IndexationRow'
+            total:
+              type: integer
+            more:
+              type: boolean
+
+    BacklinkKind:
+      type: string
+      enum: [links, domains, pages, lost]
+      default: links
+
+    BacklinkRow:
+      type: object
+      description: A link from a page of another site to one of the site's pages (links and lost).
+      required: [source, host, page, anchor, rel, found, first_seen, last_seen, new, authority]
+      properties:
+        source:
+          type: string
+          description: The page linking (https, its host as visits gave it, without www.).
+        host:
+          type: string
+        page:
+          type: string
+          description: The site's page it links to (a path).
+        anchor:
+          type: string
+          description: The link's text; an image's alt text in brackets, or [image].
+        rel:
+          type: array
+          items:
+            type: string
+            enum: [nofollow, sponsored, ugc]
+        found:
+          type: array
+          description: How it was found; referrer, a page that sent visits.
+          items:
+            type: string
+        first_seen:
+          type: [string, 'null']
+          format: date-time
+        last_seen:
+          type: [string, 'null']
+          format: date-time
+        new:
+          type: boolean
+          description: First found in the period.
+        authority:
+          type: integer
+          description: A provider's score; 0 without one.
+        lost:
+          type: [string, 'null']
+          format: date-time
+          description: lost; when it was lost.
+
+    BacklinkDomainRow:
+      type: object
+      description: A site linking to the site (domains).
+      required: [host, links, followed, pages, new, lost, visits, first_seen, last_seen]
+      properties:
+        host:
+          type: string
+        links:
+          type: integer
+        followed:
+          type: integer
+          description: Links without nofollow, sponsored or ugc.
+        pages:
+          type: integer
+          description: The site's pages it links to.
+        new:
+          type: integer
+        lost:
+          type: integer
+          description: Links lost in the period.
+        visits:
+          type: integer
+          description: Its visits in the period (finished days).
+        first_seen:
+          type: [string, 'null']
+          format: date-time
+        last_seen:
+          type: [string, 'null']
+          format: date-time
+
+    BacklinkPageRow:
+      type: object
+      description: One of the site's pages other sites link to (pages).
+      required: [page, links, domains, new, first_seen]
+      properties:
+        page:
+          type: string
+        links:
+          type: integer
+        domains:
+          type: integer
+        new:
+          type: integer
+        first_seen:
+          type: [string, 'null']
+          format: date-time
+
+    BacklinksAnswer:
+      allOf:
+        - $ref: '#/components/schemas/Answer'
+        - type: object
+          required: [range, kind, totals, read, rules, rows, total, more]
+          properties:
+            range:
+              $ref: '#/components/schemas/Range'
+            kind:
+              $ref: '#/components/schemas/BacklinkKind'
+            totals:
+              type: object
+              required: [domains, links, pages, new, new_domains, lost]
+              description: Live links, the sites and pages they join, and the links (and sites) new and lost in the period.
+              properties:
+                domains:
+                  type: integer
+                links:
+                  type: integer
+                pages:
+                  type: integer
+                new:
+                  type: integer
+                new_domains:
+                  type: integer
+                lost:
+                  type: integer
+            read:
+              type: object
+              required: [enabled, pages, checked, last, errors]
+              properties:
+                enabled:
+                  type: boolean
+                  description: Whether the check is on (Settings → Data); always true for the demo data.
+                pages:
+                  type: integer
+                  description: Referring pages known.
+                checked:
+                  type: integer
+                  description: Those checked at least once.
+                last:
+                  type: [string, 'null']
+                  format: date-time
+                errors:
+                  type: integer
+                  description: Pages that could not be opened in the last run.
+            rules:
+              type: object
+              required: [recheck_days, misses, budget, max_rows]
+              properties:
+                recheck_days:
+                  type: integer
+                misses:
+                  type: integer
+                  description: Checks in a row without a link before it is lost.
+                budget:
+                  type: integer
+                  description: Seconds a daily run may take.
+                max_rows:
+                  type: integer
+                  description: Links read per list at most.
+            rows:
+              type: array
+              items:
+                oneOf:
+                  - $ref: '#/components/schemas/BacklinkRow'
+                  - $ref: '#/components/schemas/BacklinkDomainRow'
+                  - $ref: '#/components/schemas/BacklinkPageRow'
             total:
               type: integer
             more:

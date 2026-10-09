@@ -46,8 +46,10 @@ final class SEOProStats_Schema {
      *      SEOProStats_Migrate; 0: summarised from the site's own visits).
      * v16: ab_tests (A/B tests of blocks, read from posts when they are saved).
      * v17: ab_exposures (the A/B test variants each page load showed).
+     * v18: links (backlinks: pages of other sites linking to the site's
+     *      pages, SEOProStats_Backlinks).
      */
-    const VERSION = 17;
+    const VERSION = 18;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -75,6 +77,7 @@ final class SEOProStats_Schema {
     const DICT_APPEARANCE = 17;
     const DICT_AB_TEST    = 18;
     const DICT_AB_VARIANT = 19;
+    const DICT_URL        = 20;
 
     /** Search engines of the gsc_* rows. */
     const ENGINE_GOOGLE = 1;
@@ -115,7 +118,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links');
     }
 
     /**
@@ -727,6 +730,43 @@ final class SEOProStats_Schema {
   PRIMARY KEY  (pkey,test_id),
   KEY test_day (test_id,day,variant_id,session_id),
   KEY ts (ts)
+) $charset;",
+
+            // Backlinks (SEOProStats_Backlinks): one row per page of another
+            // site that sent visits or was found by a source (path_id 0:
+            // the page itself, its checks), and one per link on it to one
+            // of the site's pages (path_id: that page). lkey: 8-byte key of
+            // the source address and path_id. source_url_id: DICT_URL;
+            // anchor_id: DICT_LABEL. rel and found: bits in
+            // SEOProStats_Backlinks::REL and ::FOUND. status: a link's
+            // LINK_* code, a page's PAGE_* code. first_seen, last_seen: a
+            // link's first and last check that found it (a page's first
+            // and last visit from it); lost: when it was lost; checked:
+            // the page's last check; misses: checks in a row without it;
+            // authority: a provider's score, 0 none.
+            'links' => "CREATE TABLE {$t['links']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  lkey binary(8) NOT NULL,
+  source_host_id int unsigned NOT NULL DEFAULT 0,
+  source_url_id int unsigned NOT NULL DEFAULT 0,
+  path_id int unsigned NOT NULL DEFAULT 0,
+  anchor_id int unsigned NOT NULL DEFAULT 0,
+  rel tinyint unsigned NOT NULL DEFAULT 0,
+  found tinyint unsigned NOT NULL DEFAULT 0,
+  status tinyint unsigned NOT NULL DEFAULT 0,
+  first_seen int unsigned NOT NULL DEFAULT 0,
+  last_seen int unsigned NOT NULL DEFAULT 0,
+  lost int unsigned NOT NULL DEFAULT 0,
+  checked int unsigned NOT NULL DEFAULT 0,
+  misses tinyint unsigned NOT NULL DEFAULT 0,
+  authority smallint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY lkey (lkey),
+  KEY path_checked (path_id,checked),
+  KEY source_url (source_url_id),
+  KEY status_first (status,first_seen),
+  KEY lost (lost),
+  KEY source_host (source_host_id)
 ) $charset;",
         );
     }

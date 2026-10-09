@@ -293,6 +293,13 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'description' => __('RSS, Atom or JSON Feed addresses of other sources you trust, such as a search engine\'s blog, one per line; after a space, the name to show (without one, the domain). Their posts whose title names an update are added once a day, one request to each.', 'seoprostats'),
                 'placeholder' => 'https://example.com/feed/ Bing',
             ),
+            'backlinks'               => array(
+                'type'        => 'bool',
+                'default'     => true,
+                'tab'         => 'data',
+                'label'       => __('Check pages that send visitors for links', 'seoprostats'),
+                'description' => __('Once a day the site opens the pages of other sites that sent visitors (the address the browser gave, often only the other site\'s home page), at most for 20 seconds, and keeps the links on them to this site, with their text, so Search → Backlinks lists them and new and lost links show on the timeline. Each page is checked again weekly. The request names SEO Pro Stats and this site, and sends nothing about visitors. Off: no page is opened.', 'seoprostats'),
+            ),
             'viewers'                 => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -559,6 +566,15 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
      */
     public static function search_updates() {
         return (bool) SEOProStats_Settings::get('search_updates');
+    }
+
+    /**
+     * Whether pages that send visitors are checked for links (backlinks).
+     *
+     * @return bool
+     */
+    public static function backlinks() {
+        return (bool) SEOProStats_Settings::get('backlinks');
     }
 
     /**

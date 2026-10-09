@@ -101,6 +101,10 @@ Yes, under Search → Audit. The links in each published page's text to your oth
 
 Yes, under Search → Audit → Indexation. It lists published pages with no search impressions in the newest 28 days of search data, published before them, and the other addresses in WordPress's own sitemap, such as category, tag and author archives, listed that long with none. Each says whether search never showed it or stopped showing it, and when. Pages set to noindex or with a canonical address elsewhere are left out. The sitemap is read from WordPress once a day, with no outside request, and the search engines are not asked about each page. Each row is also in Search → Plan. Scripts and AI agents read it through the REST API (indexation), wp seoprostats indexation, and on WordPress 6.9 and later the ability seoprostats/indexation.
 
+= Does it show backlinks? =
+
+Yes, under Search → Backlinks, without an outside service: once a day the site opens the pages of other sites that sent visitors and keeps their links to your pages, with the link text and whether they are nofollow, sponsored or ugc. It lists the links, the sites linking (with their visits), the pages they link to, and links lost; new and lost links show on the timeline. Links from sites that never sent a visitor are not found. Switch it off under Settings → Data. Scripts and AI agents read it through the REST API (backlinks), wp seoprostats backlinks, and on WordPress 6.9 and later the ability seoprostats/backlinks.
+
 = What does Search → Content show? =
 
 Which pages earn their search traffic. For each page: its search clicks, position and click-through rate, beside the visits from search that started on it, their bounce rate and time, and how many reached a goal you pick. A page that ranks but whose visitors leave needs better content or a clearer next step; one that converts but gets few clicks is worth ranking higher. Sort by clicks, visits or conversions. Scripts and AI agents read it through the REST API (content), wp seoprostats content, and on WordPress 6.9 and later the ability seoprostats/content.
@@ -143,13 +147,15 @@ Ask aidevops (https://aidevops.sh): open the plugin's repository, or your site, 
 
 = Does it contact other services? =
 
-Not unless you switch on Show search engine updates under Settings → Data, or connect Google Search Console or Bing Webmaster Tools under Settings → Connections (all off by default). Search engine updates: once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Search Console: it signs in to Google with your service account and asks for your property's search data. Bing Webmaster Tools: it asks Bing for your site's search data with your API key. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
+Only the pages that send you visitors, to find their links to you (Settings → Data → Check pages that send visitors for links; on by default, switch it off to stop it). Nothing else unless you switch on Show search engine updates under Settings → Data, or connect Google Search Console or Bing Webmaster Tools under Settings → Connections (all off by default). Backlinks check: once a day, for up to 20 seconds, it opens pages of other sites that sent visitors, as any browser would, and reads their links to your site; the request names the plugin and your site and sends nothing about your visitors. Search engine updates: once a day, it asks Google's Search Status Dashboard for its list of search updates, and any other feeds you add for theirs. Search Console: it signs in to Google with your service account and asks for your property's search data. Bing Webmaster Tools: it asks Bing for your site's search data with your API key. Otherwise the WordPress.org build contacts nothing outside WordPress. See External services.
 
 = When do versions reach WordPress.org? =
 
 GitHub releases are the stable beta channel: each version comes out there first. WordPress.org gets it 30 days later, except security releases, which come out on both at once.
 
 == External services ==
+
+**Pages of other sites that sent visitors**, while Settings → Data → Check pages that send visitors for links is on (the default): once a day, for up to 20 seconds, WP-Cron opens pages that sent visits to the site (the address the visitor's browser gave as the referrer, often only the other site's home page), each again weekly, to read their links to the site for Search → Backlinks. Only public addresses are opened (WordPress's safe request), with a 5-second timeout and at most 1 MB read; the user agent names the plugin, its version and the site's address so the other site's owner can see who looked. Nothing about the site's visitors is sent, no cookies are sent or kept, and never on visitors' pages. Each site's own terms and privacy policy apply. Switching the setting off stops it.
 
 **Google Search Status Dashboard** (status.search.google.com), only when Settings → Data → Show search engine updates is on: once a day the site downloads the dashboard's public list of Google Search ranking updates and incidents (https://status.search.google.com/incidents.json), to mark them on the charts. The request sends nothing about the site or its visitors: no cookies and no site address; the user agent names only the plugin and its version. Google's terms: https://policies.google.com/terms; privacy policy: https://policies.google.com/privacy.
 

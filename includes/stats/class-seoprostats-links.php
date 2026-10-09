@@ -110,10 +110,10 @@ final class SEOProStats_Links {
      * Queries are kept only with plain permalinks (?p=1); otherwise they
      * are tracking or sorting, and the page is the path.
      *
-     * @param string $path Path from SEOProStats_Changes::links().
+     * @param string $path Path from SEOProStats_Changes::links() or ::path().
      * @return string
      */
-    private static function target($path) {
+    public static function target($path) {
         $parts = explode('?', (string) $path, 2);
         $base  = $parts[0] === '' ? '/' : $parts[0];
         if (preg_match(self::NOT_PAGES, $base)) {

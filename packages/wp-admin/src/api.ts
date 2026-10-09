@@ -17,6 +17,8 @@ import {
 	type AbTestsAnswer,
 	type AuditAnswer,
 	type AuditFinding,
+	type BacklinkKind,
+	type BacklinksAnswer,
 	type BreakdownAnswer,
 	type ChangesAnswer,
 	type ClickKind,
@@ -300,6 +302,18 @@ export function useIndexation(scope: SearchScope, kind: IndexationKind, limit = 
 	return useQuery({
 		queryKey: ['indexation', args],
 		queryFn: () => get<IndexationAnswer>('indexation', args),
+		placeholderData: keepPreviousData,
+		enabled,
+	});
+}
+
+/** Backlinks: live links, the sites linking, the site's pages linked to, or links lost; the period counts new and lost links and the sites' visits; filters, engine and comparison do not apply. */
+export function useBacklinks(scope: SearchScope, kind: BacklinkKind, limit = 25, offset = 0) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none', filters: [] }), kind, limit, offset }, data);
+	return useQuery({
+		queryKey: ['backlinks', args],
+		queryFn: () => get<BacklinksAnswer>('backlinks', args),
 		placeholderData: keepPreviousData,
 		enabled,
 	});

@@ -49,6 +49,8 @@ final class SEOProStats_Changes {
         11 => array('meta_description', 'seo'),
         12 => array('robots', 'seo'),
         13 => array('canonical', 'seo'),
+        14 => array('backlink_new', 'seo'),
+        15 => array('backlink_lost', 'seo'),
         20 => array('out_of_stock', 'product'),
         21 => array('back_in_stock', 'product'),
         22 => array('price_up', 'product'),
@@ -106,6 +108,16 @@ final class SEOProStats_Changes {
     const AB_PAUSED  = 31;
     const AB_ENDED   = 32;
     const AB_WINNER  = 33;
+
+    /**
+     * Kind codes of links from another site found or lost
+     * (SEOProStats_Backlinks): one change per referring site and day;
+     * object_type backlink, new the site's host, path the linked page
+     * when there is one ('' for several); meta host, count, links (from,
+     * to, anchor; at most MAX_LIST).
+     */
+    const BACKLINK_NEW  = 14;
+    const BACKLINK_LOST = 15;
 
     /** Groups of kinds, for filters. */
     const GROUPS = array('content', 'seo', 'product', 'site', 'search', 'note');
@@ -1662,6 +1674,12 @@ final class SEOProStats_Changes {
             case 'canonical':
                 /* translators: 1: post title, 2: canonical URL now */
                 return sprintf(__('Canonical changed: %1$s → %2$s', 'seoprostats'), $title, $new !== '' ? $new : __('default', 'seoprostats'));
+            case 'backlink_new':
+                /* translators: 1: the linking site, 2: number of links */
+                return sprintf(_n('New backlink: %1$s (%2$d link)', 'New backlinks: %1$s (%2$d links)', isset($meta['count']) ? (int) $meta['count'] : 1, 'seoprostats'), $new, isset($meta['count']) ? (int) $meta['count'] : 1);
+            case 'backlink_lost':
+                /* translators: 1: the linking site, 2: number of links */
+                return sprintf(_n('Lost backlink: %1$s (%2$d link)', 'Lost backlinks: %1$s (%2$d links)', isset($meta['count']) ? (int) $meta['count'] : 1, 'seoprostats'), $new, isset($meta['count']) ? (int) $meta['count'] : 1);
             case 'out_of_stock':
                 /* translators: %s: product name */
                 return sprintf(__('Out of stock: %s', 'seoprostats'), $title);

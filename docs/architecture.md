@@ -458,6 +458,35 @@ only. Engine URL inspection is not used. Each row is also a queue item
 reads the sitemaps now. The dashboard shows it under Search → Audit,
 after internal links.
 
+Backlinks (schema v18, `SEOProStats_Backlinks`, GH#142) lists pages of
+other sites that link to the site's pages, found without an outside
+service. On by default (Settings → Data → Check pages that send visitors
+for links); off, no page is opened. The daily cron reads the Referral
+channel's visits since its last run from `sessions` by `started` (each
+referring host and path once a day, at most 2,000), and keeps each as a
+referring page in the new `links` table (`path_id` 0; its address in the
+dictionary as `DICT_URL`). Browsers usually send only the other site's
+origin, so most referring pages are home pages. Within 20 seconds it
+opens the pages due, oldest check first (`path_checked` key):
+`wp_safe_remote_get()` (public addresses only, 5 seconds, 1 MB, three
+redirects), a user agent naming the plugin and the site, nothing about
+visitors. Absolute `<a href>` links to the site's hosts (the collector's
+host list) become one row each per linked page (`path_id`), with their
+text (`DICT_LABEL`, 100 characters) and rel bits (nofollow, sponsored,
+ugc), at most 50 per page. A page is checked again after a week; one
+that showed no link only after it sends another visit. A link missing on
+two checks in a row, or on a page answering 404 or 410, is lost; failed
+requests change nothing. New and lost links become changes
+(`backlink_new`, `backlink_lost`, group seo; one per referring site and
+day, with the links in `meta`). The report reads live links by
+`status_first` and lost ones by `lost` (each at most 5,000), and each
+referring site's visits from `daily` (dim source) by `dim_val_day`.
+`found` and `authority` leave room for a provider (GH#141). `GET
+/backlinks`, `wp seoprostats backlinks [links|domains|pages|lost|check]`
+and the `seoprostats/backlinks` ability read it; `check` runs the check
+now for two minutes, even when the setting is off. The dashboard shows it
+under Search → Backlinks (not in shared reports).
+
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
 value), that page. `packages/charts/src/markers.ts` draws the lane under the
@@ -1601,7 +1630,7 @@ in the future meets the same length of the other period.
   definitions (`/goals/{id}`) for administrators, on the data set asked for.
   Routes so far: `stats`, `timeseries`, `breakdown`, `realtime`, `markers`,
   `changes`, `goals`, `funnels`, `properties`, `clicks`, `search`,
-  `opportunities`, `audit`, `links`, `indexation`, `coverage`, `content`,
+  `opportunities`, `audit`, `links`, `indexation`, `backlinks`, `coverage`, `content`,
   `experiments`, `ab-tests` (and `ab-tests/{id}`; A/B tests above),
   `queue`, `targets`, `loop` (one answer per cycle for an
   agent: open queue items, experiments due and recently decided, and the
@@ -1615,7 +1644,7 @@ in the future meets the same length of the other period.
   `/{source}/cleanup` `POST` to list, or remove, its leftovers; Moving
   from other statistics plugins above); planned: `pages`,
   `page`, `flow`, `journeys`, `vitals`, `errors`, `bots`,
-  `backlinks`, `anomalies`, `health`, `annotations`, `segments`,
+  `anomalies`, `health`, `annotations`, `segments`,
   `export`, `import`, `collect`.
 - **WP-CLI**, `wp seoprostats <command>` with `--format=json|csv|table`:
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
@@ -1629,7 +1658,7 @@ in the future meets the same length of the other period.
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
   [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
   [--goal=<id>]`, `indexation` (`list [--kind=<kind>] [--days=<n>]`,
-  `run`), `targets` (`list`, `import <file|->`, `delete <query>...`),
+  `run`), `backlinks [links|domains|pages|lost|check] [--all]`, `targets` (`list`, `import <file|->`, `delete <query>...`),
   `loop [--rows=<n>]` (`--format=toon` writes the export rows as an
   aidevops export file), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
@@ -1645,7 +1674,7 @@ in the future meets the same length of the other period.
   clients reach them through the WordPress MCP adapter. So far
   `seoprostats/markers`, `seoprostats/annotate`, `seoprostats/search`,
   `seoprostats/opportunities`, `seoprostats/audit`, `seoprostats/links`,
-  `seoprostats/indexation`, `seoprostats/coverage`,
+  `seoprostats/indexation`, `seoprostats/backlinks`, `seoprostats/coverage`,
   `seoprostats/content`, `seoprostats/experiments`,
   `seoprostats/experiment-record`, `seoprostats/ab-tests`, `seoprostats/queue`,
   `seoprostats/queue-update`, `seoprostats/targets`,
