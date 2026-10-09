@@ -61,7 +61,7 @@ function problemName(problem: SitemapProblem): string {
 }
 
 /** Google's view of a page in a few words: its reason and last crawl (Indexation, Inspections). */
-export function GoogleCell({ google }: { google: InspectionGoogle | null }) {
+export function GoogleCell({ google }: Readonly<{ google: InspectionGoogle | null }>) {
 	if (!google) {
 		return <span className="spst-muted">{__('Not inspected yet', 'seoprostats')}</span>;
 	}
@@ -86,7 +86,7 @@ type InspectionsProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Inspections({ state, open }: InspectionsProps) {
+export function Inspections({ state, open }: Readonly<InspectionsProps>) {
 	const [verdict, setVerdict] = useState<InspectionVerdict | ''>('');
 	// Back to the first rows when the filters or verdict change.
 	const scope = JSON.stringify([state.filters.map(serializeFilter), verdict]);
@@ -191,7 +191,7 @@ export function Inspections({ state, open }: InspectionsProps) {
 }
 
 /** Search Console's sitemaps for the property, as Google read them. */
-function Sitemaps({ answer }: { answer: InspectionsAnswer }) {
+function Sitemaps({ answer }: Readonly<{ answer: InspectionsAnswer }>) {
 	const s = answer.sitemaps;
 	return (
 		<>
@@ -235,7 +235,7 @@ function Sitemaps({ answer }: { answer: InspectionsAnswer }) {
 	);
 }
 
-function SitemapsTable({ rows }: { rows: SearchSitemap[] }) {
+function SitemapsTable({ rows }: Readonly<{ rows: SearchSitemap[] }>) {
 	return (
 		<TableScroll label={__('Sitemaps in Search Console', 'seoprostats')}>
 			<table className="widefat striped spst-table spst-decay">
@@ -278,7 +278,7 @@ function SitemapsTable({ rows }: { rows: SearchSitemap[] }) {
 }
 
 /** Notes under the list: the daily cap, today's use and the last run. */
-function Notes({ answer }: { answer: InspectionsAnswer }) {
+function Notes({ answer }: Readonly<{ answer: InspectionsAnswer }>) {
 	const p = answer.progress;
 	const r = answer.rules;
 	const notes: string[] = [];
@@ -320,7 +320,7 @@ function Notes({ answer }: { answer: InspectionsAnswer }) {
 	);
 }
 
-function PagesTable({ rows, open, refreshing }: { rows: InspectionRow[]; open: InspectionsProps['open']; refreshing: boolean }) {
+function PagesTable({ rows, open, refreshing }: Readonly<{ rows: InspectionRow[]; open: InspectionsProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={__('Pages inspected', 'seoprostats')}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>

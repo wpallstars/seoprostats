@@ -27,7 +27,7 @@ import { METRICS, type Marker } from '@seoprostats/core';
 /** No changes (one list, so the chart is not redrawn for a new empty one). */
 const NO_MARKERS: Marker[] = [];
 
-export function Overview({ state, update }: ViewProps) {
+export function Overview({ state, update }: Readonly<ViewProps>) {
 	const stats = useStats(state);
 	const series = useTimeseries(state);
 	const markers = useMarkers(state, filteredPage(state.filters));
@@ -167,7 +167,7 @@ export function Overview({ state, update }: ViewProps) {
 }
 
 /** The period shown, and the one it is compared with. */
-export function PeriodLine({ range, compare }: { range: { from: string; to: string }; compare?: { from: string; to: string } }) {
+export function PeriodLine({ range, compare }: Readonly<{ range: { from: string; to: string }; compare?: { from: string; to: string } }>) {
 	return (
 		<p className="spst-period">
 			{rangeText(range.from, range.to)}

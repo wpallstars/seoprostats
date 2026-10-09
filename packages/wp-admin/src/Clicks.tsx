@@ -101,7 +101,7 @@ function emptyText(kind: ClickKind): string {
 }
 
 /** The element as people saw it: its label, or its tag#id.class. */
-function Element({ row }: { row: ClickRow }) {
+function Element({ row }: Readonly<{ row: ClickRow }>) {
 	return (
 		<>
 			<span>{row.label || <span className="spst-muted">{__('(no text)', 'seoprostats')}</span>}</span>
@@ -114,7 +114,7 @@ function Element({ row }: { row: ClickRow }) {
 	);
 }
 
-function Flags({ row }: { row: ClickRow }) {
+function Flags({ row }: Readonly<{ row: ClickRow }>) {
 	const flags = [
 		row.affiliate && __('Affiliate', 'seoprostats'),
 		row.outbound && !row.affiliate && __('Outbound', 'seoprostats'),
@@ -123,7 +123,7 @@ function Flags({ row }: { row: ClickRow }) {
 	return flags.length ? <span className="spst-meta">{flags.join(' · ')}</span> : null;
 }
 
-function PageLinks({ info }: { info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_url'> }) {
+function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_url'> }>) {
 	return (
 		<span className="spst-meta">
 			{info.url && (
@@ -149,7 +149,7 @@ function PageLinks({ info }: { info: Pick<ClickPageInfo, 'path' | 'url' | 'edit_
 	);
 }
 
-export function Clicks({ state, update }: ViewProps) {
+export function Clicks({ state, update }: Readonly<ViewProps>) {
 	const kind: ClickKind = state.kind ?? 'elements';
 	const page = state.page ?? '';
 	// The box is a draft until Apply; it follows the address (back button, links).
@@ -257,7 +257,7 @@ export function Clicks({ state, update }: ViewProps) {
 }
 
 /** Paper: one kind's table under its name. */
-function PrintedKind({ state, tile, page, update }: { state: ViewProps['state']; tile: Tile; page: string; update: ViewProps['update'] }) {
+function PrintedKind({ state, tile, page, update }: Readonly<{ state: ViewProps['state']; tile: Tile; page: string; update: ViewProps['update'] }>) {
 	const query = useClicks(state, tile.kind, page);
 	return (
 		<section className="spst-print-tab">
@@ -278,7 +278,7 @@ interface ClickRowsProps {
 }
 
 /** One kind of clicks: loading, empty, or its table, and what it counts. */
-function ClickRows({ answer, kind, label, failed, fetching, page, update }: ClickRowsProps) {
+function ClickRows({ answer, kind, label, failed, fetching, page, update }: Readonly<ClickRowsProps>) {
 	const rows = answer?.kind === kind ? answer.rows : [];
 	const top = Math.max(...rows.map((r) => r.count), 1);
 	return (
