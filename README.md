@@ -3,27 +3,19 @@
 # SEO Pro Stats
 
 <!-- aidevops:badges:start -->
-<!-- managed by aidevops badges; edit the template, not this block -->
-<!-- Build & Quality Status -->
-[![GitHub Actions](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
+<!-- On GitHub only: the Read Me tab skips this block. scripts/rename-plugin.sh rewrites it. -->
+[![CI](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoprostats/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoprostats)
+[![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/wpallstars/seoprostats)](https://github.com/wpallstars/seoprostats/releases)
 
-<!-- License & Legal -->
-[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](https://github.com/wpallstars/seoprostats/blob/main/LICENSE)
-
-<!-- WordPress Plugin -->
-[![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-[![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-[![Requires PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg?logo=php)](https://github.com/wpallstars/seoprostats/blob/main/readme.txt)
-
-<!-- Repository Metrics -->
+[![Requires WordPress](https://img.shields.io/badge/WordPress-6.2%2B-21759B.svg?logo=wordpress)](readme.txt)
+[![Tested up to](https://img.shields.io/badge/tested%20up%20to-7.1-21759B.svg?logo=wordpress)](readme.txt)
+[![Requires PHP](https://img.shields.io/badge/PHP-7.4%2B-777BB4.svg?logo=php)](readme.txt)
 [![Lines of code](docs/metrics/badges/loc.svg)](docs/metrics/repo-metrics.md)
-[![Languages by lines of code](docs/metrics/badges/languages.svg)](docs/metrics/repo-metrics.md)
 [![Dependencies](docs/metrics/badges/dependencies.svg)](docs/metrics/repo-metrics.md)
 
-<!-- Project Links -->
-[![Latest release](https://img.shields.io/github/v/release/wpallstars/seoprostats)](https://github.com/wpallstars/seoprostats/releases)
-[![GitHub repository](https://img.shields.io/badge/github-repository-181717.svg?logo=github)](https://github.com/wpallstars/seoprostats)
+[![Languages by lines of code](docs/metrics/badges/languages.svg)](docs/metrics/repo-metrics.md)
 <!-- aidevops:badges:end -->
 
 **Actionable analytics for WordPress. Connect your content to the data that shows you how to grow.**
