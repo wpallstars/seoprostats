@@ -1,24 +1,38 @@
 # SEO Pro Stats — launch state
 
-In development, version 0.1.0, with no release yet. The repository is
-private; making it public needs the owner's say.
+Public since 9 October 2026, at version 1.0.0 (the first GitHub release).
 
-While it is private (`DEVELOPMENT.md` → While private):
+Before it went public, the whole Git history was scanned for secrets
+(`DEVELOPMENT.md` → Secrets in history), and issues, pull requests, commit
+messages and the release were checked for private names and paths. The
+scan's only findings, four `curl-auth-user` matches in `README.md` (commits
+`ff0bfd0`, `c2f2253`, `065960b` and `560c58c`), are the REST API example's
+placeholder `admin:APPLICATION PASSWORD`, not a password; the example now
+uses environment variables. Expect those four in later history scans.
 
-- GitHub Actions do not start on this repository (account billing), so the
-  checks run locally before each merge (`AGENTS.md` → Rules for any
-  change). Qlty is out of minutes; Socket and CodeRabbit run.
-- No branch protection, rulesets, CodeQL, secret scanning or Scorecard:
-  they need a public repository or a paid GitHub plan.
-- Codacy, CodeFactor and SonarCloud are not connected; they are set up at
-  public launch.
-- Repository metrics (`docs/metrics/`) are not refreshed by Actions;
-  regenerate them locally when they matter. `SYNC_PAT` is needed only once
-  `main` is protected (`DEVELOPMENT.md` → Services setup, step 4).
+On now:
 
-At public launch: scan the whole Git history first (`DEVELOPMENT.md` →
-Secrets in history), then run `DEVELOPMENT.md` → At public launch, and
-update this file with what is on.
+- GitHub Actions run (CI, Release, Scorecard, Starter sync, Repository
+  metrics). CI checks are required on `main` by a branch ruleset (Lint,
+  Release build, both Smoke tests), without "branch must be up to date".
+- CodeQL default setup (JavaScript and TypeScript, GitHub Actions; it has
+  no PHP support), secret scanning with push protection, Dependabot alerts
+  and security updates, private vulnerability reporting (`SECURITY.md`),
+  and OpenSSF Scorecard (badge in `README.md`).
+- Socket and CodeRabbit review pull requests.
+
+Not yet (owner's accounts, `DEVELOPMENT.md` → Services setup):
+
+- SonarCloud (`SONAR_TOKEN`), Codacy and CodeFactor are not connected, so
+  their badges are left out of `README.md`.
+- `SYNC_PAT` is not set, so Repository metrics cannot commit to the
+  protected `main`; regenerate `docs/metrics/` locally until it is.
+- The rest of `DEVELOPMENT.md` → At public launch: fix the reviewers'
+  findings by area, then raise the PHPStan level.
+
+Version 1.0.0 was published by hand while Actions could not run, so its
+zip has no signed build provenance; releases from 1.0.1 on get it from the
+Release workflow (`gh attestation verify`).
 
 WordPress.org: planned (`readme.txt` → FAQ: versions reach WordPress.org 30
 days after GitHub). Not submitted; follow `RELEASING.md` → WordPress.org

@@ -6,6 +6,7 @@
 <!-- managed by aidevops badges; edit the template, not this block -->
 <!-- Build & Quality Status -->
 [![GitHub Actions](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoprostats/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoprostats)
 
 <!-- License & Legal -->
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](https://github.com/wpallstars/seoprostats/blob/main/LICENSE)
@@ -21,6 +22,7 @@
 [![Dependencies](docs/metrics/badges/dependencies.svg)](docs/metrics/repo-metrics.md)
 
 <!-- Project Links -->
+[![Latest release](https://img.shields.io/github/v/release/wpallstars/seoprostats)](https://github.com/wpallstars/seoprostats/releases)
 [![GitHub repository](https://img.shields.io/badge/github-repository-181717.svg?logo=github)](https://github.com/wpallstars/seoprostats)
 <!-- aidevops:badges:end -->
 
@@ -392,7 +394,7 @@ The REST API (`/wp-json/seoprostats/v1`) and WP-CLI give the same numbers as the
 - Daily summaries: an hour after each day ends, the day's numbers are summarised, so long ranges (this year, 12 months, all time) read a few rows a day and stay fast. Visits and pageviews are kept 75 months, events 120 months, clicks 3 months and imported search data by page and query 25 months, then deleted; the summaries and search totals are kept. Change the months under Settings → Data, or with the `seoprostats_retention` filter (`visits`, `events`, `clicks`, `search`; 0 keeps forever; clicks never outlast their visits).
 
 ```sh
-curl -u "admin:APPLICATION PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
+curl -u "$WP_USER:$WP_APPLICATION_PASSWORD" "https://example.com/wp-json/seoprostats/v1/breakdown?dimension=source&range=30d"
 ```
 
 ### Tracking
