@@ -9,11 +9,20 @@ Stable tag: 1.0.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
-Private site statistics: traffic, search rankings and sales on one timeline with the changes that moved them, in your own database, no cookies.
+Actionable analytics: connect your content to the data that shows you how to grow. Private stats, search rankings and sales, no cookies.
 
 == Description ==
 
-SEO Pro Stats counts visits in your own WordPress database, without cookies, stored IP addresses or outside services, and puts traffic, search rankings and sales on one timeline with what changed on the site, so you can see what moved them. People read it in wp-admin; scripts and AI agents read the same reports through the REST API, WP-CLI (`wp seoprostats`) and, on WordPress 6.9 and later, abilities.
+**Actionable analytics for WordPress.** Most statistics plugins count what happened. SEO Pro Stats also shows why, and what to do next: it connects your content to the traffic, search rankings and sales it brings, marks every change made to the site on the same timeline, ranks the search work worth doing, and checks whether each change worked.
+
+= Why SEO Pro Stats =
+
+* **Cause and effect.** Posts edited, SEO titles rewritten, prices changed, plugins updated and Google's search updates are recorded and marked under every chart, so a rise or a drop comes with its likely causes.
+* **Content joined to results.** Each page's search clicks and position sit beside the visits it started and the goals they reached.
+* **A plan, not just a report.** Search → Plan ranks what to do next from your own data, each item with why, what to do and the clicks it could bring.
+* **Proof of what worked.** Experiments compare changed pages with unchanged ones and suggest keep, revise or undo; A/B tests of blocks compare versions of a page live.
+* **Private.** Counted in your own database, with no cookies, no stored IP addresses and no queries on visitors' pages.
+* **For AI agents too.** Every report through the REST API, WP-CLI (`wp seoprostats`) and, on WordPress 6.9 and later, abilities.
 
 = Statistics =
 
@@ -70,6 +79,7 @@ Made from WP Plugin Starter (https://github.com/wpallstars/wp-plugin-starter-tem
 
 1. Install from Plugins → Add New → Upload Plugin, or upload the `seoprostats` folder to `/wp-content/plugins/`, and activate it.
 2. Open SEO Pro Stats in the admin menu, under Dashboard. Visits show within a minute or two: open the site logged out, or switch on Demo data on the Overview.
+3. Add your goals, connect Google Search Console and Bing Webmaster Tools (Settings → Connections) and import your old statistics (Settings → Import). Then work through Search → Plan.
 
 == Frequently Asked Questions ==
 

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       SEO Pro Stats
  * Plugin URI:        https://github.com/wpallstars/seoprostats
- * Description:       Private site statistics: traffic, search rankings and sales on one timeline with the changes that moved them, in your own database, no cookies.
+ * Description:       Actionable analytics: connect your content to the data that shows you how to grow. Private stats, search rankings and sales, no cookies.
  * Version:           1.0.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
