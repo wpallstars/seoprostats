@@ -3579,6 +3579,7 @@ final class SEOProStats_CLI {
      * options:
      *   - search-console
      *   - bing
+     *   - crux
      * ---
      *
      * [--key-file=<file>]
@@ -3590,6 +3591,9 @@ final class SEOProStats_CLI {
      * : Search Console: the property to import (https://example.com/ or
      * sc-domain:example.com); Bing: the site (https://example.com/).
      * Without it, the one for this site.
+     *
+     * [--pages=<pages>]
+     * : CrUX monitored page cap (0–1000, default 100).
      *
      * [--format=<format>]
      * : table or json.
@@ -3623,6 +3627,7 @@ final class SEOProStats_CLI {
         $status = SEOProStats_Connections::connect($args[0], array(
             'key'      => $key,
             'property' => isset($assoc['property']) ? (string) $assoc['property'] : '',
+            'pages'    => isset($assoc['pages']) ? (int) $assoc['pages'] : 100,
         ));
         if (is_wp_error($status)) {
             $data = $status->get_error_data();
@@ -3658,6 +3663,7 @@ final class SEOProStats_CLI {
      * options:
      *   - search-console
      *   - bing
+     *   - crux
      * ---
      *
      * [--delete-data]
@@ -4241,6 +4247,15 @@ final class SEOProStats_CLI {
         if (empty($status['connected'])) {
             /* translators: %s: source name */
             WP_CLI::log(sprintf(__('%s is not connected.', 'seoprostats'), $status['name']));
+            return;
+        }
+        if ($status['source'] === 'crux') {
+            WP_CLI\Utils\format_items('table', array(
+                array('field' => 'origin', 'value' => $status['property']),
+                array('field' => 'pages', 'value' => $status['pages']),
+                array('field' => 'last run', 'value' => $status['last_run']),
+                array('field' => 'last error', 'value' => $status['error']),
+            ), array('field', 'value'));
             return;
         }
         $imported = $status['imported'];

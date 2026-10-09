@@ -78,6 +78,18 @@ Version: 1.0.0
 
 ## What's included
 
+### Page experience (Chrome UX Report)
+
+Connect **Chrome UX Report** in **Settings → Connections** with a Google Cloud API key enabled for the Chrome UX Report API. The key is encrypted like other connections. This service is optional; without a connection there are no requests. Set the monitored page cap there (100 by default, 0–1000).
+
+The background reader checks the origin for phone and desktop daily, imports its weekly history on connection, and checks top pages from visits and search clicks at most weekly. Search → Audit → **Page experience** lists monitored pages with their field metrics, search clicks and visits; pages with a poor p75 for LCP, INP or CLS come first. Overview and Search → Rankings can show the origin's p75 history by metric and form factor. Each point covers a rolling 28-day window, not that day's traffic alone. Missing records mean insufficient eligible Chrome traffic or an uncompleted check, never a zero or a passing score; old samples are marked stale.
+
+Poor pages receiving search clicks also enter Plan as an audit item. Its score uses 10% of observed clicks per 28 days (at least one), conversion value, confidence 0.5 and effort 2: a prioritisation estimate, **not a prediction of extra clicks or rankings**. A change in LCP, INP or CLS classification adds a `vitals_status` marker to the site group.
+
+An administrator can choose **Run Lighthouse** on one page for a mobile lab test. It runs only on that action, not from cron; enable PageSpeed Insights API for the same key. A simulated lab score is not CrUX field data. The report is also available as REST `GET /vitals`, `wp seoprostats vitals [<page>] [--data=demo]`, and ability `seoprostats/vitals`. `wp seoprostats vitals /pricing/ --run --user=admin` and REST `POST /vitals/lighthouse` (`page`) run a lab test. Shared report links do not expose these routes.
+
+CrUX sends Google's API the site's origin or page URL, form factor and requested metrics; PSI sends one local page URL. Neither sends visitor data. Field samples stay in the site's database for 400 days; disconnect stops collection and can optionally remove them. Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy) apply.
+
 - **Statistics without cookies**: visitors, visits, pageviews, bounce rate and time, sources and campaigns, pages and pages not found, site searches, countries on a map, devices and events, against the previous period. Visits are counted with a hash salted each day; no IP address is stored and visitor pages run no database queries.
 - **Goals, Funnels, Properties and Purchases**: conversions and revenue per currency, from pages, events and paid orders in WooCommerce, Easy Digital Downloads, FluentCart and ThriveCart, with refunds and renewals.
 - **Clicks**: what people click, dead clicks, links followed, files and forms sent, never what anyone types.

@@ -126,8 +126,9 @@ function refreshProposal(item: QueueItem): RefreshProposal | null {
 }
 
 /** An audit item's finding, or null. */
-function auditFinding(item: QueueItem): AuditFinding | null {
-	return item.kind === 'audit' && item.finding && (AUDIT_FINDINGS as readonly string[]).includes(item.finding) ? (item.finding as AuditFinding) : null;
+function auditFinding(item: QueueItem): AuditFinding | 'page_experience' | null {
+    if (item.kind === 'audit' && item.finding === 'page_experience') return 'page_experience';
+    return item.kind === 'audit' && item.finding && (AUDIT_FINDINGS as readonly string[]).includes(item.finding) ? (item.finding as AuditFinding) : null;
 }
 
 /** An internal links item's list, or null. */
@@ -662,6 +663,7 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 	const f = item.figures;
 	return (
 		<div className="spst-plan__parts">
+			{item.finding === 'page_experience' && <ul>{(f.samples ?? []).map((s) => <li key={`${s.form_factor}-${s.metric}`}>{s.form_factor} {s.metric.toUpperCase()}: {s.p75}{s.metric === 'cls' ? '' : ' ms'} · {s.status.replace('_', ' ')} · {s.day}</li>)}</ul>}
 			<p>
 				{sprintf(
 					/* translators: 1: potential clicks, 2: value, 3: confidence, 4: effort, 5: score. */
@@ -690,6 +692,8 @@ function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } 
 								)
 							: item.kind === 'overlap'
 								? __('Potential clicks: those the search would have if all its pages’ impressions had the best of their CTRs, scaled to 28 days.', 'seoprostats')
+								: item.finding === 'page_experience'
+									? __('Prioritisation stake: 10% of observed search clicks scaled to 28 days, at least one. Not a predicted traffic or ranking gain.', 'seoprostats')
 								: item.kind === 'audit'
 									? sprintf(
 											/* translators: 1: share, e.g. 15%. */

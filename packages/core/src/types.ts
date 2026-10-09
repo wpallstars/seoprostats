@@ -1656,7 +1656,7 @@ export interface QueueAnswer extends Answer, SearchEngineAnswer {
 		scale_days: number;
 		effort: Record<QueueKind, number>;
 		/** Audit findings whose effort is not the audit kind's. */
-		audit_effort: Partial<Record<AuditFinding, number>>;
+		audit_effort: Partial<Record<AuditFinding | 'page_experience', number>>;
 		/** Internal links lists whose effort is not the links kind's, and each list's share of the expected clicks. */
 		links_effort: Partial<Record<LinksKind, number>>;
 		links_share: Record<LinksKind, number>;

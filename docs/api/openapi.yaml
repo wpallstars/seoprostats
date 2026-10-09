@@ -37,6 +37,49 @@ security:
   - cookieNonce: []
 
 paths:
+  /vitals:
+    get:
+      operationId: vitals
+      summary: Locally stored Chrome UX Report page experience (no remote requests).
+      description: Origin p75 history and monitored pages, poor Core Web Vitals first by search clicks and visits. Dates are the end of overlapping 28-day collection periods. Time metrics are milliseconds; CLS is unitless. Missing data is never a zero or passing score. Traffic counts cover the latest 30 days, independent of other report filters. Not available on shared report links.
+      parameters:
+        - name: page
+          in: query
+          schema: {type: string, default: ''}
+          description: Optional local path, such as /pricing/; empty lists monitored pages.
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Field data, latest samples and origin series.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/VitalsAnswer'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /vitals/lighthouse:
+    post:
+      operationId: lighthouse
+      summary: Explicit administrator-only mobile Lighthouse lab test for one local page.
+      description: Uses PageSpeed Insights only on this action, never cron or a field-data fallback. Requires manage_options and a connected CrUX key also enabled for PageSpeed Insights API.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [page]
+              properties:
+                page: {type: string, description: Local page path only.}
+      responses:
+        '200':
+          description: One simulated mobile lab run, separate from field data.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LighthouseAnswer'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '502':
+          description: Lab service request failed; no credential or provider body is exposed.
   /shares:
     get:
       operationId: listShares
@@ -2455,6 +2498,12 @@ paths:
                   type: string
                   description: The property (Search Console) or verified site (Bing) to import. Without it, the one for this site's address (Search Console, a domain property before an address one).
                   examples: ['sc-domain:example.com', 'https://example.com/']
+                pages:
+                  type: integer
+                  minimum: 0
+                  maximum: 1000
+                  default: 100
+                  description: CrUX monitored page cap; origin is always monitored. CrUX uses this site's origin, ignoring property. Checks the origin, stores the API key encrypted and schedules bounded history/current reads.
       responses:
         '200':
           description: Connected; its status.
@@ -2967,7 +3016,7 @@ components:
       description: An outside data source.
       schema:
         type: string
-        enum: [search-console, bing]
+        enum: [search-console, bing, crux]
     migrateSource:
       name: source
       in: path
@@ -3030,6 +3079,59 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    VitalSample:
+      type: object
+      required: [day, form_factor, metric, p75, good, ni, poor, status, stale]
+      properties:
+        day: {type: string, format: date, description: Last day of the rolling 28-day collection period.}
+        form_factor: {type: string, enum: [PHONE, DESKTOP]}
+        metric: {type: string, enum: [lcp, inp, cls, fcp, ttfb]}
+        p75: {type: number, minimum: 0, description: Milliseconds except CLS (unitless).}
+        good: {type: number, minimum: 0, maximum: 1}
+        ni: {type: number, minimum: 0, maximum: 1}
+        poor: {type: number, minimum: 0, maximum: 1}
+        status: {type: string, enum: [good, needs_improvement, poor]}
+        stale: {type: boolean, description: Older than 14 days; excluded from failing-page findings.}
+    VitalsAnswer:
+      type: object
+      required: [connected, source, window_days, traffic_days, origin, series, rows]
+      properties:
+        connected: {type: boolean}
+        source: {type: string, const: crux}
+        window_days: {type: integer, const: 28}
+        traffic_days: {type: integer, const: 30}
+        origin: {type: array, items: {$ref: '#/components/schemas/VitalSample'}}
+        series: {type: array, items: {$ref: '#/components/schemas/VitalSample'}}
+        rows:
+          type: array
+          items:
+            type: object
+            required: [path_id, path, clicks, visits, samples, available, failing]
+            properties:
+              path_id: {type: integer}
+              path: {type: string}
+              clicks: {type: integer}
+              visits: {type: integer}
+              samples: {type: array, items: {$ref: '#/components/schemas/VitalSample'}}
+              available: {type: boolean}
+              failing: {type: boolean, description: Any non-stale LCP, INP or CLS p75 is poor.}
+    LighthouseAnswer:
+      type: object
+      required: [source, url, score, opportunities]
+      properties:
+        source: {type: string, const: lighthouse}
+        url: {type: string}
+        score: {type: [number, 'null'], minimum: 0, maximum: 1}
+        opportunities:
+          type: array
+          items:
+            type: object
+            required: [id, title, display, saved_ms]
+            properties:
+              id: {type: string}
+              title: {type: string}
+              display: {type: string}
+              saved_ms: {type: number}
     ShareInput:
       type: object
       description: Administrator share fields. Creation needs views; updates merge omitted fields with the current share. Secrets never appear in list/update responses.
@@ -3932,6 +4034,8 @@ components:
               description: audit, the finding (one item per page and finding); links and index, the list (one item per page and list); refresh, the proposal (one item per page); target, wrong_page or striking (one item per target and finding); sitemap, the problem (one item per sitemap and problem; missing when the site's own sitemap index is not submitted). Null for other kinds.
               anyOf:
                 - $ref: '#/components/schemas/AuditFinding'
+                - type: string
+                  const: page_experience
                 - $ref: '#/components/schemas/LinksKind'
                 - $ref: '#/components/schemas/IndexationKind'
                 - $ref: '#/components/schemas/RefreshProposal'
@@ -4063,7 +4167,13 @@ components:
                         then_position_here:
                           type: [number, 'null']
                 finding:
-                  $ref: '#/components/schemas/AuditFinding'
+                  anyOf:
+                    - $ref: '#/components/schemas/AuditFinding'
+                    - {type: string, const: page_experience}
+                samples:
+                  type: array
+                  description: Page-experience field evidence; the item's score uses 10% of observed clicks scaled to 28 days, not the expected-CTR audit formula.
+                  items: {$ref: '#/components/schemas/VitalSample'}
                 share:
                   type: number
                   description: audit and links, the share of the page's expected clicks the finding or list puts at stake; index, the share of a shown page's clicks (typical) the page could earn; sitemap, the share of a shown page's clicks the problem puts at stake.
@@ -6698,7 +6808,7 @@ components:
       properties:
         source:
           type: string
-          enum: [search-console, bing]
+          enum: [search-console, bing, crux]
         name:
           type: string
         connected:
@@ -6708,6 +6818,9 @@ components:
           description: The service account's address.
         property:
           type: string
+        pages:
+          type: integer
+          description: CrUX page cap (0–1000); CrUX has no search-day imported progress.
         connected_at:
           type: integer
           description: Unix time.

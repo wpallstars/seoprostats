@@ -38,18 +38,32 @@ final class SEOProStats_Vitals {
      * @return array<int,array<string,mixed>>
      */
     public static function pages($limit = 100) {
+        global $wpdb;
         $limit = max(0, min(1000, (int) $limit));
         if (!$limit) {
             return array();
         }
-        $req = SEOProStats_Query::request(array('range' => '30d', 'limit' => $limit, 'dimension' => 'page'));
-        if (is_wp_error($req)) {
-            return array();
+        $from = wp_date('Y-m-d', time() - 30 * DAY_IN_SECONDS);
+        $to = wp_date('Y-m-d', time() - DAY_IN_SECONDS);
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- indexed 30-day summaries; rank in PHP like Content, avoiding SQL filesorts.
+        $clicks = (array) $wpdb->get_results($wpdb->prepare('SELECT path_id, SUM(clicks) AS clicks FROM %i FORCE INDEX (PRIMARY) WHERE engine IN (1,2) AND day >= %s AND day <= %s GROUP BY path_id ORDER BY NULL', SEOProStats_Schema::table('gsc_pages'), $from, $to), ARRAY_A);
+        $traffic = (array) $wpdb->get_results($wpdb->prepare('SELECT val AS path_id, SUM(visits) AS visits FROM %i FORCE INDEX (PRIMARY) WHERE day >= %s AND day <= %s AND dim = 15 GROUP BY val ORDER BY NULL', SEOProStats_Schema::table('daily'), $from, $to), ARRAY_A);
+        // phpcs:enable
+        usort($clicks, static function ($a, $b) { return (int) $b['clicks'] <=> (int) $a['clicks']; });
+        usort($traffic, static function ($a, $b) { return (int) $b['visits'] <=> (int) $a['visits']; });
+        $clicks = array_slice($clicks, 0, $limit);
+        $traffic = array_slice($traffic, 0, $limit);
+        $texts = SEOProStats_Query::texts(array_map('intval', array_merge(array_column($clicks, 'path_id'), array_column($traffic, 'path_id'))));
+        $search = array();
+        foreach ($clicks as $row) {
+            $row['value'] = (string) ($texts[(int) $row['path_id']] ?? '');
+            $search[] = $row;
         }
-        require_once __DIR__ . '/class-seoprostats-content.php';
-        $search = SEOProStats_Content::report($req, 'clicks', '', 'all')['rows'];
-        $traffic = SEOProStats_Query::breakdown($req);
-        $visits = is_wp_error($traffic) ? array() : $traffic['rows'];
+        $visits = array();
+        foreach ((array) $traffic as $row) {
+            $row['value'] = (string) ($texts[(int) $row['path_id']] ?? '');
+            $visits[] = $row;
+        }
         $by_path = array();
         foreach ($search as $row) {
             $path = (string) $row['value'];
@@ -58,8 +72,7 @@ final class SEOProStats_Vitals {
         foreach ($visits as $row) {
             $path = (string) $row['value'];
             if (!isset($by_path[$path])) {
-                $ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array($path));
-                $by_path[$path] = array('path_id' => (int) ($ids[SEOProStats_Dict::clean($path)] ?? 0), 'path' => $path, 'clicks' => 0, 'visits' => 0);
+                $by_path[$path] = array('path_id' => (int) $row['path_id'], 'path' => $path, 'clicks' => 0, 'visits' => 0);
             }
             $by_path[$path]['visits'] = (int) $row['visits'];
         }
@@ -123,6 +136,7 @@ final class SEOProStats_Vitals {
         $budget = max(15, min(60, (int) $budget));
         $checked = (array) ($conn['state']['vitals_checked'] ?? array());
         $history = (array) ($conn['state']['vitals_history'] ?? array());
+        $available = (array) ($conn['state']['vitals_available'] ?? array());
         $targets = array_merge(array(array('path_id' => 0, 'path' => '')), self::pages((int) ($conn['settings']['pages'] ?? 100)));
         foreach ($targets as $target) {
             foreach (self::FORMS as $form) {
@@ -153,9 +167,11 @@ final class SEOProStats_Vitals {
                     $out['done'] = false;
                 } else {
                     $checked[$slot] = time();
+                    $available[$slot] = array_keys(is_array($record['metrics'] ?? null) ? $record['metrics'] : array());
                 }
                 $checked = array_filter($checked, static function ($at) { return (int) $at > time() - 2 * WEEK_IN_SECONDS; });
-                SEOProStats_Connections::update_state('crux', array('vitals_checked' => $checked, 'vitals_history' => $history, 'last_run' => time(), 'error' => null, 'error_at' => null));
+                $available = array_intersect_key($available, $checked);
+                SEOProStats_Connections::update_state('crux', array('vitals_checked' => $checked, 'vitals_history' => $history, 'vitals_available' => $available, 'last_run' => time(), 'error' => null, 'error_at' => null));
                 usleep(600000); // At most 100 requests/minute from this reader.
             }
         }
@@ -215,7 +231,8 @@ final class SEOProStats_Vitals {
                 $old = self::status($metric, $before === null ? null : (float) $before);
                 $new = self::status($metric, (float) $p75);
                 if (!$history && $old !== 'unavailable' && $old !== $new && in_array($metric, array('lcp', 'inp', 'cls'), true) && SEOProStats_Schema::set() === 'live') {
-                    SEOProStats_Changes::record(52, array('path' => $path, 'object_type' => 'vitals', 'old' => $old, 'new' => $new, 'meta' => array('name' => $path === '' ? __('Origin page experience', 'seoprostats') : $path, 'metric' => $metric, 'form_factor' => $form, 'day' => $day), 'user_id' => 0));
+                    $identity = array_search($metric, array_keys(self::THRESHOLDS), true) * 2 + ($form === 'PHONE' ? 1 : 2);
+                    SEOProStats_Changes::record(52, array('path' => $path, 'object_type' => 'vitals', 'object_id' => $identity, 'old' => $old, 'new' => $new, 'meta' => array('name' => $path === '' ? __('Origin page experience', 'seoprostats') : $path, 'metric' => $metric, 'form_factor' => $form, 'day' => $day), 'user_id' => 0));
                 }
             }
         }
@@ -275,15 +292,41 @@ final class SEOProStats_Vitals {
     public static function report($page = '') {
         require_once __DIR__ . '/class-seoprostats-connections.php';
         $conn = SEOProStats_Connections::get('crux');
-        $pages = self::pages((int) ($conn['settings']['pages'] ?? 100));
+        $key = array('page' => $page, 'connection' => $conn, 'day' => gmdate('Y-m-d'));
+        return SEOProStats_Query::cached('vitals', $key, static function () use ($page, $conn) { return self::build($page, $conn); });
+    }
+
+    /**
+     * Build the shared, credential-free local report.
+     *
+     * @param string $page Local path.
+     * @param array<string,mixed>|null $conn Connection without credentials.
+     * @return array<string,mixed>
+     */
+    private static function build($page, $conn) {
+        global $wpdb;
+        $demo = SEOProStats_Schema::set() === 'demo';
+        $pages = self::pages($demo ? 100 : (int) ($conn['settings']['pages'] ?? 100));
         if ($page !== '' && self::local_url($page) !== '') {
-            $ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array($page));
-            $id = (int) ($ids[SEOProStats_Dict::clean($page)] ?? 0);
-            $pages = array(array('path_id' => $id, 'path' => $page, 'clicks' => 0, 'visits' => 0));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- dictionary unique kind/hash key; reports never create entries.
+            $id = (int) $wpdb->get_var($wpdb->prepare('SELECT id FROM %i WHERE kind = %d AND hash = UNHEX(%s)', SEOProStats_Schema::table('dict'), SEOProStats_Schema::DICT_PATH, SEOProStats_Dict::hash(SEOProStats_Dict::clean($page))));
+            // phpcs:disable WordPress.DB.DirectDatabaseQuery -- per-path range keys, at most 30 summary days per engine.
+            $visits = $id > 0 ? (int) $wpdb->get_var($wpdb->prepare('SELECT SUM(visits) FROM %i WHERE dim = 15 AND val = %d AND day >= %s AND day <= %s', SEOProStats_Schema::table('daily'), $id, wp_date('Y-m-d', time() - 30 * DAY_IN_SECONDS), wp_date('Y-m-d', time() - DAY_IN_SECONDS))) : 0;
+            $clicks = $id > 0 ? (int) $wpdb->get_var($wpdb->prepare('SELECT SUM(clicks) FROM %i WHERE path_id = %d AND day >= %s AND day <= %s', SEOProStats_Schema::table('gsc_pages'), $id, wp_date('Y-m-d', time() - 30 * DAY_IN_SECONDS), wp_date('Y-m-d', time() - DAY_IN_SECONDS))) : 0;
+            // phpcs:enable
+            $pages = array(array('path_id' => $id, 'path' => $page, 'clicks' => $clicks, 'visits' => $visits));
         }
         $rows = array();
         foreach ($pages as $item) {
-            $samples = self::series((int) $item['path_id'], true);
+            $samples = $item['path_id'] > 0 ? self::series((int) $item['path_id'], true) : array();
+            if (!$demo) {
+                require_once __DIR__ . '/sources/class-seoprostats-source-crux.php';
+                $availability = (array) ($conn['state']['vitals_available'] ?? array());
+                $samples = array_values(array_filter($samples, static function ($sample) use ($availability, $item) {
+                    $slot = $item['path_id'] . ':' . $sample['form_factor'];
+                    return !isset($availability[$slot]) || in_array(SEOProStats_Source_Crux::METRICS[$sample['metric']], (array) $availability[$slot], true);
+                }));
+            }
             $failing = false;
             foreach ($samples as $sample) {
                 $failing = $failing || (!$sample['stale'] && in_array($sample['metric'], array('lcp', 'inp', 'cls'), true) && $sample['status'] === 'poor');

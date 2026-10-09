@@ -106,7 +106,7 @@ final class SEOProStats_Queue {
     const MAX_EFFORT = 5;
 
     /** Effort of audit findings, links and indexation lists and sitemap problems other than their kind's. */
-    const AUDIT_EFFORT   = array('thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'rich_errors' => 2);
+    const AUDIT_EFFORT   = array('thin' => 3, 'not_indexed' => 3, 'google_canonical' => 2, 'rich_errors' => 2, 'page_experience' => 2);
     const LINKS_EFFORT   = array('converting' => 2);
     const INDEX_EFFORT   = array('sitemap' => 1);
     const SITEMAP_EFFORT = array('errors' => 2, 'stale' => 2);
