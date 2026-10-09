@@ -48,7 +48,7 @@ type ContentProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Content({ state, update, open, onEngines }: ContentProps) {
+export function Content({ state, update, open, onEngines }: Readonly<ContentProps>) {
 	const sort: ContentSort = state.sort ?? 'clicks';
 	const goal = state.goal ?? '';
 	const engine: SearchEngineChoice = state.engine ?? 'google';
@@ -186,7 +186,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 }
 
 /** The totals: search clicks, visits from search, their bounce rate, conversions. */
-function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: SearchEngineChoice }) {
+function Tiles({ answer, engine }: Readonly<{ answer: ContentAnswer | undefined; engine: SearchEngineChoice }>) {
 	const totals = answer?.totals;
 	const then = answer?.compare?.totals;
 	const change = answer?.compare?.change;
@@ -244,7 +244,7 @@ interface PageTableProps {
 	refreshing: boolean;
 }
 
-function PageTable({ answer, sort, setSort, open, refreshing }: PageTableProps) {
+function PageTable({ answer, sort, setSort, open, refreshing }: Readonly<PageTableProps>) {
 	const goal = answer.goal !== null;
 	const sortable = (key: ContentSort, label: string) => (
 		<th scope="col" className="num" aria-sort={sort === key ? 'descending' : undefined}>
@@ -297,7 +297,7 @@ function PageTable({ answer, sort, setSort, open, refreshing }: PageTableProps) 
 	);
 }
 
-function PageRow({ row, goal, open }: { row: ContentRow; goal: boolean; open: ContentProps['open'] }) {
+function PageRow({ row, goal, open }: Readonly<{ row: ContentRow; goal: boolean; open: ContentProps['open'] }>) {
 	const then: ContentMetrics | undefined = row.compare;
 	const change = row.compare?.change;
 	return (

@@ -18,7 +18,7 @@ import { PeriodLine } from './Overview';
 import { Money } from './components/Money';
 import { TableScroll } from './components/TableScroll';
 
-export function Properties({ state, update }: ViewProps) {
+export function Properties({ state, update }: Readonly<ViewProps>) {
 	const key = state.key ?? '';
 	const event = state.event ?? '';
 	// The box is a draft until Apply; it follows the address (back button, links).

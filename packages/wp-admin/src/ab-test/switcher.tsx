@@ -28,7 +28,7 @@ export function useVariants(testClientId: string): BlockInstance[] {
 	return inner.filter((b) => b.name === VARIANT);
 }
 
-export function VariantSwitcher({ testClientId }: { testClientId: string }) {
+export function VariantSwitcher({ testClientId }: Readonly<{ testClientId: string }>) {
 	const variants = useVariants(testClientId);
 	const active = useShownVariant(testClientId);
 	const index = Math.max(0, variants.findIndex((b) => b.clientId === active));

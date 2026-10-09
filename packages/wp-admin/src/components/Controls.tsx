@@ -27,7 +27,7 @@ function daysAgo(days: number): string {
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export function Controls({ state, update }: Props) {
+export function Controls({ state, update }: Readonly<Props>) {
 	const [editing, setEditing] = useState(false);
 	const [from, setFrom] = useState(state.from ?? daysAgo(29));
 	const [to, setTo] = useState(state.to ?? today());

@@ -29,7 +29,7 @@ const PER_PAGE = 50;
 /** Longest note, as the change log keeps it. */
 const MAX_NOTE = 190;
 
-function NoteModal({ page, onClose }: { page: string; onClose: () => void }) {
+function NoteModal({ page, onClose }: Readonly<{ page: string; onClose: () => void }>) {
 	const data = useDataSet();
 	const [note, setNote] = useState('');
 	const [path, setPath] = useState(page.includes('*') ? '' : page);
@@ -69,7 +69,7 @@ function NoteModal({ page, onClose }: { page: string; onClose: () => void }) {
 	);
 }
 
-export function Changes({ state, update }: ViewProps) {
+export function Changes({ state, update }: Readonly<ViewProps>) {
 	const data = useDataSet();
 	// The address's page (a chart's changes, opened here), else the one the reports are filtered to.
 	const page = state.page ?? filteredPage(state.filters);
