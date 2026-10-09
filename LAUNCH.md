@@ -20,11 +20,13 @@ On now:
   and security updates, private vulnerability reporting (`SECURITY.md`),
   and OpenSSF Scorecard (badge in `README.md`).
 - Socket and CodeRabbit review pull requests.
+- SonarCloud (`wpallstars_seoprostats`, Automatic Analysis off, the scan
+  runs from `.github/workflows/sonarcloud.yml` with the repository's own
+  `SONAR_TOKEN`; the organization's older `SONAR_TOKEN` is rejected), Codacy
+  and CodeFactor, with their badges in `README.md`.
 
 Not yet (owner's accounts, `DEVELOPMENT.md` → Services setup):
 
-- SonarCloud (`SONAR_TOKEN`), Codacy and CodeFactor are not connected, so
-  their badges are left out of `README.md`.
 - `SYNC_PAT` is not set, so Repository metrics cannot commit to the
   protected `main`; regenerate `docs/metrics/` locally until it is.
 - The rest of `DEVELOPMENT.md` → At public launch: fix the reviewers'
