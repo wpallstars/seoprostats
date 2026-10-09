@@ -185,16 +185,16 @@ final class SEOProStats_Query {
         $current = '';
         $length  = strlen($text);
         for ($i = 0; $i < $length; $i++) {
-            $c    = $text[$i];
+            $char = $text[$i];
             $next = $i + 1 < $length ? $text[$i + 1] : '';
-            if ($c === '\\' && ($next === ',' || $next === '\\')) {
+            if ($char === '\\' && ($next === ',' || $next === '\\')) {
                 $current .= $next;
                 $i++;
-            } elseif ($c === ',') {
+            } elseif ($char === ',') {
                 $values[] = $current;
                 $current  = '';
             } else {
-                $current .= $c;
+                $current .= $char;
             }
         }
         $values[] = $current;
