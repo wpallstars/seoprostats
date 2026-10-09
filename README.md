@@ -93,7 +93,7 @@ Version: 1.0.0
 
 Under the Overview's chart, a lane marks the changes in the period, coloured by group; changes closer than a marker's width share one with their count. Hover over or focus a marker to list its changes, use the arrow keys to move between them, and choose one to read its changes in a window (close it with Close or Escape), with **Open in Changes** for the same days and page. With the reports filtered to one page, the lane shows that page's changes and the site-wide ones.
 
-At the bottom of each section (and each Search tab), **Info & ideas** says what the section is for and gives a few ideas for acting on what it shows. Shared and printed reports leave it out.
+At the bottom of each section (and each Search tab), **Info & ideas** answers two questions: **What does the data say?** (how to read the section's figures and what they point to) and **How can you improve?** (three things to do about it). Shared and printed reports leave it out.
 
 Goals and funnels belong to the data you are looking at: demo data has example ones of its own. The period, comparison and filters stay as you move between sections. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days; it starts at the top of the right-most column, and stays where you put it once you move a box.
 
@@ -471,7 +471,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### 1.0.0
 
-- Changed: the live count moves from the tab bar into the Overview, beside the period, leaving more room for the tabs on smaller screens. New: **Info & ideas** at the bottom of each section and Search tab says what it is for and how to act on it. Settings → Data → Other feeds suggests Bing's Search blog feed.
+- Changed: the live count moves from the tab bar into the Overview, beside the period, leaving more room for the tabs on smaller screens. New: **Info & ideas** at the bottom of each section and Search tab answers "What does the data say?" and "How can you improve?". Settings → Data → Other feeds suggests Bing's Search blog feed.
 - Fixed: the Read Me tab shows a paragraph written over several lines as one paragraph, as GitHub does (the A/B tests section showed a paragraph for every line), and fenced code blocks as code (core files from the starter, with `STYLING.md`). The Rankings screenshot caption and section name Bing Webmaster Tools beside Google Search Console.
 The first release. Everything below is new since the starter it was made from.
 

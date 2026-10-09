@@ -183,7 +183,7 @@ Tiles that pick the chart's metric are buttons (accent underline when chosen); t
 
 ### Info & ideas
 
-Each section of the statistics screen, and each Search tab, ends with an **Info & ideas** card (`packages/wp-admin/src/components/InfoPanel.tsx`): a 24 px gap above it, the usual card header, then **What it is for** (one or two sentences) and **Ideas** (three short, actionable bullets naming the screen's own controls), side by side above 782 px and stacked below. Its small headings are muted uppercase 12 px. Text is plain advice in the user guide's words, never figures. It is for the site's owner, so shared and printed reports leave it out.
+Each section of the statistics screen, and each Search tab, ends with an **Info & ideas** card (`packages/wp-admin/src/components/InfoPanel.tsx`): a 24 px gap above it, the usual card header, then **What does the data say?** (one or two sentences on how to read the section's figures and what a rise or fall points to) and **How can you improve?** (three short actions, naming the screen's own controls where they help), side by side above 782 px and stacked below. Its small headings are muted uppercase 12 px. Text is plain advice in the user guide's words, never figures. It is for the site's owner, so shared and printed reports leave it out.
 
 ### Query coverage
 
