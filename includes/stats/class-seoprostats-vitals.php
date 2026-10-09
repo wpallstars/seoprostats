@@ -335,6 +335,15 @@ final class SEOProStats_Vitals {
         }
         usort($rows, static function ($a, $b) { return array($b['failing'], $b['clicks'], $b['visits']) <=> array($a['failing'], $a['clicks'], $a['visits']); });
         $series = self::series(0);
-        return array('connected' => $conn !== null || SEOProStats_Schema::set() === 'demo', 'source' => 'crux', 'window_days' => 28, 'traffic_days' => 30, 'origin' => self::latest($series), 'series' => $series, 'rows' => $rows);
+        $origin = self::latest($series);
+        if (!$demo) {
+            require_once __DIR__ . '/sources/class-seoprostats-source-crux.php';
+            $availability = (array) ($conn['state']['vitals_available'] ?? array());
+            $origin = array_values(array_filter($origin, static function ($sample) use ($availability) {
+                $slot = '0:' . $sample['form_factor'];
+                return !isset($availability[$slot]) || in_array(SEOProStats_Source_Crux::METRICS[$sample['metric']], (array) $availability[$slot], true);
+            }));
+        }
+        return array('connected' => $conn !== null || SEOProStats_Schema::set() === 'demo', 'source' => 'crux', 'window_days' => 28, 'traffic_days' => 30, 'origin' => $origin, 'series' => $series, 'rows' => $rows);
     }
 }

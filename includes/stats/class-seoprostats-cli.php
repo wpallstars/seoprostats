@@ -4396,6 +4396,16 @@ final class SEOProStats_CLI {
                 $add(strtolower($source['name']), true, 'not connected (SEO Pro Stats → Settings → Connections)');
                 continue;
             }
+            if ($source['source'] === 'crux') {
+                $detail = $source['property'] . ': ' . ($source['last_run'] ? 'field data checked ' . human_time_diff($source['last_run']) . ' ago' : 'field data not checked yet');
+                if ($source['error'] !== '') {
+                    $detail .= '; last error: ' . $source['error'];
+                } elseif (!$source['next_run']) {
+                    $detail .= '; collection job is not scheduled (reconnect, or open the Connections tab)';
+                }
+                $add(strtolower($source['name']), $source['error'] === '' && (bool) $source['next_run'], $detail, 'warn');
+                continue;
+            }
             $imported = $source['imported'];
             $detail   = $source['property'] . ': ' . ($imported['from'] !== '' ? 'imported ' . $imported['from'] . ' to ' . $imported['to'] : 'nothing imported yet') . ($imported['complete'] ? '' : sprintf('; history %d of %d days', $imported['days'], $imported['of']));
             $ok       = $source['error'] === '' && $source['next_run'];

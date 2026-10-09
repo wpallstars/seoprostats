@@ -149,7 +149,8 @@ final class SEOProStats_Connections {
             return $out;
         }
         if ($source === 'crux') {
-            return $out + array('property' => $conn['settings']['property'], 'pages' => $conn['settings']['pages'], 'last_run' => (int) ($conn['state']['last_run'] ?? 0), 'error' => (string) ($conn['state']['error'] ?? ''), 'imports' => array());
+            $next = wp_next_scheduled(SEOProStats_Search_Import::HOOK, array('more'));
+            return $out + array('property' => $conn['settings']['property'], 'pages' => $conn['settings']['pages'], 'last_run' => (int) ($conn['state']['last_run'] ?? 0), 'error' => (string) ($conn['state']['error'] ?? ''), 'next_run' => $next ? $next : wp_next_scheduled(SEOProStats_Search_Import::HOOK), 'imports' => array());
         }
         $state    = $conn['state'];
         $today    = $class::today();
