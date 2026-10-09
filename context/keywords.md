@@ -62,4 +62,4 @@ in `context/brand-identity.toon`.
 
 ## Decisions
 
-- _YYYY-MM-DD: decision and evidence._
+- 2026-10-09: readme.txt tags for 1.0.0 are `analytics, statistics, privacy, search console, seo` (WordPress.org shows five). Chosen by judgement from what the plugin does, before any cluster rows exist; replace them from cluster rows once keyword data is gathered.

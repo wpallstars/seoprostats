@@ -24,50 +24,47 @@
 [![GitHub repository](https://img.shields.io/badge/github-repository-181717.svg?logo=github)](https://github.com/wpallstars/seoprostats)
 <!-- aidevops:badges:end -->
 
-Privacy-friendly site statistics in WordPress: visits, pages, sources and goals, kept in your own database without cookies or outside services.
+Private site statistics: traffic, search rankings and sales on one timeline with the changes that moved them, in your own database, no cookies.
 
-SEO Pro Stats is what wpallstars plugins are made from. It has no features of its own: it holds the parts every plugin needs, built and tested in real plugins, so a new plugin starts with them working and spends its time on what makes it different.
+SEO Pro Stats counts visits in your own WordPress database, without cookies, stored IP addresses or outside services, and puts traffic, search rankings and sales on one timeline with what changed on the site, so you can see what moved them. People read it in wp-admin; scripts and AI agents read the same reports through the REST API, WP-CLI (`wp seoprostats`) and, on WordPress 6.9 and later, abilities.
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 0.1.0
+Version: 1.0.0
 
 <!-- github-only:start -->
 ## Screenshots
 
-**SEO Pro Stats → Settings**: the General tab, empty until features add settings, with search and the Source code, Support and Buy me a coffee links.
+**The Overview**: visits against the previous period, with the site's changes marked under the chart.
 
-![The SEO Pro Stats settings screen on the General tab](.wordpress-org/screenshot-1.png)
+![The SEO Pro Stats Overview with its chart and changes lane](.wordpress-org/screenshot-1.png)
 
-**The Read Me tab** shows this file inside WordPress, banner included.
+**Search → Rankings**: Google Search Console clicks, impressions, CTR and position by query and page.
 
-![The Read Me tab showing README.md](.wordpress-org/screenshot-2.png)
+![Search Rankings with queries and pages](.wordpress-org/screenshot-2.png)
 
-**Updates from GitHub** (GitHub build): each GitHub release is offered on the Plugins screen as a normal WordPress update.
+**Search → Plan**: search work from every report in one list, best first, with its score.
 
-![The Plugins screen offering SEO Pro Stats 1.0.12 from GitHub](docs/images/github-update.png)
+![The Search Plan list](.wordpress-org/screenshot-3.png)
+
+**Changes**: what changed on the site, when and on which page.
+
+![The Changes section](.wordpress-org/screenshot-4.png)
+
+**Goals**: conversions, conversion rate and revenue per currency, against the previous period.
+
+![The Goals section](.wordpress-org/screenshot-5.png)
 <!-- github-only:end -->
 
 ## What you get
 
-- **A settings screen** (SEO Pro Stats → Settings) that features fill by declaring their settings: switches, numbers, text, lists, choices and Media Library pictures, saved instantly with no Save button, searchable, in tabs. With no features yet it shows one empty tab.
-- **A Read Me tab** that shows this file, banner included, so users read the same guide inside WordPress as on GitHub.
-- **Features as classes**: one file per feature, off by default, with settings, hooks, one-off imports from the plugins it replaces and clean uninstall.
-- **Replaced plugins**: a feature that does another plugin's job imports its settings once, waits while that plugin is active, and the Plugins screen suggests deactivating and deleting it.
-- **Updates from GitHub**: the shared wpallstars updater (`includes/github-updater/`). Sites get each GitHub release as a normal WordPress update. Every wpallstars plugin carries a copy and only the newest copy on a site runs, so they are all checked together, once. Update checks that fall due while someone opens an admin screen run in WP-Cron instead, so the screen does not wait for update servers.
-- **Two builds of each version**: the GitHub release, and a WordPress.org build without the updater, as WordPress.org requires.
-- **Scripts and CI**: lint (PHP 7.4, WordPress coding and security rules, PHPStan), a smoke test on a real WordPress, the release build, a preflight check of both zips, Plugin Check, a preview site, the banner and icon build, and `scripts/sync-core.sh` to keep each plugin's shared parts the same as the starter's.
-- **Shared rules for people and AI**: `STANDARDS.md` (structure, code rules, performance, releases, styling, testing), `DEVELOPMENT.md` (set-up and checks) and `RELEASING.md`, the same in every plugin made from the starter.
-
-## Start a plugin
-
-1. On GitHub, choose **Use this template** to make your repository, and clone it.
-2. Give it its names: `scripts/rename-plugin.sh --slug my-plugin --name "My Plugin" --prefix MyPlugin`. Add `--css mp` for a short CSS prefix and `--repo owner/repo` if it is not under wpallstars. Put in your own details too, or the plugin keeps the starter's: `--description`, `--author`, `--author-uri`, `--contributors` (WordPress.org usernames) and `--donate` (a link, or `none`); `--help` lists them all. The new plugin starts at version 0.1.0 (`--version` for another) with a changelog of its own. Review with `git diff`, then commit.
-3. Replace this README, `readme.txt`, `changelog.txt` and `AGENTS.md` with your plugin's own, its banner and icon (`.wordpress-org/banner.svg` and `icon.svg`, then `scripts/build-banner.sh`), and screenshots (`.wordpress-org/screenshot-N.png` with captions in `readme.txt`, and GitHub-only ones in `docs/images/`). Keep the licence and the starter's credit, as its licence requires (`ATTRIBUTION.txt`, `STANDARDS.md` → Structure): GPL-3.0-or-later, `LICENSE`, `ATTRIBUTION.txt`, the licence lines at the top of each file, both copyright lines in the main file and this README's License section, and the "Made from" line here and in `readme.txt`. Please keep the rest of the Built with AI section too.
-4. Add features: a class in `includes/features/` listed in `MyPlugin_Setup::FEATURES` (see Developers below and `STANDARDS.md`).
-5. Keep the shared parts up to date: change them in the starter first, then run `scripts/sync-core.sh` in each plugin (`--check` lists what differs).
-
-The easiest way to do all of this is with [aidevops](https://aidevops.sh): open the repository with it and describe the plugin you want. It reads `AGENTS.md` and `STANDARDS.md`, builds the features, tests them on a real site and runs the release checks.
+- **Statistics without cookies**: visitors, visits, pageviews, bounce rate and time, sources and campaigns, pages and pages not found, site searches, countries on a map, devices and events, against the previous period. Visits are counted with a hash salted each day; no IP address is stored and visitor pages run no database queries.
+- **Goals, Funnels, Properties and Purchases**: conversions and revenue per currency, from pages, events and paid orders in WooCommerce, Easy Digital Downloads, FluentCart and ThriveCart, with refunds and renewals.
+- **Clicks**: what people click, dead clicks, links followed, files and forms sent, never what anyone types.
+- **Changes**: a log of what changed on the site, search engine updates and your notes, under every chart.
+- **Search**: Google Search Console and Bing Webmaster Tools with Rankings, Opportunities, Content, Audit (with internal links, indexation and Google's URL Inspection), Backlinks, Targets, Plan, Experiments, and A/B tests of blocks.
+- **Moving from another plugin**: imports history from Burst Statistics, Koko Analytics, Statify, WP Statistics, Independent Analytics, Slimstat, Matomo for WordPress and Jetpack Stats, then removes what it left behind.
+- **Shared reports** for clients, **demo data** to try every report, and the same reports for scripts and AI agents through the REST API, WP-CLI and abilities.
 
 ## Where to find it
 
@@ -292,7 +289,7 @@ Goals and funnels belong to the data you are looking at: demo data has example o
 
 Go to **SEO Pro Stats → Settings** for the settings. The screen has two groups of tabs:
 
-- **Settings**: General, empty until features add settings. Changes save instantly; there is no Save button. **Search features** (next to the plugin name) finds settings on every tab.
+- **Settings**: Shared reports, Tracking, Privacy, Data, Connections and Import. Changes save instantly; there is no Save button. **Search features** (next to the plugin name) finds settings on every tab.
 - **About**: this Read Me.
 
 At the top right of the screen, **Source code** opens the plugin’s [GitHub repository](https://github.com/wpallstars/seoprostats) in a new tab, and **Support** opens its [GitHub issues](https://github.com/wpallstars/seoprostats/issues) in a new tab. Say what you did, what you expected and what happened, with the versions of WordPress, PHP and SEO Pro Stats. Leave out passwords, licence keys and personal data, since issues are public. For questions, ask [aidevops](https://aidevops.sh) (Built with AI below). **Buy me a coffee**, next to it, opens the maker’s [Buy Me a Coffee](https://buymeacoffee.com/marcusquinn) page in a new tab.
@@ -417,7 +414,9 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ## Changelog
 
-### Unreleased
+### 1.0.0
+
+The first release. Everything below is new since the starter it was made from.
 
 - New: Search Console sitemaps and URL Inspection. While Search Console is connected, the hourly import reads the property's sitemaps once a day (errors, warnings, when Google last downloaded each) and asks Google how it indexed up to 200 pages a day (setting Settings → Data → Google URL inspections, 0 to 2,000): first the pages Indexation lists, then pages with search traffic, each again after 14 days. Search → Audit gains **Google's index** after Indexation, Google's reason and last crawl in Indexation, and four findings: blocked by robots.txt, crawled but not indexed, Google picked another canonical and rich result errors. Sitemap problems (errors, warnings, not downloaded for a week, the site's sitemap not submitted) are Plan items; a page's verdict changing is a change on the timeline. New `inspections` table (schema v19). REST route `inspections`, `wp seoprostats inspect [<page>] [--run] [--sitemaps]` and the ability `seoprostats/inspections`; the demo data has twelve pages inspected and three sitemaps.
 - New: Search → Backlinks. The daily cron opens the pages that sent visits (Referral channel) within 20 seconds, with `wp_safe_remote_get()` and a user agent naming the plugin and the site, and keeps their links to the site's pages with text and rel in a new `links` table (schema v18); each page again weekly, a link lost after two checks without it or when its page is gone. Lists of live links, sites linking (with their visits), pages linked to and lost links; new and lost links are changes on the timeline (`backlink_new`, `backlink_lost`). New setting Settings → Data → Check pages that send visitors for links (on). REST route `backlinks`, `wp seoprostats backlinks [links|domains|pages|lost|check]` and the ability `seoprostats/backlinks`; the demo data has nine links from four sites, one new this week and one lost.

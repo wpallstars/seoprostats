@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       SEO Pro Stats
  * Plugin URI:        https://github.com/wpallstars/seoprostats
- * Description:       Privacy-friendly site statistics in WordPress: visits, pages, sources and goals, kept in your own database without cookies or outside services.
- * Version:           0.1.0
+ * Description:       Private site statistics: traffic, search rankings and sales on one timeline with the changes that moved them, in your own database, no cookies.
+ * Version:           1.0.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marcus Quinn
@@ -39,7 +39,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SEOPROSTATS_VERSION', '0.1.0');
+define('SEOPROSTATS_VERSION', '1.0.0');
 define('SEOPROSTATS_FILE', __FILE__);
 define('SEOPROSTATS_DIR', plugin_dir_path(__FILE__));
 define('SEOPROSTATS_URL', plugin_dir_url(__FILE__));
