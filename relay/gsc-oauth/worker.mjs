@@ -202,16 +202,17 @@ function callbackAddress(url) {
 }
 
 /** The post-back page's only script: fixed text, allowed by its hash in the CSP. */
-const SUBMIT_JS = "document.getElementById('f').submit();";
+const SUBMIT_TAG = "<script>document.getElementById('f').submit();</script>";
+const SUBMIT_JS = SUBMIT_TAG.slice('<script>'.length, -'</script>'.length);
 
 /** A page that posts the fields to the site at once (a button without JavaScript). */
 async function postBack(site, fields) {
-	const hash = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(SUBMIT_JS)))));
+	const digest = await crypto.subtle.digest('SHA-256', encoder.encode(SUBMIT_JS));
+	const hash = btoa(String.fromCharCode(...new Uint8Array(digest)));
 	const inputs = Object.entries(fields).map(([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`);
 	const form = html`<form id="f" method="post" action="${site.href}">${inputs}<p>Returning you to ${site.host}…</p><noscript><button type="submit">Continue</button></noscript></form>`;
-	return page('Returning to your site', html`${form}${new Safe('<script>' + SUBMIT_JS + '</script>')}`, 200, {
-		'Content-Security-Policy': `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${hash}'; form-action ${site.origin}; base-uri 'none'; frame-ancestors 'none'`,
-	});
+	const csp = ["default-src 'none'", "style-src 'unsafe-inline'", "script-src 'sha256-" + hash + "'", 'form-action ' + site.origin, "base-uri 'none'", "frame-ancestors 'none'"].join('; ');
+	return page('Returning to your site', html`${form}${new Safe(SUBMIT_TAG)}`, 200, { 'Content-Security-Policy': csp });
 }
 
 /** Signed state: base64url(JSON).base64url(HMAC-SHA256). */
