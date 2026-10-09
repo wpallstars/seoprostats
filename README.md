@@ -5,6 +5,9 @@
 <!-- aidevops:badges:start -->
 <!-- On GitHub only: the Read Me tab skips this block. scripts/rename-plugin.sh rewrites it. -->
 [![CI](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/wpallstars/seoprostats/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=wpallstars_seoprostats&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=wpallstars_seoprostats)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/91715ec7955742a484c473596113c055)](https://app.codacy.com/gh/wpallstars/seoprostats/dashboard)
+[![CodeFactor](https://www.codefactor.io/repository/github/wpallstars/seoprostats/badge)](https://www.codefactor.io/repository/github/wpallstars/seoprostats)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/wpallstars/seoprostats/badge)](https://scorecard.dev/viewer/?uri=github.com/wpallstars/seoprostats)
 [![License: GPL v3 or later](https://img.shields.io/badge/License-GPL%20v3%20or%20later-blue.svg)](LICENSE)
 [![Latest release](https://img.shields.io/github/v/release/wpallstars/seoprostats)](https://github.com/wpallstars/seoprostats/releases)
