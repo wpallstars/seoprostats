@@ -83,8 +83,8 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
     /** Most experiments listed (the newest). */
     const LIST_LIMIT = 50;
 
-    /** The columns read for a list. */
-    private const LIST_COLS = 'id, created, user_id, name, start, days, review, engine, metric, direction, threshold, change_id, path_id, status, result, decided, meta';
+    /** A list's read of the columns, before its FROM. */
+    private const LIST_SELECT = 'SELECT id, created, user_id, name, start, days, review, engine, metric, direction, threshold, change_id, path_id, status, result, decided, meta';
 
     /** Most running experiments read for their pages (running_pages()). */
     const MAX_RUNNING = 500;
@@ -442,8 +442,8 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
         $path = SEOProStats_Changes::path($page);
         $ids  = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array($path));
         $id   = $ids ? (int) $ids[0] : -1;
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key path_id; LIST_COLS is a fixed column list.
-        $rows = $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i WHERE path_id IN (%d, 0) ORDER BY id DESC LIMIT %d', SEOProStats_Schema::table('experiments'), $id, self::LIST_LIMIT * 4), ARRAY_A);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key path_id; LIST_SELECT is a fixed column list.
+        $rows = $wpdb->get_results($wpdb->prepare(self::LIST_SELECT . ' FROM %i WHERE path_id IN (%d, 0) ORDER BY id DESC LIMIT %d', SEOProStats_Schema::table('experiments'), $id, self::LIST_LIMIT * 4), ARRAY_A);
         return array_values(array_filter(is_array($rows) ? $rows : array(), static function ($row) use ($id, $path) {
             $meta = self::meta($row);
             return (int) $row['path_id'] === $id || (isset($meta['pages']) && in_array($path, (array) $meta['pages'], true));
@@ -461,11 +461,11 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
         global $wpdb;
         $table = SEOProStats_Schema::table('experiments');
         if ($status !== '' && $status !== 'due') {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key status_review; LIST_COLS is a fixed column list.
-            return $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i FORCE INDEX (`status_review`) WHERE status = %d ORDER BY review DESC LIMIT %d', $table, (int) array_search($status, self::STATUSES, true), self::LIST_LIMIT), ARRAY_A);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key status_review; LIST_SELECT is a fixed column list.
+            return $wpdb->get_results($wpdb->prepare(self::LIST_SELECT . ' FROM %i FORCE INDEX (`status_review`) WHERE status = %d ORDER BY review DESC LIMIT %d', $table, (int) array_search($status, self::STATUSES, true), self::LIST_LIMIT), ARRAY_A);
         }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by primary key; LIST_COLS is a fixed column list.
-        return $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i ORDER BY id DESC LIMIT %d', $table, self::LIST_LIMIT), ARRAY_A);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by primary key; LIST_SELECT is a fixed column list.
+        return $wpdb->get_results($wpdb->prepare(self::LIST_SELECT . ' FROM %i ORDER BY id DESC LIMIT %d', $table, self::LIST_LIMIT), ARRAY_A);
     }
 
     /**
