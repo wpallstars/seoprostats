@@ -239,6 +239,29 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
         if (is_wp_error($posts)) {
             return $posts;
         }
+        $rows = array_merge($rows, self::page_rows($posts, $day));
+
+        $referrers = $this->request('referrers', $args);
+        if (is_wp_error($referrers)) {
+            return $referrers;
+        }
+        $rows = array_merge($rows, self::source_rows($referrers, $day));
+
+        $countries = $this->request('country-views', $args);
+        if (is_wp_error($countries)) {
+            return $countries;
+        }
+        return array_merge($rows, self::country_rows($countries, $day));
+    }
+
+    /**
+     * A day's top-posts answer as page rows: views by current path.
+     *
+     * @param array<string,mixed> $posts Its answer.
+     * @param string              $day   Y-m-d.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function page_rows(array $posts, $day) {
         $pages = array();
         foreach (self::listed($posts, $day, 'postviews') as $item) {
             $path  = self::post_path(isset($item['id']) ? (int) $item['id'] : 0, isset($item['href']) ? (string) $item['href'] : '');
@@ -248,14 +271,22 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             }
         }
         arsort($pages);
+        $rows = array();
         foreach (array_slice($pages, 0, self::ROWS, true) as $path => $views) {
             $rows[] = array('page', (string) $path, array('pageviews' => $views));
         }
+        return $rows;
+    }
 
-        $referrers = $this->request('referrers', $args);
-        if (is_wp_error($referrers)) {
-            return $referrers;
-        }
+    /**
+     * A day's referrers answer as source rows (the top hosts other than
+     * this site) and channel rows (every host).
+     *
+     * @param array<string,mixed> $referrers Its answer.
+     * @param string              $day       Y-m-d.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}> Hosts, and channels as their codes.
+     */
+    private static function source_rows(array $referrers, $day) {
         $own   = self::host(home_url());
         $hosts = array();
         foreach (self::listed($referrers, $day, 'groups') as $group) {
@@ -271,17 +302,24 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             $channel            = SEOProStats_Channels::classify((string) $host, array());
             $channels[$channel] = (isset($channels[$channel]) ? $channels[$channel] : 0) + $views;
         }
+        $rows = array();
         foreach (array_slice($hosts, 0, self::ROWS, true) as $host => $views) {
             $rows[] = array('source', (string) $host, array('pageviews' => $views));
         }
         foreach ($channels as $channel => $views) {
             $rows[] = array('channel', $channel, array('pageviews' => $views));
         }
+        return $rows;
+    }
 
-        $countries = $this->request('country-views', $args);
-        if (is_wp_error($countries)) {
-            return $countries;
-        }
+    /**
+     * A day's country-views answer as country rows (known places only).
+     *
+     * @param array<string,mixed> $countries Its answer.
+     * @param string              $day       Y-m-d.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function country_rows(array $countries, $day) {
         $places = array();
         foreach (self::listed($countries, $day, 'views') as $item) {
             $code  = isset($item['country_code']) ? strtoupper(trim((string) $item['country_code'])) : '';
@@ -290,6 +328,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
                 $places[$code] = (isset($places[$code]) ? $places[$code] : 0) + $views;
             }
         }
+        $rows = array();
         foreach ($places as $code => $views) {
             $rows[] = array('country', (string) $code, array('pageviews' => $views));
         }
@@ -444,16 +483,9 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * @return bool Whether the look is complete.
      */
     private function lookup($budget) {
-        $series = $this->series();
+        $series = self::lookup_start($this->series());
         $tz     = wp_timezone();
-        if (!empty($series['complete'])) {
-            // Refresh: the days since the last one known.
-            $series['complete'] = false;
-            $series['next']     = '';
-            $series['until']    = $series['days'] ? (string) max(array_keys($series['days'])) : '';
-            $series['empty']    = 0;
-        }
-        $today = (string) wp_date('Y-m-d');
+        $today  = (string) wp_date('Y-m-d');
         if ($series['next'] === '') {
             $series['next'] = $today;
         }
@@ -465,37 +497,81 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
                 update_option(self::SERIES_OPTION, $series, false);
                 return false;
             }
-            $rows  = self::visits_rows($answer);
-            $found = false;
-            foreach ($rows as $day => $counts) {
-                if ($day <= $today && ($counts[0] > 0 || $counts[1] > 0)) {
-                    $series['days'][$day] = $counts;
-                    $found                = true;
-                }
-            }
-            $series['empty'] = $found ? 0 : (int) $series['empty'] + 1;
-            $series['wait']  = 0;
-            // Either way WordPress.com counts the window: ending on its date
-            // (the answer reaches back, and the next window ends the day
-            // before its earliest day), or starting on it (the answer holds
-            // nothing before it, and the next window, WINDOW days back, ends
-            // the day before this one's date). $covered is the earliest day
-            // this answer surely covered, for stopping.
-            $earliest = $rows ? (string) min(array_keys($rows)) : $series['next'];
-            $covered  = min($earliest, $series['next']);
-            $first    = $earliest < $series['next'] ? $earliest : (new DateTimeImmutable($series['next'], $tz))->modify('-' . (self::WINDOW - 1) . ' days')->format('Y-m-d');
-            if (($series['until'] !== '' && $covered <= $series['until']) || $series['empty'] >= self::EMPTY_WINDOWS || $first <= self::FLOOR) {
-                ksort($series['days']);
-                $series['next']     = '';
-                $series['until']    = '';
-                $series['complete'] = true;
-                $series['at']       = time();
-            } else {
-                $series['next'] = (new DateTimeImmutable($first, $tz))->modify('-1 day')->format('Y-m-d');
-            }
+            $series = self::lookup_step($series, self::visits_rows($answer), $today, $tz);
             update_option(self::SERIES_OPTION, $series, false);
         }
         return !empty($series['complete']);
+    }
+
+    /**
+     * The series to look from: a complete one refreshes the days since the
+     * last one known.
+     *
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series series().
+     * @return array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int}
+     */
+    private static function lookup_start(array $series) {
+        if (!empty($series['complete'])) {
+            $series['complete'] = false;
+            $series['next']     = '';
+            $series['until']    = $series['days'] ? (string) max(array_keys($series['days'])) : '';
+            $series['empty']    = 0;
+        }
+        return $series;
+    }
+
+    /**
+     * The series after one stats/visits answer: its days with views kept,
+     * then the next window's date, or complete.
+     *
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series The series.
+     * @param array<string,array{0:int,1:int}> $rows  visits_rows() of the answer.
+     * @param string                           $today Y-m-d.
+     * @param DateTimeZone                     $tz    The site's time zone.
+     * @return array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int}
+     */
+    private static function lookup_step(array $series, array $rows, $today, DateTimeZone $tz) {
+        $found           = self::add_days($series, $rows, $today);
+        $series['empty'] = $found ? 0 : (int) $series['empty'] + 1;
+        $series['wait']  = 0;
+        // Either way WordPress.com counts the window: ending on its date
+        // (the answer reaches back, and the next window ends the day
+        // before its earliest day), or starting on it (the answer holds
+        // nothing before it, and the next window, WINDOW days back, ends
+        // the day before this one's date). $covered is the earliest day
+        // this answer surely covered, for stopping.
+        $earliest = $rows ? (string) min(array_keys($rows)) : $series['next'];
+        $covered  = min($earliest, $series['next']);
+        $first    = $earliest < $series['next'] ? $earliest : (new DateTimeImmutable($series['next'], $tz))->modify('-' . (self::WINDOW - 1) . ' days')->format('Y-m-d');
+        if (($series['until'] !== '' && $covered <= $series['until']) || $series['empty'] >= self::EMPTY_WINDOWS || $first <= self::FLOOR) {
+            ksort($series['days']);
+            $series['next']     = '';
+            $series['until']    = '';
+            $series['complete'] = true;
+            $series['at']       = time();
+        } else {
+            $series['next'] = (new DateTimeImmutable($first, $tz))->modify('-1 day')->format('Y-m-d');
+        }
+        return $series;
+    }
+
+    /**
+     * Keep an answer's days with views or visitors, up to today.
+     *
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series The series; its days added to.
+     * @param array<string,array{0:int,1:int}> $rows  visits_rows() of the answer.
+     * @param string                           $today Y-m-d.
+     * @return bool Whether any was kept.
+     */
+    private static function add_days(array &$series, array $rows, $today) {
+        $found = false;
+        foreach ($rows as $day => $counts) {
+            if ($day <= $today && ($counts[0] > 0 || $counts[1] > 0)) {
+                $series['days'][$day] = $counts;
+                $found                = true;
+            }
+        }
+        return $found;
     }
 
     /**
@@ -595,34 +671,76 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * @return array<string,int>
      */
     private static function referrer_hosts(array $group) {
-        $out = array();
-        $add = static function ($host, $views) use (&$out) {
-            if ($host !== '' && $views > 0) {
-                $out[$host] = (isset($out[$host]) ? $out[$host] : 0) + $views;
-            }
-        };
+        $out  = array();
         $host = self::host(isset($group['url']) ? (string) $group['url'] : '');
         if ($host === '' && !empty($group['results']) && is_array($group['results'])) {
             foreach ($group['results'] as $result) {
-                if (!is_array($result)) {
-                    continue;
+                if (is_array($result)) {
+                    self::add_result_hosts($out, $result);
                 }
-                $one = self::host(isset($result['url']) ? (string) $result['url'] : '');
-                if ($one === '' && !empty($result['children']) && is_array($result['children'])) {
-                    foreach ($result['children'] as $child) {
-                        if (is_array($child)) {
-                            $child_host = self::host(isset($child['url']) ? (string) $child['url'] : '');
-                            $add($child_host !== '' ? $child_host : self::name_host($child), isset($child['views']) ? (int) $child['views'] : 0);
-                        }
-                    }
-                    continue;
-                }
-                $add($one !== '' ? $one : self::name_host($result), isset($result['views']) ? (int) $result['views'] : 0);
             }
             return $out;
         }
-        $add($host !== '' ? $host : self::name_host($group), isset($group['total']) ? (int) $group['total'] : 0);
+        self::add_host($out, $host !== '' ? $host : self::name_host($group), isset($group['total']) ? (int) $group['total'] : 0);
         return $out;
+    }
+
+    /**
+     * Add a referrer result's views by host: its address and views, else
+     * its children's, else its name when that is a host.
+     *
+     * @param array<string,int>   $out    Host => views; added to.
+     * @param array<string,mixed> $result A groups[].results[] item.
+     * @return void
+     */
+    private static function add_result_hosts(array &$out, array $result) {
+        $one = self::host(isset($result['url']) ? (string) $result['url'] : '');
+        if ($one === '' && !empty($result['children']) && is_array($result['children'])) {
+            self::add_child_hosts($out, $result['children']);
+            return;
+        }
+        self::add_host($out, $one !== '' ? $one : self::name_host($result), isset($result['views']) ? (int) $result['views'] : 0);
+    }
+
+    /**
+     * Add a referrer result's children's views by host.
+     *
+     * @param array<string,int> $out      Host => views; added to.
+     * @param array<mixed>      $children A results[].children list.
+     * @return void
+     */
+    private static function add_child_hosts(array &$out, array $children) {
+        foreach ($children as $child) {
+            if (is_array($child)) {
+                self::add_host($out, self::item_host($child), isset($child['views']) ? (int) $child['views'] : 0);
+            }
+        }
+    }
+
+    /**
+     * A referrer item's host: its address's, else its name when that is a
+     * host.
+     *
+     * @param array<string,mixed> $item Referrer item.
+     * @return string '' for none.
+     */
+    private static function item_host(array $item) {
+        $host = self::host(isset($item['url']) ? (string) $item['url'] : '');
+        return $host !== '' ? $host : self::name_host($item);
+    }
+
+    /**
+     * Add views to a host ('' and no views add nothing).
+     *
+     * @param array<string,int> $out   Host => views; added to.
+     * @param string            $host  Host.
+     * @param int               $views Views.
+     * @return void
+     */
+    private static function add_host(array &$out, $host, $views) {
+        if ($host !== '' && $views > 0) {
+            $out[$host] = (isset($out[$host]) ? $out[$host] : 0) + $views;
+        }
     }
 
     /**
@@ -646,6 +764,27 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * @return array<string,mixed>|WP_Error
      */
     private function request($resource, array $args) {
+        $blocked = self::request_blocked();
+        if ($blocked !== null) {
+            return $blocked;
+        }
+        $path     = sprintf('/sites/%d/stats/%s', self::blog_id(), $resource) . ($args ? '?' . http_build_query($args) : '');
+        $response = \Automattic\Jetpack\Connection\Client::wpcom_json_api_request_as_blog($path, self::API, array('timeout' => self::TIMEOUT));
+        $code     = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
+        $body     = is_wp_error($response) ? '' : (string) wp_remote_retrieve_body($response);
+        $data     = $body !== '' ? json_decode($body, true) : null;
+        $error    = self::error_code($response, $data);
+        self::note($path, $code, $data, $error);
+        $failed = self::answer_error($response, $code, $data, $error);
+        return $failed !== null ? $failed : $data;
+    }
+
+    /**
+     * Why no request can be made now, before making one.
+     *
+     * @return WP_Error|null Null when one can.
+     */
+    private static function request_blocked() {
         if (!self::remote_allowed()) {
             return new WP_Error('seoprostats_jetpack_later', __('Jetpack Stats are fetched from WordPress.com in the background or with WP-CLI, not in this request.', 'seoprostats'), array('status' => 409, 'retry' => 0));
         }
@@ -655,19 +794,37 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
         if (!self::connected() || self::blog_id() <= 0) {
             return new WP_Error('seoprostats_jetpack_connection', __('Connect Jetpack to WordPress.com first: its statistics are kept there, not on this site.', 'seoprostats'), array('status' => 409));
         }
-        $path     = sprintf('/sites/%d/stats/%s', self::blog_id(), $resource) . ($args ? '?' . http_build_query($args) : '');
-        $response = \Automattic\Jetpack\Connection\Client::wpcom_json_api_request_as_blog($path, self::API, array('timeout' => self::TIMEOUT));
-        $code     = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
-        $body     = is_wp_error($response) ? '' : (string) wp_remote_retrieve_body($response);
-        $data     = $body !== '' ? json_decode($body, true) : null;
-        $error    = '';
-        if (is_wp_error($response)) {
-            $error = (string) $response->get_error_code();
-        } elseif (is_array($data) && (isset($data['error']) || isset($data['code']))) {
-            $error = (string) (isset($data['error']) ? $data['error'] : $data['code']);
-        }
-        self::note($path, $code, $data, $error);
+        return null;
+    }
 
+    /**
+     * A request's error code: the failed request's, else the answer's.
+     *
+     * @param array<string,mixed>|WP_Error $response The response.
+     * @param mixed                        $data     Decoded answer.
+     * @return string '' for none.
+     */
+    private static function error_code($response, $data) {
+        if (is_wp_error($response)) {
+            return (string) $response->get_error_code();
+        }
+        if (is_array($data) && (isset($data['error']) || isset($data['code']))) {
+            return (string) (isset($data['error']) ? $data['error'] : $data['code']);
+        }
+        return '';
+    }
+
+    /**
+     * Why an answer holds no statistics: not connected, no answer, busy or
+     * another error.
+     *
+     * @param array<string,mixed>|WP_Error $response The response.
+     * @param int                          $code     HTTP code (0: no answer).
+     * @param mixed                        $data     Decoded answer.
+     * @param string                       $error    error_code().
+     * @return WP_Error|null Null for statistics.
+     */
+    private static function answer_error($response, $code, $data, $error) {
         if (in_array($error, self::TOKEN_ERRORS, true)) {
             return new WP_Error('seoprostats_jetpack_connection', __('Connect Jetpack to WordPress.com first: its statistics are kept there, not on this site.', 'seoprostats'), array('status' => 409));
         }
@@ -683,7 +840,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
             /* translators: 1: HTTP status code, 2: error code. */
             return new WP_Error('seoprostats_jetpack_answer', sprintf(__('WordPress.com answered without statistics (HTTP %1$d %2$s).', 'seoprostats'), $code, $error), array('status' => 502));
         }
-        return $data;
+        return null;
     }
 
     /**
@@ -699,26 +856,60 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
         if (count(self::$log) >= self::LOG_SIZE) {
             return;
         }
-        $rows = '';
-        if (is_array($data) && !empty($data['days']) && is_array($data['days'])) {
-            $first = reset($data['days']);
-            $parts = array();
-            foreach (is_array($first) ? $first : array() as $key => $value) {
-                $parts[] = is_array($value) ? $key . ': ' . count($value) : (string) $key;
-            }
-            $rows = 'days[' . (string) key($data['days']) . '] ' . implode(', ', $parts);
-        } elseif (is_array($data) && isset($data['data']) && is_array($data['data'])) {
-            $fields = isset($data['fields']) && is_array($data['fields']) ? implode(',', array_map('strval', $data['fields'])) : '';
-            $days   = array_keys(self::visits_rows($data));
-            $rows   = 'data: ' . count($data['data']) . ' rows' . ($days ? ' (' . min($days) . ' – ' . max($days) . ')' : '') . '; fields: ' . $fields;
-        }
         self::$log[] = array(
             'request' => $path,
             'http'    => $code,
             'error'   => $error,
             'keys'    => is_array($data) ? implode(', ', array_map('strval', array_keys($data))) : '',
-            'rows'    => $rows,
+            'rows'    => self::note_rows($data),
         );
+    }
+
+    /**
+     * An answer's rows for note(): the first day's lists with their
+     * counts, or the visits rows' count, days and fields.
+     *
+     * @param mixed $data Decoded answer.
+     * @return string '' for neither.
+     */
+    private static function note_rows($data) {
+        if (!is_array($data)) {
+            return '';
+        }
+        if (!empty($data['days']) && is_array($data['days'])) {
+            return self::days_note($data['days']);
+        }
+        if (isset($data['data']) && is_array($data['data'])) {
+            return self::visits_note($data);
+        }
+        return '';
+    }
+
+    /**
+     * A days answer's first day and its lists with their counts.
+     *
+     * @param array<mixed> $days The answer's days.
+     * @return string
+     */
+    private static function days_note(array $days) {
+        $first = reset($days);
+        $parts = array();
+        foreach (is_array($first) ? $first : array() as $key => $value) {
+            $parts[] = is_array($value) ? $key . ': ' . count($value) : (string) $key;
+        }
+        return 'days[' . (string) key($days) . '] ' . implode(', ', $parts);
+    }
+
+    /**
+     * A visits answer's row count, days and fields.
+     *
+     * @param array<string,mixed> $data The answer (its data is a list).
+     * @return string
+     */
+    private static function visits_note(array $data) {
+        $fields = isset($data['fields']) && is_array($data['fields']) ? implode(',', array_map('strval', $data['fields'])) : '';
+        $days   = array_keys(self::visits_rows($data));
+        return 'data: ' . count($data['data']) . ' rows' . ($days ? ' (' . min($days) . ' – ' . max($days) . ')' : '') . '; fields: ' . $fields;
     }
 
     /**

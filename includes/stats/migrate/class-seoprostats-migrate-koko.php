@@ -191,24 +191,56 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
         }
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- another plugin's tables, one day by its primary key (date, id), joined by primary key; only counts and referrer names are read.
         $found = $wpdb->get_results($wpdb->prepare('SELECT l.%i AS v, SUM(r.%i) AS visitors, SUM(r.%i) AS pageviews FROM %i r INNER JOIN %i l ON l.id = r.id WHERE r.date = %s GROUP BY l.%i ORDER BY pageviews DESC LIMIT %d', $label[1], $unique, $hits, $stats, $label[0], $day, $label[1], self::ROWS * 5), ARRAY_A);
-        $sums  = array();
-        foreach ((array) $found as $row) {
+        return self::top_sources(self::referrer_sums((array) $found));
+    }
+
+    /**
+     * Referrer rows summed by host as sources and by channel.
+     *
+     * @param array<int,array<string,mixed>> $found Rows: v (the referrer), visitors, pageviews.
+     * @return array<string,array{0:string,1:int|string,2:array<string,int>}> Dimension and value => row (hosts, and channels as their codes).
+     */
+    private static function referrer_sums(array $found) {
+        $sums = array();
+        foreach ($found as $row) {
             $host = self::host((string) $row['v']);
             if ($host === '') {
                 continue;
             }
             $metrics = self::metrics($row);
             foreach (array(array('source', $host), array('channel', SEOProStats_Channels::classify($host, array()))) as $item) {
-                $key = $item[0] . "\0" . $item[1];
-                if (!isset($sums[$key])) {
-                    $sums[$key] = array($item[0], $item[1], array('visitors' => 0, 'pageviews' => 0));
-                }
-                foreach ($metrics as $name => $count) {
-                    $sums[$key][2][$name] += $count;
-                }
+                self::add_referrer($sums, $item[0], $item[1], $metrics);
             }
         }
-        // The top hosts, and every channel.
+        return $sums;
+    }
+
+    /**
+     * Add metrics to one dimension value's row of referrer_sums().
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums      Dimension and value => row; added to.
+     * @param string                                                         $dimension source or channel.
+     * @param int|string                                                     $value     Host, or channel code.
+     * @param array<string,int>                                              $metrics   visitors and pageviews.
+     * @return void
+     */
+    private static function add_referrer(array &$sums, $dimension, $value, array $metrics) {
+        $key = $dimension . "\0" . $value;
+        if (!isset($sums[$key])) {
+            $sums[$key] = array($dimension, $value, array('visitors' => 0, 'pageviews' => 0));
+        }
+        foreach ($metrics as $name => $count) {
+            $sums[$key][2][$name] += $count;
+        }
+    }
+
+    /**
+     * The top hosts, and every channel.
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums referrer_sums().
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function top_sources(array $sums) {
         $sources  = array_values(array_filter($sums, function ($row) {
             return $row[0] === 'source';
         }));

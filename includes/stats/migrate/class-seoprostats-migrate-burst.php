@@ -143,29 +143,78 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
         $sums = 'COUNT(DISTINCT x.u) AS visitors, COUNT(*) AS visits, COALESCE(SUM(x.pv), 0) AS pageviews, COALESCE(SUM(x.pv <= 1), 0) AS bounces, COALESCE(SUM(x.ms), 0) AS engaged_ms';
         $base   = "FROM ($visit) x INNER JOIN %i s ON s.ID = x.sid";
 
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums and the joins are fixed SQL. Only counts and names are read.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $visit is prepared above, $sums and the joins are fixed SQL. Only counts are read.
         $site = $wpdb->get_row($wpdb->prepare("SELECT $sums $base", $ss), ARRAY_A);
         if (!$site || (int) $site['pageviews'] === 0) {
             return $rows;
         }
         $rows[] = array('', 0, self::metrics($site));
+        return array_merge(
+            $rows,
+            $this->page_rows($ss, $st, $start, $end, $stats),
+            self::end_rows($sums, $base, $ss, $st),
+            self::lookup_rows($sums, $base, $ss, $sessions),
+            self::country_rows($sums, $base, $ss, $sessions),
+            self::source_rows($sums, $base, $ss, $st, $sessions, $stats)
+        );
+    }
 
-        // Pages: each pageview of the day's visits.
+    /**
+     * Pages: each pageview of the day's visits.
+     *
+     * @param string   $ss    Its sessions table.
+     * @param string   $st    Its statistics table.
+     * @param int      $start The day's first second.
+     * @param int      $end   The next day's first second.
+     * @param string[] $stats Its statistics table's columns.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private function page_rows($ss, $st, $start, $end, array $stats) {
+        global $wpdb;
+        $rows   = array();
         $scroll = in_array('max_scroll', $stats, true) ? 'COALESCE(SUM(st.max_scroll), 0)' : '0';
-        $pages  = $wpdb->get_results($wpdb->prepare("SELECT st.page_url AS v, COUNT(DISTINCT st.%i) AS visitors, COUNT(DISTINCT st.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(st.time_on_page), 0) AS engaged_ms, $scroll AS scroll FROM %i s INNER JOIN %i st ON st.session_id = s.ID WHERE s.start_time >= %d AND s.start_time < %d GROUP BY st.page_url ORDER BY pageviews DESC LIMIT %d", $this->uid(), $ss, $st, $start, $end, self::ROWS), ARRAY_A);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- another plugin's tables, one day by its sessions' start_time index, joined by primary keys; $scroll is fixed SQL. Only counts and addresses are read.
+        $pages = $wpdb->get_results($wpdb->prepare("SELECT st.page_url AS v, COUNT(DISTINCT st.%i) AS visitors, COUNT(DISTINCT st.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(st.time_on_page), 0) AS engaged_ms, $scroll AS scroll FROM %i s INNER JOIN %i st ON st.session_id = s.ID WHERE s.start_time >= %d AND s.start_time < %d GROUP BY st.page_url ORDER BY pageviews DESC LIMIT %d", $this->uid(), $ss, $st, $start, $end, self::ROWS), ARRAY_A);
         foreach ((array) $pages as $row) {
             $rows[] = array('page', self::path((string) $row['v']), self::metrics($row));
         }
+        return $rows;
+    }
 
-        // Entry and exit pages.
+    /**
+     * Entry and exit pages.
+     *
+     * @param string $sums The sums' SQL.
+     * @param string $base The day's visits' FROM, with a placeholder for the sessions table.
+     * @param string $ss   Its sessions table.
+     * @param string $st   Its statistics table.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function end_rows($sums, $base, $ss, $st) {
+        global $wpdb;
+        $rows = array();
         foreach (array('entry' => 'f', 'exit' => 'l') as $dimension => $end_column) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, joined by primary keys; $base holds the prepared visits, $sums and the column are fixed SQL. Only counts and addresses are read.
             $found = $wpdb->get_results($wpdb->prepare("SELECT p.page_url AS v, $sums $base INNER JOIN %i p ON p.ID = x.$end_column GROUP BY p.page_url ORDER BY visits DESC LIMIT %d", $ss, $st, self::ROWS), ARRAY_A);
             foreach ((array) $found as $row) {
                 $rows[] = array($dimension, self::path((string) $row['v']), self::metrics($row));
             }
         }
+        return $rows;
+    }
 
-        // Names in lookup tables: browser, operating system, device.
+    /**
+     * Names in lookup tables: browser, operating system, device.
+     *
+     * @param string   $sums     The sums' SQL.
+     * @param string   $base     The day's visits' FROM, with a placeholder for the sessions table.
+     * @param string   $ss       Its sessions table.
+     * @param string[] $sessions Its sessions table's columns.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function lookup_rows($sums, $base, $ss, array $sessions) {
+        global $wpdb;
+        $rows    = array();
         $lookups = array(
             'browser' => array('browser_id', 'browsers'),
             'os'      => array('platform_id', 'platforms'),
@@ -175,14 +224,29 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
             if (!in_array($lookup[0], $sessions, true) || !self::table_exists(self::table($lookup[1]))) {
                 continue;
             }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, joined by primary keys; $base holds the prepared visits, $sums is fixed SQL. Only counts and names are read.
             $found = $wpdb->get_results($wpdb->prepare("SELECT n.name AS v, $sums $base LEFT JOIN %i n ON n.ID = s.%i GROUP BY n.name ORDER BY visits DESC LIMIT %d", $ss, self::table($lookup[1]), $lookup[0], self::ROWS), ARRAY_A);
             foreach ((array) $found as $row) {
                 $rows[] = array($dimension, self::name($dimension, (string) $row['v']), self::metrics($row));
             }
         }
+        return $rows;
+    }
 
-        // Country: its own column in older versions, else the location's.
+    /**
+     * Country: its own column in older versions, else the location's.
+     *
+     * @param string   $sums     The sums' SQL.
+     * @param string   $base     The day's visits' FROM, with a placeholder for the sessions table.
+     * @param string   $ss       Its sessions table.
+     * @param string[] $sessions Its sessions table's columns.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function country_rows($sums, $base, $ss, array $sessions) {
+        global $wpdb;
+        $rows    = array();
         $country = null;
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, joined by primary keys; $base holds the prepared visits, $sums is fixed SQL, $country is prepared here. Only counts and country codes are read.
         if (in_array('country_code', $sessions, true)) {
             $country = $wpdb->prepare("SELECT s.country_code AS v, $sums $base GROUP BY s.country_code ORDER BY visits DESC LIMIT %d", $ss, self::ROWS);
         } elseif (in_array('city_code', $sessions, true) && in_array('country_code', self::columns(self::table('locations')), true)) {
@@ -192,19 +256,33 @@ final class SEOProStats_Migrate_Burst extends SEOProStats_Migrate_Source {
             $code   = strtoupper(trim((string) $row['v']));
             $rows[] = array('country', preg_match('~^[A-Z]{2}$~', $code) ? $code : '', self::metrics($row));
         }
+        // phpcs:enable
+        return $rows;
+    }
 
-        // Referrer host and the first page's campaign tags, together, for
-        // the source, channel, campaign and search landing dimensions.
+    /**
+     * Referrer host and the first page's campaign tags, together, for the
+     * source, channel, campaign and search landing dimensions.
+     *
+     * @param string   $sums     The sums' SQL.
+     * @param string   $base     The day's visits' FROM, with a placeholder for the sessions table.
+     * @param string   $ss       Its sessions table.
+     * @param string   $st       Its statistics table.
+     * @param string[] $sessions Its sessions table's columns.
+     * @param string[] $stats    Its statistics table's columns.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function source_rows($sums, $base, $ss, $st, array $sessions, array $stats) {
+        global $wpdb;
         $referrer = in_array('referrer', $sessions, true) ? "COALESCE(s.referrer, '')" : "''";
         $params   = in_array('parameters', $stats, true) ? "COALESCE(p.parameters, '')" : "''";
-        $mixed    = $wpdb->get_results($wpdb->prepare("SELECT $referrer AS r, $params AS q, p.page_url AS e, $sums $base INNER JOIN %i p ON p.ID = x.f GROUP BY r, q, e ORDER BY visits DESC LIMIT %d", $ss, $st, self::ROWS * 5), ARRAY_A);
-        // phpcs:enable
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- another plugin's tables, joined by primary keys; $base holds the prepared visits, $sums and the columns are fixed SQL. Only counts, hosts, queries and addresses are read.
+        $mixed  = $wpdb->get_results($wpdb->prepare("SELECT $referrer AS r, $params AS q, p.page_url AS e, $sums $base INNER JOIN %i p ON p.ID = x.f GROUP BY r, q, e ORDER BY visits DESC LIMIT %d", $ss, $st, self::ROWS * 5), ARRAY_A);
         $groups = array();
         foreach ((array) $mixed as $row) {
             $groups[] = array('r' => (string) $row['r'], 'q' => (string) $row['q'], 'e' => self::path((string) $row['e']), 'metrics' => self::metrics($row));
         }
-        $rows = array_merge($rows, self::visit_sources($groups));
-        return $rows;
+        return self::visit_sources($groups);
     }
 
     /**
