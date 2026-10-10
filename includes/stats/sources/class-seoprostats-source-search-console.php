@@ -100,21 +100,7 @@ final class SEOProStats_Source_Search_Console {
      * @return array{credentials:array<string,mixed>,settings:array<string,mixed>,properties:array<string,string>}|WP_Error
      */
     public static function connect(array $input, $existing) {
-        $json   = isset($input['key']) ? trim((string) $input['key']) : '';
-        $signin = null;
-        if (!empty($input['google'])) {
-            $signin = self::signed_in(get_current_user_id());
-            $key    = $signin === null ? new WP_Error('seoprostats_google_expired', __('The Google sign-in has expired. Choose Sign in with Google again.', 'seoprostats')) : $signin;
-            if (is_array($key) && isset($key['error'])) {
-                $key = new WP_Error('seoprostats_google_' . $key['error'], self::signin_error((string) $key['error']));
-            }
-        } elseif ($json !== '') {
-            $key = self::parse_key($json);
-        } elseif (is_array($existing)) {
-            $key = $existing;
-        } else {
-            $key = new WP_Error('seoprostats_key_missing', __('Choose Sign in with Google, or paste the service account\'s JSON key.', 'seoprostats'));
-        }
+        list($key, $signin) = self::connect_key($input, $existing);
         if (is_wp_error($key)) {
             return $key;
         }
@@ -144,6 +130,34 @@ final class SEOProStats_Source_Search_Console {
             ),
             'properties'  => $properties,
         );
+    }
+
+    /**
+     * The credentials to connect with: the current user's finished Google
+     * sign-in, a pasted JSON key, or the saved credentials; and the
+     * sign-in, if one was used.
+     *
+     * @param array<string,mixed>      $input    As connect().
+     * @param array<string,mixed>|null $existing Saved credentials, or null.
+     * @return array{0:array<string,mixed>|WP_Error,1:array<string,mixed>|null}
+     */
+    private static function connect_key(array $input, $existing) {
+        $json = isset($input['key']) ? trim((string) $input['key']) : '';
+        if (!empty($input['google'])) {
+            $signin = self::signed_in(get_current_user_id());
+            $key    = $signin === null ? new WP_Error('seoprostats_google_expired', __('The Google sign-in has expired. Choose Sign in with Google again.', 'seoprostats')) : $signin;
+            if (is_array($key) && isset($key['error'])) {
+                $key = new WP_Error('seoprostats_google_' . $key['error'], self::signin_error((string) $key['error']));
+            }
+            return array($key, $signin);
+        }
+        if ($json !== '') {
+            return array(self::parse_key($json), null);
+        }
+        if (is_array($existing)) {
+            return array($existing, null);
+        }
+        return array(new WP_Error('seoprostats_key_missing', __('Choose Sign in with Google, or paste the service account\'s JSON key.', 'seoprostats')), null);
     }
 
     /**
@@ -549,34 +563,10 @@ final class SEOProStats_Source_Search_Console {
     public static function pick_property(array $properties, $wanted = '', $google = false) {
         $wanted = trim((string) $wanted);
         if ($wanted !== '') {
-            if (isset($properties[$wanted])) {
-                return $wanted;
-            }
-            if ($google) {
-                /* translators: %s: Search Console property */
-                return new WP_Error('seoprostats_property_access', sprintf(__('The Google account you signed in with cannot read the property %s. Choose one of its properties, or sign in with an account that is a user of that property.', 'seoprostats'), $wanted));
-            }
-            /* translators: %s: Search Console property */
-            return new WP_Error('seoprostats_property_access', sprintf(__('The service account cannot read the property %s. In Search Console, open the property → Settings → Users and permissions, and add the service account\'s address.', 'seoprostats'), $wanted));
+            return self::wanted_property($properties, $wanted, $google);
         }
         $home = (string) home_url('/');
-        $host = strtolower((string) wp_parse_url($home, PHP_URL_HOST));
-        $bare = (string) preg_replace('/^www\./', '', $host);
-        $best = '';
-        foreach (array_keys($properties) as $property) {
-            if (strpos($property, 'sc-domain:') === 0) {
-                $domain = strtolower(substr($property, 10));
-                if ($bare === $domain || substr($bare, -strlen('.' . $domain)) === '.' . $domain) {
-                    return $property;
-                }
-                continue;
-            }
-            $prefix = strtolower((string) preg_replace('#^https?://(www\.)?#', '', $property));
-            $site   = strtolower((string) preg_replace('#^https?://(www\.)?#', '', $home));
-            if ($prefix !== '' && strpos($site, rtrim($prefix, '/') . '/') === 0 && strlen($property) > strlen($best)) {
-                $best = $property;
-            }
-        }
+        $best = self::site_property($properties, $home);
         if ($best !== '') {
             return $best;
         }
@@ -592,6 +582,55 @@ final class SEOProStats_Source_Search_Console {
         }
         /* translators: %s: the site's address */
         return new WP_Error('seoprostats_property_choose', sprintf(__('None of the properties the service account can read is for %s. Choose one, or add the service account to this site\'s property in Search Console.', 'seoprostats'), $home));
+    }
+
+    /**
+     * The property asked for, when the account can read it.
+     *
+     * @param array<string,string> $properties From properties().
+     * @param string               $wanted     Property asked for.
+     * @param bool                 $google     Signed in with Google (else a service account).
+     * @return string|WP_Error
+     */
+    private static function wanted_property(array $properties, $wanted, $google) {
+        if (isset($properties[$wanted])) {
+            return $wanted;
+        }
+        if ($google) {
+            /* translators: %s: Search Console property */
+            return new WP_Error('seoprostats_property_access', sprintf(__('The Google account you signed in with cannot read the property %s. Choose one of its properties, or sign in with an account that is a user of that property.', 'seoprostats'), $wanted));
+        }
+        /* translators: %s: Search Console property */
+        return new WP_Error('seoprostats_property_access', sprintf(__('The service account cannot read the property %s. In Search Console, open the property → Settings → Users and permissions, and add the service account\'s address.', 'seoprostats'), $wanted));
+    }
+
+    /**
+     * The property for this site: a domain property of its host, else the
+     * longest address prefix property it is under; '' for none.
+     *
+     * @param array<string,string> $properties From properties().
+     * @param string               $home       The site's address.
+     * @return string
+     */
+    private static function site_property(array $properties, $home) {
+        $host = strtolower((string) wp_parse_url($home, PHP_URL_HOST));
+        $bare = (string) preg_replace('/^www\./', '', $host);
+        $site = strtolower((string) preg_replace('#^https?://(www\.)?#', '', $home));
+        $best = '';
+        foreach (array_keys($properties) as $property) {
+            if (strpos($property, 'sc-domain:') === 0) {
+                $domain = strtolower(substr($property, 10));
+                if ($bare === $domain || substr($bare, -strlen('.' . $domain)) === '.' . $domain) {
+                    return $property;
+                }
+                continue;
+            }
+            $prefix = strtolower((string) preg_replace('#^https?://(www\.)?#', '', $property));
+            if ($prefix !== '' && strpos($site, rtrim($prefix, '/') . '/') === 0 && strlen($property) > strlen($best)) {
+                $best = $property;
+            }
+        }
+        return $best;
     }
 
     /**

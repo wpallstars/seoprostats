@@ -363,44 +363,78 @@ final class SEOProStats_Source_Bing {
                 return $answers[$kind];
             }
         }
-        $totals = array();
-        foreach ($answers['totals'] as $row) {
-            $day = is_array($row) && isset($row['Date']) ? self::date((string) $row['Date']) : '';
-            if ($day !== '') {
-                $totals[$day] = array(max(0, (int) ($row['Clicks'] ?? 0)), max(0, (int) ($row['Impressions'] ?? 0)));
-            }
-        }
         $data = array(
-            'totals'  => $totals,
+            'totals'  => self::daily_totals($answers['totals']),
             'queries' => self::weekly($answers['queries']),
             'pages'   => self::weekly($answers['pages']),
             'ends'    => array(),
             'weekday' => self::WEEK_END,
         );
-        // Each week's position: its queries', else its pages'.
-        foreach (array('pages', 'queries') as $kind) {
-            foreach ($data[$kind] as $day => $rows) {
-                $sum = 0.0;
-                $imp = 0;
-                foreach ($rows as $row) {
-                    if ($row['position'] > 0) {
-                        $sum += $row['position'] * $row['impressions'];
-                        $imp += $row['impressions'];
-                    }
-                }
-                if ($imp > 0) {
-                    $data['ends'][$day] = $sum / $imp;
-                } elseif (!isset($data['ends'][$day])) {
-                    $data['ends'][$day] = 0.0;
-                }
-            }
-        }
+        $data['ends'] = self::week_positions($data['pages'], $data['queries']);
         ksort($data['ends']);
         if ($data['ends']) {
             $data['weekday'] = (int) (new DateTimeImmutable((string) array_key_last($data['ends']), new DateTimeZone('UTC')))->format('N');
         }
         self::$data[$site] = $data;
         return $data;
+    }
+
+    /**
+     * Clicks and impressions by day from Bing's traffic rows.
+     *
+     * @param array<int,mixed> $rows Bing's rows.
+     * @return array<string,array{0:int,1:int}> Y-m-d => clicks, impressions.
+     */
+    private static function daily_totals(array $rows) {
+        $totals = array();
+        foreach ($rows as $row) {
+            $day = is_array($row) && isset($row['Date']) ? self::date((string) $row['Date']) : '';
+            if ($day !== '') {
+                $totals[$day] = array(max(0, (int) ($row['Clicks'] ?? 0)), max(0, (int) ($row['Impressions'] ?? 0)));
+            }
+        }
+        return $totals;
+    }
+
+    /**
+     * Each week's position: its queries', else its pages', else 0.
+     *
+     * @param array<string,array<int,array<string,mixed>>> $pages   From weekly().
+     * @param array<string,array<int,array<string,mixed>>> $queries From weekly().
+     * @return array<string,float> The week's last day => position.
+     */
+    private static function week_positions(array $pages, array $queries) {
+        $ends = array();
+        foreach (array($pages, $queries) as $weeks) {
+            foreach ($weeks as $day => $rows) {
+                $position = self::week_position($rows);
+                if ($position !== null) {
+                    $ends[$day] = $position;
+                } elseif (!isset($ends[$day])) {
+                    $ends[$day] = 0.0;
+                }
+            }
+        }
+        return $ends;
+    }
+
+    /**
+     * A week's rows' position, weighted by impressions; null when none
+     * has a position.
+     *
+     * @param array<int,array<string,mixed>> $rows From weekly().
+     * @return float|null
+     */
+    private static function week_position(array $rows) {
+        $sum = 0.0;
+        $imp = 0;
+        foreach ($rows as $row) {
+            if ($row['position'] > 0) {
+                $sum += $row['position'] * $row['impressions'];
+                $imp += $row['impressions'];
+            }
+        }
+        return $imp > 0 ? $sum / $imp : null;
     }
 
     /**
