@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.4.2
+Version: 1.4.3
 
 <!-- github-only:start -->
 ## Screenshots
@@ -526,6 +526,13 @@ Hits are counted, and search data, summaries and checks run, by WordPress's sche
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.4.3
+
+- New: on Search → Backlinks → Reported pages, a page's "1 link to this site" opens a row under it with each link: the page of this site it links to (opens in Rankings), the link's text (or an image's alt text) and its rel. The REST API's reported rows carry them as `targets`.
+- Changed: the period menu is in groups: Days (Today, Yesterday, Last 24 hours, Last 7 days), Weeks (Last 4, 13, 26 and 52 weeks, the periods that were Last 28, 91, 182 and 364 days), Calendar (This week, This month, This year, Last 12 months, Last year), then All time and Custom dates. The dashboard still opens on the same period, now named Last 13 weeks. Last 30 days and Last 90 days leave the menu; links and bookmarks that name them still open them, and the REST API, WP-CLI and abilities still take 30d and 90d.
+- Changed: Edit links open the editor in a new tab, like View page beside them, so the report stays open.
+- Fixed: in light mode, the admin colour scheme's colour keeps its hue at a brightness that reads at 4.5:1, as in dark mode (Sunrise's orange and the classic schemes' hover blue were under it), and the focus ring on menu items takes the scheme's colour.
 
 ### 1.4.2
 
