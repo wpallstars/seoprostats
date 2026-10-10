@@ -934,6 +934,8 @@ final class SEOProStats_Backlinks {
             'to'      => $range['to'],
             'version' => self::state()['version'],
             'source'  => $source,
+            // The answer's shape: a cached answer from before reported pages' targets is not reused.
+            'shape'   => 2,
         );
         $all    = SEOProStats_Query::cached('backlinks', $key, static function () use ($range, $source) {
             return self::build($range, $source);
@@ -983,7 +985,7 @@ final class SEOProStats_Backlinks {
         $domains   = self::domains($sites, $lost, $range);
         $targets   = self::targets($pages);
         require_once __DIR__ . '/class-seoprostats-backlinks-reported.php';
-        $reported  = SEOProStats_Backlinks_Reported::read($live, $source);
+        $reported  = SEOProStats_Backlinks_Reported::read($live, $links, $source);
         $new_sites = 0;
         foreach ($sites as $site) {
             $new_sites += $site['first'] >= $from && $site['first'] < $to ? 1 : 0;

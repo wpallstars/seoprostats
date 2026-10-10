@@ -7082,7 +7082,7 @@ components:
     BacklinkReportedRow:
       type: object
       description: A referring page a link export named (reported), and its check.
-      required: [source, host, found, state, links, reported, checked, providers]
+      required: [source, host, found, state, links, targets, reported, checked, providers]
       properties:
         source:
           type: string
@@ -7100,6 +7100,27 @@ components:
         links:
           type: integer
           description: Live links to the site found on it.
+        targets:
+          type: array
+          description: Those live links, first found first, of the report's bounded read.
+          items:
+            type: object
+            required: [page, anchor, rel, first_seen]
+            properties:
+              page:
+                type: string
+                description: The page of this site it links to (path).
+              anchor:
+                type: string
+                description: The link's text, or the image's alt text; empty when it has none.
+              rel:
+                type: array
+                items:
+                  type: string
+                  enum: [nofollow, sponsored, ugc]
+              first_seen:
+                type: [string, 'null']
+                format: date-time
         reported:
           type: [string, 'null']
           format: date-time

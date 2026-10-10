@@ -7,7 +7,8 @@
  * Five lists: live links (newest first), the sites linking (most visits
  * first), the site's pages linked to (most sites first), the links lost
  * in the period, and the referring pages link exports named (Settings →
- * Import → Links) with their check. The period counts new and lost links
+ * Import → Links) with their check; a reported page's link count opens
+ * its links (the page linked to, text and rel). The period counts new and lost links
  * and the sites' visits; filters and the engine do not apply. Choosing one
  * of the site's pages opens it in Rankings.
  *
@@ -15,7 +16,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { addQueryArgs } from '@wordpress/url';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextareaControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
@@ -138,7 +139,7 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 				{rows.length > 0 && shown === 'domains' && <DomainsTable rows={rows as BacklinkDomainRow[]} refreshing={query.isFetching} />}
 				{rows.length > 0 && shown === 'pages' && <PagesTable rows={rows as BacklinkPageRow[]} open={open} refreshing={query.isFetching} />}
 				{rows.length > 0 && (shown === 'links' || shown === 'lost') && <LinksTable rows={rows as BacklinkRow[]} kind={shown} open={open} refreshing={query.isFetching} />}
-				{rows.length > 0 && shown === 'reported' && <ReportedTable rows={rows as BacklinkReportedRow[]} refreshing={query.isFetching} />}
+				{rows.length > 0 && shown === 'reported' && <ReportedTable rows={rows as BacklinkReportedRow[]} open={open} refreshing={query.isFetching} />}
 				{answer && <CheckNow answer={answer} />}
 				{answer && <Notes answer={answer} />}
 				{answer && answer.total > PER_PAGE && (
@@ -533,7 +534,12 @@ function stateLabel(state: BacklinkReportedState, links: number): string {
 	}
 }
 
-function ReportedTable({ rows, refreshing }: Readonly<{ rows: BacklinkReportedRow[]; refreshing: boolean }>) {
+/**
+ * The reported pages. A page with links to the site opens a row under it
+ * with each link: the page of this site it links to, its text and rel.
+ */
+function ReportedTable({ rows, open, refreshing }: Readonly<{ rows: BacklinkReportedRow[]; open: BacklinksProps['open']; refreshing: boolean }>) {
+	const [shown, setShown] = useState<string | null>(null);
 	return (
 		<TableScroll label={backlinkKindName('reported')}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -548,20 +554,69 @@ function ReportedTable({ rows, refreshing }: Readonly<{ rows: BacklinkReportedRo
 					</tr>
 				</thead>
 				<tbody>
-					{rows.map((row) => (
-						<tr key={row.source}>
-							<td>
-								<SourceLink url={row.source} />
-							</td>
-							<td>{row.host}</td>
-							<td>{stateLabel(row.state, row.links)}</td>
-							<td>{day(row.reported)}</td>
-							<td>{day(row.checked)}</td>
-							<td>{foundLabel(row.found)}</td>
-						</tr>
-					))}
+					{rows.map((row) => {
+						const targets = row.state === 'links' ? row.targets : [];
+						const isShown = shown === row.source && targets.length > 0;
+						return (
+							<Fragment key={row.source}>
+								<tr className={isShown ? 'is-selected' : ''}>
+									<td>
+										<SourceLink url={row.source} />
+									</td>
+									<td>{row.host}</td>
+									<td>
+										{targets.length > 0 ? (
+											<button type="button" className="spst-link" aria-expanded={isShown} title={__('Show the links', 'seoprostats')} onClick={() => setShown(isShown ? null : row.source)}>
+												{stateLabel(row.state, row.links)}
+											</button>
+										) : (
+											stateLabel(row.state, row.links)
+										)}
+									</td>
+									<td>{day(row.reported)}</td>
+									<td>{day(row.checked)}</td>
+									<td>{foundLabel(row.found)}</td>
+								</tr>
+								{isShown && (
+									<tr className="spst-backlinks__detail">
+										<td colSpan={6}>
+											<ReportedTargets targets={targets} open={open} />
+										</td>
+									</tr>
+								)}
+							</Fragment>
+						);
+					})}
 				</tbody>
 			</table>
 		</TableScroll>
+	);
+}
+
+/** A reported page's links to the site. */
+function ReportedTargets({ targets, open }: Readonly<{ targets: BacklinkReportedRow['targets']; open: BacklinksProps['open'] }>) {
+	return (
+		<table className="widefat spst-table">
+			<thead>
+				<tr>
+					<th scope="col">{__('Links to', 'seoprostats')}</th>
+					<th scope="col">{__('Text', 'seoprostats')}</th>
+					<th scope="col">{__('Rel', 'seoprostats')}</th>
+					<th scope="col">{__('First found', 'seoprostats')}</th>
+				</tr>
+			</thead>
+			<tbody>
+				{targets.map((target) => (
+					<tr key={target.page}>
+						<td>
+							<PageButton page={target.page} open={open} />
+						</td>
+						<td>{target.anchor || '–'}</td>
+						<td>{relLabel(target.rel)}</td>
+						<td>{day(target.first_seen)}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
 	);
 }
