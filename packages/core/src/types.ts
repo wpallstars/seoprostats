@@ -1531,7 +1531,7 @@ export interface TargetRow {
 	/** 0–100. */
 	priority: number;
 	status: TargetStatus;
-	/** list, aidevops or demo. */
+	/** list, aidevops, demo, seo-plugin (focus keywords) or search (added from a search report). */
 	source: string;
 	state: TargetState;
 	/** Positions 1–3, 4–20 or beyond; null when not shown. */
@@ -1578,18 +1578,71 @@ export interface TargetSkipped {
 	/** 1 for the first data row. */
 	row: number;
 	query: string;
-	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit' | 'measurements';
+	/** exists: already a target (only_new); clash: the focus keyword of more than one page; unknown: no page's focus keyword. */
+	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit' | 'measurements' | 'exists' | 'clash' | 'unknown';
 	message: string;
 }
 
 export interface TargetsImportAnswer {
-	/** list (objects), csv, json or toon. */
+	/** list (objects), csv, json, toon or seo-plugin. */
 	format: string;
 	added: number;
 	updated: number;
 	removed: number;
 	skipped: TargetSkipped[];
 	total: number;
+}
+
+/** A target's search with its page, status and priority, without figures (GET /targets/queries). */
+export interface TargetListed {
+	query: string;
+	/** Path of the page meant for it; '' when none is chosen. */
+	page: string;
+	status: TargetStatus;
+	priority: number;
+}
+
+export interface TargetsQueriesAnswer {
+	targets: TargetListed[];
+}
+
+/** A focus keyword suggestion's state: new, the focus keyword of more than one page, or a target already. */
+export const TARGET_SUGGESTION_STATES = ['new', 'clash', 'targeted'] as const;
+export type TargetSuggestionState = (typeof TARGET_SUGGESTION_STATES)[number];
+
+/** A published page with a focus keyword. */
+export interface TargetSuggestionPage {
+	path: string;
+	/** 0 in the demo data. */
+	post_id: number;
+	title: string;
+	url: string;
+	edit_url: string | null;
+}
+
+export interface TargetSuggestion {
+	/** As targets store it (lower case). */
+	query: string;
+	/** As the SEO plugin keeps it. */
+	keyword: string;
+	state: TargetSuggestionState;
+	pages: TargetSuggestionPage[];
+	/** The target, when the search is one already. */
+	target: Omit<TargetListed, 'query'> | null;
+}
+
+export interface TargetSuggestionsAnswer {
+	/** rank-math, yoast, seopress, aioseo, demo, or '' when no SEO plugin is active. */
+	plugin: string;
+	all_keywords: boolean;
+	/** Pages read with focus keywords. */
+	pages: number;
+	/** More posts have focus keywords than max_posts. */
+	more: boolean;
+	max_posts: number;
+	counts: Record<TargetSuggestionState, number>;
+	/** New first, then clashes, then those already targeted. */
+	rows: TargetSuggestion[];
 }
 
 /** Refresh planner proposals for a page losing clicks, in the order they are checked. */

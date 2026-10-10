@@ -5,9 +5,11 @@
  * state (the page meant for it ranks, another page does, none is chosen
  * yet, or search does not show it). Highest priority first.
  *
- * Administrators import a list (CSV or tab-separated text, JSON, or the
- * aidevops search targets table) and delete targets; rows that cannot be
- * read are skipped and listed, never guessed. Plan lists open targets
+ * Administrators add targets three ways: the SEO plugin's focus keywords
+ * (Suggest from SEO plugin), Add as target on search report rows, or a
+ * pasted list (CSV or tab-separated text, JSON, or the aidevops search
+ * targets table); and delete them. Rows that cannot be read are skipped
+ * and listed, never guessed. Plan lists open targets
  * shown with the wrong page, and high-priority ones in striking distance.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -31,8 +33,9 @@ import {
 	type TargetsImportAnswer,
 	type TargetState,
 	type TargetStatus,
+	type TargetSuggestionState,
 } from '@seoprostats/core';
-import { deleteTargets, errorMessage, importTargets, scopeKey, useTargets } from './api';
+import { deleteTargets, errorMessage, importTargets, importTargetSuggestions, scopeKey, useTargets, useTargetSuggestions } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import { longLabel } from './dates';
@@ -49,14 +52,41 @@ const decimal = (value: number) => formatDecimal(value, locale);
 /** A share (0–1) as a whole percentage, e.g. "80%". */
 const percentText = (share: number) => `${number(Math.round(share * 100))}%`;
 
-/** With no rows: none imported yet (who can import), or none in the status picked. */
+/** With no rows: none in the status picked, or none yet for someone who cannot add them (administrators see Sources). */
 function emptyText(empty: boolean): string {
-	if (!empty) {
-		return __('No target in this status.', 'seoprostats');
-	}
-	return boot.canManage
-		? __('No search targets yet. Import a list of searches with the page meant for each: CSV, tab-separated text, JSON, or the aidevops search targets table.', 'seoprostats')
-		: __('No search targets yet. An administrator can import them.', 'seoprostats');
+	return empty ? __('No search targets yet. An administrator can add them from the SEO plugin\'s focus keywords, the search reports or a keyword list.', 'seoprostats') : __('No target in this status.', 'seoprostats');
+}
+
+/** Where targets come from, for administrators with none yet: each way in, with its button. */
+function Sources({ suggest, paste }: Readonly<{ suggest: () => void; paste: () => void }>) {
+	return (
+		<div className="spst-empty spst-targets__sources">
+			<p>
+				<strong>{__('No search targets yet.', 'seoprostats')}</strong>{' '}
+				{__('A target is a search the site means to win, with the page meant for it. There are three ways to add them:', 'seoprostats')}
+			</p>
+			<ul>
+				<li>
+					<strong>{__('From your SEO plugin:', 'seoprostats')}</strong>{' '}
+					{__('the focus keyword each published page has in Rank Math, Yoast SEO, SEOPress or All in One SEO, with that page. You choose which to import.', 'seoprostats')}{' '}
+					<Button variant="link" onClick={suggest}>
+						{__('Suggest from SEO plugin', 'seoprostats')}
+					</Button>
+				</li>
+				<li>
+					<strong>{__('From the search reports:', 'seoprostats')}</strong>{' '}
+					{__('Add as target after a search in Rankings, or in Opportunities → Striking distance and Overlapping pages, adds it as a candidate: in Striking distance with the page that ranks, in Rankings with the page picked (if any), and in Overlapping pages with none chosen, so you choose which page it is for.', 'seoprostats')}
+				</li>
+				<li>
+					<strong>{__('From keyword research:', 'seoprostats')}</strong>{' '}
+					{__('paste a list from a spreadsheet or a keyword tool (CSV, tab-separated or JSON), or the aidevops search targets table.', 'seoprostats')}{' '}
+					<Button variant="link" onClick={paste}>
+						{__('Import targets', 'seoprostats')}
+					</Button>
+				</li>
+			</ul>
+		</div>
+	);
 }
 
 /** A target status's name. */
@@ -126,7 +156,9 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 	const rows = list.slice(offset, offset + PER_PAGE);
 	const [error, setError] = useState('');
 	const [importing, setImporting] = useState(false);
+	const [suggesting, setSuggesting] = useState(false);
 	const empty = !!answer && filterCount(answer, 'all') === 0;
+	const sources = empty && boot.canManage && !importing && !suggesting;
 
 	return (
 		<>
@@ -165,14 +197,20 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 								onChange={(next: string) => update({ targets: next === 'all' ? undefined : (next as TargetFilter) })}
 							/>
 						)}
+						{boot.canManage && !suggesting && (
+							<Button variant="secondary" onClick={() => { setSuggesting(true); setImporting(false); }}>
+								{__('Suggest from SEO plugin', 'seoprostats')}
+							</Button>
+						)}
 						{boot.canManage && !importing && (
-							<Button variant="secondary" onClick={() => setImporting(true)}>
+							<Button variant="secondary" onClick={() => { setImporting(true); setSuggesting(false); }}>
 								{__('Import targets', 'seoprostats')}
 							</Button>
 						)}
 					</div>
 				</CardHeader>
 				<CardBody className="spst-card__body">
+					{suggesting && <SuggestForm onClose={() => setSuggesting(false)} />}
 					{importing && <ImportForm onClose={() => setImporting(false)} />}
 					{!answer && !query.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
 					{answer && (
@@ -183,7 +221,8 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 							)}
 						</p>
 					)}
-					{answer && !rows.length && (
+					{sources && <Sources suggest={() => setSuggesting(true)} paste={() => setImporting(true)} />}
+					{answer && !rows.length && !(empty && boot.canManage) && (
 						<div className="spst-empty">
 							<p>{emptyText(empty)}</p>
 						</div>
@@ -442,36 +481,10 @@ function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 					{error}
 				</Notice>
 			)}
-			{done && (
-				<Notice status={done.skipped.length ? 'warning' : 'success'} isDismissible={false} className="spst-notice">
-					<p>
-						{sprintf(
-							/* translators: 1: targets added, 2: updated, 3: deleted, 4: rows skipped, 5: targets now. */
-							__('Added %1$s, updated %2$s, deleted %3$s, skipped %4$s; %5$s targets now.', 'seoprostats'),
-							number(done.added),
-							number(done.updated),
-							number(done.removed),
-							number(done.skipped.length),
-							number(done.total)
-						)}
-					</p>
-					{done.skipped.length > 0 && (
-						<ul>
-							{done.skipped.slice(0, 20).map((skip) => (
-								<li key={skip.row}>
-									{sprintf(
-										/* translators: 1: row number, 2: a search query, 3: why it was skipped. */
-										__('Row %1$s (%2$s): %3$s', 'seoprostats'),
-										number(skip.row),
-										skip.query || '–',
-										skip.message
-									)}
-								</li>
-							))}
-						</ul>
-					)}
-				</Notice>
-			)}
+			{done && <ImportDone done={done} />}
+			<p className="spst-note">
+				{__('Paste searches from keyword research: a spreadsheet, a keyword tool\'s export, or the aidevops search targets table. For focus keywords already set on your pages, use Suggest from SEO plugin instead.', 'seoprostats')}
+			</p>
 			<TextareaControl
 				__nextHasNoMarginBottom
 				label={__('Targets', 'seoprostats')}
@@ -484,6 +497,219 @@ function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 			<div className="spst-plan__actions">
 				<Button variant="primary" disabled={busy || !text.trim()} isBusy={busy} onClick={() => void send()}>
 					{__('Import', 'seoprostats')}
+				</Button>
+				<Button variant="tertiary" disabled={busy} onClick={onClose}>
+					{__('Close', 'seoprostats')}
+				</Button>
+			</div>
+		</div>
+	);
+}
+
+/** An import's result: the counts, and the rows skipped and why. */
+export function ImportDone({ done }: Readonly<{ done: TargetsImportAnswer }>) {
+	return (
+		<Notice status={done.skipped.length ? 'warning' : 'success'} isDismissible={false} className="spst-notice">
+			<p>
+				{sprintf(
+					/* translators: 1: targets added, 2: updated, 3: deleted, 4: rows skipped, 5: targets now. */
+					__('Added %1$s, updated %2$s, deleted %3$s, skipped %4$s; %5$s targets now.', 'seoprostats'),
+					number(done.added),
+					number(done.updated),
+					number(done.removed),
+					number(done.skipped.length),
+					number(done.total)
+				)}
+			</p>
+			{done.skipped.length > 0 && (
+				<ul>
+					{done.skipped.slice(0, 20).map((skip) => (
+						<li key={skip.row}>
+							{sprintf(
+								/* translators: 1: row number, 2: a search query, 3: why it was skipped. */
+								__('Row %1$s (%2$s): %3$s', 'seoprostats'),
+								number(skip.row),
+								skip.query || '–',
+								skip.message
+							)}
+						</li>
+					))}
+				</ul>
+			)}
+		</Notice>
+	);
+}
+
+/** The SEO plugin's name, as the suggestions answer names it. */
+function pluginName(plugin: string): string {
+	const names: Record<string, string> = {
+		'rank-math': 'Rank Math',
+		yoast: 'Yoast SEO',
+		seopress: 'SEOPress',
+		aioseo: 'All in One SEO',
+		demo: __('Demo pages', 'seoprostats'),
+	};
+	return names[plugin] ?? __('No SEO plugin active', 'seoprostats');
+}
+
+/** A suggestion's state, in a few words. */
+function suggestionStateName(state: TargetSuggestionState): string {
+	const names: Record<TargetSuggestionState, string> = {
+		new: __('New', 'seoprostats'),
+		clash: __('More than one page', 'seoprostats'),
+		targeted: __('Already a target', 'seoprostats'),
+	};
+	return names[state];
+}
+
+/**
+ * The SEO plugin's focus keywords as targets: the new ones to tick and
+ * import (as targeted, priority 50, with their page), those of more than
+ * one page to choose for by hand, and those already targets, left alone.
+ */
+function SuggestForm({ onClose }: Readonly<{ onClose: () => void }>) {
+	const data = useDataSet();
+	const [allKeywords, setAllKeywords] = useState(false);
+	const query = useTargetSuggestions(true, allKeywords);
+	const answer = query.data;
+	const [picked, setPicked] = useState<Set<string> | null>(null);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState('');
+	const [done, setDone] = useState<TargetsImportAnswer | null>(null);
+	const fresh = (answer?.rows ?? []).filter((row) => row.state === 'new');
+	// Every new suggestion is ticked until someone changes the ticks.
+	const chosen = picked ?? new Set(fresh.map((row) => row.query));
+	const toggle = (q: string, on: boolean) => {
+		const next = new Set(chosen);
+		if (on) next.add(q);
+		else next.delete(q);
+		setPicked(next);
+	};
+	const send = async () => {
+		setBusy(true);
+		setError('');
+		try {
+			const queries = fresh.filter((row) => chosen.has(row.query)).map((row) => row.query);
+			setDone(await importTargetSuggestions(data, queries, allKeywords));
+			setPicked(null);
+		} catch (e) {
+			setError(errorMessage(e, __('The focus keywords could not be imported. Try again.', 'seoprostats')));
+		}
+		setBusy(false);
+	};
+	const count = fresh.filter((row) => chosen.has(row.query)).length;
+	return (
+		<div className="spst-targets__import spst-targets__suggest">
+			{(error || query.isError) && (
+				<Notice status="error" isDismissible={false} className="spst-notice">
+					{error || errorMessage(query.error, __('The focus keywords could not be read. Try again.', 'seoprostats'))}
+				</Notice>
+			)}
+			{done && <ImportDone done={done} />}
+			<p className="spst-note">
+				{__('The focus keyword each published page has in its SEO plugin, with that page as the page meant for it. Ticked ones are imported as targeted, priority 50; searches that are targets already are left as they are. A keyword set on more than one page is not imported: choose its page and add it with Import targets.', 'seoprostats')}
+			</p>
+			<CheckboxControl
+				__nextHasNoMarginBottom
+				label={__('Include each page\'s other focus keywords, not only its main one', 'seoprostats')}
+				checked={allKeywords}
+				onChange={(next) => { setAllKeywords(next); setPicked(null); setDone(null); }}
+			/>
+			{!answer && !query.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
+			{answer && (
+				<p className="spst-meta">
+					{sprintf(
+						/* translators: 1: an SEO plugin, e.g. "Yoast SEO", 2: pages with focus keywords, 3: new, 4: on more than one page, 5: already targets. */
+						__('%1$s: %2$s pages with focus keywords. New: %3$s. More than one page: %4$s. Already targets: %5$s.', 'seoprostats'),
+						pluginName(answer.plugin),
+						number(answer.pages),
+						number(answer.counts.new),
+						number(answer.counts.clash),
+						number(answer.counts.targeted)
+					)}
+					{answer.more && ` ${sprintf(/* translators: %s: number of posts. */ __('Only the first %s posts with focus keywords are read.', 'seoprostats'), number(answer.max_posts))}`}
+				</p>
+			)}
+			{answer && !answer.rows.length && (
+				<div className="spst-empty">
+					<p>
+						{answer.plugin === ''
+							? __('No SEO plugin is active, and no page has a focus keyword. With Rank Math, Yoast SEO, SEOPress or All in One SEO, set a focus keyword on each page, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')
+							: __('No published page has a focus keyword yet. Set one on each page in the SEO plugin, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')}
+					</p>
+				</div>
+			)}
+			{answer && answer.rows.length > 0 && (
+				<TableScroll label={__('Focus keywords', 'seoprostats')}>
+					<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
+						<thead>
+							<tr>
+								<th scope="col">
+									{fresh.length > 0 && (
+										<CheckboxControl
+											__nextHasNoMarginBottom
+											label={__('Import', 'seoprostats')}
+											checked={count === fresh.length}
+											indeterminate={count > 0 && count < fresh.length}
+											onChange={(on) => setPicked(new Set(on ? fresh.map((row) => row.query) : []))}
+										/>
+									)}
+								</th>
+								<th scope="col">{__('Focus keyword', 'seoprostats')}</th>
+								<th scope="col">{__('Page', 'seoprostats')}</th>
+								<th scope="col">{__('State', 'seoprostats')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{answer.rows.map((row) => (
+								<tr key={row.query}>
+									<td>
+										{row.state === 'new' && (
+											// WordPress's list-table check box: the search beside it names it, so the label is for screen readers.
+											<input
+												type="checkbox"
+												aria-label={sprintf(/* translators: %s: a search query. */ __('Import “%s”', 'seoprostats'), row.query)}
+												checked={chosen.has(row.query)}
+												onChange={(event) => toggle(row.query, event.target.checked)}
+											/>
+										)}
+									</td>
+									<td>{row.query}</td>
+									<td>
+										{row.pages.map((page) => (
+											<span key={page.path} className="spst-targets__suggest-page">
+												<a href={page.url} target="_blank" rel="noopener noreferrer" title={page.title}>
+													{page.path}
+												</a>
+												{page.edit_url && (
+													<>
+														{' · '}
+														<a href={page.edit_url} target="_blank" rel="noopener noreferrer">
+															{__('Edit', 'seoprostats')}
+														</a>
+													</>
+												)}
+											</span>
+										))}
+									</td>
+									<td>
+										<span className={`spst-badge spst-targets__suggestion is-${row.state}`}>{suggestionStateName(row.state)}</span>
+										{row.target && (
+											<span className="spst-meta">
+												{targetStatusName(row.target.status)}
+												{row.target.page ? ` · ${row.target.page}` : ''}
+											</span>
+										)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</TableScroll>
+			)}
+			<div className="spst-plan__actions">
+				<Button variant="primary" disabled={busy || count === 0} isBusy={busy} onClick={() => void send()}>
+					{sprintf(/* translators: %s: number of focus keywords. */ _n('Import %s focus keyword', 'Import %s focus keywords', count, 'seoprostats'), number(count))}
 				</Button>
 				<Button variant="tertiary" disabled={busy} onClick={onClose}>
 					{__('Close', 'seoprostats')}

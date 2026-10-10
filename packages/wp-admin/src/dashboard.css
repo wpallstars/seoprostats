@@ -1347,6 +1347,28 @@ code.spst-meta {
 	margin: 0;
 }
 
+/* Where targets come from, before there are any. */
+.spst-targets__sources ul {
+	margin: 8px 0 0;
+	padding-inline-start: 20px;
+	list-style: disc;
+}
+
+.spst-targets__sources li {
+	margin-bottom: 6px;
+}
+
+/* A focus keyword's pages, one a line. */
+.spst-targets__suggest-page {
+	display: block;
+}
+
+/* "Target" after a search in a report: the same small badge on the query's line. */
+.spst-target-mark.spst-badge {
+	margin-inline-start: 6px;
+	line-height: 18px;
+}
+
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
 
 /* From WordPress's small breakpoint up; below it, its full-width sheet. */

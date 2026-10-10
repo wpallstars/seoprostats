@@ -44,6 +44,7 @@ import {
 } from '@seoprostats/core';
 import { CoverageBadges } from './components/CoverageBadges';
 import { ResearchMenu } from './components/ResearchMenu';
+import { AddTarget } from './components/AddTarget';
 import { errorMessage, scopeKey, useOpportunities } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
@@ -386,6 +387,7 @@ function PairTable({ kind, rows, open, refreshing, label }: Readonly<PairTablePr
 						<tr key={`${row.path_id}:${row.query}`}>
 							<td>
 								<PageCell row={row} query={row.query} open={open} />
+								{kind === 'striking' && <AddTarget query={row.query} page={row.path} />}
 							</td>
 							<td className="num">{place(row.position)}</td>
 							<td className="num">{number(row.impressions)}</td>
@@ -483,6 +485,8 @@ function OverlapTable({ rows, open, refreshing, label }: Readonly<OverlapTablePr
 									{row.query}
 								</button>
 								<ResearchMenu query={row.query} />
+								{/* Which page is meant is the choice overlap asks for: added with none chosen. */}
+								<AddTarget query={row.query} />
 								{row.potential > 0 && (
 									<span className="spst-meta">
 										{sprintf(
