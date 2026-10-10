@@ -193,45 +193,106 @@ final class SEOProStats_Search_Import {
             return self::failed($source, $ready);
         }
         list($class, $token, $property) = $ready;
-        $state = self::state($source);
         $today = $class::today();
-
-        // New final days: not before two days ago, and at most every few hours.
-        $through = isset($state['through']) ? (string) $state['through'] : '';
-        $stale   = $through === '' || $through < self::shift($today, -2);
-        if ($stale && ($check || empty($state['checked']) || (int) $state['checked'] < time() - self::CHECK_EVERY)) {
-            $final = $class::final_through($token, $property);
-            if (is_wp_error($final)) {
-                return self::failed($source, $final);
-            }
-            $state['final'] = $final;
-            SEOProStats_Connections::update_state($source, array('checked' => time(), 'final' => $final));
+        $state = self::final_state($source, $class, $token, $property, $today, $check);
+        if (is_wp_error($state)) {
+            return self::failed($source, $state);
         }
         $final = isset($state['final']) ? (string) $state['final'] : '';
         if ($final === '') {
             return array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true);
         }
-        if ($through === '') {
+        if (!isset($state['through']) || (string) $state['through'] === '') {
             // Nothing yet: the history goes back from the last final day.
-            $through = $final;
-            $state   = array_merge($state, array('through' => $final, 'back' => self::shift($final, 1), 'first' => self::first_day($class, $token, $property, $final)));
+            $state = array_merge($state, array('through' => $final, 'back' => self::shift($final, 1), 'first' => self::first_day($class, $token, $property, $final)));
             SEOProStats_Connections::update_state($source, array('through' => $final, 'back' => $state['back'], 'first' => $state['first']));
         }
 
-        $days = array();
-        for ($day = self::shift($through, 1); $day <= $final; $day = self::shift($day, 1)) {
-            $days[] = array($day, 'through');
-        }
-        $first  = max(isset($state['first']) ? (string) $state['first'] : '', self::shift($today, 0, -self::months($class)));
-        for ($day = self::shift((string) $state['back'], -1); $day >= $first; $day = self::shift($day, -1)) {
-            $days[] = array($day, 'back');
-        }
+        $days = self::due_days($class, $state, $final, $today);
         if (!$days) {
             return self::run_extra($source, $class, $token, $property, $start, $budget, array('days' => 0, 'rows' => 0, 'import' => 0, 'done' => true));
         }
 
+        $done = self::import_days($source, $ready, $days, $start, $budget);
+        if (is_wp_error($done)) {
+            return self::failed($source, $done);
+        }
+        list($import, $rows, $span) = $done;
+        $count = count($span);
+        self::finish($import, self::DONE, $span, $rows);
+        if (self::disconnected($source, $import)) {
+            return array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => true);
+        }
+        SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
+        self::pairs_due($source, $class, $span);
+        self::appearance_due($source, $class, $span);
+        $result = array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => $count === count($days));
+        return $result['done'] ? self::run_extra($source, $class, $token, $property, $start, $budget, $result) : $result;
+    }
+
+    /**
+     * The source's state, with its last final day asked for again when
+     * the imported days end before two days ago, at most every few hours.
+     *
+     * @param string $source   Source key.
+     * @param string $class    Source class.
+     * @param string $token    Access token.
+     * @param string $property Property.
+     * @param string $today    The source's today, Y-m-d.
+     * @param bool   $check    Ask even if asked recently.
+     * @return array<string,mixed>|WP_Error
+     */
+    private static function final_state($source, $class, $token, $property, $today, $check) {
+        $state   = self::state($source);
+        $through = isset($state['through']) ? (string) $state['through'] : '';
+        $stale   = $through === '' || $through < self::shift($today, -2);
+        if ($stale && ($check || empty($state['checked']) || (int) $state['checked'] < time() - self::CHECK_EVERY)) {
+            $final = $class::final_through($token, $property);
+            if (is_wp_error($final)) {
+                return $final;
+            }
+            $state['final'] = $final;
+            SEOProStats_Connections::update_state($source, array('checked' => time(), 'final' => $final));
+        }
+        return $state;
+    }
+
+    /**
+     * Days to import: new final days after the last one imported, then
+     * the history back to the first day the source keeps.
+     *
+     * @param string              $class Source class.
+     * @param array<string,mixed> $state State with through and back.
+     * @param string              $final Last final day.
+     * @param string              $today The source's today, Y-m-d.
+     * @return array<int,array{0:string,1:string}> Day, and the state key it moves (through or back).
+     */
+    private static function due_days($class, array $state, $final, $today) {
+        $days = array();
+        for ($day = self::shift((string) $state['through'], 1); $day <= $final; $day = self::shift($day, 1)) {
+            $days[] = array($day, 'through');
+        }
+        $first = max(isset($state['first']) ? (string) $state['first'] : '', self::shift($today, 0, -self::months($class)));
+        for ($day = self::shift((string) $state['back'], -1); $day >= $first; $day = self::shift($day, -1)) {
+            $days[] = array($day, 'back');
+        }
+        return $days;
+    }
+
+    /**
+     * Import due days in order, within the budget, as one import. A day
+     * that fails finishes the import as failed.
+     *
+     * @param string                              $source Source key.
+     * @param array{0:string,1:string,2:string}   $ready  Source class, token and property from ready().
+     * @param array<int,array{0:string,1:string}> $days   due_days().
+     * @param float                               $start  microtime(true) of the run.
+     * @param int                                 $budget Seconds (0: no limit).
+     * @return array{0:int,1:int,2:string[]}|WP_Error imports.id (0: none started), rows written, days imported.
+     */
+    private static function import_days($source, array $ready, array $days, $start, $budget) {
+        list($class, $token, $property) = $ready;
         $import = 0;
-        $count  = 0;
         $rows   = 0;
         $span   = array();
         foreach ($days as $i => $job) {
@@ -245,28 +306,19 @@ final class SEOProStats_Search_Import {
             if (!$import) {
                 $import = self::start($source, $property, $day);
                 if (!$import) {
-                    return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
+                    return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
                 }
             }
             $added = self::import_day($class, $token, $property, $day, $import);
             if (is_wp_error($added)) {
                 self::finish($import, self::FAILED, $span, $rows, $added->get_error_message());
-                return self::failed($source, $added);
+                return $added;
             }
             $rows  += $added;
             $span[] = $day;
-            $count++;
             SEOProStats_Connections::update_state($source, array($edge => $day));
         }
-        self::finish($import, self::DONE, $span, $rows);
-        if (self::disconnected($source, $import)) {
-            return array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => true);
-        }
-        SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
-        self::pairs_due($source, $class, $span);
-        self::appearance_due($source, $class, $span);
-        $result = array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => $count === count($days));
-        return $result['done'] ? self::run_extra($source, $class, $token, $property, $start, $budget, $result) : $result;
+        return array($import, $rows, $span);
     }
 
     /**
@@ -307,7 +359,6 @@ final class SEOProStats_Search_Import {
         if ($class !== 'SEOProStats_Source_Search_Console') {
             return self::run_pairs($source, $class, $token, $property, $start, $budget, $result);
         }
-        global $wpdb;
         require_once __DIR__ . '/class-seoprostats-query.php';
         $state = self::state($source);
         $from = isset($state['appearance_from']) ? (string) $state['appearance_from'] : '';
@@ -319,60 +370,16 @@ final class SEOProStats_Search_Import {
         if ($budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
             return $result;
         }
-        $queue = isset($state['appearance_queue']) && is_array($state['appearance_queue']) ? $state['appearance_queue'] : null;
-        if ($queue === null) {
-            $found = $class::appearances($token, $property, $from, $to);
-            if (is_wp_error($found)) {
-                return self::failed($source, $found);
-            }
-            // Include old values too: reimport removes appearances no longer returned.
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table's primary key bounds the days.
-            $ids = $wpdb->get_col($wpdb->prepare('SELECT DISTINCT appearance_id FROM %i FORCE INDEX (PRIMARY) WHERE engine = %d AND day >= %s AND day <= %s', SEOProStats_Schema::table('gsc_appearance'), (int) $class::ENGINE, $from, $to));
-            $queue = array_values(array_unique(array_merge(array_filter(array_map('strval', array_column(array_column($found, 'keys'), 0))), array_values(SEOProStats_Query::texts(array_map('intval', (array) $ids))))));
-            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        $range = array($from, $to);
+        $queue = self::appearance_queue($source, $class, $token, $property, $range, $state);
+        if (is_wp_error($queue)) {
+            return self::failed($source, $queue);
         }
-        // One import for the run, as for Bing's pages with their queries: one entry in the list, undone together.
-        $import = 0;
-        $rows   = 0;
-        $days   = array();
-        while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
-            if (self::disconnected($source, $import)) {
-                break;
-            }
-            $value = (string) $queue[0];
-            $data  = $class::appearances($token, $property, $from, $to, $value);
-            if (is_wp_error($data)) {
-                if ($import) {
-                    self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
-                }
-                return self::failed($source, $data);
-            }
-            if (!$import) {
-                // Disconnected during the request above: start no import.
-                if (self::disconnected($source, 0)) {
-                    break;
-                }
-                $import = self::start($source, $property, $from);
-                if (!$import) {
-                    return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
-                }
-            }
-            $added = self::replace_appearance($value, $data, $from, $to, $import);
-            if (is_wp_error($added)) {
-                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
-                return self::failed($source, $added);
-            }
-            $rows += $added;
-            $got   = array_map('strval', array_column(array_column($data, 'keys'), 0));
-            $days  = array_values(array_unique(array_merge($days, array_filter($got, function ($day) use ($from, $to) {
-                return $day >= $from && $day <= $to;
-            }))));
-            array_shift($queue);
-            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        $done = self::import_appearances($source, array($class, $token, $property), $range, $queue, $start, $budget);
+        if (is_wp_error($done)) {
+            return self::failed($source, $done);
         }
-        if ($import) {
-            self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
-        }
+        list($import, $rows) = $done;
         if (self::disconnected($source, $import)) {
             $result['done'] = true;
             return $result;
@@ -387,6 +394,108 @@ final class SEOProStats_Search_Import {
             $result['done'] = true;
         }
         return $result;
+    }
+
+    /**
+     * The appearances left to import for the range: those Google gives now
+     * and those already stored (reimport removes values no longer
+     * returned), saved in the state when first made.
+     *
+     * @param string                $source   Source key.
+     * @param string                $class    Source class.
+     * @param string                $token    Access token.
+     * @param string                $property Property.
+     * @param array{0:string,1:string} $range First and last day.
+     * @param array<string,mixed>   $state    The source's state.
+     * @return string[]|WP_Error
+     */
+    private static function appearance_queue($source, $class, $token, $property, array $range, array $state) {
+        global $wpdb;
+        if (isset($state['appearance_queue']) && is_array($state['appearance_queue'])) {
+            return $state['appearance_queue'];
+        }
+        list($from, $to) = $range;
+        $found = $class::appearances($token, $property, $from, $to);
+        if (is_wp_error($found)) {
+            return $found;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table's primary key bounds the days.
+        $ids = $wpdb->get_col($wpdb->prepare('SELECT DISTINCT appearance_id FROM %i FORCE INDEX (PRIMARY) WHERE engine = %d AND day >= %s AND day <= %s', SEOProStats_Schema::table('gsc_appearance'), (int) $class::ENGINE, $from, $to));
+        $queue = array_values(array_unique(array_merge(array_filter(array_map('strval', array_column(array_column($found, 'keys'), 0))), array_values(SEOProStats_Query::texts(array_map('intval', (array) $ids))))));
+        SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        return $queue;
+    }
+
+    /**
+     * Import queued appearances within the budget, as one import for the
+     * run (as for Bing's pages with their queries: one entry in the list,
+     * undone together), then finish it.
+     *
+     * @param string                            $source Source key.
+     * @param array{0:string,1:string,2:string} $ready  Source class, token and property.
+     * @param array{0:string,1:string}          $range  First and last day.
+     * @param string[]                          $queue  appearance_queue(); the values imported are taken off.
+     * @param float                             $start  microtime(true) of the run.
+     * @param int                               $budget Seconds (0: no limit).
+     * @return array{0:int,1:int}|WP_Error imports.id (0: none started) and rows written.
+     */
+    private static function import_appearances($source, array $ready, array $range, array &$queue, $start, $budget) {
+        list($class, $token, $property) = $ready;
+        list($from, $to) = $range;
+        $import = 0;
+        $rows   = 0;
+        $days   = array();
+        while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
+            if (self::disconnected($source, $import)) {
+                break;
+            }
+            $value = (string) $queue[0];
+            $data  = $class::appearances($token, $property, $from, $to, $value);
+            if (is_wp_error($data)) {
+                if ($import) {
+                    self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
+                }
+                return $data;
+            }
+            if (!$import) {
+                // Disconnected during the request above: start no import.
+                if (self::disconnected($source, 0)) {
+                    break;
+                }
+                $import = self::start($source, $property, $from);
+                if (!$import) {
+                    return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
+                }
+            }
+            $added = self::replace_appearance($value, $data, $from, $to, $import);
+            if (is_wp_error($added)) {
+                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
+                return $added;
+            }
+            $rows += $added;
+            $days  = self::days_in($days, array_map('strval', array_column(array_column($data, 'keys'), 0)), $range);
+            array_shift($queue);
+            SEOProStats_Connections::update_state($source, array('appearance_queue' => $queue));
+        }
+        if ($import) {
+            self::finish($import, self::DONE, $days ? $days : $range, $rows);
+        }
+        return array($import, $rows);
+    }
+
+    /**
+     * Days so far with the new days that fall in the range, each once.
+     *
+     * @param string[]                 $days  Days so far.
+     * @param string[]                 $got   New days.
+     * @param array{0:string,1:string} $range First and last day.
+     * @return string[]
+     */
+    private static function days_in(array $days, array $got, array $range) {
+        list($from, $to) = $range;
+        return array_values(array_unique(array_merge($days, array_filter($got, function ($day) use ($from, $to) {
+            return $day >= $from && $day <= $to;
+        }))));
     }
 
     /**
@@ -485,62 +594,19 @@ final class SEOProStats_Search_Import {
         if ($from === '' || $to === '') {
             return $result;
         }
-        $queue = isset($state['pairs_queue']) && is_array($state['pairs_queue']) ? $state['pairs_queue'] : null;
-        if ($queue === null) {
-            $urls = $class::pair_pages($token, $property, $from, $to);
-            if (is_wp_error($urls)) {
-                return self::failed($source, $urls);
-            }
-            // One address per page: Bing may list a page with and without www.
-            $by_path = array();
-            foreach ($urls as $url) {
-                $path = self::path((string) $url);
-                if ($path !== '' && !isset($by_path[$path])) {
-                    $by_path[$path] = (string) $url;
-                }
-            }
-            $queue = array_values($by_path);
-            SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        $range = array($from, $to);
+        $queue = self::pairs_queue($source, $class, $token, $property, $range, $state);
+        if (is_wp_error($queue)) {
+            return self::failed($source, $queue);
         }
-        $import = 0;
-        $rows   = 0;
-        $pages  = 0;
-        $days   = array();
-        while ($queue) {
-            if (($pages > 0 || $result['days'] > 0) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
-                break;
-            }
-            if (self::disconnected($source, $import)) {
-                break;
-            }
-            if (!$import) {
-                $import = self::start($source, $property, $from);
-                if (!$import) {
-                    return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
-                }
-            }
-            $url  = (string) $queue[0];
-            $data = $class::page_pairs($token, $property, $url, $from, $to);
-            if (is_wp_error($data)) {
-                self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
-                return self::failed($source, $data);
-            }
-            $added = self::replace_pairs((int) $class::ENGINE, $url, $data, $from, $to, $import);
-            if (is_wp_error($added)) {
-                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
-                return self::failed($source, $added);
-            }
-            $rows += $added;
-            $days  = array_values(array_unique(array_merge($days, array_map('strval', array_keys($data)))));
-            $pages++;
-            array_shift($queue);
-            SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        $done = self::import_pairs($source, array($class, $token, $property), $range, $queue, $start, $budget, $result['days'] > 0);
+        if (is_wp_error($done)) {
+            return self::failed($source, $done);
         }
-        if ($import) {
-            self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
-        }
+        list($import, $rows, $pages) = $done;
+        $first = $result['import'] ? $result['import'] : $import;
         if (self::disconnected($source, $import)) {
-            return array('days' => $result['days'], 'rows' => $result['rows'] + $rows, 'import' => $result['import'] ? $result['import'] : $import, 'done' => true, 'pages' => $pages);
+            return array('days' => $result['days'], 'rows' => $result['rows'] + $rows, 'import' => $first, 'done' => true, 'pages' => $pages);
         }
         if ($import) {
             SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
@@ -551,10 +617,99 @@ final class SEOProStats_Search_Import {
         return array(
             'days'   => $result['days'],
             'rows'   => $result['rows'] + $rows,
-            'import' => $result['import'] ? $result['import'] : $import,
+            'import' => $first,
             'done'   => !$queue,
             'pages'  => $pages,
         );
+    }
+
+    /**
+     * The pages left whose queries to import for the range, one address
+     * per page (Bing may list a page with and without www), saved in the
+     * state when first made.
+     *
+     * @param string                   $source   Source key.
+     * @param string                   $class    Source class.
+     * @param string                   $token    Token or key.
+     * @param string                   $property Property.
+     * @param array{0:string,1:string} $range    First and last day.
+     * @param array<string,mixed>      $state    The source's state.
+     * @return string[]|WP_Error Addresses.
+     */
+    private static function pairs_queue($source, $class, $token, $property, array $range, array $state) {
+        if (isset($state['pairs_queue']) && is_array($state['pairs_queue'])) {
+            return $state['pairs_queue'];
+        }
+        $urls = $class::pair_pages($token, $property, $range[0], $range[1]);
+        if (is_wp_error($urls)) {
+            return $urls;
+        }
+        $by_path = array();
+        foreach ($urls as $url) {
+            $path = self::path((string) $url);
+            if ($path !== '' && !isset($by_path[$path])) {
+                $by_path[$path] = (string) $url;
+            }
+        }
+        $queue = array_values($by_path);
+        SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        return $queue;
+    }
+
+    /**
+     * Import queued pages' queries within the budget, as one import, then
+     * finish it.
+     *
+     * @param string                            $source Source key.
+     * @param array{0:string,1:string,2:string} $ready  Source class, token and property.
+     * @param array{0:string,1:string}          $range  First and last day.
+     * @param string[]                          $queue  pairs_queue(); the pages imported are taken off.
+     * @param float                             $start  microtime(true) of the run.
+     * @param int                               $budget Seconds (0: no limit).
+     * @param bool                              $ran    Whether the run imported days first (then even the first page waits for time).
+     * @return array{0:int,1:int,2:int}|WP_Error imports.id (0: none started), rows written, pages imported.
+     */
+    private static function import_pairs($source, array $ready, array $range, array &$queue, $start, $budget, $ran) {
+        list($class, $token, $property) = $ready;
+        list($from, $to) = $range;
+        $import = 0;
+        $rows   = 0;
+        $pages  = 0;
+        $days   = array();
+        while ($queue) {
+            if (($pages > 0 || $ran) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+                break;
+            }
+            if (self::disconnected($source, $import)) {
+                break;
+            }
+            if (!$import) {
+                $import = self::start($source, $property, $from);
+                if (!$import) {
+                    return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
+                }
+            }
+            $url  = (string) $queue[0];
+            $data = $class::page_pairs($token, $property, $url, $from, $to);
+            if (is_wp_error($data)) {
+                self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
+                return $data;
+            }
+            $added = self::replace_pairs((int) $class::ENGINE, $url, $data, $from, $to, $import);
+            if (is_wp_error($added)) {
+                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
+                return $added;
+            }
+            $rows += $added;
+            $days  = array_values(array_unique(array_merge($days, array_map('strval', array_keys($data)))));
+            $pages++;
+            array_shift($queue);
+            SEOProStats_Connections::update_state($source, array('pairs_queue' => $queue));
+        }
+        if ($import) {
+            self::finish($import, self::DONE, $days ? $days : $range, $rows);
+        }
+        return array($import, $rows, $pages);
     }
 
     /**
@@ -856,7 +1011,15 @@ final class SEOProStats_Search_Import {
                 if (in_array(0, array_slice($keys, 0, $kind === 'totals' ? 0 : 2), true)) {
                     continue;
                 }
-                self::add_row($out[$kind], $keys, $row);
+                $id  = implode("\t", $keys);
+                $add = self::row_sums($row);
+                if (!isset($out[$kind][$id])) {
+                    $out[$kind][$id] = array_merge($keys, array(0, 0, 0));
+                }
+                $n                        = count($keys);
+                $out[$kind][$id][$n]     += $add[0];
+                $out[$kind][$id][$n + 1] += $add[1];
+                $out[$kind][$id][$n + 2] += $add[2];
             }
         }
         return $out;
@@ -950,26 +1113,16 @@ final class SEOProStats_Search_Import {
     }
 
     /**
-     * Add a row's clicks, impressions and position × impressions × 100 to
-     * the table row with its keys.
+     * A source row's clicks, impressions and position × impressions × 100.
      *
-     * @param array<string,array<int,int|string>> $sums Key => table row; added to.
-     * @param array<int,int|string>               $keys row_keys().
-     * @param array<string,mixed>                 $row  The source's row.
-     * @return void
+     * @param array<string,mixed> $row The source's row.
+     * @return array{0:int,1:int,2:int}
      */
-    private static function add_row(array &$sums, array $keys, array $row) {
-        $id          = implode("\t", $keys);
+    private static function row_sums(array $row) {
         $clicks      = isset($row['clicks']) ? max(0, (int) round((float) $row['clicks'])) : 0;
         $impressions = isset($row['impressions']) ? max(0, (int) round((float) $row['impressions'])) : 0;
         $pos_impr    = isset($row['position']) ? max(0, (int) round((float) $row['position'] * $impressions * 100)) : 0;
-        if (!isset($sums[$id])) {
-            $sums[$id] = array_merge($keys, array(0, 0, 0));
-        }
-        $n                   = count($keys);
-        $sums[$id][$n]     += $clicks;
-        $sums[$id][$n + 1] += $impressions;
-        $sums[$id][$n + 2] += $pos_impr;
+        return array($clicks, $impressions, $pos_impr);
     }
 
     /**
