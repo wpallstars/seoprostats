@@ -24,6 +24,7 @@ export interface Boot {
 	timezone: string;
 	dashboardUrl: string;
 	settingsUrl: string;
+	siteHost: string;
 	canManage: boolean;
 	/** Dashboard only: no saved arrangement includes the widget, so it goes to its default place. */
 	placeWidget: boolean;
@@ -47,6 +48,7 @@ export const boot: Boot = {
 	timezone: raw.timezone ?? 'UTC',
 	dashboardUrl: raw.dashboardUrl ?? '',
 	settingsUrl: raw.settingsUrl ?? '',
+	siteHost: raw.siteHost ?? '',
 	canManage: raw.canManage ?? false,
 	placeWidget: raw.placeWidget ?? false,
 	data: raw.data === 'demo' ? 'demo' : 'live',

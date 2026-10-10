@@ -1419,6 +1419,11 @@ export interface TargetPage extends OpportunityPage {
 
 export interface TargetRow {
 	query: string;
+	allintitle: number | null;
+	volume: number | null;
+	measured: { allintitle: string | null; volume: string | null };
+	kgr: number | null;
+	kgr_band: 'good' | 'possible' | 'crowded' | 'volume_too_high' | 'unknown';
 	/** 0–100. */
 	priority: number;
 	status: TargetStatus;

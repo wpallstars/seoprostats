@@ -300,6 +300,7 @@ final class SEOProStats_Dashboard {
             'timezone'     => wp_timezone_string(),
             'dashboardUrl' => self::url(),
             'settingsUrl'  => SEOProStats_Admin_Manager::page_url(),
+            'siteHost'     => (string) wp_parse_url(home_url('/'), PHP_URL_HOST),
             'canManage'    => current_user_can('manage_options'),
             // Read after wp_dashboard_setup, so a layout plugin's order counts.
             'placeWidget'  => $name === 'widget' && !self::widget_arranged(),

@@ -65,6 +65,7 @@ import { useChangesModal, type MarkerPick } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
+import { ResearchMenu } from './components/ResearchMenu';
 import { Opportunities } from './Opportunities';
 import { Audit } from './Audit';
 import { Backlinks } from './Backlinks';
@@ -762,6 +763,7 @@ function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: 
 			<td className={`spst-table__bar-cell${kind === 'days' ? ' spst-nowrap' : ''}`}>
 				<span className="spst-table__bar" style={{ width: `${(row.clicks / top) * 100}%` }} aria-hidden="true" />
 				{name}
+				{kind === 'queries' && <ResearchMenu query={row.value} />}
 			</td>
 			{changes && (
 				<td className="spst-table__changes">

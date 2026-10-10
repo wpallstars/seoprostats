@@ -43,6 +43,7 @@ import {
 	type OpportunityPair,
 } from '@seoprostats/core';
 import { CoverageBadges } from './components/CoverageBadges';
+import { ResearchMenu } from './components/ResearchMenu';
 import { errorMessage, useOpportunities } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
@@ -307,6 +308,7 @@ export function PageCell({ row, query, open, extra }: { row: OpportunityPage; qu
 			<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: row.path, query })}>
 				{query || row.path}
 			</button>
+			{query && <ResearchMenu query={query} />}
 			{(query || row.url || row.edit_url || extra) && (
 				<span className="spst-meta">
 					{query && row.path}
@@ -477,6 +479,7 @@ function OverlapTable({ rows, open, refreshing, label }: OverlapTableProps) {
 								<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: '', query: row.query })}>
 									{row.query}
 								</button>
+								<ResearchMenu query={row.query} />
 								{row.potential > 0 && (
 									<span className="spst-meta">
 										{sprintf(

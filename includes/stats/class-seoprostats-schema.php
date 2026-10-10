@@ -51,8 +51,9 @@ final class SEOProStats_Schema {
      * v19: inspections (Google's URL Inspection of each page,
      *      SEOProStats_Inspections).
      * v20: links export source bits and per-provider scores and dates.
+     * v21: targets research counts and their independent measurement dates.
      */
-    const VERSION = 20;
+    const VERSION = 21;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -685,6 +686,10 @@ final class SEOProStats_Schema {
   priority tinyint unsigned NOT NULL DEFAULT 50,
   status tinyint unsigned NOT NULL DEFAULT 1,
   source tinyint unsigned NOT NULL DEFAULT 1,
+  allintitle int unsigned DEFAULT NULL,
+  volume int unsigned DEFAULT NULL,
+  allintitle_measured varchar(10) NOT NULL DEFAULT '',
+  volume_measured varchar(10) NOT NULL DEFAULT '',
   created int unsigned NOT NULL,
   updated int unsigned NOT NULL,
   user_id bigint unsigned NOT NULL DEFAULT 0,
