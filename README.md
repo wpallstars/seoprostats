@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.0.0
+Version: 1.1.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -486,8 +486,9 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ## Changelog
 
-### Unreleased
+### 1.1.0
 
+- Changed: Search tables (Rankings' top searches, Audit and Content) sort by any figure's header, and open with the most impressions first (Days: newest first). Click a header again to reverse it; position sorts lowest first. Content gains an Impressions column. The REST API, WP-CLI and abilities take `sort` and `order`.
 - Fixed: disconnecting a search source while it imports in the background no longer leaves it connected.
 - New: **Sign in with Google** for Search Console under Settings → Connections: sign in, allow read access, and the site connects, with no Google Cloud setup. It goes through our relay, which keeps nothing; disconnecting removes the access with Google. The service account key still works as before.
 - New: backlink CSV exports from Search Console and backlink tools, with background progress, per-source scores and dates, REST and CLI imports, and How found filtering.
