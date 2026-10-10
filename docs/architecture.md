@@ -1870,7 +1870,12 @@ later). The previous period has as many whole days, just before; 7d, 28d,
 91d, 182d and 364d are whole weeks, so each day meets the same weekday.
 A range that ends in the future meets the same length of the other period.
 The dashboard opens on 91d against the previous period
-(`DEFAULT_STATE` in `packages/core/src/state.ts`).
+(`DEFAULT_STATE` in `packages/core/src/state.ts`). Its period menu
+(`rangeMenu()` in `packages/wp-admin/src/labels.ts`) groups them: Days
+(today, yesterday, 24h, 7d), Weeks (28d, 91d, 182d and 364d, read as 4,
+13, 26 and 52 weeks), Calendar (this week, this month, this year, last 12
+months, last year), then all time and custom. 30d, 90d and realtime stay
+in the API and in links; the menu lists one only while it is chosen.
 
 ### Interfaces
 
@@ -1971,7 +1976,7 @@ statistics, on post types with public pages (filter
 `seoprostats_editor_coverage`): a **Search queries** panel in the block
 editor's document sidebar (`wp.plugins` and `PluginDocumentSettingPanel`,
 read from the page), or a meta box in the classic editor. It asks
-`GET /coverage?post=<id>&range=90d` once, then re-checks the queries
+`GET /coverage?post=<id>&range=91d` once, then re-checks the queries
 against the words in the editor a moment after each change, so a query
 turns covered as soon as its words are added: the summary, the focus
 keywords, the queries not covered and the questions, with a link to the

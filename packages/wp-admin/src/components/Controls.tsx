@@ -8,8 +8,8 @@
 import { useState } from 'react';
 import { Button, SelectControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
-import { COMPARE_KEYS, RANGE_KEYS, type CompareKey, type RangeKey, type ViewState } from '@seoprostats/core';
-import { compareLabel, rangeLabel } from '../labels';
+import { COMPARE_KEYS, type CompareKey, type RangeKey, type ViewState } from '@seoprostats/core';
+import { compareLabel, rangeLabel, rangeMenu } from '../labels';
 
 interface Props {
 	state: ViewState;
@@ -33,11 +33,15 @@ export function Controls({ state, update }: Readonly<Props>) {
 	const [to, setTo] = useState(state.to ?? today());
 	const custom = editing || state.range === 'custom';
 
-	const ranges: Array<{ value: string; label: string }> = RANGE_KEYS.filter((k) => k !== 'realtime').map((k) => ({
-		value: k,
-		label: rangeLabel(k),
-	}));
-	const picked: string = custom ? 'custom' : state.range;
+	const picked: RangeKey = custom ? 'custom' : state.range;
+	const groups = rangeMenu();
+	// A range left out of the menu (30d, 90d from an older link) is shown while chosen.
+	const listed = groups.some((group) => group.keys.includes(picked));
+	const option = (key: RangeKey) => (
+		<option key={key} value={key}>
+			{rangeLabel(key)}
+		</option>
+	);
 
 	return (
 		<div className="spst-controls">
@@ -46,7 +50,6 @@ export function Controls({ state, update }: Readonly<Props>) {
 				label={__('Period', 'seoprostats')}
 				hideLabelFromVision
 				value={picked}
-				options={ranges}
 				onChange={(value: string) => {
 					if (value === 'custom') {
 						setEditing(true);
@@ -55,7 +58,18 @@ export function Controls({ state, update }: Readonly<Props>) {
 					setEditing(false);
 					update({ range: value as RangeKey, from: undefined, to: undefined });
 				}}
-			/>
+			>
+				{!listed && option(picked)}
+				{groups.map((group) =>
+					group.label ? (
+						<optgroup key={group.label} label={group.label}>
+							{group.keys.map(option)}
+						</optgroup>
+					) : (
+						group.keys.map(option)
+					),
+				)}
+			</SelectControl>
 			{custom && (
 				<form
 					className="spst-custom-range"
