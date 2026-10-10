@@ -584,7 +584,10 @@ final class SEOProStats_Source_Bing {
         $code = (int) wp_remote_retrieve_response_code($response);
         $data = json_decode((string) wp_remote_retrieve_body($response), true);
         if ($code === 200 && is_array($data) && array_key_exists('d', $data)) {
-            return is_array($data['d']) ? $data['d'] : array();
+            if (!is_array($data['d'])) {
+                return new WP_Error('seoprostats_bing_shape', __('Bing returned an unexpected response; it must not count as an empty list.', 'seoprostats'));
+            }
+            return $data['d'];
         }
         $error = is_array($data) && isset($data['ErrorCode']) ? (int) $data['ErrorCode'] : 0;
         if ($error === 3) {
