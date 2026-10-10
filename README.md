@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.4.1
+Version: 1.4.2
 
 <!-- github-only:start -->
 ## Screenshots
@@ -526,6 +526,13 @@ Hits are counted, and search data, summaries and checks run, by WordPress's sche
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.4.2
+
+- Fixed: page rows show Edit for posts of custom post types whose addresses have no base (a plugin or theme removes it), and for category, tag and custom taxonomy archives, which open the term's edit screen. The REST API's page rows carry `term_id` and `taxonomy` for term archives.
+- New: when WP-Cron is turned off (`DISABLE_WP_CRON`) and no server cron job runs WordPress's scheduled jobs, so new visits wait uncounted, the Statistics and Settings screens say so once the jobs are 15 minutes late, with the commands for a cron job in the hosting control panel. The `seoprostats_schedule_notice` filter hides it.
+- Fixed: `wp seoprostats doctor` warns about WP-Cron only when its jobs are late, and says an overdue job is "due 1 hour ago" instead of "next in 1 hour".
+- Changed: on Search → Plan, each row's buttons stand in one column of equal widths; the Research menu after a query is a small "Research…" link on the query's line.
 
 ### 1.4.1
 

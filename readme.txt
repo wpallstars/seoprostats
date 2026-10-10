@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -119,8 +119,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.4.1 =
-* Fixed: a links import no longer waits at "0 of N rows" when its background run is lost; the Import tab shows progress and keeps trying instead of stopping on "not a valid JSON response".
-* Changed: the dashboard opens on Last 91 days; Search periods keep their full length.
+= 1.4.2 =
+* Fixed: page rows show Edit for custom post types whose addresses have no base, and for category, tag and other term archives.
+* New: a notice when WP-Cron is turned off and no server cron job runs the scheduled jobs, with the commands to add one.
+* Changed: Search → Plan's buttons line up in one column; the Research menu is a small link on the query's line.
 
 Every change: changelog.txt.
