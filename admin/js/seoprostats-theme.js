@@ -152,21 +152,29 @@
 	}
 
 	function onMenuKey(event) {
-		var keys = {
-			ArrowDown: function () { move(1); },
-			ArrowUp: function () { move(-1); },
-			Home: function () { items[0].focus(); },
-			End: function () { items[items.length - 1].focus(); },
-			Escape: function () { close(true); }
-		};
-		if (event.key === 'Tab') {
-			close(false);
-			return;
+		switch (event.key) {
+			case 'Tab':
+				close(false);
+				return;
+			case 'ArrowDown':
+				move(1);
+				break;
+			case 'ArrowUp':
+				move(-1);
+				break;
+			case 'Home':
+				items[0].focus();
+				break;
+			case 'End':
+				items[items.length - 1].focus();
+				break;
+			case 'Escape':
+				close(true);
+				break;
+			default:
+				return;
 		}
-		if (keys[event.key]) {
-			event.preventDefault();
-			keys[event.key]();
-		}
+		event.preventDefault();
 	}
 
 	function build() {
