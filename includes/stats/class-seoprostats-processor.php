@@ -278,96 +278,21 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
 
         // 1. Flatten to hits with their line's context; bots out.
-        $hits   = array();
-        $eng    = array();
-        $clicks = array();
+        $batch = array('hits' => array(), 'eng' => array(), 'clicks' => array());
         foreach ($lines as $line) {
-            $agent = isset($line['ua']) ? (string) $line['ua'] : '';
-            $ua    = SEOProStats_UA::parse($agent);
-            // Purchases written on the server (SEOProStats_Purchases, s: 1)
-            // from a page load's visit have no user agent of their own.
-            if ($agent === '' && !empty($line['s'])) {
-                $ua['bot'] = false;
-            }
-            if ($ua['bot']) {
-                $done['bots'] += count($line['e']);
-                continue;
-            }
-            $visitor = strtolower((string) $line['v']);
-            if (!preg_match('/^[0-9a-f]{16}$/', $visitor)) {
-                $done['skipped']++;
-                continue;
-            }
-            foreach ($line['e'] as $hit) {
-                $type = is_array($hit) && isset($hit['t']) ? (string) $hit['t'] : '';
-                $pkey = isset($hit['p']) && is_string($hit['p']) && preg_match('/^[0-9a-f]{16}$/', $hit['p']) ? $hit['p'] : '';
-                if ($type === 'eng') {
-                    if ($pkey !== '') {
-                        $eng[$pkey] = array(
-                            max(isset($eng[$pkey]) ? $eng[$pkey][0] : 0, self::int_in($hit, 's', 0, 86400000)),
-                            max(isset($eng[$pkey]) ? $eng[$pkey][1] : 0, self::int_in($hit, 'sc', 0, 100)),
-                        );
-                    }
-                    continue;
-                }
-                if ($type === 'c' || $type === 'f') {
-                    if ($pkey !== '') {
-                        $clicks[] = self::click($hit, $type, $pkey, (int) $line['ts']);
-                    } else {
-                        $done['skipped']++;
-                    }
-                    continue;
-                }
-                if (($type !== 'pv' || $pkey === '') && ($type !== 'e' || !isset($hit['n']) || !is_string($hit['n']) || trim($hit['n']) === '')) {
-                    $done['skipped']++; // Vitals and errors come in later versions.
-                    continue;
-                }
-                $hits[] = array('ts' => (int) $line['ts'], 'visitor' => $visitor, 'line' => $line, 'ua' => $ua, 'hit' => $hit, 'type' => $type, 'pkey' => $pkey);
-            }
+            self::flatten_line($line, $batch, $done);
         }
+        $eng    = $batch['eng'];
+        $clicks = $batch['clicks'];
 
         // 2. Visits.
-        $visits = self::visits($hits);
+        $visits = self::visits($batch['hits']);
 
-        // 3. Dictionary ids for every text in the batch, in bulk.
-        $texts = array();
-        foreach ($visits as $visit) {
-            $texts[SEOProStats_Schema::DICT_HOST][] = $visit['ref_host'];
-            $texts[SEOProStats_Schema::DICT_PATH][] = $visit['ref_path'];
-            $texts[SEOProStats_Schema::DICT_BROWSER][] = $visit['browser'];
-            $texts[SEOProStats_Schema::DICT_OS][] = $visit['os'];
-            $texts[SEOProStats_Schema::DICT_LANGUAGE][] = $visit['lang'];
-            foreach ($visit['utm'] as $value) {
-                $texts[SEOProStats_Schema::DICT_UTM][] = $value;
-            }
-            foreach ($visit['hits'] as $h) {
-                $texts[SEOProStats_Schema::DICT_PATH][] = $h['path'];
-                if ($h['type'] === 'e') {
-                    $texts[SEOProStats_Schema::DICT_EVENT][] = $h['name'];
-                } elseif ($h['search'] !== '') {
-                    $texts[SEOProStats_Schema::DICT_SEARCH][] = $h['search'];
-                }
-                foreach ($h['props'] as $key => $value) {
-                    $texts[SEOProStats_Schema::DICT_PROP_KEY][] = (string) $key;
-                    $texts[SEOProStats_Schema::DICT_PROP_VAL][] = $value;
-                }
-            }
-        }
-        foreach ($clicks as $c) {
-            $texts[SEOProStats_Schema::DICT_SELECTOR][] = $c['selector'];
-            $texts[SEOProStats_Schema::DICT_LABEL][]    = $c['label'];
-            $texts[SEOProStats_Schema::DICT_TARGET][]   = $c['target'];
-        }
-        // A/B test variants shown: only tests and variants in ab_tests.
+        // 3. Dictionary ids for every text in the batch, in bulk; A/B test
+        // variants shown: only tests and variants in ab_tests.
         $known = self::ab_known($visits, $clicks);
-        foreach ($known as $test => $variants) {
-            $texts[SEOProStats_Schema::DICT_AB_TEST][] = (string) $test;
-            foreach (array_keys($variants) as $variant) {
-                $texts[SEOProStats_Schema::DICT_AB_VARIANT][] = (string) $variant;
-            }
-        }
-        $ids = array();
-        foreach ($texts as $kind => $values) {
+        $ids   = array();
+        foreach (self::batch_texts($visits, $clicks, $known) as $kind => $values) {
             $ids[$kind] = SEOProStats_Dict::ids($kind, $values);
         }
 
@@ -393,14 +318,166 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
     }
 
     /**
+     * One buffer line's hits into the batch; a bot's or a malformed
+     * visitor's are counted, not kept.
+     *
+     * @param array<string,mixed>                                         $line  Decoded buffer line.
+     * @param array<string,array<mixed>>                                  $batch Hits, engagement and clicks so far.
+     * @param array{pageviews:int,events:int,clicks:int,bots:int,skipped:int} $done  Counts so far.
+     */
+    private static function flatten_line(array $line, array &$batch, array &$done) {
+        $agent = isset($line['ua']) ? (string) $line['ua'] : '';
+        $ua    = SEOProStats_UA::parse($agent);
+        // Purchases written on the server (SEOProStats_Purchases, s: 1)
+        // from a page load's visit have no user agent of their own.
+        if ($agent === '' && !empty($line['s'])) {
+            $ua['bot'] = false;
+        }
+        if ($ua['bot']) {
+            $done['bots'] += count($line['e']);
+            return;
+        }
+        $visitor = strtolower((string) $line['v']);
+        if (!preg_match('/^[0-9a-f]{16}$/', $visitor)) {
+            $done['skipped']++;
+            return;
+        }
+        foreach ($line['e'] as $hit) {
+            self::flatten_hit($hit, $line, $visitor, $ua, $batch, $done);
+        }
+    }
+
+    /**
+     * One hit into the batch: engagement, a click, or a pageview or event.
+     *
+     * @param mixed                      $hit     Hit as sent.
+     * @param array<string,mixed>        $line    Its buffer line.
+     * @param string                     $visitor Visitor (hex).
+     * @param array<string,mixed>        $ua      Parsed user agent.
+     * @param array<string,array<mixed>>                                  $batch   Hits, engagement and clicks so far.
+     * @param array{pageviews:int,events:int,clicks:int,bots:int,skipped:int} $done    Counts so far.
+     */
+    private static function flatten_hit($hit, array $line, $visitor, array $ua, array &$batch, array &$done) {
+        $type = is_array($hit) && isset($hit['t']) ? (string) $hit['t'] : '';
+        $pkey = isset($hit['p']) && is_string($hit['p']) && preg_match('/^[0-9a-f]{16}$/', $hit['p']) ? $hit['p'] : '';
+        if ($type === 'eng') {
+            if ($pkey !== '') {
+                $batch['eng'][$pkey] = self::engagement($batch['eng'], $pkey, $hit);
+            }
+            return;
+        }
+        if ($type === 'c' || $type === 'f') {
+            if ($pkey !== '') {
+                $batch['clicks'][] = self::click($hit, $type, $pkey, (int) $line['ts']);
+            } else {
+                $done['skipped']++;
+            }
+            return;
+        }
+        if (!self::is_fact($type, $pkey, $hit)) {
+            $done['skipped']++; // Vitals and errors come in later versions.
+            return;
+        }
+        $batch['hits'][] = array('ts' => (int) $line['ts'], 'visitor' => $visitor, 'line' => $line, 'ua' => $ua, 'hit' => $hit, 'type' => $type, 'pkey' => $pkey);
+    }
+
+    /**
+     * A page load's engagement with a further report merged in: the
+     * larger visible time and scroll depth.
+     *
+     * @param array<string,array{0:int,1:int}> $eng  Engagement so far.
+     * @param string                           $pkey Page-load id.
+     * @param array<string,mixed>              $hit  Engagement hit.
+     * @return array{0:int,1:int}
+     */
+    private static function engagement(array $eng, $pkey, array $hit) {
+        $prev = isset($eng[$pkey]) ? $eng[$pkey] : array(0, 0);
+        return array(
+            max($prev[0], self::int_in($hit, 's', 0, 86400000)),
+            max($prev[1], self::int_in($hit, 'sc', 0, 100)),
+        );
+    }
+
+    /**
+     * Whether a hit is a pageview (with its page-load id) or a named event.
+     *
+     * @param string $type Hit type.
+     * @param string $pkey Page-load id or ''.
+     * @param mixed  $hit  Hit as sent.
+     * @return bool
+     */
+    private static function is_fact($type, $pkey, $hit) {
+        if ($type === 'pv') {
+            return $pkey !== '';
+        }
+        return $type === 'e' && isset($hit['n']) && is_string($hit['n']) && trim($hit['n']) !== '';
+    }
+
+    /**
+     * Every text the batch stores, by dictionary kind, for one bulk
+     * lookup per kind.
+     *
+     * @param array<int|string,array<string,mixed>> $visits Visits.
+     * @param array<int,array<string,mixed>>    $clicks Clicks.
+     * @param array<string,array<string,bool>>  $known  From ab_known().
+     * @return array<int,array<int,mixed>>
+     */
+    private static function batch_texts(array $visits, array $clicks, array $known) {
+        $texts = array();
+        foreach ($visits as $visit) {
+            $texts[SEOProStats_Schema::DICT_HOST][] = $visit['ref_host'];
+            $texts[SEOProStats_Schema::DICT_PATH][] = $visit['ref_path'];
+            $texts[SEOProStats_Schema::DICT_BROWSER][] = $visit['browser'];
+            $texts[SEOProStats_Schema::DICT_OS][] = $visit['os'];
+            $texts[SEOProStats_Schema::DICT_LANGUAGE][] = $visit['lang'];
+            foreach ($visit['utm'] as $value) {
+                $texts[SEOProStats_Schema::DICT_UTM][] = $value;
+            }
+            foreach ($visit['hits'] as $h) {
+                self::fact_texts($h, $texts);
+            }
+        }
+        foreach ($clicks as $c) {
+            $texts[SEOProStats_Schema::DICT_SELECTOR][] = $c['selector'];
+            $texts[SEOProStats_Schema::DICT_LABEL][]    = $c['label'];
+            $texts[SEOProStats_Schema::DICT_TARGET][]   = $c['target'];
+        }
+        foreach ($known as $test => $variants) {
+            $texts[SEOProStats_Schema::DICT_AB_TEST][] = (string) $test;
+            foreach (array_keys($variants) as $variant) {
+                $texts[SEOProStats_Schema::DICT_AB_VARIANT][] = (string) $variant;
+            }
+        }
+        return $texts;
+    }
+
+    /**
+     * A pageview's or event's texts, added by dictionary kind.
+     *
+     * @param array<string,mixed>  $h     Fact.
+     * @param array<int,array<int,mixed>>  $texts Texts so far.
+     */
+    private static function fact_texts(array $h, array &$texts) {
+        $texts[SEOProStats_Schema::DICT_PATH][] = $h['path'];
+        if ($h['type'] === 'e') {
+            $texts[SEOProStats_Schema::DICT_EVENT][] = $h['name'];
+        } elseif ($h['search'] !== '') {
+            $texts[SEOProStats_Schema::DICT_SEARCH][] = $h['search'];
+        }
+        foreach ($h['props'] as $key => $value) {
+            $texts[SEOProStats_Schema::DICT_PROP_KEY][] = (string) $key;
+            $texts[SEOProStats_Schema::DICT_PROP_VAL][] = $value;
+        }
+    }
+
+    /**
      * Group hits into visits: a hit joins its visitor's latest visit when
      * that visit's last hit was under VISIT_GAP earlier.
      *
      * @param array<int,array<string,mixed>> $hits Hits.
-     * @return array<string,array<string,mixed>> Visit key (hex) => visit.
+     * @return array<int|string,array<string,mixed>> Visit key (hex) => visit.
      */
     private static function visits(array $hits) {
-        global $wpdb;
         usort($hits, static function ($a, $b) {
             return $a['ts'] - $b['ts'];
         });
@@ -413,69 +490,121 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             $days[$hits[$i]['day']]  = true;
             $visitors[$h['visitor']] = true;
         }
-        $latest = array();
-        $history = array(); // Refunds may arrive after a later same-day visit.
-        if ($visitors) {
-            foreach (array_chunk(array_keys($visitors), SEOProStats_Dict::CHUNK) as $chunk) {
-                $d = implode(', ', array_fill(0, count($days), '%s'));
-                $v = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its (day, visitor) index; fixed placeholders.
-                $rows = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(skey)) AS skey, LOWER(HEX(visitor)) AS visitor, started, ended, pageviews + events AS n FROM %i WHERE day IN ($d) AND visitor IN ($v)", array_merge(array(SEOProStats_Schema::table('sessions')), array_keys($days), $chunk)));
-                foreach ((array) $rows as $row) {
-                    $history[$row->visitor][] = array('skey' => $row->skey, 'started' => (int) $row->started, 'ended' => (int) $row->ended, 'n' => (int) $row->n, 'stored' => true);
-                    if (!isset($latest[$row->visitor]) || (int) $row->ended > $latest[$row->visitor]['ended']) {
-                        $latest[$row->visitor] = array('skey' => $row->skey, 'started' => (int) $row->started, 'ended' => (int) $row->ended, 'n' => (int) $row->n, 'stored' => true);
-                    }
-                }
-            }
-        }
+        list($latest, $history) = self::stored_visits(array_keys($days), array_keys($visitors));
 
         $visits = array();
         $open   = array(); // visitor => visit key
         foreach ($hits as $h) {
-            $v    = $h['visitor'];
-            $prev = isset($open[$v]) ? $visits[$open[$v]] : (isset($latest[$v]) ? $latest[$v] : null);
+            $v      = $h['visitor'];
             $refund = !empty($h['line']['s']) && $h['type'] === 'e' && $h['hit']['n'] === 'Refund';
             if ($refund) {
                 // Never create a visit for a refund (including after retention).
-                $candidates = isset($history[$v]) ? $history[$v] : array();
-                foreach ($visits as $visit_key => $candidate) {
-                    if ($candidate['visitor'] === $v) {
-                        $candidates[] = $candidate + array('skey' => $visit_key);
-                    }
-                }
-                $prev = null;
-                foreach ($candidates as $candidate) {
-                    if ($h['ts'] >= $candidate['started'] && $h['ts'] <= $candidate['ended'] && ($prev === null || $candidate['started'] > $prev['started'])) {
-                        $prev = $candidate;
-                    }
-                }
+                $prev = self::refund_visit($h, isset($history[$v]) ? $history[$v] : array(), $visits);
                 if ($prev === null) {
                     continue;
                 }
-            }
-            if ($prev !== null && $h['ts'] - $prev['ended'] < self::VISIT_GAP && $h['ts'] >= $prev['started'] - self::VISIT_GAP) {
-                $key = $prev['skey'];
-                if (!isset($visits[$key])) {
-                    $visits[$key] = self::new_visit($h, $key, $prev['started'], $prev['n'], true);
-                    $visits[$key]['ended'] = $prev['ended'];
-                }
+            } elseif (isset($open[$v])) {
+                $prev = $visits[$open[$v]];
             } else {
-                $key          = substr(hash('sha256', $v . '|' . $h['ts']), 0, 16);
-                $visits[$key] = self::new_visit($h, $key, $h['ts'], 0, false);
+                $prev = isset($latest[$v]) ? $latest[$v] : null;
             }
+            $key = self::join_visit($h, $prev, $visits);
             if (!$refund) {
                 $open[$v] = $key;
             }
-            $visit    = &$visits[$key];
-            $visit['ended'] = max($visit['ended'], $h['ts']);
-            $visit['n']++;
-            $fact            = self::fact($h, $visit['n']);
-            $visit['login']  = max($visit['login'], $fact['login']);
-            $visit['hits'][] = $fact;
-            unset($visit);
+            self::add_hit($visits[$key], $h);
         }
         return $visits;
+    }
+
+    /**
+     * Stored visits of the batch's visitors on the batch's days: each
+     * visitor's latest, and all of them (refunds may arrive after a later
+     * same-day visit).
+     *
+     * @param string[] $days     Site-local dates.
+     * @param string[] $visitors Visitors (hex).
+     * @return array{0:array<string,array<string,mixed>>,1:array<string,array<int,array<string,mixed>>>} Latest and all, by visitor.
+     */
+    private static function stored_visits(array $days, array $visitors) {
+        global $wpdb;
+        $latest  = array();
+        $history = array();
+        foreach (array_chunk($visitors, SEOProStats_Dict::CHUNK) as $chunk) {
+            $d = implode(', ', array_fill(0, count($days), '%s'));
+            $v = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its (day, visitor) index; fixed placeholders.
+            $rows = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(skey)) AS skey, LOWER(HEX(visitor)) AS visitor, started, ended, pageviews + events AS n FROM %i WHERE day IN ($d) AND visitor IN ($v)", array_merge(array(SEOProStats_Schema::table('sessions')), $days, $chunk)));
+            foreach ((array) $rows as $row) {
+                $visit = array('skey' => $row->skey, 'started' => (int) $row->started, 'ended' => (int) $row->ended, 'n' => (int) $row->n, 'stored' => true);
+                $history[$row->visitor][] = $visit;
+                if (!isset($latest[$row->visitor]) || $visit['ended'] > $latest[$row->visitor]['ended']) {
+                    $latest[$row->visitor] = $visit;
+                }
+            }
+        }
+        return array($latest, $history);
+    }
+
+    /**
+     * The visit a refund belongs to: the latest-started one, stored or in
+     * this batch, whose time span holds the refund's time.
+     *
+     * @param array<string,mixed>               $h          Refund hit.
+     * @param array<int,array<string,mixed>>    $candidates The visitor's stored visits.
+     * @param array<int|string,array<string,mixed>> $visits     Visits so far in this batch.
+     * @return array<string,mixed>|null
+     */
+    private static function refund_visit(array $h, array $candidates, array $visits) {
+        foreach ($visits as $visit_key => $candidate) {
+            if ($candidate['visitor'] === $h['visitor']) {
+                $candidates[] = $candidate + array('skey' => $visit_key);
+            }
+        }
+        $found = null;
+        foreach ($candidates as $candidate) {
+            if ($h['ts'] >= $candidate['started'] && $h['ts'] <= $candidate['ended'] && ($found === null || $candidate['started'] > $found['started'])) {
+                $found = $candidate;
+            }
+        }
+        return $found;
+    }
+
+    /**
+     * The key of the visit a hit joins: the previous one when it is close
+     * enough in time, else a new one. Either is added to $visits.
+     *
+     * @param array<string,mixed>               $h      Hit.
+     * @param array<string,mixed>|null          $prev   The visitor's previous visit.
+     * @param array<int|string,array<string,mixed>> $visits Visits so far.
+     * @return string|int Visit key (hex).
+     */
+    private static function join_visit(array $h, $prev, array &$visits) {
+        if ($prev !== null && $h['ts'] - $prev['ended'] < self::VISIT_GAP && $h['ts'] >= $prev['started'] - self::VISIT_GAP) {
+            $key = $prev['skey'];
+            if (!isset($visits[$key])) {
+                $visits[$key] = self::new_visit($h, $key, $prev['started'], $prev['n'], true);
+                $visits[$key]['ended'] = $prev['ended'];
+            }
+            return $key;
+        }
+        $key          = substr(hash('sha256', $h['visitor'] . '|' . $h['ts']), 0, 16);
+        $visits[$key] = self::new_visit($h, $key, $h['ts'], 0, false);
+        return $key;
+    }
+
+    /**
+     * A hit onto its visit, as the visit's next pageview or event.
+     *
+     * @param array<string,mixed> $visit Visit.
+     * @param array<string,mixed> $h     Hit.
+     */
+    private static function add_hit(array &$visit, array $h) {
+        $visit['ended'] = max($visit['ended'], $h['ts']);
+        $visit['n']++;
+        $fact            = self::fact($h, $visit['n']);
+        $visit['login']  = max($visit['login'], $fact['login']);
+        $visit['hits'][] = $fact;
     }
 
     /**
@@ -538,33 +667,11 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         $hit = $h['hit'];
         // An event without a path takes its pageview's (write_facts()).
         $url   = isset($hit['u']) && is_string($hit['u']) && $hit['u'] !== '' ? self::split_url($hit['u']) : array('path' => '');
-        $props = array();
-        if (isset($hit['d']) && is_array($hit['d'])) {
-            foreach (array_slice($hit['d'], 0, 30, true) as $key => $value) {
-                if (is_scalar($value) && $value !== '' && trim((string) $key) !== '') {
-                    $props[substr(trim((string) $key), 0, 100)] = substr(is_bool($value) ? ($value ? 'true' : 'false') : (string) $value, 0, 300);
-                }
-            }
-        }
-        $revenue  = 0;
-        $currency = '';
-        if (isset($hit['rv']['a'], $hit['rv']['c']) && is_numeric($hit['rv']['a']) && preg_match('/^[A-Za-z]{3}$/', (string) $hit['rv']['c'])) {
-            $revenue  = (int) round((float) $hit['rv']['a'] * 100);
-            $currency = strtoupper((string) $hit['rv']['c']);
-        }
+        $props = isset($hit['d']) && is_array($hit['d']) ? self::props($hit['d']) : array();
+        list($revenue, $currency) = self::revenue($hit);
         // The page's context (pageviews only).
-        $ctx    = $h['type'] === 'pv' && isset($hit['x']) && is_array($hit['x']) ? $hit['x'] : array();
-        $flags  = 0;
-        $search = '';
-        if (!empty($ctx['n'])) {
-            $flags = SEOProStats_Schema::PAGE_NOT_FOUND;
-        } elseif (!empty($ctx['q'])) {
-            $flags = SEOProStats_Schema::PAGE_SEARCH;
-            if (isset($ctx['r']) && is_numeric($ctx['r']) && (int) $ctx['r'] === 0) {
-                $flags |= SEOProStats_Schema::PAGE_NO_RESULTS;
-            }
-            $search = isset($ctx['s']) && is_string($ctx['s']) ? self::search_words($ctx['s']) : '';
-        }
+        $ctx = $h['type'] === 'pv' && isset($hit['x']) && is_array($hit['x']) ? $hit['x'] : array();
+        list($flags, $search) = self::page_kind($ctx);
         return array(
             'type'     => $h['type'],
             'pkey'     => $h['pkey'],
@@ -581,6 +688,72 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             'login'    => empty($ctx['l']) ? 0 : 1,
             'ab'       => $h['type'] === 'pv' && isset($hit['ab']) ? self::ab_pairs($hit['ab'], self::AB_MAX) : array(),
         );
+    }
+
+    /**
+     * A hit's custom properties as stored: the first 30 with a name and
+     * a plain value, names to 100 characters and values to 300.
+     *
+     * @param array<mixed,mixed> $data Hit field d.
+     * @return array<string,string> Name => value.
+     */
+    private static function props(array $data) {
+        $props = array();
+        foreach (array_slice($data, 0, 30, true) as $key => $value) {
+            $name = trim((string) $key);
+            if (is_scalar($value) && $value !== '' && $name !== '') {
+                $props[substr($name, 0, 100)] = substr(self::prop_text($value), 0, 300);
+            }
+        }
+        return $props;
+    }
+
+    /**
+     * A property value as text; true and false by name.
+     *
+     * @param bool|int|float|string $value Value.
+     * @return string
+     */
+    private static function prop_text($value) {
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+        return (string) $value;
+    }
+
+    /**
+     * A hit's revenue in minor units and its currency, or none.
+     *
+     * @param array<string,mixed> $hit Hit.
+     * @return array{0:int,1:string}
+     */
+    private static function revenue(array $hit) {
+        if (isset($hit['rv']['a'], $hit['rv']['c']) && is_numeric($hit['rv']['a']) && preg_match('/^[A-Za-z]{3}$/', (string) $hit['rv']['c'])) {
+            return array((int) round((float) $hit['rv']['a'] * 100), strtoupper((string) $hit['rv']['c']));
+        }
+        return array(0, '');
+    }
+
+    /**
+     * What a page was, from its context: not found, a site search (and its
+     * words), or neither.
+     *
+     * @param array<string,mixed> $ctx Pageview field x.
+     * @return array{0:int,1:string} SEOProStats_Schema::PAGE_* flags and search words.
+     */
+    private static function page_kind(array $ctx) {
+        if (!empty($ctx['n'])) {
+            return array(SEOProStats_Schema::PAGE_NOT_FOUND, '');
+        }
+        if (empty($ctx['q'])) {
+            return array(0, '');
+        }
+        $flags = SEOProStats_Schema::PAGE_SEARCH;
+        if (isset($ctx['r']) && is_numeric($ctx['r']) && (int) $ctx['r'] === 0) {
+            $flags |= SEOProStats_Schema::PAGE_NO_RESULTS;
+        }
+        $search = isset($ctx['s']) && is_string($ctx['s']) ? self::search_words($ctx['s']) : '';
+        return array($flags, $search);
     }
 
     /**
@@ -605,7 +778,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
      * The batch's A/B tests that are in ab_tests, with their variants: a
      * forged hit cannot add tests or variants. One query by primary key.
      *
-     * @param array<string,array<string,mixed>> $visits Visits.
+     * @param array<int|string,array<string,mixed>> $visits Visits.
      * @param array<int,array<string,mixed>>    $clicks Clicks.
      * @return array<string,array<string,bool>> Test id => variant slug => true.
      */
@@ -614,15 +787,11 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         $tests = array();
         foreach ($visits as $visit) {
             foreach ($visit['hits'] as $h) {
-                foreach ($h['ab'] as $test => $variant) {
-                    $tests[$test] = true;
-                }
+                $tests += $h['ab'];
             }
         }
         foreach ($clicks as $c) {
-            foreach ($c['ab'] as $test => $variant) {
-                $tests[$test] = true;
-            }
+            $tests += $c['ab'];
         }
         if (!$tests) {
             return array();
@@ -633,27 +802,40 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         $rows = $wpdb->get_results($wpdb->prepare("SELECT test_id, variants FROM %i WHERE test_id IN ($holders)", array_merge(array(SEOProStats_Schema::table('ab_tests')), $tests)));
         $out  = array();
         foreach ((array) $rows as $row) {
-            $variants = json_decode((string) $row->variants, true);
-            foreach (is_array($variants) ? $variants : array() as $variant) {
-                if (is_array($variant) && isset($variant['slug']) && is_string($variant['slug'])) {
-                    $out[(string) $row->test_id][$variant['slug']] = true;
-                }
+            foreach (self::variant_slugs((string) $row->variants) as $slug) {
+                $out[(string) $row->test_id][$slug] = true;
             }
         }
         return $out;
     }
 
     /**
+     * The variant slugs of an A/B test's stored variants.
+     *
+     * @param string $json ab_tests.variants.
+     * @return string[]
+     */
+    private static function variant_slugs($json) {
+        $variants = json_decode($json, true);
+        $slugs    = array();
+        foreach (is_array($variants) ? $variants : array() as $variant) {
+            if (is_array($variant) && isset($variant['slug']) && is_string($variant['slug'])) {
+                $slugs[] = $variant['slug'];
+            }
+        }
+        return $slugs;
+    }
+
+    /**
      * Each pageview's A/B test variants into ab_exposures (a page load
      * seen again, as in a resumed batch, is skipped).
      *
-     * @param array<string,array<string,mixed>> $visits      Visits.
+     * @param array<int|string,array<string,mixed>> $visits      Visits.
      * @param array<string,int>                 $session_ids Visit key => id.
      * @param array<int,array<string,int>>      $ids         Dictionary ids by kind.
      * @param array<string,array<string,bool>>  $known       From ab_known().
      */
     private static function write_exposures(array $visits, array $session_ids, array $ids, array $known) {
-        global $wpdb;
         if (!$known) {
             return;
         }
@@ -663,27 +845,58 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
                 continue;
             }
             foreach ($visit['hits'] as $h) {
-                foreach ($h['ab'] as $test => $variant) {
-                    if (!isset($known[$test][$variant])) {
-                        continue;
-                    }
-                    $test_id    = self::id($ids, SEOProStats_Schema::DICT_AB_TEST, (string) $test);
-                    $variant_id = self::id($ids, SEOProStats_Schema::DICT_AB_VARIANT, $variant);
-                    if ($test_id && $variant_id) {
-                        $rows[] = array($h['pkey'], $test_id, $variant_id, $session_ids[$key], self::day($h['ts']), $h['ts']);
-                    }
-                }
+                $rows = array_merge($rows, self::exposure_rows($h, $session_ids[$key], $ids, $known));
             }
         }
+        self::insert_rows('INSERT IGNORE INTO %i (pkey, test_id, variant_id, session_id, day, ts) VALUES ', SEOProStats_Schema::table('ab_exposures'), '(UNHEX(%s), %d, %d, %d, %s, %d)', $rows);
+    }
+
+    /**
+     * A pageview's ab_exposures rows: its known A/B test variants.
+     *
+     * @param array<string,mixed>              $h          Pageview fact.
+     * @param int                              $session_id Its visit's id.
+     * @param array<int,array<string,int>>     $ids        Dictionary ids by kind.
+     * @param array<string,array<string,bool>> $known      From ab_known().
+     * @return array<int,array<int,int|string>>
+     */
+    private static function exposure_rows(array $h, $session_id, array $ids, array $known) {
+        $rows = array();
+        foreach ($h['ab'] as $test => $variant) {
+            if (!isset($known[$test][$variant])) {
+                continue;
+            }
+            $test_id    = self::id($ids, SEOProStats_Schema::DICT_AB_TEST, (string) $test);
+            $variant_id = self::id($ids, SEOProStats_Schema::DICT_AB_VARIANT, $variant);
+            if ($test_id && $variant_id) {
+                $rows[] = array($h['pkey'], $test_id, $variant_id, $session_id, self::day($h['ts']), $h['ts']);
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * Insert rows into one of our tables, BATCH rows per statement.
+     *
+     * @param string                          $sql   Statement up to its values, the table as %i.
+     * @param string                          $table Table.
+     * @param string                          $group Fixed placeholder group for one row.
+     * @param array<int,array<int,int|string>> $rows  Rows, values in $group's order.
+     * @return int Rows affected.
+     */
+    private static function insert_rows($sql, $table, $group, array $rows) {
+        global $wpdb;
+        $affected = 0;
         foreach (array_chunk($rows, self::BATCH) as $chunk) {
-            $args = array(SEOProStats_Schema::table('ab_exposures'));
+            $args = array($table);
             foreach ($chunk as $row) {
                 array_push($args, ...$row);
             }
-            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, %d, %s, %d)'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
-            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, test_id, variant_id, session_id, day, ts) VALUES $groups", $args));
+            $groups = implode(', ', array_fill(0, count($chunk), $group));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- our own table; $sql is a fixed statement and $groups holds only fixed placeholder groups, one per row.
+            $affected += (int) $wpdb->query($wpdb->prepare($sql . $groups, $args));
         }
+        return $affected;
     }
 
     /**
@@ -732,7 +945,8 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         if (!SEOProStats_Statistics::search_terms()) {
             return '';
         }
-        $words = trim((string) preg_replace('/[\s\x00-\x1F\x7F]+/u', ' ', $words));
+        // \s covers \x09-\x0D; the other control characters are listed.
+        $words = trim((string) preg_replace('/[\s\x00-\x08\x0E-\x1F\x7F]+/u', ' ', $words));
         $words = (string) preg_replace(array('/[^\s@]+@[^\s@]+/u', '/\+?\d(?:[\s().-]?\d){5,}/'), array('…@…', '#'), $words);
         $words = function_exists('mb_strtolower') ? mb_substr(mb_strtolower($words, 'UTF-8'), 0, 100, 'UTF-8') : substr(strtolower($words), 0, 100);
         // PHP 7.4 gives false, not '', for nothing left.
@@ -742,7 +956,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
     /**
      * Insert new visits and extend continued ones; ids by visit key.
      *
-     * @param array<string,array<string,mixed>> $visits Visits.
+     * @param array<int|string,array<string,mixed>> $visits Visits.
      * @param array<int,array<string,int>>      $ids    Dictionary ids by kind.
      * @return array<string,int> Visit key => id.
      */
@@ -753,40 +967,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         foreach (array_chunk($visits, 200, true) as $chunk) {
             $args = array($table);
             foreach ($chunk as $key => $v) {
-                $entry  = '';
-                foreach ($v['hits'] as $h) {
-                    if ($h['type'] === 'pv') {
-                        $entry = $h['path'];
-                        break;
-                    }
-                }
-                $utm = $v['utm'];
-                array_push(
-                    $args,
-                    (string) $key,
-                    $v['visitor'],
-                    $v['day'],
-                    $v['started'],
-                    $v['ended'],
-                    self::id($ids, SEOProStats_Schema::DICT_PATH, $entry),
-                    self::id($ids, SEOProStats_Schema::DICT_HOST, $v['ref_host']),
-                    self::id($ids, SEOProStats_Schema::DICT_PATH, $v['ref_path']),
-                    $v['channel'],
-                    self::id($ids, SEOProStats_Schema::DICT_UTM, isset($utm['utm_source']) ? $utm['utm_source'] : ''),
-                    self::id($ids, SEOProStats_Schema::DICT_UTM, isset($utm['utm_medium']) ? $utm['utm_medium'] : ''),
-                    self::id($ids, SEOProStats_Schema::DICT_UTM, isset($utm['utm_campaign']) ? $utm['utm_campaign'] : ''),
-                    self::id($ids, SEOProStats_Schema::DICT_UTM, isset($utm['utm_term']) ? $utm['utm_term'] : ''),
-                    self::id($ids, SEOProStats_Schema::DICT_UTM, isset($utm['utm_content']) ? $utm['utm_content'] : ''),
-                    $v['country'],
-                    self::id($ids, SEOProStats_Schema::DICT_LANGUAGE, $v['lang']),
-                    self::id($ids, SEOProStats_Schema::DICT_BROWSER, $v['browser']),
-                    $v['browser_ver'],
-                    self::id($ids, SEOProStats_Schema::DICT_OS, $v['os']),
-                    $v['os_ver'],
-                    $v['device'],
-                    $v['screen'],
-                    $v['login']
-                );
+                array_push($args, ...self::session_row((string) $key, $v, $ids));
             }
             // Continued visits keep their first-hit details; only the end
             // moves, and a login part-way through counts for the visit.
@@ -805,17 +986,61 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
     }
 
     /**
+     * A visit's sessions row values, in write_sessions()'s column order.
+     *
+     * @param string                       $key Visit key (hex).
+     * @param array<string,mixed>          $v   Visit.
+     * @param array<int,array<string,int>> $ids Dictionary ids by kind.
+     * @return array<int,int|string>
+     */
+    private static function session_row($key, array $v, array $ids) {
+        $entry = '';
+        foreach ($v['hits'] as $h) {
+            if ($h['type'] === 'pv') {
+                $entry = $h['path'];
+                break;
+            }
+        }
+        $row = array(
+            $key,
+            $v['visitor'],
+            $v['day'],
+            $v['started'],
+            $v['ended'],
+            self::id($ids, SEOProStats_Schema::DICT_PATH, $entry),
+            self::id($ids, SEOProStats_Schema::DICT_HOST, $v['ref_host']),
+            self::id($ids, SEOProStats_Schema::DICT_PATH, $v['ref_path']),
+            $v['channel'],
+        );
+        foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
+            $row[] = self::id($ids, SEOProStats_Schema::DICT_UTM, isset($v['utm'][$tag]) ? $v['utm'][$tag] : '');
+        }
+        array_push(
+            $row,
+            $v['country'],
+            self::id($ids, SEOProStats_Schema::DICT_LANGUAGE, $v['lang']),
+            self::id($ids, SEOProStats_Schema::DICT_BROWSER, $v['browser']),
+            $v['browser_ver'],
+            self::id($ids, SEOProStats_Schema::DICT_OS, $v['os']),
+            $v['os_ver'],
+            $v['device'],
+            $v['screen'],
+            $v['login']
+        );
+        return $row;
+    }
+
+    /**
      * Insert pageviews, events and their properties.
      *
-     * @param array<string,array<string,mixed>> $visits      Visits.
+     * @param array<int|string,array<string,mixed>> $visits      Visits.
      * @param array<string,int>                 $session_ids Visit key => id.
      * @param array<int,array<string,int>>      $ids         Dictionary ids by kind.
      * @return array{0:int,1:int} Pageviews and events inserted.
      */
     private static function write_facts(array $visits, array $session_ids, array $ids) {
-        global $wpdb;
-        $pv     = array();
-        $ev     = array();
+        $pv = array();
+        $ev = array();
         foreach ($visits as $key => $visit) {
             if (!isset($session_ids[$key])) {
                 continue;
@@ -831,38 +1056,75 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             }
         }
 
+        list($pageviews, $pv_props) = self::write_pageviews($pv, $ids);
+        list($events, $ev_props)    = self::write_events($ev, self::event_pages($pv, $ev), $ids);
+        self::insert_rows('INSERT IGNORE INTO %i (owner, owner_id, key_id, value_id, ts) VALUES ', SEOProStats_Schema::table('props'), '(%d, %d, %d, %d, %d)', array_merge($pv_props, $ev_props));
+        return array($pageviews, $events);
+    }
+
+    /**
+     * Insert pageviews (a page-load id seen before, as in a resumed batch,
+     * is skipped).
+     *
+     * @param array<int,array<string,mixed>> $pv  Pageview facts with their ids.
+     * @param array<int,array<string,int>>   $ids Dictionary ids by kind.
+     * @return array{0:int,1:array<int,array<int,int>>} Rows inserted, and their property rows.
+     */
+    private static function write_pageviews(array $pv, array $ids) {
         $pageviews = 0;
         $prop_rows = array();
         foreach (array_chunk($pv, self::BATCH) as $chunk) {
-            $args = array(SEOProStats_Schema::table('pageviews'));
+            $rows = array();
             foreach ($chunk as $h) {
-                array_push($args, $h['pkey'], $h['session_id'], $h['ts'], $h['seq'], $h['path_id'], $h['flags'], self::id($ids, SEOProStats_Schema::DICT_SEARCH, $h['search']));
+                $rows[] = array($h['pkey'], $h['session_id'], $h['ts'], $h['seq'], $h['path_id'], $h['flags'], self::id($ids, SEOProStats_Schema::DICT_SEARCH, $h['search']));
             }
-            // A page-load id seen before (a resumed batch) is skipped.
-            $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, %d, %d, %d, %d)'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
-            $pageviews += (int) $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id, flags, search_id) VALUES $groups", $args));
+            $pageviews += self::insert_rows('INSERT IGNORE INTO %i (pkey, session_id, ts, seq, path_id, flags, search_id) VALUES ', SEOProStats_Schema::table('pageviews'), '(UNHEX(%s), %d, %d, %d, %d, %d, %d)', $rows);
 
             $with_props = array_filter($chunk, static function ($h) {
                 return (bool) $h['props'];
             });
             if ($with_props) {
-                $holders = implode(', ', array_fill(0, count($with_props), self::HEX_PLACEHOLDER));
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
-                $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_column($with_props, 'pkey'))));
-                $by    = array();
-                foreach ((array) $found as $row) {
-                    $by[$row->k] = (int) $row->id;
-                }
-                foreach ($with_props as $h) {
-                    if (isset($by[$h['pkey']])) {
-                        $prop_rows = array_merge($prop_rows, self::prop_rows(SEOProStats_Schema::OWNER_PAGEVIEW, $by[$h['pkey']], $h, $ids));
-                    }
-                }
+                $prop_rows = array_merge($prop_rows, self::pageview_prop_rows($with_props, $ids));
             }
         }
+        return array($pageviews, $prop_rows);
+    }
 
-        // Events without a path: their pageview's, from this batch or stored.
+    /**
+     * Property rows of stored pageviews, by their ids.
+     *
+     * @param array<int,array<string,mixed>> $with_props Pageview facts with properties.
+     * @param array<int,array<string,int>>   $ids        Dictionary ids by kind.
+     * @return array<int,array<int,int>>
+     */
+    private static function pageview_prop_rows(array $with_props, array $ids) {
+        global $wpdb;
+        $holders = implode(', ', array_fill(0, count($with_props), self::HEX_PLACEHOLDER));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
+        $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_column($with_props, 'pkey'))));
+        $by    = array();
+        foreach ((array) $found as $row) {
+            $by[$row->k] = (int) $row->id;
+        }
+        $rows = array();
+        foreach ($with_props as $h) {
+            if (isset($by[$h['pkey']])) {
+                $rows = array_merge($rows, self::prop_rows(SEOProStats_Schema::OWNER_PAGEVIEW, $by[$h['pkey']], $h, $ids));
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * Path ids of the page loads events happened on, for events without a
+     * path: from this batch's pageviews, else the stored ones.
+     *
+     * @param array<int,array<string,mixed>> $pv Pageview facts with their ids.
+     * @param array<int,array<string,mixed>> $ev Event facts with their ids.
+     * @return array<string,int> Page-load id => path id.
+     */
+    private static function event_pages(array $pv, array $ev) {
+        global $wpdb;
         $page_of = array();
         $missing = array();
         foreach ($pv as $h) {
@@ -873,22 +1135,35 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
                 $missing[$h['pkey']] = true;
             }
         }
-        if ($missing) {
-            $holders = implode(', ', array_fill(0, count($missing), self::HEX_PLACEHOLDER));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
-            $found = $wpdb->get_results($wpdb->prepare("SELECT path_id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', array_keys($missing)))));
-            foreach ((array) $found as $row) {
-                $page_of[$row->k] = (int) $row->path_id;
-            }
+        if (!$missing) {
+            return $page_of;
         }
+        $holders = implode(', ', array_fill(0, count($missing), self::HEX_PLACEHOLDER));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
+        $found = $wpdb->get_results($wpdb->prepare("SELECT path_id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', array_keys($missing)))));
+        foreach ((array) $found as $row) {
+            $page_of[$row->k] = (int) $row->path_id;
+        }
+        return $page_of;
+    }
 
-        $events = 0;
+    /**
+     * Insert events, one at a time: each event's id is needed for its
+     * properties, and events are far fewer than pageviews.
+     *
+     * @param array<int,array<string,mixed>> $ev      Event facts with their ids.
+     * @param array<string,int>              $page_of From event_pages().
+     * @param array<int,array<string,int>>   $ids     Dictionary ids by kind.
+     * @return array{0:int,1:array<int,array<int,int>>} Rows inserted, and their property rows.
+     */
+    private static function write_events(array $ev, array $page_of, array $ids) {
+        global $wpdb;
+        $events    = 0;
+        $prop_rows = array();
         foreach ($ev as $h) {
             if ($h['path_id'] === 0 && isset($page_of[$h['pkey']])) {
                 $h['path_id'] = $page_of[$h['pkey']];
             }
-            // One at a time: each event's id is needed for its properties,
-            // and events are far fewer than pageviews.
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table.
             $ok = $wpdb->insert(
                 SEOProStats_Schema::table('events'),
@@ -903,24 +1178,15 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
                 ),
                 array('%d', '%d', '%d', '%d', '%d', '%d', '%s')
             );
-            if ($ok) {
-                $events++;
-                if ($h['props']) {
-                    $prop_rows = array_merge($prop_rows, self::prop_rows(SEOProStats_Schema::OWNER_EVENT, (int) $wpdb->insert_id, $h, $ids));
-                }
+            if (!$ok) {
+                continue;
+            }
+            $events++;
+            if ($h['props']) {
+                $prop_rows = array_merge($prop_rows, self::prop_rows(SEOProStats_Schema::OWNER_EVENT, (int) $wpdb->insert_id, $h, $ids));
             }
         }
-
-        foreach (array_chunk($prop_rows, self::BATCH) as $chunk) {
-            $args = array(SEOProStats_Schema::table('props'));
-            foreach ($chunk as $row) {
-                array_push($args, ...$row);
-            }
-            $prop_groups = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d, %d)'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $prop_groups holds only fixed placeholder groups, one per row.
-            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (owner, owner_id, key_id, value_id, ts) VALUES $prop_groups", $args));
-        }
-        return array($pageviews, $events);
+        return array($events, $prop_rows);
     }
 
     /**
@@ -1041,17 +1307,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
                 );
             }
         }
-        $inserted = 0;
-        foreach (array_chunk($rows, self::BATCH) as $chunk) {
-            $args = array(SEOProStats_Schema::table('clicks'));
-            foreach ($chunk as $row) {
-                array_push($args, ...$row);
-            }
-            $groups = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d)'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
-            $inserted += (int) $wpdb->query($wpdb->prepare("INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields) VALUES $groups", $args));
-        }
-        return $inserted;
+        return self::insert_rows('INSERT INTO %i (session_id, ts, seq, path_id, kind, selector_id, label_id, target_id, flags, fields) VALUES ', SEOProStats_Schema::table('clicks'), '(%d, %d, %d, %d, %d, %d, %d, %d, %d, %d)', $rows);
     }
 
     /**
@@ -1060,7 +1316,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
      * hour. Live: the item a pageview names, looked up in WordPress and
      * kept only when its address is the page's. Demo: SEOProStats_Demo's.
      *
-     * @param array<string,array<string,mixed>> $visits Visits.
+     * @param array<int|string,array<string,mixed>> $visits Visits.
      * @param array<int,array<string,int>>      $ids    Dictionary ids by kind.
      */
     private static function write_pages(array $visits, array $ids) {
@@ -1069,30 +1325,14 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         $views = array(); // path id => [path, post id, time]
         foreach ($visits as $visit) {
             foreach ($visit['hits'] as $h) {
-                if ($h['type'] !== 'pv' || $h['flags'] !== 0 || (!$demo && $h['post'] === 0)) {
-                    continue;
-                }
-                $path_id = self::id($ids, SEOProStats_Schema::DICT_PATH, $h['path']);
-                if ($path_id > 0 && (!isset($views[$path_id]) || $h['ts'] >= $views[$path_id][2])) {
-                    $views[$path_id] = array($h['path'], $h['post'], $h['ts']);
-                }
+                self::page_view($views, $h, $ids, $demo);
             }
         }
         if (!$views) {
             return;
         }
         $table = SEOProStats_Schema::table('pages');
-
-        // Rows checked in the last hour for the same item stay as they are.
-        $holders = implode(', ', array_fill(0, count($views), '%d'));
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; fixed placeholders.
-        $known = $wpdb->get_results($wpdb->prepare("SELECT path_id, post_id, seen FROM %i WHERE path_id IN ($holders)", array_merge(array($table), array_keys($views))));
-        foreach ((array) $known as $row) {
-            $view = $views[(int) $row->path_id];
-            if (($demo || (int) $row->post_id === $view[1]) && (int) $row->seen > $view[2] - HOUR_IN_SECONDS) {
-                unset($views[(int) $row->path_id]);
-            }
-        }
+        $views = self::stale_pages($table, $views, $demo);
         if (!$demo && $views) {
             _prime_post_caches(array_values(array_unique(array_column($views, 1))), true, true);
         }
@@ -1116,6 +1356,49 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
     }
 
     /**
+     * A pageview onto the batch's pages, the latest view of an address
+     * kept: plain pages (not 404s or searches) that name their item, or
+     * any in the demo.
+     *
+     * @param array<int,array<int,mixed>> $views Path id => [path, post id, time].
+     * @param array<string,mixed>                    $h     Fact.
+     * @param array<int,array<string,int>>           $ids   Dictionary ids by kind.
+     * @param bool                                   $demo  Whether the demo set is in use.
+     */
+    private static function page_view(array &$views, array $h, array $ids, $demo) {
+        if ($h['type'] !== 'pv' || $h['flags'] !== 0 || (!$demo && $h['post'] === 0)) {
+            return;
+        }
+        $path_id = self::id($ids, SEOProStats_Schema::DICT_PATH, $h['path']);
+        if ($path_id > 0 && (!isset($views[$path_id]) || $h['ts'] >= $views[$path_id][2])) {
+            $views[$path_id] = array($h['path'], $h['post'], $h['ts']);
+        }
+    }
+
+    /**
+     * The pages to write: rows checked in the last hour for the same item
+     * stay as they are.
+     *
+     * @param string                                 $table Pages table.
+     * @param array<int,array<int,mixed>> $views From page_view().
+     * @param bool                                   $demo  Whether the demo set is in use.
+     * @return array<int,array<int,mixed>>
+     */
+    private static function stale_pages($table, array $views, $demo) {
+        global $wpdb;
+        $holders = implode(', ', array_fill(0, count($views), '%d'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; fixed placeholders.
+        $known = $wpdb->get_results($wpdb->prepare("SELECT path_id, post_id, seen FROM %i WHERE path_id IN ($holders)", array_merge(array($table), array_keys($views))));
+        foreach ((array) $known as $row) {
+            $view = $views[(int) $row->path_id];
+            if (($demo || (int) $row->post_id === $view[1]) && (int) $row->seen > $view[2] - HOUR_IN_SECONDS) {
+                unset($views[(int) $row->path_id]);
+            }
+        }
+        return $views;
+    }
+
+    /**
      * What a post (or page, or other single item) is, when its address is
      * the page's: its type, author and category (the primary one an SEO
      * plugin set, else the first; for types without categories, the first
@@ -1130,41 +1413,11 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         if (!$post instanceof WP_Post || !in_array($post->post_status, array('publish', 'private'), true)) {
             return null;
         }
-        $link = get_permalink($post);
-        if (!is_string($link)) {
+        if (!self::is_post_page($post, $path)) {
             return null;
         }
-        $want = self::split_url($link)['path'];
-        // Kept query parameters (?lang=…) still show the item; plain
-        // permalinks (?p=…) need theirs.
-        $have = strpos($want, '?') === false ? explode('?', $path, 2)[0] : $path;
-        if (untrailingslashit($want) !== untrailingslashit($have)) {
-            return null;
-        }
-        $taxonomy = is_object_in_taxonomy($post->post_type, 'category') ? 'category' : '';
-        if ($taxonomy === '') {
-            foreach (get_object_taxonomies($post->post_type, 'objects') as $object) {
-                if ($object->hierarchical && $object->public) {
-                    $taxonomy = $object->name;
-                    break;
-                }
-            }
-        }
-        $term = 0;
-        if ($taxonomy !== '') {
-            $terms = get_the_terms($post, $taxonomy);
-            if (is_array($terms) && $terms) {
-                $assigned = array_map('intval', wp_list_pluck($terms, 'term_id'));
-                $term     = $assigned[0];
-                foreach (array('_yoast_wpseo_primary_' . $taxonomy, 'rank_math_primary_' . $taxonomy) as $key) {
-                    $primary = (int) get_post_meta($post->ID, $key, true);
-                    if ($primary && in_array($primary, $assigned, true)) {
-                        $term = $primary;
-                        break;
-                    }
-                }
-            }
-        }
+        $taxonomy = self::page_taxonomy($post->post_type);
+        $term     = $taxonomy !== '' ? self::page_term($post, $taxonomy) : 0;
         /**
          * Filters the category (or other term) a post counts under in the
          * statistics' Content report.
@@ -1179,6 +1432,67 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             'author_id' => (int) $post->post_author,
             'term_id'   => max(0, $term),
         );
+    }
+
+    /**
+     * Whether a page's path is a post's address.
+     *
+     * @param WP_Post $post Post.
+     * @param string  $path Page path, with any query kept.
+     * @return bool
+     */
+    private static function is_post_page($post, $path) {
+        $link = get_permalink($post);
+        if (!is_string($link)) {
+            return false;
+        }
+        $want = self::split_url($link)['path'];
+        // Kept query parameters (?lang=…) still show the item; plain
+        // permalinks (?p=…) need theirs.
+        $have = strpos($want, '?') === false ? explode('?', $path, 2)[0] : $path;
+        return untrailingslashit($want) === untrailingslashit($have);
+    }
+
+    /**
+     * The taxonomy a post type's posts count under: category, else its
+     * first public hierarchical taxonomy, else none ('').
+     *
+     * @param string $post_type Post type.
+     * @return string
+     */
+    private static function page_taxonomy($post_type) {
+        if (is_object_in_taxonomy($post_type, 'category')) {
+            return 'category';
+        }
+        foreach (get_object_taxonomies($post_type, 'objects') as $object) {
+            if ($object->hierarchical && $object->public) {
+                return $object->name;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * A post's term in a taxonomy: the primary one an SEO plugin set, else
+     * the first; 0 for none.
+     *
+     * @param WP_Post $post     Post.
+     * @param string  $taxonomy Taxonomy.
+     * @return int
+     */
+    private static function page_term($post, $taxonomy) {
+        $terms = get_the_terms($post, $taxonomy);
+        if (!is_array($terms) || !$terms) {
+            return 0;
+        }
+        $assigned = array_map('intval', wp_list_pluck($terms, 'term_id'));
+        foreach (array('_yoast_wpseo_primary_' . $taxonomy, 'rank_math_primary_' . $taxonomy) as $key) {
+            $primary = (int) get_post_meta($post->ID, $key, true);
+            if ($primary && in_array($primary, $assigned, true)) {
+                return $primary;
+            }
+        }
+        return $assigned[0];
     }
 
     /**
@@ -1219,41 +1533,51 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
     public static function split_url($url) {
         $path  = (string) wp_parse_url($url, PHP_URL_PATH);
         $query = (string) wp_parse_url($url, PHP_URL_QUERY);
-        $utm   = array();
-        $click = '';
-        $keep  = array();
+        $parts = array('utm' => array(), 'click' => '', 'keep' => array());
         if ($query !== '') {
             parse_str($query, $params);
             foreach ($params as $key => $value) {
-                $key = strtolower((string) $key);
-                if (!is_string($value)) {
-                    continue;
-                }
-                if (in_array($key, array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'), true)) {
-                    $value = strtolower(trim(substr($value, 0, 200)));
-                    if ($value !== '') {
-                        $utm[$key] = $value;
-                    }
-                } elseif ($key === 'ref' || $key === 'source') {
-                    if (!isset($utm['utm_source']) && trim($value) !== '') {
-                        $utm['utm_source'] = strtolower(trim(substr($value, 0, 200)));
-                    }
-                } elseif (in_array($key, self::CLICK_IDS, true)) {
-                    if ($click === '' && isset(SEOProStats_Channels::CLICK_IDS[$key])) {
-                        $click = $key;
-                    }
-                } else {
-                    $keep[$key] = $value;
+                if (is_string($value)) {
+                    self::url_param($parts, strtolower((string) $key), $value);
                 }
             }
         }
+        $keep = $parts['keep'];
         ksort($keep);
         $path = '/' . ltrim(rawurldecode($path === '' ? '/' : $path), '/');
         return array(
             'path'  => $keep ? $path . '?' . http_build_query($keep) : $path,
-            'utm'   => $utm,
-            'click' => $click,
+            'utm'   => $parts['utm'],
+            'click' => $parts['click'],
         );
+    }
+
+    /**
+     * One query parameter into split_url()'s parts: a campaign tag (ref
+     * and source stand in for utm_source), an ad click id (the first known
+     * one names the click), or a parameter the path keeps.
+     *
+     * @param array{utm:array<string,string>,click:string,keep:array<string,string>} $parts Parts so far.
+     * @param string                                                                 $key   Name, lower case.
+     * @param string                                                                 $value Value.
+     */
+    private static function url_param(array &$parts, $key, $value) {
+        if (in_array($key, array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'), true)) {
+            $value = strtolower(trim(substr($value, 0, 200)));
+            if ($value !== '') {
+                $parts['utm'][$key] = $value;
+            }
+        } elseif ($key === 'ref' || $key === 'source') {
+            if (!isset($parts['utm']['utm_source']) && trim($value) !== '') {
+                $parts['utm']['utm_source'] = strtolower(trim(substr($value, 0, 200)));
+            }
+        } elseif (in_array($key, self::CLICK_IDS, true)) {
+            if ($parts['click'] === '' && isset(SEOProStats_Channels::CLICK_IDS[$key])) {
+                $parts['click'] = $key;
+            }
+        } else {
+            $parts['keep'][$key] = $value;
+        }
     }
 
     /**
