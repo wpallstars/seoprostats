@@ -4476,7 +4476,6 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             }
         }
         $add('table rows', !$missing, $missing ? 'missing: ' . implode(', ', $missing) : 'all ' . count(SEOProStats_Schema::names()) . ' present');
-
     }
 
     /**
@@ -4577,7 +4576,6 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
             $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');
         }
-
     }
 
     /**
@@ -4595,7 +4593,6 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $last      = is_array($processed) && isset($processed['last']) ? (int) $processed['last'] : 0;
         $stale     = $waiting > 0 && $last > 0 && $last < time() - 10 * MINUTE_IN_SECONDS;
         $add('processing', !$stale, sprintf('%s waiting; last run %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never'), 'warn');
-
     }
 
     /**
@@ -4609,7 +4606,6 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $behind  = $through !== '' ? $through < wp_date('Y-m-d', time() - 2 * DAY_IN_SECONDS) : SEOProStats_Rollup::due() !== null;
         $state   = SEOProStats_Rollup::state();
         $add('daily summaries', !$behind, sprintf('through %s; pruned %s', $through !== '' ? $through : 'none yet', isset($state['pruned']) ? (string) $state['pruned'] : 'never'), 'warn');
-
     }
 
     /**
@@ -4628,7 +4624,6 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             }
             $add('page caches', true, $detail);
         }
-
     }
 
     /**

@@ -28,7 +28,16 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Query {
+/**
+ * One report engine, so the REST API, WP-CLI, abilities and the dashboard
+ * agree on every number.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") One engine for every report; each step is a small private helper.
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") Dimension, range and metric tables and their SQL belong to one contract.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each query readable.
+ * @SuppressWarnings("PHPMD.TooManyPublicMethods") REST, WP-CLI, abilities, rollup and import code call these entry points.
+ */
+final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, abilities and the dashboard; private helpers decompose its queries.
 
     /** Named ranges. */
     const RANGES = array('realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom');
@@ -294,6 +303,17 @@ final class SEOProStats_Query {
             $json = wp_json_encode($filter);
             return self::filter_error(is_string($json) ? $json : '');
         }
+        return self::filter_fields($filter);
+    }
+
+    /**
+     * Check a filter's dimension, operator (default is) and values (1 to
+     * 100, without repeats).
+     *
+     * @param array<string,mixed> $filter Filter with dimension and values.
+     * @return array{dimension:string,op:string,values:string[]}|WP_Error
+     */
+    private static function filter_fields(array $filter) {
         $dimension = (string) $filter['dimension'];
         $op        = isset($filter['op']) ? (string) $filter['op'] : 'is';
         if (!isset(self::DIMENSIONS[$dimension]) || !in_array($op, self::OPS, true)) {
@@ -652,7 +672,7 @@ final class SEOProStats_Query {
     private static function compile_filter(array &$out, array $filter, $only, array $range) {
         list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
         // One visit value: its daily row (-1: no value matches).
-        $single = $only && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1 && isset(SEOProStats_Rollup::DIMS[$filter['dimension']]);
+        $single = $only && self::one_visit_value($filter, $level);
 
         if ($kind === 'text') {
             if ($single) {
@@ -665,7 +685,34 @@ final class SEOProStats_Query {
             self::add_condition($out, self::compile_variant($filter, $range));
             return;
         }
+        self::compile_ids($out, $filter, $single, $range);
+    }
 
+    /**
+     * Whether a filter is "is" one value of a visit dimension the daily
+     * table summarises.
+     *
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @param string                                            $level  Dimension level.
+     * @return bool
+     */
+    private static function one_visit_value(array $filter, $level) {
+        return $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1 && isset(SEOProStats_Rollup::DIMS[$filter['dimension']]);
+    }
+
+    /**
+     * Add an enum, dictionary or content filter: the ids it selects, as a
+     * visit column condition or (pages, events) the visits that have one.
+     *
+     * @param array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out    Compiled so far.
+     * @param array{dimension:string,op:string,values:string[]}                             $filter Filter.
+     * @param bool                                                                           $single Whether it is the only filter, one visit value.
+     * @param array<string,mixed>                                                            $range  From range().
+     * @param-out array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out
+     * @return void
+     */
+    private static function compile_ids(array &$out, array $filter, $single, array $range) {
+        list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
         $ids = self::filter_ids($kind, $column, $filter);
         if ($kind === 'content') {
             // Authors, categories, post types: the addresses that show them.

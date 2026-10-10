@@ -124,21 +124,21 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
      * @param int|null            $next  Next byte offset, or EOF.
      */
     private static function checkpoint($file, array $state, $next) {
-            if ($next === null) {
-                // End of the file: finished with it.
-                wp_delete_file($file);
-                $state['file']   = '';
-                $state['offset'] = 0;
-                // With no other taken file left, every hit received before
-                // this one was taken is processed (SEOProStats_Rollup::clear()).
-                if (!glob(SEOProStats_Collection::dir() . '/processing-*.php') && preg_match('/^processing-(\d+)-/', basename($file), $m)) {
-                    $state['clear'] = max(isset($state['clear']) ? (int) $state['clear'] : 0, (int) $m[1]);
-                }
-            } else {
-                $state['offset'] = $next;
+        if ($next === null) {
+            // End of the file: finished with it.
+            wp_delete_file($file);
+            $state['file']   = '';
+            $state['offset'] = 0;
+            // With no other taken file left, every hit received before
+            // this one was taken is processed (SEOProStats_Rollup::clear()).
+            if (!glob(SEOProStats_Collection::dir() . '/processing-*.php') && preg_match('/^processing-(\d+)-/', basename($file), $m)) {
+                $state['clear'] = max(isset($state['clear']) ? (int) $state['clear'] : 0, (int) $m[1]);
             }
-            $state['last'] = time();
-            update_option(self::STATE_OPTION, $state, false);
+        } else {
+            $state['offset'] = $next;
+        }
+        $state['last'] = time();
+        update_option(self::STATE_OPTION, $state, false);
     }
 
     /**
