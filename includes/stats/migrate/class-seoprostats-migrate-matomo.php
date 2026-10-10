@@ -84,6 +84,9 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
     const DIRECT   = 1;
     const CAMPAIGN = 6;
 
+    /** UTC timestamp format in its visit table. */
+    private const DATETIME_FORMAT = 'Y-m-d H:i:s';
+
     /** Its browser codes with a name SEO Pro Stats knows (the rest: Other). */
     const BROWSERS = array(
         'CH' => 'Chrome',
@@ -169,7 +172,7 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
             return false;
         }
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- another plugin's table, entries of its (idsite, visit_last_action_time) index.
-        return (bool) $wpdb->get_var($wpdb->prepare('SELECT 1 FROM %i WHERE idsite = %d AND visit_last_action_time >= %s AND visit_last_action_time < %s LIMIT 1', $this->table('log_visit'), $site, gmdate('Y-m-d H:i:s', (int) $start), gmdate('Y-m-d H:i:s', (int) $end)));
+        return (bool) $wpdb->get_var($wpdb->prepare('SELECT 1 FROM %i WHERE idsite = %d AND visit_last_action_time >= %s AND visit_last_action_time < %s LIMIT 1', $this->table('log_visit'), $site, gmdate(self::DATETIME_FORMAT, (int) $start), gmdate(self::DATETIME_FORMAT, (int) $end)));
     }
 
     /**
@@ -227,7 +230,7 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
         $sums = array();
         self::add($sums, '', 0, self::metrics($site));
 
-        $pages = $wpdb->get_results($wpdb->prepare("SELECT MAX(p.name) AS v, COUNT(*) AS pageviews, COUNT(DISTINCT a.idvisit) AS visits, COUNT(DISTINCT a.idvisit) AS visitors, COALESCE(SUM($time), 0) * 1000 AS engaged_ms FROM %i v INNER JOIN %i a ON a.idvisit = v.idvisit INNER JOIN %i p ON p.idaction = a.idaction_url WHERE v.idsite = %d AND v.visit_last_action_time >= %s AND v.visit_last_action_time < %s AND p.type = %d GROUP BY a.idaction_url ORDER BY pageviews DESC LIMIT %d", $this->table('log_visit'), $this->table('log_link_visit_action'), $action, $this->site_id(), gmdate('Y-m-d H:i:s', $start), gmdate('Y-m-d H:i:s', $end), self::PAGE, self::ROWS), ARRAY_A);
+        $pages = $wpdb->get_results($wpdb->prepare("SELECT MAX(p.name) AS v, COUNT(*) AS pageviews, COUNT(DISTINCT a.idvisit) AS visits, COUNT(DISTINCT a.idvisit) AS visitors, COALESCE(SUM($time), 0) * 1000 AS engaged_ms FROM %i v INNER JOIN %i a ON a.idvisit = v.idvisit INNER JOIN %i p ON p.idaction = a.idaction_url WHERE v.idsite = %d AND v.visit_last_action_time >= %s AND v.visit_last_action_time < %s AND p.type = %d GROUP BY a.idaction_url ORDER BY pageviews DESC LIMIT %d", $this->table('log_visit'), $this->table('log_link_visit_action'), $action, $this->site_id(), gmdate(self::DATETIME_FORMAT, $start), gmdate(self::DATETIME_FORMAT, $end), self::PAGE, self::ROWS), ARRAY_A);
         foreach ((array) $pages as $row) {
             self::add($sums, 'page', self::path((string) $row['v']), self::metrics($row));
         }
@@ -263,7 +266,11 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
                 $from  = (string) $row['ru'];
             } elseif ($type !== self::DIRECT) {
                 // The address it came from, else a name that is a host (websites).
-                $from = (string) $row['ru'] !== '' ? (string) $row['ru'] : (strpos((string) $row['rn'], '.') !== false ? (string) $row['rn'] : '');
+                if ((string) $row['ru'] !== '') {
+                    $from = (string) $row['ru'];
+                } elseif (strpos((string) $row['rn'], '.') !== false) {
+                    $from = (string) $row['rn'];
+                }
             }
             $groups[] = array(
                 // Its own pages as the referrer: no source.
@@ -290,7 +297,7 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
         $sql = '(SELECT v.idvisit AS k, v.visit_entry_idaction_url AS f, v.visit_exit_idaction_url AS l, v.config_browser_name AS b, v.config_os AS o, v.config_device_type AS d, v.location_country AS c, v.referer_type AS rt, v.referer_name AS rn, v.referer_keyword AS rk, v.referer_url AS ru, COALESCE(v.visit_total_time, 0) AS t,'
             . ' (SELECT COUNT(*) FROM %i a INNER JOIN %i p ON p.idaction = a.idaction_url WHERE a.idvisit = v.idvisit AND p.type = %d) AS n'
             . ' FROM %i v WHERE v.idsite = %d AND v.visit_last_action_time >= %s AND v.visit_last_action_time < %s) x';
-        return array($sql, array($this->table('log_link_visit_action'), $this->table('log_action'), self::PAGE, $this->table('log_visit'), $this->site_id(), gmdate('Y-m-d H:i:s', (int) $start), gmdate('Y-m-d H:i:s', (int) $end)));
+        return array($sql, array($this->table('log_link_visit_action'), $this->table('log_action'), self::PAGE, $this->table('log_visit'), $this->site_id(), gmdate(self::DATETIME_FORMAT, (int) $start), gmdate(self::DATETIME_FORMAT, (int) $end)));
     }
 
     /**

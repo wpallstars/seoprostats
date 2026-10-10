@@ -552,7 +552,12 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
         if (empty($answer['days']) || !is_array($answer['days'])) {
             return array();
         }
-        $data = isset($answer['days'][$day]) ? $answer['days'][$day] : (count($answer['days']) === 1 ? reset($answer['days']) : null);
+        $data = null;
+        if (isset($answer['days'][$day])) {
+            $data = $answer['days'][$day];
+        } elseif (count($answer['days']) === 1) {
+            $data = reset($answer['days']);
+        }
         if (!is_array($data) || !isset($data[$key]) || !is_array($data[$key])) {
             return array();
         }
