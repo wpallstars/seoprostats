@@ -74,18 +74,26 @@
 		});
 	}
 	function uploadFailed(error) {
-		// The site may have kept the file though its answer was lost: ask before saying it failed.
+		var message = (error && error.message) || __('The links could not be imported.', 'seoprostats');
+		function failed() {
+			linksProgress.hidden = true;
+			linksStatus.textContent = message;
+			linksForm.querySelector('button').disabled = false;
+		}
+		// A refusal from the site (such as another import still running) is its answer. Only a lost
+		// answer (an error page or a dropped connection) may hide a file the site kept: ask then.
+		var code = error && error.code;
+		if (code !== 'invalid_json' && code !== 'fetch_error') {
+			failed();
+			return;
+		}
 		wp.apiFetch({ path: base + 'backlinks/import' }).then(function (job) {
 			if (job.status === 'running') {
 				showLinks(job);
-				return;
+			} else {
+				failed();
 			}
-			throw error;
-		}).catch(function () {
-			linksProgress.hidden = true;
-			linksStatus.textContent = (error && error.message) || __('The links could not be imported.', 'seoprostats');
-			linksForm.querySelector('button').disabled = false;
-		});
+		}).catch(failed);
 	}
 	if (linksForm) {
 		linksForm.addEventListener('submit', function (event) {
