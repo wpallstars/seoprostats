@@ -58,6 +58,13 @@ final class SEOProStats_Demo {
     /** Days back from now whose visits have clicks: clicks are kept 3 months by default. */
     const CLICK_DAYS = 92;
 
+    /** Files loaded when needed. */
+    const GOALS_FILE   = '/class-seoprostats-goals.php';
+    const CHANGES_FILE = '/class-seoprostats-changes.php';
+
+    /** Where blog posts live. */
+    const BLOG = '/blog/';
+
     /**
      * Clicks by page (path prefix; '' on every page): selector, label,
      * target, flags (1 dead, 4 affiliate), chance per pageview.
@@ -65,8 +72,8 @@ final class SEOProStats_Demo {
     const CLICKS = array(
         ''           => array(
             array('a.custom-logo-link', 'Home', '/', 0, 0.04),
-            array('a.wp-block-navigation-item__content', 'Pricing', '/pricing/', 0, 0.05),
-            array('a.wp-block-navigation-item__content', 'Docs', '/docs/', 0, 0.03),
+            array('a.wp-block-navigation-item__content', 'Pricing', '/pricing/', 0, 0.05), // NOSONAR: demo data: paths and labels are made-up content, not names.
+            array('a.wp-block-navigation-item__content', 'Docs', '/docs/', 0, 0.03), // NOSONAR: demo data: paths and labels are made-up content, not names.
             array('button.wp-block-navigation__responsive-container-open', 'Open menu', '', 0, 0.04),
         ),
         '/blog/'     => array(
@@ -75,7 +82,7 @@ final class SEOProStats_Demo {
             array('a', 'Our recommended host', '/go/hosting/', 4, 0.02),
         ),
         '/pricing/'  => array(
-            array('a.wp-block-button__link', 'Buy Pro', '/shop/pro-licence/', 0, 0.12),
+            array('a.wp-block-button__link', 'Buy Pro', '/shop/pro-licence/', 0, 0.12), // NOSONAR: demo data: paths and labels are made-up content, not names.
             array('span.plan-badge', 'Most popular', '', 1, 0.05),
             array('summary', 'Can I cancel at any time?', '', 0, 0.06),
         ),
@@ -112,8 +119,8 @@ final class SEOProStats_Demo {
         'gmail'      => array(1, 'https://mail.google.com/', '', 'home'),
         'google_ads' => array(3, 'https://www.google.com/', '?utm_source=google&utm_medium=cpc&utm_campaign=brand&gclid={id}', 'product'),
         'meta_ads'   => array(1.2, 'https://m.facebook.com/', '?utm_source=facebook&utm_medium=paid_social&utm_campaign=autumn-sale&fbclid={id}', 'shop'),
-        'partner'    => array(2, 'https://example.org/best-wordpress-plugins/', '', 'product'),
-        'wordpress'  => array(1.5, 'https://wordpress.org/support/', '', 'docs'),
+        'partner'    => array(2, 'https://example.org/best-wordpress-plugins/', '', 'product'), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        'wordpress'  => array(1.5, 'https://wordpress.org/support/', '', 'docs'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'github'     => array(1, 'https://github.com/', '', 'docs'),
     );
 
@@ -208,14 +215,14 @@ final class SEOProStats_Demo {
      * takes over is shown as switched.
      */
     const SEARCH_QUERIES = array(
-        'core web vitals'                  => array('/blog/core-web-vitals-explained/', 420, 7.8, 6, '/blog/speed-up-wordpress/'),
+        'core web vitals'                  => array('/blog/core-web-vitals-explained/', 420, 7.8, 6, '/blog/speed-up-wordpress/'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'what are core web vitals'         => array('/blog/core-web-vitals-explained/', 160, 4.2, 3),
         'inp vs fid'                       => array('/blog/core-web-vitals-explained/', 70, 2.6, 1),
-        'how to read search rankings'      => array('/blog/how-to-read-search-rankings/', 110, 2.1, 2),
+        'how to read search rankings'      => array('/blog/how-to-read-search-rankings/', 110, 2.1, 2), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'average position search console'  => array('/blog/how-to-read-search-rankings/', 240, 5.4, 4),
-        'why did my rankings drop'         => array('/blog/what-changed-after-an-update/', 300, 9.6, 5, '/blog/how-to-read-search-rankings/'),
+        'why did my rankings drop'         => array('/blog/what-changed-after-an-update/', 300, 9.6, 5, '/blog/how-to-read-search-rankings/'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'google core update traffic drop'  => array('/blog/what-changed-after-an-update/', 190, 12.4, 2),
-        'privacy friendly analytics'       => array('/blog/privacy-friendly-analytics/', 260, 6.3, 4, '/'),
+        'privacy friendly analytics'       => array('/blog/privacy-friendly-analytics/', 260, 6.3, 4, '/'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'cookieless analytics wordpress'   => array('/blog/privacy-friendly-analytics/', 130, 3.9, 3),
         'gdpr analytics without consent'   => array('/blog/privacy-friendly-analytics/', 90, 11.2, 1),
         'speed up wordpress'               => array('/blog/speed-up-wordpress/', 520, 14.5, 7),
@@ -223,9 +230,9 @@ final class SEOProStats_Demo {
         'reduce ttfb wordpress'            => array('/blog/speed-up-wordpress/', 60, 6.7, 1, '/blog/core-web-vitals-explained/', 40),
         'seo pro stats'                    => array('/', 85, 1.1, 0, '/pricing/'),
         'seo pro stats pricing'            => array('/pricing/', 20, 1.3, 0),
-        'wordpress analytics plugin'       => array('/', 380, 16.8, 9, '/features/'),
+        'wordpress analytics plugin'       => array('/', 380, 16.8, 9, '/features/'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'site statistics plugin'           => array('/features/', 150, 9.4, 4),
-        'search console in wordpress'      => array('/features/', 110, 7.2, 3, '/docs/getting-started/'),
+        'search console in wordpress'      => array('/features/', 110, 7.2, 3, '/docs/getting-started/'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         'analytics with rankings and traffic' => array('/features/', 45, 4.6, 2),
         'seo pro stats docs'               => array('/docs/', 12, 1.0, 0),
         'connect search console service account' => array('/docs/getting-started/', 55, 3.3, 2),
@@ -278,15 +285,15 @@ final class SEOProStats_Demo {
      * consent, and the licence page's words.
      */
     const PAGE_TEXT = array(
-        '/'                                   => array('SEO Pro Stats', array('Private site statistics for WordPress', 'Traffic, rankings and conversions on one timeline'), 'See which pages bring visitors, which searches find them and what changed when numbers move. No cookies.', array('seo pro stats')),
-        '/blog/core-web-vitals-explained/'    => array('Core Web Vitals explained', array('What are Core Web Vitals?', 'Largest Contentful Paint', 'Cumulative Layout Shift'), 'Core Web Vitals measure how fast a page loads, how stable it is and how soon it responds. Here is what each one means and how to improve it.', array('core web vitals')),
-        '/blog/how-to-read-search-rankings/'  => array('How to read search rankings', array('Average position in Search Console', 'Clicks and impressions'), 'Search Console shows an average position for every query and page. This guide explains how to read rankings without being misled by averages.', array('search rankings', 'average position')),
-        '/blog/privacy-friendly-analytics/'   => array('Privacy-friendly analytics', array('Cookieless analytics for WordPress', 'What you can still measure'), 'Analytics without cookies or stored IP addresses still shows where visitors come from and what they read. GDPR friendly by design.', array('privacy friendly analytics')),
-        '/blog/speed-up-wordpress/'           => array('Speed up WordPress', array('Caching', 'Images', 'Fewer plugins'), 'Seven practical steps to speed up WordPress: page caching, smaller images, fewer plugins and a faster host.', array('speed up wordpress')),
-        '/blog/what-changed-after-an-update/' => array('What changed after an update', array('Reading the change log', 'Plugins, themes and settings'), 'When traffic moves after a plugin or theme update, the change log shows what changed and when, next to the chart.', array()),
+        '/'                                   => array('SEO Pro Stats', array('Private site statistics for WordPress', 'Traffic, rankings and conversions on one timeline'), 'See which pages bring visitors, which searches find them and what changed when numbers move. No cookies.', array('seo pro stats')), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        '/blog/core-web-vitals-explained/'    => array('Core Web Vitals explained', array('What are Core Web Vitals?', 'Largest Contentful Paint', 'Cumulative Layout Shift'), 'Core Web Vitals measure how fast a page loads, how stable it is and how soon it responds. Here is what each one means and how to improve it.', array('core web vitals')), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        '/blog/how-to-read-search-rankings/'  => array('How to read search rankings', array('Average position in Search Console', 'Clicks and impressions'), 'Search Console shows an average position for every query and page. This guide explains how to read rankings without being misled by averages.', array('search rankings', 'average position')), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        '/blog/privacy-friendly-analytics/'   => array('Privacy-friendly analytics', array('Cookieless analytics for WordPress', 'What you can still measure'), 'Analytics without cookies or stored IP addresses still shows where visitors come from and what they read. GDPR friendly by design.', array('privacy friendly analytics')), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        '/blog/speed-up-wordpress/'           => array('Speed up WordPress', array('Caching', 'Images', 'Fewer plugins'), 'Seven practical steps to speed up WordPress: page caching, smaller images, fewer plugins and a faster host.', array('speed up wordpress')), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        '/blog/what-changed-after-an-update/' => array('What changed after an update', array('Reading the change log', 'Plugins, themes and settings'), 'When traffic moves after a plugin or theme update, the change log shows what changed and when, next to the chart.', array()), // NOSONAR: demo data: paths and labels are made-up content, not names.
         '/features/'                          => array('Features', array('Site statistics plugin', 'Search Console in WordPress', 'Rankings and traffic together'), 'Analytics with rankings and traffic in one place: Search Console data inside WordPress, goals, funnels and a change log.', array('site statistics plugin')),
         '/pricing/'                           => array('Pricing', array('Plans'), 'SEO Pro Stats pricing: one plan for one site, more for agencies.', array()),
-        '/docs/'                              => array('Docs', array('Getting started', 'FAQ'), 'SEO Pro Stats docs: install, connect Search Console and read the reports.', array()),
+        '/docs/'                              => array('Docs', array('Getting started', 'FAQ'), 'SEO Pro Stats docs: install, connect Search Console and read the reports.', array()), // NOSONAR: demo data: paths and labels are made-up content, not names.
         '/docs/getting-started/'              => array('Getting started', array('Install the plugin', 'Connect Search Console'), 'Connect Search Console with a service account key: create the service account, add it to the property and paste its key.', array('connect search console')),
         '/docs/faq/'                          => array('FAQ', array('Can I get a refund?'), 'Questions people ask about SEO Pro Stats, such as refunds within 30 days.', array()),
         '/shop/pro-licence/'                  => array('Pro', array('What you get'), 'One year of updates and support for one site.', array()),
@@ -419,7 +426,7 @@ final class SEOProStats_Demo {
      * inspected, days since crawled.
      */
     const INSPECTIONS = array(
-        '/'                                   => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/', '/', 'Breadcrumbs', array(), 2, 3),
+        '/'                                   => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/', '/', 'Breadcrumbs', array(), 2, 3), // NOSONAR: demo data: paths and labels are made-up content, not names.
         '/features/'                          => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/features/', '/features/', 'Breadcrumbs', array(), 3, 6),
         '/pricing/'                           => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/pricing/', '/pricing/', 'Product snippets', array('Either "offers", "review", or "aggregateRating" should be specified' => 'ERROR', 'Missing field "brand"' => 'WARNING'), 3, 5),
         '/blog/core-web-vitals-explained/'    => array('PASS', 'Submitted and indexed', 'ALLOWED', 'INDEXING_ALLOWED', '/blog/core-web-vitals-explained/', '/blog/core-web-vitals-explained/', 'Breadcrumbs', array(), 5, 9),
@@ -524,8 +531,8 @@ final class SEOProStats_Demo {
     /** Example goals of the demo data (SEOProStats_Goals), from its pages and events. */
     const GOALS = array(
         array('name' => 'Purchase', 'kind' => 'event', 'match' => 'Purchase'),
-        array('name' => 'Newsletter signup', 'kind' => 'event', 'match' => 'Newsletter signup'),
-        array('name' => 'Contact form sent', 'kind' => 'event', 'match' => 'Contact form'),
+        array('name' => 'Newsletter signup', 'kind' => 'event', 'match' => 'Newsletter signup'), // NOSONAR: demo data: paths and labels are made-up content, not names.
+        array('name' => 'Contact form sent', 'kind' => 'event', 'match' => 'Contact form'), // NOSONAR: demo data: paths and labels are made-up content, not names.
         array('name' => 'Download', 'kind' => 'event', 'match' => 'Download'),
         array('name' => 'Affiliate click', 'kind' => 'event', 'match' => 'Affiliate link'),
         array('name' => 'Viewed pricing', 'kind' => 'page', 'match' => '/pricing/'),
@@ -558,7 +565,7 @@ final class SEOProStats_Demo {
      * details. Repeating ones (updates, edits) come from change_rows().
      */
     const CHANGES = array(
-        array(2, 9, 23, '/shop/pro-licence/', 'product', '99', '79', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'regular')),
+        array(2, 9, 23, '/shop/pro-licence/', 'product', '99', '79', array('name' => 'Pro licence', 'currency' => 'USD', 'field' => 'regular')), // NOSONAR: demo data: paths and labels are made-up content, not names.
         array(6, 16, 4, '/blog/how-to-read-search-rankings/', 'post', 'How to read search rankings', 'How to read your search rankings in 2026', array('name' => 'How to read your search rankings in 2026')),
         array(11, 11, 20, '/shop/pro-licence/', 'product', 'instock', 'outofstock', array('name' => 'Pro licence', 'currency' => 'USD')),
         array(9, 8, 21, '/shop/pro-licence/', 'product', 'outofstock', 'instock', array('name' => 'Pro licence', 'currency' => 'USD')),
@@ -727,8 +734,8 @@ final class SEOProStats_Demo {
      */
     private static function ab_tests() {
         global $wpdb;
-        require_once __DIR__ . '/class-seoprostats-goals.php';
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::GOALS_FILE;
+        require_once __DIR__ . self::CHANGES_FILE;
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return;
         }
@@ -793,7 +800,8 @@ final class SEOProStats_Demo {
      */
     private static function ab_shown(array &$paths, array &$context, $started) {
         $shown = array();
-        for ($i = 0; $i < count($paths) && self::$ab; $i++) {
+        // $paths grows as variants send visits on, so test each index as it comes.
+        for ($i = 0; isset($paths[$i]) && self::$ab; $i++) {
             $shown[$i] = array();
             foreach (self::AB_TESTS as $test) {
                 list($id, $path, , , , $next, , $variants) = $test;
@@ -863,7 +871,7 @@ final class SEOProStats_Demo {
     public static function refresh() {
         // Demo data made before goals existed gets the examples once.
         if (self::ready()) {
-            require_once __DIR__ . '/class-seoprostats-goals.php';
+            require_once __DIR__ . self::GOALS_FILE;
             $none = self::run(static function () {
                 return get_option(SEOProStats_Schema::option(SEOProStats_Goals::GOALS_OPTION)) === false;
             });
@@ -917,7 +925,7 @@ final class SEOProStats_Demo {
      * Remove the demo tables and their progress; nothing of live data.
      */
     public static function remove() {
-        require_once __DIR__ . '/class-seoprostats-goals.php';
+        require_once __DIR__ . self::GOALS_FILE;
         require_once __DIR__ . '/class-seoprostats-audit.php';
         require_once __DIR__ . '/class-seoprostats-indexation.php';
         require_once __DIR__ . '/class-seoprostats-targets.php';
@@ -942,7 +950,7 @@ final class SEOProStats_Demo {
      * Give the demo data its example goals and funnels, replacing any.
      */
     public static function examples() {
-        require_once __DIR__ . '/class-seoprostats-goals.php';
+        require_once __DIR__ . self::GOALS_FILE;
         self::run(static function () {
             SEOProStats_Goals::replace(self::GOALS, self::FUNNELS);
         });
@@ -957,7 +965,7 @@ final class SEOProStats_Demo {
      * @param bool $search Only SEARCH_CHANGES (demo data made before them).
      */
     private static function changes($from, $search = false) {
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         self::run(static function () use ($from, $search) {
             if (!SEOProStats_Schema::maybe_upgrade()) {
                 return;
@@ -981,8 +989,17 @@ final class SEOProStats_Demo {
     private static function change_rows($from, $to, $search = false) {
         $today = new DateTimeImmutable('today', wp_timezone());
         $rows  = array();
-        $add   = static function ($days, $hour, $kind, $path, $type, $old, $new, array $meta) use (&$rows, $today, $from, $to) {
-            $ts = $today->modify('-' . (int) $days . ' days')->setTime((int) $hour, ($kind * 7) % 60)->getTimestamp();
+        $add   = static function ($days, $hour, $kind, $path, $type, $old, $new, array $meta) use (&$rows, $today, $from, $to) { // NOSONAR: one change's columns, as CHANGES lists them.
+            $ts = self::add_days($today, -(int) $days)->setTime((int) $hour, ($kind * 7) % 60)->getTimestamp();
+            // Updates are logged by WordPress, notes by people, search updates by the import; the rest by the plugin.
+            $source = 1;
+            if (in_array((int) $kind, array(41, 47), true)) {
+                $source = 4;
+            } elseif ((int) $kind === SEOProStats_Changes::NOTE) {
+                $source = 6;
+            } elseif ((int) $kind === SEOProStats_Changes::SEARCH_UPDATE) {
+                $source = 5;
+            }
             if ($ts >= $from && $ts <= $to) {
                 $rows[] = array(
                     'ts'          => $ts,
@@ -993,7 +1010,7 @@ final class SEOProStats_Demo {
                     'old'         => (string) $old,
                     'new'         => (string) $new,
                     'meta'        => $meta,
-                    'source'      => in_array((int) $kind, array(41, 47), true) ? 4 : ((int) $kind === SEOProStats_Changes::NOTE ? 6 : ((int) $kind === SEOProStats_Changes::SEARCH_UPDATE ? 5 : 1)),
+                    'source'      => $source,
                     'user_id'     => 0,
                 );
             }
@@ -1016,7 +1033,7 @@ final class SEOProStats_Demo {
             $add($days, 4, 47, '', 'core', '6.' . (5 + $n), '6.' . (6 + $n), array('name' => 'WordPress'));
         }
         $posts = array_values(array_filter(array_keys(self::CONTENT), static function ($path) {
-            return strpos($path, '/blog/') === 0;
+            return strpos($path, self::BLOG) === 0;
         }));
         $n     = 0;
         for ($days = $span - 5; $days >= 1; $days -= 13, $n++) {
@@ -1038,7 +1055,7 @@ final class SEOProStats_Demo {
                     'name'   => sprintf($type === 'core' ? __('Demo core update %d', 'seoprostats') : __('Demo spam update %d', 'seoprostats'), $n + 1),
                     'engine' => 'Google',
                     'url'    => 'https://status.search.google.com/',
-                    'ended'  => $ended > 0 ? gmdate('c', $today->modify('-' . $ended . ' days')->setTime(12, 0)->getTimestamp()) : '',
+                    'ended'  => $ended > 0 ? gmdate('c', self::add_days($today, -$ended)->setTime(12, 0)->getTimestamp()) : '',
                 ));
             }
         }
@@ -1225,7 +1242,7 @@ final class SEOProStats_Demo {
         }
         SEOProStats_Backlinks::write_links($links);
         // Their changes on the timeline, as the daily check writes them: one per referring site and day.
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         $by = array();
         foreach (self::BACKLINKS as $link) {
             $host  = (string) wp_parse_url($link[0], PHP_URL_HOST);
@@ -1240,7 +1257,7 @@ final class SEOProStats_Demo {
         foreach ($by as $change) {
             $paths = array_values(array_unique(array_column($change['links'], 'to')));
             SEOProStats_Changes::write(array(
-                'ts'          => $today->modify('-' . $change['days'] . ' days')->setTime(6, 30)->getTimestamp(),
+                'ts'          => self::add_days($today, -(int) $change['days'])->setTime(6, 30)->getTimestamp(),
                 'kind'        => $change['kind'],
                 'path'        => count($paths) === 1 ? (string) $paths[0] : '',
                 'object_type' => 'backlink',
@@ -1262,7 +1279,7 @@ final class SEOProStats_Demo {
      */
     private static function inspections() {
         require_once __DIR__ . '/class-seoprostats-inspections.php';
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return;
         }
@@ -1277,7 +1294,7 @@ final class SEOProStats_Demo {
                 'coverageState'  => $coverage,
                 'robotsTxtState' => $robots,
                 'indexingState'  => $indexing,
-                'pageFetchState' => $robots === 'DISALLOWED' ? 'BLOCKED_ROBOTS_TXT' : ($crawled ? 'SUCCESSFUL' : 'PAGE_FETCH_STATE_UNSPECIFIED'),
+                'pageFetchState' => self::fetch_state($robots, $crawled),
                 'crawledAs'      => 'MOBILE',
                 'sitemap'        => array(home_url(strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0 ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml')),
                 'referringUrls'  => $path === '/' ? array() : array(home_url('/')),
@@ -1370,7 +1387,7 @@ final class SEOProStats_Demo {
      * search days are made.
      */
     private static function experiments() {
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         require_once __DIR__ . '/class-seoprostats-experiments.php';
         $state = self::state();
         $from  = isset($state['from']) ? (int) $state['from'] : time() - self::DAYS * DAY_IN_SECONDS;
@@ -1423,10 +1440,9 @@ final class SEOProStats_Demo {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
         $tz    = wp_timezone();
         $today = new DateTimeImmutable('today', $tz);
-        $final = $today->modify('-' . self::SEARCH_LAG . ' days')->format('Y-m-d');
+        $final = self::add_days($today, -self::SEARCH_LAG)->format('Y-m-d');
         $first = (new DateTimeImmutable('@' . (isset($state['from']) ? (int) $state['from'] : time())))->setTimezone($tz)->format('Y-m-d');
-        $made  = isset($state['search']) ? (string) $state['search'] : '';
-        $day   = $made !== '' && $made >= $first ? (new DateTimeImmutable($made, $tz))->modify('+1 day') : new DateTimeImmutable($first, $tz);
+        $day   = self::resume_day(isset($state['search']) ? (string) $state['search'] : '', $first, $tz);
         $ids   = null;
         while ($day->format('Y-m-d') <= $final) {
             if (!SEOProStats_Feature::more_time($start, $budget)) {
@@ -1440,16 +1456,15 @@ final class SEOProStats_Demo {
             }
             $state['search'] = $day->format('Y-m-d');
             update_option(self::OPTION, $state, false);
-            $day = $day->modify('+1 day');
+            $day = self::add_days($day, 1);
         }
 
         // Bing's days, through the end of its newest week given (it comes
         // some days after the week, as from Bing); demo data made before
         // Bing gets them here too.
-        $final = $today->modify('-' . (self::SEARCH_LAG + 6) . ' days');
-        $final = $final->modify('-' . (((int) $final->format('N') - self::BING_WEEK_END + 7) % 7) . ' days')->format('Y-m-d');
-        $made  = isset($state['bing']) ? (string) $state['bing'] : '';
-        $day   = $made !== '' && $made >= $first ? (new DateTimeImmutable($made, $tz))->modify('+1 day') : new DateTimeImmutable($first, $tz);
+        $final = self::add_days($today, -(self::SEARCH_LAG + 6));
+        $final = self::add_days($final, -((((int) $final->format('N') - self::BING_WEEK_END + 7) % 7)))->format('Y-m-d');
+        $day   = self::resume_day(isset($state['bing']) ? (string) $state['bing'] : '', $first, $tz);
         while ($day->format('Y-m-d') <= $final) {
             if (!SEOProStats_Feature::more_time($start, $budget)) {
                 return false;
@@ -1462,9 +1477,36 @@ final class SEOProStats_Demo {
             }
             $state['bing'] = $day->format('Y-m-d');
             update_option(self::OPTION, $state, false);
-            $day = $day->modify('+1 day');
+            $day = self::add_days($day, 1);
         }
         return true;
+    }
+
+    /**
+     * The day to make next: the day after the last one made, or the first
+     * day when none (or one before it) was made.
+     *
+     * @param string       $made  The last day made (Y-m-d), or ''.
+     * @param string       $first The first day (Y-m-d).
+     * @param DateTimeZone $tz    Site time zone.
+     * @return DateTimeImmutable
+     */
+    private static function resume_day($made, $first, DateTimeZone $tz) {
+        if ($made !== '' && $made >= $first) {
+            return self::add_days(new DateTimeImmutable($made, $tz), 1);
+        }
+        return new DateTimeImmutable($first, $tz);
+    }
+
+    /**
+     * A day some days later (or earlier, when negative).
+     *
+     * @param DateTimeImmutable $day  Day.
+     * @param int               $days Days to add.
+     * @return DateTimeImmutable
+     */
+    private static function add_days(DateTimeImmutable $day, $days) {
+        return $day->modify(sprintf('%+d days', (int) $days));
     }
 
     /** The weekday Bing's demo weeks end on (ISO-8601: 4 is Thursday). */
@@ -1871,7 +1913,8 @@ final class SEOProStats_Demo {
 
         $paths = array(self::pick_key(self::LANDINGS[$landing]));
         $pages = self::chance(0.46) ? 1 : 2 + min(6, (int) floor(-log(max(1e-6, self::unit())) * 1.6));
-        while (count($paths) < $pages) {
+        // Until the visit has $pages pages ($paths is a list).
+        while (!isset($paths[$pages - 1])) {
             $last = end($paths);
             if (($last === '/pricing/' || $last === '/shop/pro-licence/') && self::chance(0.12)) {
                 $paths[] = '/cart/';
@@ -2009,7 +2052,7 @@ final class SEOProStats_Demo {
      */
     private static function events($path, array $who) {
         $out = array();
-        if (strpos($path, '/blog/') === 0 && $path !== '/blog/' && self::chance(0.025)) {
+        if (strpos($path, self::BLOG) === 0 && $path !== self::BLOG && self::chance(0.025)) {
             $out[] = array('t' => 'e', 'n' => 'Newsletter signup', 'd' => array('form' => self::chance(0.6) ? 'inline' : 'footer'));
         }
         if (strpos($path, '/docs/') === 0 && self::chance(0.06)) {
@@ -2023,7 +2066,12 @@ final class SEOProStats_Demo {
         }
         if ($path === '/checkout/order-received/') {
             $plan     = self::PLANS[self::pick_index(self::PLANS)];
-            $currency = $who['cc'] === 'GB' ? 'GBP' : (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true) ? 'EUR' : 'USD');
+            $currency = 'USD';
+            if ($who['cc'] === 'GB') {
+                $currency = 'GBP';
+            } elseif (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true)) {
+                $currency = 'EUR';
+            }
             $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
         }
         return $out;
@@ -2086,6 +2134,20 @@ final class SEOProStats_Demo {
             'h'  => self::$host,
             'e'  => array($hit),
         );
+    }
+
+    /**
+     * A demo inspection's page fetch state.
+     *
+     * @param string $robots  robots.txt state.
+     * @param mixed  $crawled When Google crawled the page (INSPECTIONS); empty when never.
+     * @return string
+     */
+    private static function fetch_state($robots, $crawled) {
+        if ($robots === 'DISALLOWED') {
+            return 'BLOCKED_ROBOTS_TXT';
+        }
+        return $crawled ? 'SUCCESSFUL' : 'PAGE_FETCH_STATE_UNSPECIFIED';
     }
 
     /**

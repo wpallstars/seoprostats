@@ -255,7 +255,10 @@ final class SEOProStats_Conversions {
             $steps   = array();
             foreach ($funnel['steps'] as $i => $step) {
                 $here    = isset($reached[$i]) ? $reached[$i] : 0;
-                $before  = $i ? (isset($reached[$i - 1]) ? $reached[$i - 1] : 0) : $here;
+                $before  = $here;
+                if ($i) {
+                    $before = isset($reached[$i - 1]) ? $reached[$i - 1] : 0;
+                }
                 $steps[] = array(
                     'name'      => $step['name'],
                     'kind'      => $step['kind'],

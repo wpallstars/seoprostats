@@ -274,8 +274,9 @@ final class SEOProStats_AB_Tests {
                 $goals[] = $goal;
             }
         }
+        $id = isset($attrs['testId']) ? $attrs['testId'] : '';
         return array(
-            'id'     => self::valid_id(isset($attrs['testId']) ? $attrs['testId'] : '') ? (string) $attrs['testId'] : '',
+            'id'     => self::valid_id($id) ? (string) $id : '',
             'name'   => isset($attrs['name']) && is_string($attrs['name']) ? mb_substr(sanitize_text_field($attrs['name']), 0, 190) : '',
             'status' => $status,
             'goals'  => $goals,
@@ -570,7 +571,11 @@ final class SEOProStats_AB_Tests {
             if ($status === self::STATUSES['running'] || $status === self::STATUSES['ended']) {
                 $started = $started ?: $now;
             }
-            $ended    = $status === self::STATUSES['ended'] ? ($ended ?: $now) : 0;
+            if ($status !== self::STATUSES['ended']) {
+                $ended = 0;
+            } elseif (!$ended) {
+                $ended = $now;
+            }
             $variants = self::variants(self::inner_attributes($test));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key, on saving a post.
             $wpdb->query($wpdb->prepare(
@@ -686,7 +691,7 @@ final class SEOProStats_AB_Tests {
      */
     private static function markers($post_id, array $attrs, array $variants, $prev, $title) {
         $codes  = array_flip(self::STATUSES);
-        $before = $prev ? (isset($codes[(int) $prev['status']]) ? $codes[(int) $prev['status']] : 'draft') : 'draft';
+        $before = $prev && isset($codes[(int) $prev['status']]) ? $codes[(int) $prev['status']] : 'draft';
         $now    = $attrs['status'];
         $name   = $attrs['name'] !== '' ? $attrs['name'] : sanitize_text_field((string) $title);
         $kinds  = array(

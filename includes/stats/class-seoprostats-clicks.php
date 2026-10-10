@@ -120,8 +120,11 @@ final class SEOProStats_Clicks {
      * @return array<string,mixed>
      */
     public static function with_edit_url(array $info) {
-        $post_id = (int) $info['post_id'];
-        $info['edit_url'] = $post_id && current_user_can('edit_post', $post_id) ? (get_edit_post_link($post_id, 'raw') ?: null) : null;
+        $post_id          = (int) $info['post_id'];
+        $info['edit_url'] = null;
+        if ($post_id && current_user_can('edit_post', $post_id)) {
+            $info['edit_url'] = get_edit_post_link($post_id, 'raw') ?: null;
+        }
         return $info;
     }
 
@@ -234,8 +237,16 @@ final class SEOProStats_Clicks {
         }
         // Links and files by destination (with a label they were clicked
         // as); elements by element and label; forms by all three.
-        $by     = $links ? 'c.target_id' : ($form ? 'c.selector_id, c.label_id, c.target_id' : 'c.selector_id, c.label_id');
-        $select = $links ? 'MAX(c.selector_id) AS s, MAX(c.label_id) AS l, c.target_id AS t' : ($form ? 'c.selector_id AS s, c.label_id AS l, c.target_id AS t' : 'c.selector_id AS s, c.label_id AS l, MAX(c.target_id) AS t');
+        if ($links) {
+            $by     = 'c.target_id';
+            $select = 'MAX(c.selector_id) AS s, MAX(c.label_id) AS l, c.target_id AS t';
+        } elseif ($form) {
+            $by     = 'c.selector_id, c.label_id, c.target_id';
+            $select = 'c.selector_id AS s, c.label_id AS l, c.target_id AS t';
+        } else {
+            $by     = 'c.selector_id, c.label_id';
+            $select = 'c.selector_id AS s, c.label_id AS l, MAX(c.target_id) AS t';
+        }
         // In placeholder order: the select's flag, the scope, the kind and its own, limit and offset.
         $args = array_merge(
             array(self::DEAD),

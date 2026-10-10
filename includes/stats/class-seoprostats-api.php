@@ -30,6 +30,9 @@ final class SEOProStats_API {
     /** Capability that reads statistics. */
     const CAP = 'view_seoprostats';
 
+    /** SEOProStats_Migrate's file, loaded only by the import routes. */
+    const MIGRATE_FILE = 'includes/stats/class-seoprostats-migrate.php';
+
     /**
      * Register hooks.
      */
@@ -1108,7 +1111,7 @@ final class SEOProStats_API {
         $id = (int) $request->get_param('id');
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
         $source = (string) $wpdb->get_var($wpdb->prepare('SELECT source FROM %i WHERE id = %d', SEOProStats_Schema::table('imports'), $id));
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        require_once SEOPROSTATS_DIR . self::MIGRATE_FILE;
         // Imports from other statistics plugins undo through SEOProStats_Migrate.
         $deleted = SEOProStats_Migrate::owns($source) ? SEOProStats_Migrate::undo($id) : SEOProStats_Search_Import::undo($id);
         if (is_wp_error($deleted)) {
@@ -1193,7 +1196,7 @@ final class SEOProStats_API {
      * @return WP_REST_Response
      */
     public static function migrate_status($request) {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        require_once SEOPROSTATS_DIR . self::MIGRATE_FILE;
         SEOProStats_Migrate::nudge();
         return rest_ensure_response(SEOProStats_Migrate::status((bool) $request->get_param('fresh')));
     }
@@ -1206,7 +1209,7 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function migrate_run($request) {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        require_once SEOPROSTATS_DIR . self::MIGRATE_FILE;
         $source = (string) $request->get_param('source');
         $args   = array(
             'from'   => (string) $request->get_param('from'),
@@ -1231,7 +1234,7 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function migrate_cleanup($request) {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-migrate.php';
+        require_once SEOPROSTATS_DIR . self::MIGRATE_FILE;
         return self::with_status(SEOProStats_Migrate::cleanup((string) $request->get_param('source'), (bool) $request->get_param('dry_run')), 400);
     }
 
@@ -1275,10 +1278,8 @@ final class SEOProStats_API {
      */
     public static function demo_make($request) {
         $status = SEOProStats_Demo::status();
-        if ($status['status'] === 'none' || $request->get_param('restart')) {
-            if (!SEOProStats_Demo::start((int) $request->get_param('days'))) {
-                return new WP_Error('seoprostats_demo_tables', __('The demo tables could not be made.', 'seoprostats'), array('status' => 500));
-            }
+        if (($status['status'] === 'none' || $request->get_param('restart')) && !SEOProStats_Demo::start((int) $request->get_param('days'))) {
+            return new WP_Error('seoprostats_demo_tables', __('The demo tables could not be made.', 'seoprostats'), array('status' => 500));
         }
         return rest_ensure_response(SEOProStats_Demo::step() + array('viewing' => SEOProStats_Demo::viewing()));
     }

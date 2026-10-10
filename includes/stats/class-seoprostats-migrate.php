@@ -51,6 +51,9 @@ final class SEOProStats_Migrate {
     /** Tries per day when a remote source is busy, before the import stops. */
     const TRIES = 6;
 
+    /** SEOProStats_Changes's file, loaded when an import writes to the change log. */
+    const CHANGES_FILE = '/class-seoprostats-changes.php';
+
     /** Cron hook of a running import. */
     const HOOK = SEOProStats_Collection::MIGRATE_HOOK;
 
@@ -169,16 +172,28 @@ final class SEOProStats_Migrate {
                     continue;
                 }
                 // The days it has and those still to import, in one pass over its days.
-                $plan      = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
+                $plan = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
+                $days = 0;
+                if (is_array($plan)) {
+                    $days = (int) $plan['days'];
+                } elseif ($data['from'] !== '') {
+                    $days = count($source->day_list($data['from'], $data['to']));
+                }
+                // Unknown (-1) while it cannot hand its history over: the notices wait.
+                $pending = -1;
+                if ($note === '' && $plan === null) {
+                    $pending = 0;
+                } elseif ($note === '' && is_array($plan)) {
+                    $pending = count($plan['import']);
+                }
                 $out[$key] = array(
                     'key'               => $key,
                     'name'              => $class::NAME,
                     'version'           => $data['version'],
                     'from'              => $data['from'],
                     'to'                => $data['to'],
-                    'days'              => is_array($plan) ? (int) $plan['days'] : ($data['from'] !== '' ? count($source->day_list($data['from'], $data['to'])) : 0),
-                    // Unknown (-1) while it cannot hand its history over: the notices wait.
-                    'pending'           => $note !== '' ? -1 : ($plan === null ? 0 : (is_array($plan) ? count($plan['import']) : -1)),
+                    'days'              => $days,
+                    'pending'           => $pending,
                     'pending_from'      => is_array($plan) && $plan['import'] ? (string) min($plan['import']) : '',
                     'pending_to'        => is_array($plan) && $plan['import'] ? (string) max($plan['import']) : '',
                     'plugin'            => $plugin,
@@ -524,7 +539,15 @@ final class SEOProStats_Migrate {
             $now     = SEOProStats_Settings::get($key);
             $value   = SEOProStats_Settings::sanitize_value($setting['value'], $schema[$key]);
             $default = self::same($now, $defaults[$key]);
-            $out[]   = array(
+            $same    = self::same($now, $value);
+            // Already the same comes first: nothing would change either way.
+            $reason = '';
+            if ($same) {
+                $reason = 'same';
+            } elseif (!$default) {
+                $reason = 'set';
+            }
+            $out[] = array(
                 'key'    => $key,
                 'label'  => isset($schema[$key]['label']) ? (string) $schema[$key]['label'] : $key,
                 'theirs' => (string) $setting['label'],
@@ -533,9 +556,8 @@ final class SEOProStats_Migrate {
                 'to'     => self::words($value, $schema[$key]),
                 'value'  => $value,
                 'also'   => isset($setting['also']) ? (array) $setting['also'] : array(),
-                'change' => $default && !self::same($now, $value),
-                // Already the same comes first: nothing would change either way.
-                'reason' => self::same($now, $value) ? 'same' : (!$default ? 'set' : ''),
+                'change' => $default && !$same,
+                'reason' => $reason,
             );
         }
         return $out;
@@ -1040,7 +1062,8 @@ final class SEOProStats_Migrate {
         }
         $source   = self::source((string) $item['key']);
         $state    = self::state();
-        $settings = $source ? self::apply_settings($source, isset($state['settings']) && is_array($state['settings']) ? $state['settings'] : null) : array();
+        $chosen   = isset($state['settings']) && is_array($state['settings']) ? $state['settings'] : null;
+        $settings = $source ? self::apply_settings($source, $chosen) : array();
         $meta     = array(
             'version'  => isset($item['version']) ? (string) $item['version'] : '',
             'days'     => (int) $item['imported'],
@@ -1052,7 +1075,7 @@ final class SEOProStats_Migrate {
             $meta['error'] = (string) $item['error'];
         }
         if ($source && $item['last'] !== '') {
-            require_once __DIR__ . '/class-seoprostats-changes.php';
+            require_once __DIR__ . self::CHANGES_FILE;
             /* translators: %s: plugin name. */
             $note = SEOProStats_Changes::annotate(sprintf(__('Statistics imported from %s', 'seoprostats'), $source::NAME), '', $item['last'] . ' 23:59');
             if (is_array($note) && isset($note['id'])) {
@@ -1153,7 +1176,7 @@ final class SEOProStats_Migrate {
             } while ($rows === self::DELETE_BATCH);
             $meta = json_decode((string) $row['meta'], true);
             if (is_array($meta) && !empty($meta['note'])) {
-                require_once __DIR__ . '/class-seoprostats-changes.php';
+                require_once __DIR__ . self::CHANGES_FILE;
                 SEOProStats_Changes::delete_note((int) $meta['note']);
             }
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
@@ -1327,7 +1350,7 @@ final class SEOProStats_Migrate {
         $before = SEOProStats_Schema::use_set('live');
         try {
             if (SEOProStats_Schema::is_current()) {
-                require_once __DIR__ . '/class-seoprostats-changes.php';
+                require_once __DIR__ . self::CHANGES_FILE;
                 /* translators: %s: plugin name. */
                 SEOProStats_Changes::annotate(sprintf(__('Leftover data of %s removed', 'seoprostats'), $source::NAME));
             }

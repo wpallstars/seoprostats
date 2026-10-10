@@ -461,12 +461,20 @@ final class SEOProStats_AB_Report {
             if ($base !== null && isset($v['goals'], $base['goals'])) {
                 $goal_rows = array();
                 foreach ($v['goals'] as $g => $goal) {
-                    $c           = $base['goals'][$g];
-                    $goal_rows[] = $goal + ($v['control'] ? array('uplift' => null, 'interval' => null, 'probability' => null) : array(
+                    $c = $base['goals'][$g];
+                    if ($v['control']) {
+                        $goal_rows[] = $goal + array('uplift' => null, 'interval' => null, 'probability' => null);
+                        continue;
+                    }
+                    $probability = null;
+                    if ($base['visits'] && $v['visits']) {
+                        $probability = round(self::prob_beat($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']), 4);
+                    }
+                    $goal_rows[] = $goal + array(
                         'uplift'      => self::uplift($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
                         'interval'    => self::interval($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
-                        'probability' => $base['visits'] && $v['visits'] ? round(self::prob_beat($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']), 4) : null,
-                    ));
+                        'probability' => $probability,
+                    );
                 }
                 $v['goals'] = $goal_rows;
             }
@@ -792,7 +800,7 @@ final class SEOProStats_AB_Report {
         if ($ab <= $aa) {
             return self::clamp(self::beta_sum($aa, $ba, $ab, $bb));
         }
-        return self::clamp(1 - self::beta_sum($ab, $bb, $aa, $ba));
+        return self::clamp(1 - self::beta_sum($ab, $bb, $aa, $ba)); // NOSONAR: swapped on purpose, P(B > A) = 1 - P(A > B).
     }
 
     /**

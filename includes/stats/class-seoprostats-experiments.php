@@ -99,6 +99,11 @@ final class SEOProStats_Experiments {
     const MAX_CHANGES     = 5000;
     const MAX_CONFOUNDERS = 20;
 
+    /** Classes loaded when needed, from this directory. */
+    const CHANGES_FILE = '/class-seoprostats-changes.php';
+    const GOALS_FILE   = '/class-seoprostats-goals.php';
+    const ROLLUP_FILE  = '/class-seoprostats-rollup.php';
+
     /** @var array<string,string> Newest day with search data by data set and engine code, per request. */
     private static $through = array();
 
@@ -115,7 +120,7 @@ final class SEOProStats_Experiments {
      */
     public static function add(array $input) {
         global $wpdb;
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         require_once __DIR__ . '/class-seoprostats-dict.php';
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return self::error('seoprostats_experiment_failed', __('The experiment could not be saved.', 'seoprostats'), 500);
@@ -126,7 +131,7 @@ final class SEOProStats_Experiments {
         }
 
         $change_id = isset($input['change']) ? max(0, (int) $input['change']) : 0;
-        $pages     = self::paths(isset($input['pages']) ? $input['pages'] : (isset($input['page']) ? $input['page'] : ''));
+        $pages     = self::paths($input['pages'] ?? ($input['page'] ?? ''));
         if ($change_id) {
             $change = SEOProStats_Changes::get($change_id);
             if (!$change) {
@@ -327,7 +332,7 @@ final class SEOProStats_Experiments {
         $page  = isset($args['page']) ? trim((string) $args['page']) : '';
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- our own table, by primary key, key status_review or key path_id; $cols is a fixed column list.
         if ($page !== '') {
-            require_once __DIR__ . '/class-seoprostats-changes.php';
+            require_once __DIR__ . self::CHANGES_FILE;
             $path = SEOProStats_Changes::path($page);
             $ids  = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array($path));
             $id   = $ids ? (int) $ids[0] : -1;
@@ -419,7 +424,7 @@ final class SEOProStats_Experiments {
         $through = self::data_through((int) $row['engine'], (int) $row['metric']);
         $goal    = null;
         if (!empty($meta['goal'])) {
-            require_once __DIR__ . '/class-seoprostats-goals.php';
+            require_once __DIR__ . self::GOALS_FILE;
             $found = SEOProStats_Goals::find('goals', (string) $meta['goal']);
             $goal  = array('id' => (string) $meta['goal'], 'name' => $found ? (string) $found['name'] : null);
         }
@@ -471,7 +476,7 @@ final class SEOProStats_Experiments {
      */
     public static function measure(array $row) {
         require_once __DIR__ . '/class-seoprostats-search.php';
-        require_once __DIR__ . '/class-seoprostats-rollup.php';
+        require_once __DIR__ . self::ROLLUP_FILE;
         $engine  = (int) $row['engine'];
         $metric  = (int) $row['metric'];
         $windows = self::windows((int) $row['start'], (int) $row['days'], $engine, $metric);
@@ -520,14 +525,14 @@ final class SEOProStats_Experiments {
      * @return array<string,mixed>
      */
     private static function compute(array $row, array $meta, array $windows, $through) {
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         $engine = (int) $row['engine'];
         $metric = (int) $row['metric'];
         $name   = self::METRICS[$metric];
         $search = $metric <= 4;
         $goal   = null;
         if ($metric === 6 && !empty($meta['goal'])) {
-            require_once __DIR__ . '/class-seoprostats-goals.php';
+            require_once __DIR__ . self::GOALS_FILE;
             require_once __DIR__ . '/class-seoprostats-conversions.php';
             $goal = SEOProStats_Goals::find('goals', (string) $meta['goal']);
         }
@@ -653,17 +658,28 @@ final class SEOProStats_Experiments {
         $days  = max(1, (int) $days);
         $shift = (int) $engine === SEOProStats_Schema::ENGINE_BING && (int) $metric <= 4 ? 6 : 0;
         $after = array(
-            'from' => $day->modify('+' . (1 + $shift) . ' days')->format('Y-m-d'),
-            'to'   => $day->modify('+' . ($days + $shift) . ' days')->format('Y-m-d'),
+            'from' => self::add_days($day, 1 + $shift)->format('Y-m-d'),
+            'to'   => self::add_days($day, $days + $shift)->format('Y-m-d'),
         );
         return array(
             'before' => array(
-                'from' => $day->modify('-' . $days . ' days')->format('Y-m-d'),
+                'from' => self::add_days($day, -$days)->format('Y-m-d'),
                 'to'   => $day->modify('-1 day')->format('Y-m-d'),
             ),
             'after'  => $after,
             'review' => $after['to'],
         );
+    }
+
+    /**
+     * A day some days later (or earlier, when negative).
+     *
+     * @param DateTimeImmutable $day  Day.
+     * @param int               $days Days to add.
+     * @return DateTimeImmutable
+     */
+    private static function add_days(DateTimeImmutable $day, $days) {
+        return $day->modify(sprintf('%+d days', (int) $days));
     }
 
     /**
@@ -678,7 +694,7 @@ final class SEOProStats_Experiments {
     private static function data_through($engine, $metric) {
         global $wpdb;
         if ((int) $metric > 4) {
-            require_once __DIR__ . '/class-seoprostats-rollup.php';
+            require_once __DIR__ . self::ROLLUP_FILE;
             return SEOProStats_Rollup::through();
         }
         $key = SEOProStats_Schema::set() . (int) $engine;
@@ -713,7 +729,7 @@ final class SEOProStats_Experiments {
             }
             return $out;
         }
-        require_once __DIR__ . '/class-seoprostats-rollup.php';
+        require_once __DIR__ . self::ROLLUP_FILE;
         $rows = $wpdb->get_results($wpdb->prepare('SELECT val AS v, SUM(visits) AS visits FROM %i WHERE dim = %d AND day >= %s AND day <= %s GROUP BY val ORDER BY NULL', SEOProStats_Schema::table('daily'), SEOProStats_Rollup::SEARCH_LANDING, $window['from'], $window['to']), ARRAY_A);
         // phpcs:enable
         foreach ((array) $rows as $row) {
@@ -957,7 +973,7 @@ final class SEOProStats_Experiments {
      * @param float                        $limit    The threshold (ratio, or places).
      * @return array{0:string,1:string[]}
      */
-    private static function suggest($enough, $effect, $compared, $noise, $beyond, $updates, $improve, $limit) {
+    private static function suggest($enough, $effect, $compared, $noise, $beyond, $updates, $improve, $limit) { // NOSONAR: eight separate facts of one verdict; an array would only hide them.
         $reasons = array();
         if (!$compared) {
             $reasons[] = 'no_group';
@@ -1150,10 +1166,13 @@ final class SEOProStats_Experiments {
             return self::error('seoprostats_experiment_threshold', __('The threshold is a percent (or places, for position) of 0 or more.', 'seoprostats'));
         }
         // Stored as percent, or tenths of a place for position.
-        $threshold = $given === null ? self::THRESHOLD : (int) round($metric === 4 ? $given * 10 : $given);
+        $threshold = self::THRESHOLD;
+        if ($given !== null) {
+            $threshold = (int) round($metric === 4 ? $given * 10 : $given);
+        }
         $goal      = isset($input['goal']) ? trim((string) $input['goal']) : '';
         if ($metric === 6) {
-            require_once __DIR__ . '/class-seoprostats-goals.php';
+            require_once __DIR__ . self::GOALS_FILE;
             if ($goal === '' || !SEOProStats_Goals::find('goals', $goal)) {
                 return self::error('seoprostats_experiment_goal', __('Conversions need a goal: give its id (wp seoprostats goals list shows them).', 'seoprostats'));
             }
@@ -1177,7 +1196,7 @@ final class SEOProStats_Experiments {
      * @return string[]
      */
     private static function paths($pages) {
-        require_once __DIR__ . '/class-seoprostats-changes.php';
+        require_once __DIR__ . self::CHANGES_FILE;
         $list = is_array($pages) ? $pages : explode(',', (string) $pages);
         $out  = array();
         foreach ($list as $page) {

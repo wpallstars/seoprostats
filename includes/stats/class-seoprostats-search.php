@@ -133,7 +133,10 @@ final class SEOProStats_Search {
             $scope   = self::scope($code, $now, $pages, $queries);
             $grain   = self::grain($engine, $now, $scope);
             // Combined weeks end on the period's last day, so each holds one week of every engine.
-            $anchor  = $grain !== 'week' || !$now ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
+            $anchor = '';
+            if ($grain === 'week' && $now) {
+                $anchor = $engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds);
+            }
             $totals  = self::totals($scope);
             $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
             $by      = array('sort' => $sort, 'order' => $order);
@@ -171,12 +174,13 @@ final class SEOProStats_Search {
                 $then_days = self::days($other, array('from' => '', 'to' => ''), $weekly);
                 $then      = self::scope($code, $then_days, $pages, $queries);
                 $before    = self::totals($then);
+                $then_end  = $engine === self::ALL && $anchor !== '' && $then_days ? (string) $then_days['day_to'] : $anchor;
                 $answer['rows']    = self::with_compare($then, $kind, $answer['rows']);
                 $answer['compare'] = array(
                     'range'  => SEOProStats_Query::range_out($other),
                     'totals' => $before,
                     'change' => self::change($totals, $before),
-                    'points' => $then_days ? self::series($then, $then_days, $grain, $engine === self::ALL && $anchor !== '' ? (string) $then_days['day_to'] : $anchor) : array(),
+                    'points' => $then_days ? self::series($then, $then_days, $grain, $then_end) : array(),
                 );
             }
             return $answer;
@@ -459,11 +463,11 @@ final class SEOProStats_Search {
         $end   = (new DateTimeImmutable($last, $tz))->modify('+1 day');
         $count = (int) $begin->diff($end)->days;
         if ($weekly && $count % 7) {
-            $wide = $end->modify('-' . ($count + 7 - $count % 7) . ' days');
+            $wide = self::add_days($end, -($count + 7 - $count % 7));
             if ($bounds['from'] === '' || $wide->format('Y-m-d') >= $bounds['from']) {
                 $begin = $wide;
             } elseif ($count >= 7) {
-                $begin = $end->modify('-' . ($count - $count % 7) . ' days');
+                $begin = self::add_days($end, -($count - $count % 7));
             }
             $first = $begin->format('Y-m-d');
         }
@@ -561,7 +565,13 @@ final class SEOProStats_Search {
         if (!$days || ($pages !== null && !$pages) || ($queries !== null && !$queries)) {
             return null;
         }
-        $table = $pages === null ? ($queries === null ? 'gsc_totals' : 'gsc_queries') : ($queries === null ? 'gsc_pages' : 'gsc_pairs');
+        $tables = array(
+            'gsc_totals',  // Every page, every query.
+            'gsc_queries', // Every page, some queries.
+            'gsc_pages',   // Some pages, every query.
+            'gsc_pairs',   // Some pages, some queries.
+        );
+        $table  = $tables[($pages === null ? 0 : 2) + ($queries === null ? 0 : 1)];
         $where = '';
         $args  = array();
         if ($pages !== null) {
@@ -696,9 +706,30 @@ final class SEOProStats_Search {
             return $impressions ? self::ctr($clicks, $impressions) : null;
         }
         if ($sort === 'position') {
-            return $impressions ? (float) (isset($sums['p']) ? $sums['p'] : 0) / $impressions : null;
+            return $impressions ? (float) ($sums['p'] ?? 0) / $impressions : null;
         }
         return $impressions;
+    }
+
+    /**
+     * A day some days later (or earlier, when negative).
+     *
+     * @param DateTimeImmutable $day  Day.
+     * @param int               $days Days to add.
+     * @return DateTimeImmutable
+     */
+    private static function add_days(DateTimeImmutable $day, $days) {
+        return $day->modify(sprintf('%+d days', (int) $days));
+    }
+
+    /**
+     * The start of a day in UTC.
+     *
+     * @param string $day Y-m-d.
+     * @return int Unix time.
+     */
+    private static function utc_day($day) {
+        return (int) strtotime($day . ' 00:00:00 UTC');
     }
 
     /**
@@ -752,12 +783,12 @@ final class SEOProStats_Search {
             $bucket = $grain === 'month' ? "DATE_FORMAT(day, '%%Y-%%m-01')" : 'day';
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as in totals(); $bucket is fixed SQL.
             $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $bucket AS b, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$scope['sql']} GROUP BY b ORDER BY NULL", array_merge(array(SEOProStats_Schema::table($scope['table'])), $scope['args'])), ARRAY_A);
-            $last = $grain === 'week' && $anchor !== '' ? (int) gmdate('w', (int) strtotime($anchor . ' 00:00:00 UTC')) : null;
+            $last = $grain === 'week' && $anchor !== '' ? (int) gmdate('w', self::utc_day($anchor)) : null;
             foreach ($rows as $row) {
                 $key = (string) $row['b'];
                 if ($last !== null) {
                     // A day goes to the week it is in (Combined adds daily engines to weekly ones).
-                    $at  = (int) strtotime($key . ' 00:00:00 UTC');
+                    $at  = self::utc_day($key);
                     $key = gmdate('Y-m-d', $at + ((($last - (int) gmdate('w', $at)) + 7) % 7) * DAY_IN_SECONDS);
                 }
                 foreach (array('c', 'i', 'p') as $col) {
@@ -771,7 +802,7 @@ final class SEOProStats_Search {
         if ($grain === 'week') {
             // The first week's last day in the period: the anchor's weekday.
             $gap = $anchor !== '' ? (int) round(((new DateTimeImmutable($anchor, $at->getTimezone()))->getTimestamp() - $at->getTimestamp()) / DAY_IN_SECONDS) : 6;
-            $at  = $at->modify('+' . ((($gap % 7) + 7) % 7) . ' days');
+            $at  = self::add_days($at, (($gap % 7) + 7) % 7);
             for ($n = 0; $at < $days['end'] && $n < 1000; $at = $at->modify('+7 days'), $n++) {
                 $key   = $at->format('Y-m-d');
                 $row   = isset($by[$key]) ? $by[$key] : array('c' => 0, 'i' => 0, 'p' => 0);
@@ -837,13 +868,18 @@ final class SEOProStats_Search {
      * @param array{sort:string,order:string} $by    day or one of SORTS, and its order (asc or desc).
      * @return array<int,array<string,mixed>>
      */
-    private static function day_rows(array $points, $days, $grain, $anchor, $limit, $offset, array $totals, array $by) {
+    private static function day_rows(array $points, $days, $grain, $anchor, $limit, $offset, array $totals, array $by) { // NOSONAR: the chart's points, period and grain with the table's paging and sort; an array would only hide them.
         $last    = $days ? (string) $days['day_to'] : '';
         $weekday = static function ($day) {
-            return (int) gmdate('w', (int) strtotime($day . ' 00:00:00 UTC'));
+            return (int) gmdate('w', self::utc_day($day));
         };
         // As series(): without an anchor, weeks end six days after the period's start.
-        $end     = $anchor !== '' ? $weekday($anchor) : ($days ? ($weekday((string) $days['day_from']) + 6) % 7 : 6);
+        $end = 6;
+        if ($anchor !== '') {
+            $end = $weekday($anchor);
+        } elseif ($days) {
+            $end = ($weekday((string) $days['day_from']) + 6) % 7;
+        }
         $out     = array();
         foreach ($points as $n => $point) {
             $from = substr((string) $point['t'], 0, 10);
@@ -851,9 +887,9 @@ final class SEOProStats_Search {
                 $to = $from;
             } elseif ($grain === 'week') {
                 // A week ends on the anchor's weekday (the first may start late, cut at the period's start).
-                $to = gmdate('Y-m-d', (int) strtotime($from . ' 00:00:00 UTC') + (($end - $weekday($from) + 7) % 7) * DAY_IN_SECONDS);
+                $to = gmdate('Y-m-d', self::utc_day($from) + (($end - $weekday($from) + 7) % 7) * DAY_IN_SECONDS);
             } elseif (isset($points[$n + 1])) {
-                $to = gmdate('Y-m-d', (int) strtotime(substr((string) $points[$n + 1]['t'], 0, 10) . ' 00:00:00 UTC') - DAY_IN_SECONDS);
+                $to = gmdate('Y-m-d', self::utc_day(substr((string) $points[$n + 1]['t'], 0, 10)) - DAY_IN_SECONDS);
             } else {
                 $to = $last;
             }
@@ -876,7 +912,9 @@ final class SEOProStats_Search {
         if (isset(self::SORT_SQL[$by['sort']])) {
             $sort  = $by['sort'];
             $value = static function (array $row) use ($sort) {
-                return $sort === 'ctr' || $sort === 'position' ? ($row['impressions'] ? $row[$sort] : null) : $row[$sort];
+                // CTR and position mean nothing without impressions.
+                $rated = $sort === 'ctr' || $sort === 'position';
+                return $rated && !$row['impressions'] ? null : $row[$sort];
             };
             $at = array_flip(array_column($out, 'id'));
             usort($out, static function ($a, $b) use ($value, $by, $at) {
@@ -910,7 +948,7 @@ final class SEOProStats_Search {
                 return null;
             }
             $table = $kind === 'appearance' ? 'gsc_appearance' : 'gsc_totals';
-            $by    = $kind === 'appearance' ? 'appearance_id' : ($kind === 'countries' ? 'country' : 'device');
+            $by    = array('appearance' => 'appearance_id', 'countries' => 'country', 'devices' => 'device')[$kind];
         } elseif ($kind === 'queries') {
             $table = $pages === null ? 'gsc_queries' : 'gsc_pairs';
             $by    = 'query_id';
