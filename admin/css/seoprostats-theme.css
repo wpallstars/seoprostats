@@ -48,11 +48,25 @@ html.spst-dark {
  * --wp-admin-theme-color on body (admin-color-*), so on html it is still
  * the default blue. The text accent keeps the scheme's hue and raises its
  * lightness (OKLCH) to read at 4.5:1 on every dark surface; older
- * browsers mix it with white instead.
+ * browsers mix it with white instead. Also WordPress components' theme
+ * variables (in dialogs and popovers too, outside the app).
  */
 html.spst-dark body {
 	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
 	--spst-ui-accent: #72aee6;
+	--wp-components-color-background: var(--spst-ui-surface);
+	--wp-components-color-foreground: var(--spst-ui-text);
+	--wp-components-color-foreground-inverted: var(--spst-ui-surface);
+	--wp-components-color-gray-100: var(--spst-ui-raised);
+	--wp-components-color-gray-200: var(--spst-ui-border);
+	--wp-components-color-gray-300: var(--spst-ui-border);
+	--wp-components-color-gray-400: #646970;
+	--wp-components-color-gray-600: var(--spst-ui-field-border);
+	--wp-components-color-gray-700: var(--spst-ui-subtle);
+	--wp-components-color-gray-800: var(--spst-ui-muted);
+
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
 }
 
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
@@ -122,23 +136,6 @@ html.spst-dark .spst-modal {
 	html.spst-dark .spst-modal {
 		--spst-accent-soft: color-mix(in srgb, var(--spst-ui-accent) 16%, transparent);
 	}
-}
-
-/* WordPress components (also in dialogs and popovers, outside the app). */
-html.spst-dark body {
-	--wp-components-color-background: var(--spst-ui-surface);
-	--wp-components-color-foreground: var(--spst-ui-text);
-	--wp-components-color-foreground-inverted: var(--spst-ui-surface);
-	--wp-components-color-gray-100: var(--spst-ui-raised);
-	--wp-components-color-gray-200: var(--spst-ui-border);
-	--wp-components-color-gray-300: var(--spst-ui-border);
-	--wp-components-color-gray-400: #646970;
-	--wp-components-color-gray-600: var(--spst-ui-field-border);
-	--wp-components-color-gray-700: var(--spst-ui-subtle);
-	--wp-components-color-gray-800: var(--spst-ui-muted);
-
-	color: var(--spst-ui-text);
-	background: var(--spst-ui-canvas);
 }
 
 /* WordPress's admin page --------------------------------------------- */
