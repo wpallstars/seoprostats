@@ -1487,16 +1487,28 @@ final class SEOProStats_Demo {
             'indexStatusResult'    => $index,
         );
         if ($rich_type !== '') {
-            $items = array();
-            foreach ($issues as $message => $severity) {
-                $items[] = array('issueMessage' => $message, 'severity' => $severity);
-            }
-            $result['richResultsResult'] = array(
-                'verdict'       => in_array('ERROR', $issues, true) ? 'FAIL' : 'PASS',
-                'detectedItems' => array(array('richResultType' => $rich_type, 'items' => array(array('name' => 'Unnamed item', 'issues' => $items)))),
-            );
+            $result['richResultsResult'] = self::rich_results($rich_type, $issues);
         }
         return $result;
+    }
+
+    /**
+     * A demo inspection's rich results, in Google's own format: one item
+     * of the type with its issues; failed when any is an error.
+     *
+     * @param string               $rich_type Rich result type.
+     * @param array<string,string> $issues    Message => severity.
+     * @return array<string,mixed>
+     */
+    private static function rich_results($rich_type, array $issues) {
+        $items = array();
+        foreach ($issues as $message => $severity) {
+            $items[] = array('issueMessage' => $message, 'severity' => $severity);
+        }
+        return array(
+            'verdict'       => in_array('ERROR', $issues, true) ? 'FAIL' : 'PASS',
+            'detectedItems' => array(array('richResultType' => $rich_type, 'items' => array(array('name' => 'Unnamed item', 'issues' => $items)))),
+        );
     }
 
     /**
@@ -1581,12 +1593,10 @@ final class SEOProStats_Demo {
      */
     private static function search_days($start, $budget, array &$state) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
-        $tz     = wp_timezone();
-        $today  = new DateTimeImmutable('today', $tz);
+        $today  = new DateTimeImmutable('today', wp_timezone());
         $final  = self::add_days($today, -self::SEARCH_LAG)->format('Y-m-d');
-        $first  = (new DateTimeImmutable('@' . self::from($state)))->setTimezone($tz)->format('Y-m-d');
         $ids    = null;
-        $google = self::make_days('search', $final, $first, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
+        $google = self::make_days('search', $final, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
             return self::search_day($day, $today, $ids);
         });
         if (!$google) {
@@ -1598,18 +1608,17 @@ final class SEOProStats_Demo {
         // Bing gets them here too.
         $final = self::add_days($today, -(self::SEARCH_LAG + 6));
         $final = self::add_days($final, -((((int) $final->format('N') - self::BING_WEEK_END + 7) % 7)))->format('Y-m-d');
-        return self::make_days('bing', $final, $first, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
+        return self::make_days('bing', $final, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
             return self::bing_day($day, $today, $ids);
         });
     }
 
     /**
      * Make one engine's search days, from the day after the last one made
-     * to the final day, within the time budget.
+     * (or the period's first day) to the final day, within the time budget.
      *
      * @param string                                                        $key    Progress key (the last day made).
      * @param string                                                        $final  The last day to make (Y-m-d).
-     * @param string                                                        $first  The period's first day (Y-m-d).
      * @param float                                                         $start  microtime(true) when the work began.
      * @param int                                                           $budget Seconds.
      * @param array<string,mixed>                                           $state  Progress; updated.
@@ -1617,8 +1626,10 @@ final class SEOProStats_Demo {
      * @param callable(DateTimeImmutable, array{paths:array<string,int>,queries:array<string,int>}): bool $make Writes a day; false when it could not.
      * @return bool Whether every day is made.
      */
-    private static function make_days($key, $final, $first, $start, $budget, array &$state, &$ids, callable $make) {
-        $day = self::resume_day(isset($state[$key]) ? (string) $state[$key] : '', $first, wp_timezone());
+    private static function make_days($key, $final, $start, $budget, array &$state, &$ids, callable $make) {
+        $tz    = wp_timezone();
+        $first = (new DateTimeImmutable('@' . self::from($state)))->setTimezone($tz)->format('Y-m-d');
+        $day   = self::resume_day(isset($state[$key]) ? (string) $state[$key] : '', $first, $tz);
         while ($day->format('Y-m-d') <= $final) {
             if (!SEOProStats_Feature::more_time($start, $budget)) {
                 return false;
