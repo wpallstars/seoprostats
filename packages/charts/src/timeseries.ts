@@ -61,7 +61,7 @@ function hasPartial(s: ChartSeries, length: number): s is ChartSeries & { partia
 function alpha(color: string, opacity: number): string {
 	const hex = color.trim().replace('#', '');
 	if (/^[0-9a-f]{6}$/i.test(hex)) {
-		const n = parseInt(hex, 16);
+		const n = Number.parseInt(hex, 16);
 		return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${opacity})`;
 	}
 	return color;
@@ -203,7 +203,7 @@ export function createTimeseries(el: HTMLElement, initial: TimeseriesConfig): Ti
 			const shape = next.integer !== config.integer || next.series.length !== config.series.length || next.series.some((s, i) => {
 				const was = config.series[i];
 				const length = next.labels.length;
-				return !was || was.color !== s.color || was.dashed !== s.dashed || was.fill !== s.fill || hasPartial(was, config.labels.length) !== hasPartial(s, length);
+				return was?.color !== s.color || was.dashed !== s.dashed || was.fill !== s.fill || hasPartial(was, config.labels.length) !== hasPartial(s, length);
 			});
 			config = next;
 			if (shape || next.height !== plot.height) {

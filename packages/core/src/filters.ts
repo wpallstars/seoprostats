@@ -26,7 +26,7 @@ export function isOperator(value: string): value is Operator {
 /** The API's text form; always three parts, so values may hold colons. */
 export function serializeFilter(filter: Filter): string {
 	// Backslashes first, so a value ending in one cannot escape the next comma.
-	const values = filter.values.map((v) => v.replace(/\\/g, '\\\\').replace(/,/g, '\\,')).join(',');
+	const values = filter.values.map((v) => v.replace(/\\/g, String.raw`\\`).replace(/,/g, String.raw`\,`)).join(',');
 	return `${filter.dimension}:${filter.op}:${values}`;
 }
 

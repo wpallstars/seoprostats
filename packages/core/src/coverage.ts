@@ -98,9 +98,9 @@ export function isQuestion(query: string): boolean {
 }
 
 function decode(text: string): string {
-	return text.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (whole, name: string) => {
-		if (name[0] === '#') {
-			const code = name[1] === 'x' || name[1] === 'X' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+	return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, name: string) => {
+		if (name.startsWith('#')) {
+			const code = name[1] === 'x' || name[1] === 'X' ? Number.parseInt(name.slice(2), 16) : Number.parseInt(name.slice(1), 10);
 			return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : ' ';
 		}
 		return ENTITIES[name.toLowerCase()] ?? whole;
@@ -109,7 +109,8 @@ function decode(text: string): string {
 
 /** Text of HTML: tags, scripts and styles out, entities decoded. */
 function plain(html: string): string {
-	return decode(html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]*>/g, ' '));
+	// A tag ends at its > or at the next <, so a stray < cannot make the scan run to the end of the page each time.
+	return decode(html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^<>]*>/g, ' '));
 }
 
 /** Characters of a page's text read at most. */

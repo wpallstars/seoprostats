@@ -181,8 +181,103 @@ function oneOf<T extends string>(list: readonly T[], value: string | null, fallb
  * trimmed, no control characters, no longer than the stored names (2048).
  */
 function text(value: string | null): string | undefined {
+	if (!value) {
+		return undefined;
+	}
 	// eslint-disable-next-line no-control-regex -- matching control characters is the point: they are refused.
-	return value && value === value.trim() && value.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined;
+	return value === value.trim() && value.length <= 2048 && !/[\u0000-\u001f\u007f]/.test(value) ? value : undefined;
+}
+
+/** Sets one section choice when it has a value. */
+type SectionSetter = <K extends (typeof SECTION_VALUES)[number]>(name: K, value: ViewState[K] | undefined) => void;
+
+/** A choice, or undefined when it is the default (defaults are left out of the address). */
+function unlessDefault<T extends string>(value: T, fallback: T): T | undefined {
+	return value === fallback ? undefined : value;
+}
+
+/** A sorted table: its column (the first is the default) and direction (the column's natural one is the default). */
+function sortParams(params: URLSearchParams, set: SectionSetter, sorts: readonly (ContentSort | SearchDaySort)[]): void {
+	const asked = params.get('sort');
+	const sort = oneOf(sorts, asked, sorts[0]!);
+	set('sort', unlessDefault(sort, sorts[0]!));
+	// A direction belongs to its column: a column this table does not have takes the default's natural one.
+	const natural = naturalOrder(sort);
+	const order = asked === null || asked === sort ? oneOf(SORT_ORDERS, params.get('order'), natural) : natural;
+	set('order', unlessDefault(order, natural));
+}
+
+/** Search → Audit: the finding, the internal links and indexation lists, the goal and the sort. */
+function auditParams(params: URLSearchParams, set: SectionSetter): void {
+	const finding = params.get('finding');
+	set('finding', finding !== null && (AUDIT_FINDINGS as readonly string[]).includes(finding) ? (finding as AuditFinding) : undefined);
+	set('links', unlessDefault(oneOf(LINKS_KINDS, params.get('links'), 'orphans'), 'orphans'));
+	set('index', unlessDefault(oneOf(INDEXATION_KINDS, params.get('index'), 'pages'), 'pages'));
+	set('goal', text(params.get('goal')));
+	sortParams(params, set, SEARCH_SORTS);
+}
+
+/** Search: the choices only one report has (Rankings' sort depends on the tab, so the caller reads it). */
+function searchReportParams(report: SearchReport, params: URLSearchParams, set: SectionSetter): void {
+	switch (report) {
+		case 'content':
+			sortParams(params, set, CONTENT_SORTS);
+			set('goal', text(params.get('goal')));
+			break;
+		case 'plan':
+			set('status', unlessDefault(oneOf(QUEUE_FILTERS, params.get('status'), 'open'), 'open'));
+			set('goal', text(params.get('goal')));
+			break;
+		case 'targets':
+			set('targets', unlessDefault(oneOf(TARGET_FILTERS, params.get('targets'), 'all'), 'all'));
+			break;
+		case 'backlinks':
+			set('backlinks', unlessDefault(oneOf(BACKLINK_KINDS, params.get('backlinks'), 'links'), 'links'));
+			break;
+		case 'audit':
+			auditParams(params, set);
+			break;
+		case 'experiments': {
+			const change = params.get('change') ?? '';
+			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
+			break;
+		}
+		default:
+			break;
+	}
+}
+
+/** Search: the report and engine, the report's own choices, the tab, chart, page and query. */
+function searchParams(params: URLSearchParams, set: SectionSetter): void {
+	const report = oneOf(SEARCH_REPORTS, params.get('report'), 'rankings');
+	set('report', unlessDefault(report, 'rankings'));
+	const engine = oneOf(SEARCH_ENGINE_CHOICES, params.get('engine'), 'google');
+	set('engine', unlessDefault(engine, 'google'));
+	searchReportParams(report, params, set);
+	// Only Google has countries, devices and search appearances (not Bing, so not Combined).
+	const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_ANY_KINDS;
+	const tab = oneOf(tabs, params.get('tab'), 'queries');
+	const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
+	set('tab', unlessDefault(tab, 'queries'));
+	set('chart', unlessDefault(chart, 'clicks'));
+	// Rankings' top searches: the orders of the table shown (days also by day).
+	if (report === 'rankings') {
+		sortParams(params, set, searchSorts(tab));
+	}
+	set('page', text(params.get('page')));
+	set('query', text(params.get('query')));
+}
+
+/** Overview: each card's open tab, kept when it is not the card's first. */
+function overviewParams(state: ViewState, params: URLSearchParams): void {
+	for (const card of Object.keys(VIEW_TABS) as ViewCard[]) {
+		const allowed: readonly Dimension[] = VIEW_TABS[card];
+		const tab = oneOf(allowed, params.get(`tab.${card}`), allowed[0]!);
+		if (tab !== allowed[0]) {
+			state.tabs ??= {};
+			state.tabs[card] = tab;
+		}
+	}
 }
 
 /**
@@ -191,92 +286,37 @@ function text(value: string | null): string | undefined {
  * too, so a written address and a stored view obey the same rules.
  */
 function sectionParams(state: ViewState, params: URLSearchParams): void {
-	const set = <K extends (typeof SECTION_VALUES)[number]>(name: K, value: ViewState[K] | undefined): void => {
+	const set: SectionSetter = (name, value) => {
 		if (value) {
 			state[name] = value;
 		}
 	};
-	// A sorted table: its column (the first is the default) and direction (the column's natural one is the default).
-	const sorted = (sorts: readonly (ContentSort | SearchDaySort)[]): void => {
-		const asked = params.get('sort');
-		const sort = oneOf(sorts, asked, sorts[0]!);
-		set('sort', sort === sorts[0] ? undefined : sort);
-		// A direction belongs to its column: a column this table does not have takes the default's natural one.
-		const natural = naturalOrder(sort);
-		const order = asked === null || asked === sort ? oneOf(SORT_ORDERS, params.get('order'), natural) : natural;
-		set('order', order === natural ? undefined : order);
-	};
-	if (state.view === 'clicks') {
-		const kind = oneOf(CLICK_KINDS, params.get('kind'), 'elements');
-		set('kind', kind === 'elements' ? undefined : kind);
-		set('page', text(params.get('page')));
-	} else if (state.view === 'changes') {
-		set('page', text(params.get('page')));
-		const group = oneOf([...CHANGE_GROUPS, ''] as const, params.get('group'), '');
-		set('group', group || undefined);
-	} else if (state.view === 'ab-tests') {
-		const test = params.get('test') ?? '';
-		set('test', /^[a-z0-9]{6,32}$/.test(test) ? test : undefined);
-	} else if (state.view === 'properties') {
-		set('key', text(params.get('key')));
-		set('event', text(params.get('event')));
-	} else if (state.view === 'search') {
-		const report = oneOf(SEARCH_REPORTS, params.get('report'), 'rankings');
-		set('report', report === 'rankings' ? undefined : report);
-		const engine = oneOf(SEARCH_ENGINE_CHOICES, params.get('engine'), 'google');
-		set('engine', engine === 'google' ? undefined : engine);
-		if (report === 'content') {
-			sorted(CONTENT_SORTS);
-			set('goal', text(params.get('goal')));
+	switch (state.view) {
+		case 'clicks':
+			set('kind', unlessDefault(oneOf(CLICK_KINDS, params.get('kind'), 'elements'), 'elements'));
+			set('page', text(params.get('page')));
+			break;
+		case 'changes':
+			set('page', text(params.get('page')));
+			set('group', oneOf([...CHANGE_GROUPS, ''] as const, params.get('group'), '') || undefined);
+			break;
+		case 'ab-tests': {
+			const test = params.get('test') ?? '';
+			set('test', /^[a-z0-9]{6,32}$/.test(test) ? test : undefined);
+			break;
 		}
-		if (report === 'plan') {
-			const status = oneOf(QUEUE_FILTERS, params.get('status'), 'open');
-			set('status', status === 'open' ? undefined : status);
-			set('goal', text(params.get('goal')));
-		}
-		if (report === 'targets') {
-			const targets = oneOf(TARGET_FILTERS, params.get('targets'), 'all');
-			set('targets', targets === 'all' ? undefined : targets);
-		}
-		if (report === 'backlinks') {
-			const backlinks = oneOf(BACKLINK_KINDS, params.get('backlinks'), 'links');
-			set('backlinks', backlinks === 'links' ? undefined : backlinks);
-		}
-		if (report === 'audit') {
-			const finding = params.get('finding');
-			set('finding', finding !== null && (AUDIT_FINDINGS as readonly string[]).includes(finding) ? (finding as AuditFinding) : undefined);
-			const links = oneOf(LINKS_KINDS, params.get('links'), 'orphans');
-			set('links', links === 'orphans' ? undefined : links);
-			const index = oneOf(INDEXATION_KINDS, params.get('index'), 'pages');
-			set('index', index === 'pages' ? undefined : index);
-			set('goal', text(params.get('goal')));
-			sorted(SEARCH_SORTS);
-		}
-		if (report === 'experiments') {
-			const change = params.get('change') ?? '';
-			set('change', /^[1-9]\d{0,9}$/.test(change) ? change : undefined);
-		}
-		// Only Google has countries, devices and search appearances (not Bing, so not Combined).
-		const tabs = engine === 'google' ? SEARCH_KINDS : SEARCH_ANY_KINDS;
-		const tab = oneOf(tabs, params.get('tab'), 'queries');
-		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
-		set('tab', tab === 'queries' ? undefined : tab);
-		set('chart', chart === 'clicks' ? undefined : chart);
-		// Rankings' top searches: the orders of the table shown (days also by day).
-		if (report === 'rankings') {
-			sorted(searchSorts(tab));
-		}
-		set('page', text(params.get('page')));
-		set('query', text(params.get('query')));
-	} else if (state.view === 'overview') {
-		for (const card of Object.keys(VIEW_TABS) as ViewCard[]) {
-			const allowed: readonly Dimension[] = VIEW_TABS[card];
-			const tab = oneOf(allowed, params.get(`tab.${card}`), allowed[0]!);
-			if (tab !== allowed[0]) {
-				state.tabs ??= {};
-				state.tabs[card] = tab;
-			}
-		}
+		case 'properties':
+			set('key', text(params.get('key')));
+			set('event', text(params.get('event')));
+			break;
+		case 'search':
+			searchParams(params, set);
+			break;
+		case 'overview':
+			overviewParams(state, params);
+			break;
+		default:
+			break;
 	}
 }
 
@@ -337,7 +377,8 @@ export function buildHash(state: ViewState): string {
 	sectionParams(valid, choices);
 	writeSection(valid, params);
 	const query = params.toString();
-	return `#/${state.view}${query ? `?${query}` : ''}`;
+	const search = query ? '?' + query : '';
+	return `#/${state.view}${search}`;
 }
 
 function writeSection(state: ViewState, params: URLSearchParams): void {

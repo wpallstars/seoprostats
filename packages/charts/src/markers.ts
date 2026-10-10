@@ -207,7 +207,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 	}
 
 	function render(): void {
-		const hadFocus = buttons.some((b) => b === document.activeElement);
+		const hadFocus = buttons.includes(document.activeElement as HTMLButtonElement);
 		buttons.forEach((b) => b.remove());
 		buttons = [];
 		el.setAttribute('aria-label', config.label);
@@ -223,7 +223,8 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 			button.tabIndex = i === focusIndex ? 0 : -1;
 			const listed = group.items.slice(0, MAX_LISTED).map((item) => item.label);
 			const rest = group.items.length - listed.length;
-			button.setAttribute('aria-label', `${heading(group)}: ${listed.join('; ')}${rest > 0 ? `; ${config.moreText(rest)}` : ''}`);
+			const more = rest > 0 ? '; ' + config.moreText(rest) : '';
+			button.setAttribute('aria-label', `${heading(group)}: ${listed.join('; ')}${more}`);
 			const colors = [...new Set(group.items.map((item) => item.color))].slice(0, 3);
 			colors.forEach((color) => {
 				const dot = document.createElement('span');
@@ -261,7 +262,7 @@ export function createMarkersLane(el: HTMLElement, initial: MarkersLaneConfig): 
 					move(keys[event.key] ?? i);
 				}
 			});
-			el.insertBefore(button, tip);
+			tip.before(button);
 			buttons.push(button);
 		});
 		el.classList.toggle('is-empty', list.length === 0);
