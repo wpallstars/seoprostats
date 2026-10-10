@@ -147,10 +147,6 @@ start_site() {
 	wp_cli config set WP_DEBUG_DISPLAY false --raw --quiet
 	wp_cli config set DISABLE_WP_CRON true --raw --quiet
 	wp_cli core install --title=SmokeTest --admin_user=admin --admin_password="$ADMIN_PASSWORD" --admin_email=admin@example.com --skip-email --quiet --url="$BASE_URL" # NOSONAR: local-only HTTP, see BASE_URL
-	# The requested core version is fixed for this test. Cache its update check
-	# so an unrelated WordPress.org outage cannot add a PHP warning at install.
-	# shellcheck disable=SC2016 # PHP variables, expanded by PHP.
-	wp_cli eval 'global $wp_version; set_site_transient("update_core", (object) array("last_checked" => time(), "version_checked" => $wp_version, "updates" => array()));'
 	# WP-CLI cannot see Apache's mod_rewrite, so write core's rules itself.
 	wp_cli rewrite structure '/%postname%/' --quiet
 	docker exec -u www-data "$NAME-web" sh -c 'printf "%s\n" "# BEGIN WordPress" "RewriteEngine On" "RewriteBase /" \
