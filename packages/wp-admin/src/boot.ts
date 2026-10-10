@@ -5,7 +5,17 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
+import { type CompareKey, type RangeKey, type ViewState } from '@seoprostats/core';
+
 export type DataSet = 'live' | 'demo';
+
+interface Period {
+	range: Exclude<RangeKey, 'custom' | 'realtime'>;
+	compare: CompareKey;
+	ajaxUrl: string;
+	action: string;
+	nonce: string;
+}
 
 /** GET /demo (SEOProStats_Demo::status()). */
 export interface DemoStatus {
@@ -33,6 +43,8 @@ export interface Boot {
 	demo: DemoStatus;
 	/** Dashboard, for those who share: the site's colours offered as a shared report's accent. */
 	sharePalette: { color: string; name: string }[];
+	/** Only the private dashboard receives a personal screen preference. */
+	period?: Period;
 }
 
 declare global {
@@ -54,7 +66,26 @@ export const boot: Boot = {
 	data: raw.data === 'demo' ? 'demo' : 'live',
 	demo: raw.demo ?? { status: 'none', days: 0, progress: 0, from: null, made: null },
 	sharePalette: raw.sharePalette ?? [],
+	period: raw.period,
 };
+
+// Serialize quick successive choices so an older request cannot overwrite the newest.
+let periodSave: Promise<unknown> = Promise.resolve();
+
+/** Best effort: the URL remains the source of truth, even if saving fails. */
+export function savePeriod(state: Pick<ViewState, 'range' | 'compare'>): void {
+	const period = boot.period;
+	if (!period || state.range === 'custom' || state.range === 'realtime') {
+		return;
+	}
+	// Admin submenu links can change only the hash, without another PHP boot.
+	period.range = state.range;
+	period.compare = state.compare;
+	const body = new URLSearchParams({ action: period.action, nonce: period.nonce, range: state.range, compare: state.compare });
+	periodSave = periodSave.then(() => fetch(period.ajaxUrl, {
+		method: 'POST', credentials: 'same-origin', body, keepalive: true,
+	})).catch(() => undefined);
+}
 
 /** BCP 47 form for Intl (en_GB → en-GB); falls back to the browser's. */
 export const locale: string = (() => {
