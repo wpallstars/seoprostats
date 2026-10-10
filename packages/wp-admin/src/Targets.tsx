@@ -392,8 +392,8 @@ function MeasurementForm({ row, onError }: { row: TargetRow; onError: (message: 
 			const fields: Record<string, unknown> = { query: row.query, page: row.page?.path ?? '', priority: row.priority, status: row.status };
 			if (count !== String(row.allintitle ?? '') || countDate) { fields.allintitle = count === '' ? null : count; if (countDate) fields.allintitle_measured = countDate; }
 			if (volume !== String(row.volume ?? '') || volumeDate) { fields.volume = volume === '' ? null : volume; if (volumeDate) fields.volume_measured = volumeDate; }
-			const done = await importTargets(data, JSON.stringify([fields]), false); // nosemgrep: the import's JSON body, not an object key.
-			const skipped = done.skipped[0];
+			const done = await importTargets(data, JSON.stringify([fields]), false);
+			const [skipped] = done.skipped;
 			if (skipped) throw new Error(skipped.message);
 			onError(''); setEditing(false);
 		} catch (error) { onError(errorMessage(error, __('Measurements could not be saved.', 'seoprostats'))); }
