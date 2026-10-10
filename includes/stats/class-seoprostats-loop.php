@@ -14,7 +14,7 @@
  *   position), most impressions first, for a tracking run.
  *
  * The queue and the export share one period (cut at the newest search day
- * and to its newest 91 days, as Opportunities), engine and page filters;
+ * and to its newest 366 days, as Opportunities), engine and page filters;
  * params gives them back, as acting on a queue item needs the same ones.
  * Nothing is stored: the export rows are cached like the reports (keyed by
  * the newest import), the queue's opportunities and the experiments'

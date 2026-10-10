@@ -6,7 +6,9 @@
  * page's own row (path_id 0) until the check opens it and keeps its links.
  *
  * Reads at most MAX_ROWS referring pages by the path_checked key, never
- * checked first; the live links per page come from the report's own read.
+ * checked first; the live links per page (count and targets: the page of
+ * this site each links to, its text and rel) come from the report's own
+ * read, with no query of their own.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -28,18 +30,19 @@ final class SEOProStats_Backlinks_Reported {
      * The reported pages, newest report first, with their counts.
      *
      * @param array<int,array<string,string>> $live   The report's live link rows (of the source, when given).
+     * @param array<int,array<string,mixed>>  $out    The same links as the report gives them, in the same order.
      * @param string                          $source One of SEOProStats_Backlinks::FOUND, or '' for all.
      * @return array{rows:array<int,array<string,mixed>>,domains:int,checked:int}
      */
-    public static function read(array $live, $source) {
-        $pages = self::pages($source);
-        $texts = self::texts($pages);
-        $links = array_count_values(array_map('intval', array_column($live, 'source_url_id')));
-        $rows  = array();
-        $hosts = array();
-        $done  = 0;
+    public static function read(array $live, array $out, $source) {
+        $pages   = self::pages($source);
+        $texts   = self::texts($pages);
+        $targets = self::targets($live, $out);
+        $rows    = array();
+        $hosts   = array();
+        $done    = 0;
         foreach ($pages as $page) {
-            $row     = self::row($page, $texts, $links);
+            $row     = self::row($page, $texts, $targets);
             $rows[]  = $row;
             $done   += $row['state'] === 'unchecked' ? 0 : 1;
             $hosts[$row['host']] = true;
@@ -48,6 +51,36 @@ final class SEOProStats_Backlinks_Reported {
             return array((string) $b['reported'], $a['host'], $a['source']) <=> array((string) $a['reported'], $b['host'], $b['source']);
         });
         return array('rows' => $rows, 'domains' => count($hosts), 'checked' => $done);
+    }
+
+    /**
+     * The live links by referring page: the page of this site each links
+     * to, its text and rel, first found first.
+     *
+     * @param array<int,array<string,string>> $live Live link rows.
+     * @param array<int,array<string,mixed>>  $out  The same links as the report gives them.
+     * @return array<int,array<int,array<string,mixed>>> Referring page's address id => its links.
+     */
+    private static function targets(array $live, array $out) {
+        $by = array();
+        foreach ($live as $i => $row) {
+            if (!isset($out[$i])) {
+                continue;
+            }
+            $by[(int) $row['source_url_id']][] = array(
+                'page'       => (string) $out[$i]['page'],
+                'anchor'     => (string) $out[$i]['anchor'],
+                'rel'        => $out[$i]['rel'],
+                'first_seen' => $out[$i]['first_seen'],
+            );
+        }
+        foreach ($by as &$links) {
+            usort($links, static function ($a, $b) {
+                return array((string) $a['first_seen'], $a['page']) <=> array((string) $b['first_seen'], $b['page']);
+            });
+        }
+        unset($links);
+        return $by;
     }
 
     /**
@@ -83,9 +116,9 @@ final class SEOProStats_Backlinks_Reported {
     /**
      * One reported page as the report gives it.
      *
-     * @param array<string,string> $page  Its row.
-     * @param array<int,string>    $texts Id => text.
-     * @param array<int,int>       $links Live links by referring page.
+     * @param array<string,string>                      $page  Its row.
+     * @param array<int,string>                         $texts Id => text.
+     * @param array<int,array<int,array<string,mixed>>> $links Live links by referring page (targets()).
      * @return array<string,mixed>
      */
     private static function row(array $page, array $texts, array $links) {
@@ -109,12 +142,14 @@ final class SEOProStats_Backlinks_Reported {
                 $found[] = $name;
             }
         }
+        $targets = isset($links[(int) $page['source_url_id']]) ? $links[(int) $page['source_url_id']] : array();
         return array(
             'source'    => $url,
             'host'      => $host,
             'found'     => $found,
             'state'     => self::state($page),
-            'links'     => isset($links[(int) $page['source_url_id']]) ? (int) $links[(int) $page['source_url_id']] : 0,
+            'links'     => count($targets),
+            'targets'   => $targets,
             'reported'  => self::date($reported),
             'checked'   => self::date((int) $page['checked']),
             'providers' => (object) $out,

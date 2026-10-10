@@ -17,7 +17,7 @@
  *   review, marked when the leading page changed between the halves.
  *
  * Choosing a row opens it in Rankings. The period is cut at the newest
- * search day and to its newest 91 days.
+ * search day and to its newest 366 days.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -46,10 +46,11 @@ import { CoverageBadges } from './components/CoverageBadges';
 import { ResearchMenu } from './components/ResearchMenu';
 import { errorMessage, scopeKey, useOpportunities } from './api';
 import { locale } from './boot';
-import { longLabel } from './dates';
+import { longLabel, rangeText } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { EditLink } from './components/EditLink';
 import { SearchSetup, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 
@@ -264,6 +265,16 @@ function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; k
 	);
 }
 
+/** Why losing clicks compares shorter periods than the one chosen (the Plan says it too). */
+export function decayCutNote(range: { from: string; to: string }, compare: { from: string; to: string }): string {
+	return sprintf(
+		/* translators: 1: the period's days, e.g. "1 Aug – 31 Aug 2026", 2: the earlier period's days. */
+		__('Losing clicks compares %1$s with %2$s, the longest it can: there is no search data before that.', 'seoprostats'),
+		rangeText(range.from, range.to),
+		rangeText(compare.from, compare.to)
+	);
+}
+
 /** Notes under a card: the period read, the CTR curve's source, search engine updates. */
 function Notes({ answer }: Readonly<{ answer: OpportunitiesAnswer }>) {
 	const notes: string[] = [];
@@ -275,6 +286,9 @@ function Notes({ answer }: Readonly<{ answer: OpportunitiesAnswer }>) {
 				number(answer.days)
 			)
 		);
+	}
+	if (answer.compare?.cut) {
+		notes.push(decayCutNote(answer.range, answer.compare.range));
 	}
 	if (answer.curve?.source === 'default') {
 		notes.push(__('This site has too few impressions to measure its own CTR by position yet, so a cautious typical CTR is used.', 'seoprostats'));
@@ -330,9 +344,7 @@ export function PageCell({ row, query, open, extra }: Readonly<{ row: Opportunit
 					{row.edit_url && (
 						<>
 							{row.url && ' · '}
-							<a href={row.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), row.path)}>
-								<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
-							</a>
+							<EditLink href={row.edit_url} path={row.path} />
 						</>
 					)}
 					{extra && (

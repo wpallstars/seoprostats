@@ -600,8 +600,11 @@ until the daily 20-second run had opened each page, which took weeks. Now:
   rows with an export bit (`EXPORTS`, dataforseo to generic), read by
   `path_checked` (at most 5,000, never checked first), with each page's
   check state (`unchecked`, `links`, `none`, `error`, `gone`), the live
-  links found on it, the export's date and the last check. Totals add
-  `reported`, `reported_domains` and `reported_checked`.
+  links found on it (`links`, and `targets`: each one's page of this
+  site, text, rel and first seen, taken from the report's own read of
+  live links, no extra query), the export's date and the last check.
+  Totals add `reported`, `reported_domains` and `reported_checked`. In
+  wp-admin a page's link count opens a row with its targets.
 - When an import ends, and after every locked run, cron
   `seoprostats_backlinks_check` is scheduled a minute ahead while the
   check is on and an export-named page was never opened (`waiting()`,
@@ -1756,8 +1759,9 @@ and an exact page get the same addresses and editor links as Clicks.
 
 Opportunities (`SEOProStats_Opportunities`) read the same days of one
 engine, with the same cut, page filters, `ignored` and cache key, and say where search
-effort pays. The period is also cut to its newest 91 days (`MAX_DAYS`;
-the answer gives `days` and `cut`), so a year never reads every pair.
+effort pays. The period is also cut to its newest 366 days (`MAX_DAYS`;
+the answer gives `days` and `cut`): every period up to a year is read
+whole, as search demand is seasonal, and all time never reads every pair.
 Thresholds are constants scaled by the days read (`rules` in the answer).
 
 - **Expected CTR** is the site's own: clicks ÷ impressions of `gsc_pairs`
@@ -1775,7 +1779,12 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
 - **Losing clicks** (`decay`): `gsc_pages` sums for the period and the
   earlier one of the same length (previous, or a year earlier with
   `compare=year`); pages that lost at least 20% of their clicks and a
-  minimum, most lost first. For the rows shown, `gsc_pairs` (by
+  minimum, most lost first. The earlier period holds only days with
+  search data (`decay_periods()`): where it would start before the first,
+  both are shortened from the newest end to the longest pair that fits
+  (at least `DECAY_MIN_DAYS`; `compare.cut`, and the queue's `decay`), as
+  Search Console keeps 16 months, so a year's previous year is mostly
+  empty and would read as no loss. For the rows shown, `gsc_pairs` (by
   `path_day`) gives the queries that lost most, and the cause: `gone` (no
   impressions now), `position` (a place and a tenth lower or more), else
   whichever fell more of impressions (`demand`) and CTR (`ctr`), with a
@@ -1829,7 +1838,7 @@ SEO Framework (the same meta as the change log's `SEO_META`)
 (`seoprostats_focus_keywords` adds others); without one the report is the
 same less `focus`. The one-page report (`GET /coverage`, by `page` or
 `post`) reads that page's queries by `path_day` (the 200 with most
-impressions, newest 91 days) and its post once; the cache key adds the
+impressions, newest 366 days) and its post once; the cache key adds the
 post's modified time. Nothing runs on visitor pages.
 
 Content (`SEOProStats_Content`) joins search with what its visits did, per
@@ -1879,6 +1888,12 @@ keep period and comparison explicit so bookmarks do not depend on a later
 preference. Public shared reports and the editor keep their own periods;
 the REST contract and visitor collection are unchanged. Uninstall removes
 the user meta.
+Its period menu
+(`rangeMenu()` in `packages/wp-admin/src/labels.ts`) groups them: Days
+(today, yesterday, 24h, 7d), Weeks (28d, 91d, 182d and 364d, read as 4,
+13, 26 and 52 weeks), Calendar (this week, this month, this year, last 12
+months, last year), then all time and custom. 30d, 90d and realtime stay
+in the API and in links; the menu lists one only while it is chosen.
 
 ### Interfaces
 
@@ -1979,7 +1994,7 @@ statistics, on post types with public pages (filter
 `seoprostats_editor_coverage`): a **Search queries** panel in the block
 editor's document sidebar (`wp.plugins` and `PluginDocumentSettingPanel`,
 read from the page), or a meta box in the classic editor. It asks
-`GET /coverage?post=<id>&range=90d` once, then re-checks the queries
+`GET /coverage?post=<id>&range=91d` once, then re-checks the queries
 against the words in the editor a moment after each change, so a query
 turns covered as soon as its words are added: the summary, the focus
 keywords, the queries not covered and the questions, with a link to the

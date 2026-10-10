@@ -64,6 +64,7 @@ import { PeriodLine } from './Overview';
 import { changesByPoint } from './changelog';
 import { Change } from './components/Change';
 import { ChangeDots } from './components/ChangeDots';
+import { EditLink } from './components/EditLink';
 import { useChangesModal, type MarkerPick } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
 import { SortHeader, type TableSortProps } from './components/SortHeader';
@@ -412,9 +413,7 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 									<>
 										{' '}
 										·{' '}
-										<a href={pageInfo.edit_url}>
-											<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
-										</a>
+										<EditLink href={pageInfo.edit_url} path={page} />
 									</>
 								)}
 							</p>
@@ -798,9 +797,7 @@ function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: 
 							<>
 								{' '}
 								·{' '}
-								<a href={row.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), path)}>
-									<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
-								</a>
+								<EditLink href={row.edit_url} path={path} />
 							</>
 						)}
 					</span>

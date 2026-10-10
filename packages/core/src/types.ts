@@ -7,9 +7,10 @@
  */
 
 /**
- * Ranges, in the order the period menu lists them. 7d, 28d, 91d, 182d
- * and 364d are whole weeks, so the previous period starts on the same
- * weekday and each day meets the same weekday.
+ * Ranges the API takes. 7d, 28d, 91d, 182d and 364d are whole weeks (1, 4,
+ * 13, 26 and 52), so the previous period starts on the same weekday and
+ * each day meets the same weekday. The dashboard's period menu groups and
+ * orders them itself (rangeMenu() in packages/wp-admin/src/labels.ts).
  */
 export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '28d', '30d', '90d', '91d', '182d', '364d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
@@ -642,7 +643,7 @@ export interface OpportunityOverlap extends OpportunityPage, SearchMetrics {
 
 export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer<SearchEngineChoice> {
 	kind: OpportunityKind;
-	/** The period read: cut at the newest search day and to its newest 91 days. */
+	/** The period read: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
@@ -658,8 +659,12 @@ export interface OpportunitiesAnswer extends Answer, SearchEngineAnswer<SearchEn
 	halves?: [Range, Range] | null;
 	/** striking and ctr: the site's CTR by position (1–20). */
 	curve?: { source: 'site' | 'mixed' | 'default'; ctr: Record<string, number> } | null;
-	/** decay: the earlier period, and search engine updates in either. */
-	compare?: { range: Range } | null;
+	/**
+	 * decay: the earlier period, and search engine updates in either; cut
+	 * when both periods were shortened so the earlier one holds only days
+	 * with search data (range and days are then the shortened period's).
+	 */
+	compare?: { range: Range; cut: boolean } | null;
 	updates?: Marker[];
 }
 
@@ -683,7 +688,7 @@ export interface CoverageAnswer extends Answer {
 	page: string;
 	post_id: number;
 	page_info: ClickPageInfo | null;
-	/** The period read: cut at the newest search day and to its newest 91 days. */
+	/** The period read: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
@@ -1224,7 +1229,7 @@ export interface AuditRow extends OpportunityPage, SearchMetrics {
 }
 
 export interface AuditAnswer extends Answer, SearchEngineAnswer {
-	/** The period of the search figures: cut at the newest search day and to its newest 91 days. */
+	/** The period of the search figures: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
@@ -1295,7 +1300,7 @@ export interface LinksMissingRow extends OpportunityPage, SearchMetrics {
 export type LinksRow = LinksPageRow | LinksMissingRow;
 
 export interface LinksAnswer extends Answer, SearchEngineAnswer {
-	/** The period of the search figures: cut at the newest search day and to its newest 91 days. */
+	/** The period of the search figures: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
@@ -1394,6 +1399,14 @@ export type BacklinkSource = (typeof BACKLINK_SOURCES)[number];
 /** A reported page's check: not opened yet, links to the site, none seen, could not be opened, or gone. */
 export type BacklinkReportedState = 'unchecked' | 'links' | 'none' | 'error' | 'gone';
 
+/** One live link on a reported page: the page of this site it links to, its text ('' when none) and rel. */
+export interface BacklinkReportedTarget {
+	page: string;
+	anchor: string;
+	rel: BacklinkRel[];
+	first_seen: string | null;
+}
+
 /** A referring page a link export named. */
 export interface BacklinkReportedRow {
 	/** The page linking (as the export gave it). */
@@ -1403,6 +1416,8 @@ export interface BacklinkReportedRow {
 	state: BacklinkReportedState;
 	/** Live links to the site found on it. */
 	links: number;
+	/** Those live links, first found first: the page of this site each links to, its text and rel. */
+	targets: BacklinkReportedTarget[];
 	/** ISO times: the export's newest date for it, and its last check. */
 	reported: string | null;
 	checked: string | null;
@@ -1552,7 +1567,7 @@ export interface TargetRow {
 }
 
 export interface TargetsAnswer extends Answer, SearchEngineAnswer {
-	/** The period read: cut at the newest search day and to its newest 91 days. */
+	/** The period read: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
@@ -1728,10 +1743,15 @@ export interface QueueItem extends OpportunityPage {
 }
 
 export interface QueueAnswer extends Answer, SearchEngineAnswer {
-	/** The period read: cut at the newest search day and to its newest 91 days. */
+	/** The period read: cut at the newest search day and to its newest 366 days. */
 	range: Range;
 	days: number;
 	cut: boolean;
+	/**
+	 * The periods losing clicks were compared in, when shortened so the
+	 * earlier one holds only days with search data; null when not.
+	 */
+	decay: { range: Range; days: number; compare: Range } | null;
 	through: string;
 	connected: boolean;
 	ignored: string[];

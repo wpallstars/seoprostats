@@ -27,8 +27,10 @@
  *
  * As SEOProStats_Search: days are final search days only, the period is
  * cut at the newest one, page filters apply and visit filters do not.
- * The period is also cut to its newest MAX_DAYS days, so a year never
- * reads every pair. Every read is by the primary key (engine, day) or
+ * The period is also cut to its newest MAX_DAYS days: every period up to
+ * a year is read whole (search demand is seasonal), and all time never
+ * reads every pair. Losing clicks compares only days with search data
+ * (decay_periods()). Every read is by the primary key (engine, day) or
  * path_day (overlap's halves, and decay's other pages for the queries
  * shown, by query_day);
  * nothing reads the visit tables.
@@ -56,8 +58,11 @@ final class SEOProStats_Opportunities { // NOSONAR: one report with five kinds o
     /** Kinds of opportunity. */
     const KINDS = array('striking', 'ctr', 'decay', 'missing', 'overlap');
 
-    /** Days read at most: the newest of the period. */
-    const MAX_DAYS = 91;
+    /** Days read at most: the newest of the period (a leap year whole). */
+    const MAX_DAYS = 366;
+
+    /** Losing clicks: the fewest days compared when the earlier period is shortened to days with data. */
+    const DECAY_MIN_DAYS = 7;
 
     /** Striking distance: positions (rounded) and the position aimed for. */
     const STRIKING_FROM = 4;
@@ -170,7 +175,7 @@ final class SEOProStats_Opportunities { // NOSONAR: one report with five kinds o
             return $answer;
         }
 
-        $read = array('engine' => $engine, 'now' => $now, 'pages' => $pages, 'weekly' => $weekly, 'offset' => $offset, 'limit' => $limit);
+        $read = array('engine' => $engine, 'now' => $now, 'pages' => $pages, 'weekly' => $weekly, 'first' => $bounds['from'], 'offset' => $offset, 'limit' => $limit);
         if ($kind === 'decay') {
             // Always against an earlier period: the previous one unless a year ago is asked for.
             list($answer, $list) = self::decay_answer($answer, $read, $req['compare'] === 'year' ? 'year' : 'prev');
@@ -207,24 +212,94 @@ final class SEOProStats_Opportunities { // NOSONAR: one report with five kinds o
      * comparison, updates, span and rows, and the whole list; the list is
      * null when there is no earlier period.
      *
+     * When the period was shortened so the earlier one holds only days
+     * with search data (decay_periods()), the answer's range, days, cut
+     * and rules are the shortened period's, and compare.cut is true.
+     *
      * @param array<string,mixed> $answer  From build().
-     * @param array<string,mixed> $read    engine, now, pages, weekly, offset and limit.
+     * @param array<string,mixed> $read    engine, now, pages, weekly, first, offset and limit.
      * @param string              $compare prev or year.
      * @return array{0:array<string,mixed>,1:array<int,array<string,mixed>>|null}
      */
     private static function decay_answer(array $answer, array $read, $compare) {
-        $now   = $read['now'];
-        $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $compare);
-        $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $read['weekly']) : null;
-        if (!$then) {
+        list($now, $then) = self::decay_periods($read['now'], $compare, (string) $read['first'], $read['weekly']);
+        if (!$now || !$then) {
             return array($answer, null);
         }
+        $short = SEOProStats_Search::length($now) < SEOProStats_Search::length($read['now']);
+        if ($short) {
+            $answer['range'] = SEOProStats_Query::range_out($now);
+            $answer['days']  = SEOProStats_Search::length($now);
+            $answer['cut']   = true;
+            $answer['rules'] = self::rules('decay', $answer['days']);
+        }
         $list              = self::decay($read['engine'], $now, $then, $read['pages'], $answer['rules']);
-        $answer['compare'] = array('range' => SEOProStats_Query::range_out($then));
+        $answer['compare'] = array('range' => SEOProStats_Query::range_out($then), 'cut' => $short);
         $answer['updates'] = SEOProStats_Changes::updates_between((int) $then['from'], (int) $now['to']);
         $answer['span']    = array((int) $then['from'], (int) $now['to']);
         $answer['rows']    = self::decay_rows($read['engine'], $now, $then, array_slice($list, $read['offset'], $read['limit']));
         return array($answer, $list);
+    }
+
+    /**
+     * The period Losing clicks reads and the earlier one it compares
+     * with, the earlier one holding only days with search data. Where it
+     * would start before the first search day, both are shortened from
+     * the newest end to the longest pair that fits (whole weeks for an
+     * engine whose pages come by week): against the previous period, half
+     * the days with data each; against a year earlier, from a year after
+     * the first search day. So a year, whose previous year Search Console
+     * no longer keeps, is not read as a fall in clicks that never happened.
+     * Both are null when fewer than DECAY_MIN_DAYS days would be compared.
+     *
+     * @param array<string,mixed> $now     From cut().
+     * @param string              $compare prev or year.
+     * @param string              $first   First day with search data (Y-m-d), or ''.
+     * @param bool                $weekly  Whether pages come by week.
+     * @return array{0:array<string,mixed>|null,1:array<string,mixed>|null}
+     */
+    private static function decay_periods(array $now, $compare, $first, $weekly) {
+        $then = self::earlier($now, $compare, $weekly);
+        if (!$then || $first === '' || (string) $then['day_from'] >= $first) {
+            return array($now, $then);
+        }
+        /** @var DateTimeImmutable $end */
+        $end   = $now['end'];
+        $start = new DateTimeImmutable($first, $end->getTimezone());
+        if ($compare === 'year') {
+            $from   = $start->modify('+1 year');
+            $length = $from < $end ? (int) $from->diff($end)->days : 0;
+        } else {
+            $length = intdiv((int) $start->diff($end)->days, 2);
+        }
+        if ($weekly) {
+            $length -= $length % 7;
+        }
+        if ($length < self::DECAY_MIN_DAYS) {
+            return array(null, null);
+        }
+        $begin = $end->modify('-' . $length . ' days');
+        $short = array(
+            'key'      => 'custom',
+            'start'    => $begin,
+            'from'     => $begin->getTimestamp(),
+            'day_from' => $begin->format('Y-m-d'),
+        ) + $now;
+        return array($short, self::earlier($short, $compare, $weekly));
+    }
+
+    /**
+     * The earlier period a period is compared with: the previous one or
+     * a year earlier, as SEOProStats_Search::days() makes it.
+     *
+     * @param array<string,mixed> $now     From SEOProStats_Search::days().
+     * @param string              $compare prev or year.
+     * @param bool                $weekly  Whether pages come by week.
+     * @return array<string,mixed>|null
+     */
+    private static function earlier(array $now, $compare, $weekly) {
+        $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $compare);
+        return $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
     }
 
     /**

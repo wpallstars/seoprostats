@@ -850,7 +850,7 @@ paths:
         stay hidden for `rules.hide_days` days. Accepted and done items no
         longer found are listed as they were (`found` false). As
         `/opportunities`, the period is cut at the newest search day and
-        to its newest 91 days, and decay compares with the period before.
+        to its newest 366 days, and decay compares with the period before.
       parameters:
         - $ref: '#/components/parameters/engine'
         - name: status
@@ -1016,7 +1016,7 @@ paths:
         and page in the aidevops export layout (`export`: `query`, `page`,
         `clicks`, `impressions`, `ctr`, `position`, most impressions
         first). The queue and the export share the period (cut at the
-        newest search day and to its newest 91 days), engine and page
+        newest search day and to its newest 366 days), engine and page
         filters; `params` gives them back, so acting on an item
         (`POST /queue/{key}`) uses the same ones. Read-only; nothing is
         stored. Steps for an agent: `docs/seo-loop-recipes.md`.
@@ -1532,7 +1532,12 @@ paths:
           tenth or more), else whichever fell more of `demand`
           (impressions) and `ctr`; a sentence (`why`), the queries that
           lost most, and the site's recorded changes on the page in both
-          periods. `updates` lists search engine updates in either.
+          periods. `updates` lists search engine updates in either. The
+          earlier period holds only days with search data: where it would
+          start before the first, both are shortened from the newest end
+          (`compare.cut`; `range`, `days` and `rules` are the shortened
+          period's), so a year whose previous year is not kept is not
+          read as a fall.
         - `missing`: a page's query in the top 20 with enough impressions
           whose words the page does not have (`none`), or has only some
           of (`partial`), as `/coverage` checks them; most impressions
@@ -1557,7 +1562,7 @@ paths:
         default (`curve.source`).
 
         As `/search`, the period is cut at the newest search day; it is
-        also cut to its newest 91 days (`days`, `cut`), so a long period
+        also cut to its newest 366 days (`days`, `cut`), so a long period
         never reads every query of every day. Page filters apply; other
         filters are listed in `ignored`.
       parameters:
@@ -2297,7 +2302,7 @@ paths:
         targets of the `status` asked for by state. Open targets
         (candidate, targeted, live) also become `/queue` items (kind
         `target`). As `/opportunities`, the period is cut at the newest
-        search day and to its newest 91 days, and the comparison
+        search day and to its newest 366 days, and the comparison
         (`then_position`, `then_clicks`) has as many days. Reads `targets`
         by its primary key, then `gsc_queries` and `gsc_pairs` by
         `query_day` for the targets' queries only.
@@ -2497,7 +2502,7 @@ paths:
         Give the page as `page` (a path) or `post` (a post ID: its
         address). Only one page's queries are read, by the `path_day`
         key; its post is read once. As `/opportunities`, the period is
-        cut at the newest search day and to its newest 91 days.
+        cut at the newest search day and to its newest 366 days.
       parameters:
         - name: page
           in: query
@@ -4629,7 +4634,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, days, cut, through, connected, ignored, goal, goals, site_rate, rules, left_out, status, counts, items, total, more]
+          required: [engine, engines, range, days, cut, decay, through, connected, ignored, goal, goals, site_rate, rules, left_out, status, counts, items, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
@@ -4641,7 +4646,18 @@ components:
               type: integer
             cut:
               type: boolean
-              description: Whether the period was cut at the newest search day or to its newest 91 days.
+              description: Whether the period was cut at the newest search day or to its newest 366 days.
+            decay:
+              type: [object, 'null']
+              description: The periods losing clicks (and refresh) items were compared in, when shortened so the earlier one holds only days with search data; null when not.
+              required: [range, days, compare]
+              properties:
+                range:
+                  $ref: '#/components/schemas/Range'
+                days:
+                  type: integer
+                compare:
+                  $ref: '#/components/schemas/Range'
             through:
               type: string
               description: Newest day with search data (YYYY-MM-DD); empty with none.
@@ -4789,7 +4805,7 @@ components:
           type: integer
         cut:
           type: boolean
-          description: Whether the period was cut at the newest search day or to its newest 91 days.
+          description: Whether the period was cut at the newest search day or to its newest 366 days.
         through:
           type: string
           description: Newest day with search data (YYYY-MM-DD); empty with none.
@@ -5013,7 +5029,7 @@ components:
               type: integer
             cut:
               type: boolean
-              description: Whether the period was cut at the newest search day or to its newest 91 days.
+              description: Whether the period was cut at the newest search day or to its newest 366 days.
             through:
               type: string
               description: Newest day with search data (YYYY-MM-DD); empty with none.
@@ -6002,7 +6018,7 @@ components:
               description: Days read; 0 without search data.
             cut:
               type: boolean
-              description: Whether the period was cut to its newest 91 days.
+              description: Whether the period was cut to its newest 366 days.
             through:
               type: string
               description: Newest day with search data (YYYY-MM-DD); empty with none.
@@ -6065,10 +6081,13 @@ components:
             compare:
               type: [object, 'null']
               description: decay; the earlier period, null without search data.
-              required: [range]
+              required: [range, cut]
               properties:
                 range:
                   $ref: '#/components/schemas/Range'
+                cut:
+                  type: boolean
+                  description: Whether both periods were shortened so the earlier one holds only days with search data.
             updates:
               type: array
               description: decay; search engine updates in either period.
@@ -7082,7 +7101,7 @@ components:
     BacklinkReportedRow:
       type: object
       description: A referring page a link export named (reported), and its check.
-      required: [source, host, found, state, links, reported, checked, providers]
+      required: [source, host, found, state, links, targets, reported, checked, providers]
       properties:
         source:
           type: string
@@ -7100,6 +7119,27 @@ components:
         links:
           type: integer
           description: Live links to the site found on it.
+        targets:
+          type: array
+          description: Those live links, first found first, of the report's bounded read.
+          items:
+            type: object
+            required: [page, anchor, rel, first_seen]
+            properties:
+              page:
+                type: string
+                description: The page of this site it links to (path).
+              anchor:
+                type: string
+                description: The link's text, or the image's alt text; empty when it has none.
+              rel:
+                type: array
+                items:
+                  type: string
+                  enum: [nofollow, sponsored, ugc]
+              first_seen:
+                type: [string, 'null']
+                format: date-time
         reported:
           type: [string, 'null']
           format: date-time

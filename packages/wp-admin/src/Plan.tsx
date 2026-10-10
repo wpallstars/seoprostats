@@ -53,7 +53,7 @@ import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
-import { PageCell } from './Opportunities';
+import { PageCell, decayCutNote } from './Opportunities';
 import { findingName } from './Audit';
 import { linksName } from './Links';
 import { indexationName } from './Indexation';
@@ -358,6 +358,9 @@ function Notes({ answer }: Readonly<{ answer: QueueAnswer }>) {
 				number(answer.days)
 			)
 		);
+	}
+	if (answer.decay) {
+		notes.push(decayCutNote(answer.decay.range, answer.decay.compare));
 	}
 	notes.push(
 		answer.goal
