@@ -216,10 +216,21 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
         if ($req['dimension'] !== '' && !isset(self::DIMENSIONS[$req['dimension']])) {
             return new WP_Error('seoprostats_dimension', sprintf(/* translators: %s: list of dimensions */ __('Dimension must be one of: %s.', 'seoprostats'), implode(', ', array_keys(self::DIMENSIONS))), array('status' => 400));
         }
-        if ($req['range'] === 'custom' && (!self::is_date($req['from']) || !self::is_date($req['to']) || $req['from'] > $req['to'])) {
+        if ($req['range'] === 'custom' && !self::custom_dates_valid($req['from'], $req['to'])) {
             return new WP_Error('seoprostats_custom', __('A custom range needs from and to dates (YYYY-MM-DD), from not after to.', 'seoprostats'), array('status' => 400));
         }
         return null;
+    }
+
+    /**
+     * Whether a custom range's dates are both YYYY-MM-DD, from not after to.
+     *
+     * @param string $from First day.
+     * @param string $to   Last day.
+     * @return bool
+     */
+    private static function custom_dates_valid($from, $to) {
+        return self::is_date($from) && self::is_date($to) && $from <= $to;
     }
 
     /**
