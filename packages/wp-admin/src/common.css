@@ -39,6 +39,25 @@
 	}
 }
 
+/*
+ * The scheme's colour at a brightness that reads at 4.5:1 on the lightest
+ * greys: its luminance lowered to at most 0.15, hue and saturation kept
+ * (darker schemes, such as Modern, are unchanged). The plugin's screens
+ * already cap the scheme's colour (admin/css/seoprostats-theme.css); this
+ * covers the Dashboard widget and the editor panel (doubled, to outweigh
+ * editor.css's own, which comes after this file). Dark mode sets its own.
+ * The products sit in a one-value min() rather than calc(), which the
+ * build's postcss-calc cannot read with channel names.
+ */
+@supports (color: color(from red xyz-d65 min(x * min(1, 0.15 / y)) min(y, 0.15) z)) {
+	.spst-app,
+	.spst-widget,
+	.spst-modal,
+	.spst-editor.spst-editor {
+		--spst-accent: color(from var(--wp-admin-theme-color, #2271b1) xyz-d65 min(x * min(1, 0.15 / y)) min(y, 0.15) min(z * min(1, 0.15 / y)));
+	}
+}
+
 .spst-change {
 	font-size: 12px;
 	font-weight: 500;
