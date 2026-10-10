@@ -76,6 +76,9 @@ final class SEOProStats_Experiments {
     /** Most experiments listed (the newest). */
     const LIST_LIMIT = 50;
 
+    /** The columns read for a list. */
+    private const LIST_COLS = 'id, created, user_id, name, start, days, review, engine, metric, direction, threshold, change_id, path_id, status, result, decided, meta';
+
     /** Most running experiments read for their pages (running_pages()). */
     const MAX_RUNNING = 500;
 
@@ -396,27 +399,63 @@ final class SEOProStats_Experiments {
         if (!SEOProStats_Schema::is_current()) {
             return $out;
         }
+        $page = isset($args['page']) ? trim((string) $args['page']) : '';
+        $rows = $page !== '' ? self::page_rows($page) : self::status_rows($status);
+        $list = self::listed($rows, $status);
+        $out['experiments'] = $list;
+        $out['total']       = count($list);
+        return $out;
+    }
+
+    /**
+     * The stored rows of one page's experiments, by key path_id: the
+     * page's own, and those of several pages that list it.
+     *
+     * @param string $page A path or address.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function page_rows($page) {
+        global $wpdb;
+        require_once __DIR__ . self::CHANGES_FILE;
+        $path = SEOProStats_Changes::path($page);
+        $ids  = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array($path));
+        $id   = $ids ? (int) $ids[0] : -1;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key path_id; LIST_COLS is a fixed column list.
+        $rows = $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i WHERE path_id IN (%d, 0) ORDER BY id DESC LIMIT %d', SEOProStats_Schema::table('experiments'), $id, self::LIST_LIMIT * 4), ARRAY_A);
+        return array_values(array_filter(is_array($rows) ? $rows : array(), static function ($row) use ($id, $path) {
+            $meta = self::meta($row);
+            return (int) $row['path_id'] === $id || (isset($meta['pages']) && in_array($path, (array) $meta['pages'], true));
+        }));
+    }
+
+    /**
+     * The stored rows of one status by key status_review, or the newest
+     * (for all, or due) by primary key.
+     *
+     * @param string $status running, due, decided, cancelled, or '' for all.
+     * @return array<int,array<string,mixed>>|null
+     */
+    private static function status_rows($status) {
+        global $wpdb;
         $table = SEOProStats_Schema::table('experiments');
-        $cols  = 'id, created, user_id, name, start, days, review, engine, metric, direction, threshold, change_id, path_id, status, result, decided, meta';
-        $page  = isset($args['page']) ? trim((string) $args['page']) : '';
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- our own table, by primary key, key status_review or key path_id; $cols is a fixed column list.
-        if ($page !== '') {
-            require_once __DIR__ . self::CHANGES_FILE;
-            $path = SEOProStats_Changes::path($page);
-            $ids  = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array($path));
-            $id   = $ids ? (int) $ids[0] : -1;
-            // The page's own, and those of several pages that list it.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i WHERE path_id IN (%d, 0) ORDER BY id DESC LIMIT %d", $table, $id, self::LIST_LIMIT * 4), ARRAY_A);
-            $rows = array_values(array_filter(is_array($rows) ? $rows : array(), static function ($row) use ($id, $path) {
-                $meta = self::meta($row);
-                return (int) $row['path_id'] === $id || (isset($meta['pages']) && in_array($path, (array) $meta['pages'], true));
-            }));
-        } elseif ($status !== '' && $status !== 'due') {
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`status_review`) WHERE status = %d ORDER BY review DESC LIMIT %d", $table, (int) array_search($status, self::STATUSES, true), self::LIST_LIMIT), ARRAY_A);
-        } else {
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i ORDER BY id DESC LIMIT %d", $table, self::LIST_LIMIT), ARRAY_A);
+        if ($status !== '' && $status !== 'due') {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by key status_review; LIST_COLS is a fixed column list.
+            return $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i FORCE INDEX (`status_review`) WHERE status = %d ORDER BY review DESC LIMIT %d', $table, (int) array_search($status, self::STATUSES, true), self::LIST_LIMIT), ARRAY_A);
         }
-        // phpcs:enable
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- our own table, by primary key; LIST_COLS is a fixed column list.
+        return $wpdb->get_results($wpdb->prepare('SELECT ' . self::LIST_COLS . ' FROM %i ORDER BY id DESC LIMIT %d', $table, self::LIST_LIMIT), ARRAY_A);
+    }
+
+    /**
+     * The first LIST_LIMIT rows shaped and kept when of the status asked
+     * for: due for review first, then running, decided and cancelled,
+     * newest first in each.
+     *
+     * @param mixed  $rows   Stored rows.
+     * @param string $status running, due, decided, cancelled, or '' for all.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function listed($rows, $status) {
         $list = array();
         foreach (is_array($rows) ? array_slice($rows, 0, self::LIST_LIMIT) : array() as $row) {
             $item = self::shape($row);
@@ -430,9 +469,7 @@ final class SEOProStats_Experiments {
         usort($list, static function ($a, $b) use ($rank) {
             return array($rank($a), $b['id']) <=> array($rank($b), $a['id']);
         });
-        $out['experiments'] = $list;
-        $out['total']       = count($list);
-        return $out;
+        return $list;
     }
 
     /**
@@ -486,24 +523,14 @@ final class SEOProStats_Experiments {
     private static function shape(array $row) {
         require_once __DIR__ . '/class-seoprostats-search.php';
         $meta    = self::meta($row);
-        $metric  = isset(self::METRICS[(int) $row['metric']]) ? self::METRICS[(int) $row['metric']] : 'clicks';
-        $status  = isset(self::STATUSES[(int) $row['status']]) ? self::STATUSES[(int) $row['status']] : 'running';
-        $pages   = self::row_pages($row, $meta);
-        $engine  = (int) $row['engine'] === SEOProStats_Schema::ENGINE_BING ? 'bing' : 'google';
-        $through = self::data_through((int) $row['engine'], (int) $row['metric']);
-        $goal    = null;
-        if (!empty($meta['goal'])) {
-            require_once __DIR__ . self::GOALS_FILE;
-            $found = SEOProStats_Goals::find('goals', (string) $meta['goal']);
-            $goal  = array('id' => (string) $meta['goal'], 'name' => $found ? (string) $found['name'] : null);
-        }
-        $measured = null;
-        if ($status === 'decided' && isset($meta['measured']) && is_array($meta['measured'])) {
-            $measured = $meta['measured'];
-        } elseif ($status === 'running') {
-            $measured = self::measure($row);
-        }
-        $windows = self::windows((int) $row['start'], (int) $row['days'], (int) $row['engine'], (int) $row['metric']);
+        $metric   = self::code_name(self::METRICS, $row['metric'], 'clicks');
+        $status   = self::code_name(self::STATUSES, $row['status'], 'running');
+        $pages    = self::row_pages($row, $meta);
+        $engine   = (int) $row['engine'] === SEOProStats_Schema::ENGINE_BING ? 'bing' : 'google';
+        $through  = self::data_through((int) $row['engine'], (int) $row['metric']);
+        $goal     = self::shape_goal($meta);
+        $measured = self::shape_measured($row, $meta, $status);
+        $windows  = self::windows((int) $row['start'], (int) $row['days'], (int) $row['engine'], (int) $row['metric']);
         return array(
             'id'          => (int) $row['id'],
             'name'        => (string) $row['name'],
@@ -517,18 +544,62 @@ final class SEOProStats_Experiments {
             'review'      => (string) $row['review'],
             'engine'      => $engine,
             'metric'      => $metric,
-            'direction'   => isset(self::DIRECTIONS[(int) $row['direction']]) ? self::DIRECTIONS[(int) $row['direction']] : 'up',
+            'direction'   => self::code_name(self::DIRECTIONS, $row['direction'], 'up'),
             'threshold'   => $metric === 'position' ? round((int) $row['threshold'] / 10, 1) : (float) (int) $row['threshold'],
             'change_id'   => (int) $row['change_id'] ? (int) $row['change_id'] : null,
             'pages'       => $pages,
             'goal'        => $goal,
             'status'      => $status,
-            'result'      => isset(self::RESULTS[(int) $row['result']]) ? self::RESULTS[(int) $row['result']] : null,
+            'result'      => self::code_name(self::RESULTS, $row['result'], null),
             'decided'     => (int) $row['decided'] ? (string) wp_date('c', (int) $row['decided']) : null,
             'due'         => $status === 'running' && $through !== '' && $through >= (string) $row['review'],
             'through'     => $through !== '' ? $through : null,
             'measurement' => $measured,
         );
+    }
+
+    /**
+     * The name of a stored code, or the default for an unknown one.
+     *
+     * @param array<int,string> $names   Code => name.
+     * @param mixed             $code    Stored code.
+     * @param string|null       $default For an unknown code.
+     * @return string|null
+     */
+    private static function code_name(array $names, $code, $default) {
+        return isset($names[(int) $code]) ? $names[(int) $code] : $default;
+    }
+
+    /**
+     * An experiment's goal as the API answers it (its id and name, null
+     * when the goal is gone), or null for none.
+     *
+     * @param array<string,mixed> $meta Its meta.
+     * @return array{id:string,name:string|null}|null
+     */
+    private static function shape_goal(array $meta) {
+        if (empty($meta['goal'])) {
+            return null;
+        }
+        require_once __DIR__ . self::GOALS_FILE;
+        $found = SEOProStats_Goals::find('goals', (string) $meta['goal']);
+        return array('id' => (string) $meta['goal'], 'name' => $found ? (string) $found['name'] : null);
+    }
+
+    /**
+     * An experiment's measurement: kept when decided, measured now while
+     * running, none when cancelled.
+     *
+     * @param array<string,mixed> $row    Table row.
+     * @param array<string,mixed> $meta   Its meta.
+     * @param string              $status Its status.
+     * @return array<string,mixed>|null
+     */
+    private static function shape_measured(array $row, array $meta, $status) {
+        if ($status === 'decided' && isset($meta['measured']) && is_array($meta['measured'])) {
+            return $meta['measured'];
+        }
+        return $status === 'running' ? self::measure($row) : null;
     }
 
     // ------------------------------------------------------------------
@@ -599,12 +670,7 @@ final class SEOProStats_Experiments {
         $metric = (int) $row['metric'];
         $name   = self::METRICS[$metric];
         $search = $metric <= 4;
-        $goal   = null;
-        if ($metric === 6 && !empty($meta['goal'])) {
-            require_once __DIR__ . self::GOALS_FILE;
-            require_once __DIR__ . '/class-seoprostats-conversions.php';
-            $goal = SEOProStats_Goals::find('goals', (string) $meta['goal']);
-        }
+        $goal   = self::measured_goal($metric, $meta);
         $mine   = array_flip(self::row_path_ids($row, $meta));
         $before = self::sums($engine, $metric, $windows['before'], $goal);
         $after  = self::sums($engine, $metric, $windows['after'], $goal);
@@ -615,18 +681,7 @@ final class SEOProStats_Experiments {
         $to   = (new DateTimeImmutable($windows['after']['to'], $tz))->modify('+1 day')->getTimestamp();
         $span = self::span_changes($row, $meta, $from, $to, $mine);
 
-        // The comparison group: pages with data in both windows, not in the
-        // experiment and with no change of their own; most data first.
-        $size  = $search ? 'i' : 'visits';
-        $sizes = array();
-        foreach ($before as $id => $was) {
-            if (!$id || isset($mine[$id]) || isset($span['changed'][$id]) || !isset($after[$id]) || $was[$size] <= 0 || $after[$id][$size] <= 0) {
-                continue;
-            }
-            $sizes[$id] = $was[$size];
-        }
-        arsort($sizes);
-        $group = array_slice(array_keys($sizes), 0, self::GROUP);
+        $group = self::comparison_group($before, $after, $mine, $span['changed'], $search ? 'i' : 'visits');
 
         $pages_before = self::total($before, array_keys($mine));
         $pages_after  = self::total($after, array_keys($mine));
@@ -639,28 +694,8 @@ final class SEOProStats_Experiments {
         $compared     = count($group) >= self::MIN_GROUP && $group_change !== null;
         $effect       = $compared ? self::effect($metric, $value_before, $value_after, self::value($metric, $group_before), self::value($metric, $group_after)) : $change;
 
-        // Noise: each page of the group measured as if it had been changed, against the rest.
-        $noise = null;
-        if ($compared) {
-            $effects = array();
-            foreach ($group as $id) {
-                $rest_before = self::minus($group_before, $before[$id]);
-                $rest_after  = self::minus($group_after, $after[$id]);
-                $one         = self::effect($metric, self::value($metric, $before[$id]), self::value($metric, $after[$id]), self::value($metric, $rest_before), self::value($metric, $rest_after));
-                if ($one !== null) {
-                    $effects[] = $one;
-                }
-            }
-            if (count($effects) >= self::MIN_GROUP) {
-                sort($effects);
-                $noise = array(
-                    'low'   => self::round_effect($metric, self::percentile($effects, self::NOISE_LOW)),
-                    'high'  => self::round_effect($metric, self::percentile($effects, self::NOISE_HIGH)),
-                    'pages' => count($effects),
-                );
-            }
-        }
-        $beyond = $noise !== null && $effect !== null ? ($effect < $noise['low'] || $effect > $noise['high']) : null;
+        $noise  = $compared ? self::noise($metric, $group, $before, $after, $group_before, $group_after) : null;
+        $beyond = self::beyond_noise($noise, $effect);
 
         $enough = self::enough($metric, $pages_before, $pages_after);
         $updates = SEOProStats_Changes::updates_between($from, $to);
@@ -705,6 +740,94 @@ final class SEOProStats_Experiments {
             'reasons'      => $reasons,
             'summary'      => self::summary($name, $metric, $effect, $compared, count($group), $beyond, $enough['ok']),
         );
+    }
+
+    /**
+     * The goal a conversions experiment counts, or null (other measures,
+     * or no goal).
+     *
+     * @param int                 $metric Metric code.
+     * @param array<string,mixed> $meta   Its meta.
+     * @return array<string,mixed>|null
+     */
+    private static function measured_goal($metric, array $meta) {
+        if ($metric !== 6 || empty($meta['goal'])) {
+            return null;
+        }
+        require_once __DIR__ . self::GOALS_FILE;
+        require_once __DIR__ . '/class-seoprostats-conversions.php';
+        return SEOProStats_Goals::find('goals', (string) $meta['goal']);
+    }
+
+    /**
+     * The comparison group: pages with data in both windows, not in the
+     * experiment and with no change of their own; most data first, up to
+     * GROUP.
+     *
+     * @param array<int,array<string,mixed>> $before  Sums before, by path id.
+     * @param array<int,array<string,mixed>> $after   Sums after, by path id.
+     * @param array<int,int>                 $mine    The experiment's path ids (as keys).
+     * @param array<int,bool>                $changed Path ids changed in the span (as keys).
+     * @param string                         $size    The sum that sizes a page (i or visits).
+     * @return int[] Path ids.
+     */
+    private static function comparison_group(array $before, array $after, array $mine, array $changed, $size) {
+        $sizes = array();
+        foreach ($before as $id => $was) {
+            if (!$id || isset($mine[$id]) || isset($changed[$id]) || !isset($after[$id]) || $was[$size] <= 0 || $after[$id][$size] <= 0) {
+                continue;
+            }
+            $sizes[$id] = $was[$size];
+        }
+        arsort($sizes);
+        return array_slice(array_keys($sizes), 0, self::GROUP);
+    }
+
+    /**
+     * The noise band: each page of the group measured as if it had been
+     * changed, against the rest; null with fewer than MIN_GROUP effects.
+     *
+     * @param int                            $metric       Metric code.
+     * @param int[]                          $group        The group's path ids.
+     * @param array<int,array<string,mixed>> $before       Sums before, by path id.
+     * @param array<int,array<string,mixed>> $after        Sums after, by path id.
+     * @param array<string,mixed>            $group_before The group's sums before.
+     * @param array<string,mixed>            $group_after  The group's sums after.
+     * @return array{low:float|null,high:float|null,pages:int}|null
+     */
+    private static function noise($metric, array $group, array $before, array $after, array $group_before, array $group_after) {
+        $effects = array();
+        foreach ($group as $id) {
+            $rest_before = self::minus($group_before, $before[$id]);
+            $rest_after  = self::minus($group_after, $after[$id]);
+            $one         = self::effect($metric, self::value($metric, $before[$id]), self::value($metric, $after[$id]), self::value($metric, $rest_before), self::value($metric, $rest_after));
+            if ($one !== null) {
+                $effects[] = $one;
+            }
+        }
+        if (count($effects) < self::MIN_GROUP) {
+            return null;
+        }
+        sort($effects);
+        return array(
+            'low'   => self::round_effect($metric, self::percentile($effects, self::NOISE_LOW)),
+            'high'  => self::round_effect($metric, self::percentile($effects, self::NOISE_HIGH)),
+            'pages' => count($effects),
+        );
+    }
+
+    /**
+     * Whether the effect lies outside the noise band (null without both).
+     *
+     * @param array<string,mixed>|null $noise  From noise().
+     * @param float|null               $effect The effect.
+     * @return bool|null
+     */
+    private static function beyond_noise($noise, $effect) {
+        if ($noise === null || $effect === null) {
+            return null;
+        }
+        return $effect < $noise['low'] || $effect > $noise['high'];
     }
 
     /**
@@ -1221,32 +1344,22 @@ final class SEOProStats_Experiments {
             return self::error('seoprostats_experiment_days', sprintf(__('Each window is 7, 14, 28, 56 or 84 days (%s).', 'seoprostats'), implode(', ', self::WINDOWS)));
         }
         $engine = isset($input['engine']) && (string) $input['engine'] === 'bing' ? SEOProStats_Schema::ENGINE_BING : SEOProStats_Schema::ENGINE_GOOGLE;
-        $metric = array_search(isset($input['metric']) && $input['metric'] !== '' ? (string) $input['metric'] : 'clicks', self::METRICS, true);
+        $metric = array_search(self::given($input, 'metric', 'clicks'), self::METRICS, true);
         if ($metric === false) {
             /* translators: %s: list of measures */
             return self::error('seoprostats_experiment_metric', sprintf(__('The measure is one of: %s.', 'seoprostats'), implode(', ', self::METRICS)));
         }
-        $direction = array_search(isset($input['direction']) && $input['direction'] !== '' ? (string) $input['direction'] : 'up', self::DIRECTIONS, true);
+        $direction = array_search(self::given($input, 'direction', 'up'), self::DIRECTIONS, true);
         if ($direction === false) {
             return self::error('seoprostats_experiment_direction', __('The direction is up or down (for position, up means a better place).', 'seoprostats'));
         }
-        $given = isset($input['threshold']) && $input['threshold'] !== '' ? (float) $input['threshold'] : null;
-        if ($given !== null && $given < 0) {
-            return self::error('seoprostats_experiment_threshold', __('The threshold is a percent (or places, for position) of 0 or more.', 'seoprostats'));
+        $threshold = self::threshold_field($input, $metric);
+        if (is_wp_error($threshold)) {
+            return $threshold;
         }
-        // Stored as percent, or tenths of a place for position.
-        $threshold = self::THRESHOLD;
-        if ($given !== null) {
-            $threshold = (int) round($metric === 4 ? $given * 10 : $given);
-        }
-        $goal      = isset($input['goal']) ? trim((string) $input['goal']) : '';
-        if ($metric === 6) {
-            require_once __DIR__ . self::GOALS_FILE;
-            if ($goal === '' || !SEOProStats_Goals::find('goals', $goal)) {
-                return self::error('seoprostats_experiment_goal', __('Conversions need a goal: give its id (wp seoprostats goals list shows them).', 'seoprostats'));
-            }
-        } else {
-            $goal = '';
+        $goal = self::goal_field($input, $metric);
+        if (is_wp_error($goal)) {
+            return $goal;
         }
         return array(
             'days'      => $days,
@@ -1256,6 +1369,56 @@ final class SEOProStats_Experiments {
             'threshold' => min(65535, $threshold),
             'goal'      => $goal,
         );
+    }
+
+    /**
+     * An input field as text, or the default when missing or empty.
+     *
+     * @param array<string,mixed> $input   Input.
+     * @param string              $key     Field.
+     * @param string              $default When missing or empty.
+     * @return string
+     */
+    private static function given(array $input, $key, $default) {
+        return isset($input[$key]) && $input[$key] !== '' ? (string) $input[$key] : $default;
+    }
+
+    /**
+     * A new experiment's threshold as stored: percent, or tenths of a
+     * place for position (default THRESHOLD).
+     *
+     * @param array<string,mixed> $input  threshold.
+     * @param int                 $metric Metric code.
+     * @return int|WP_Error
+     */
+    private static function threshold_field(array $input, $metric) {
+        $given = isset($input['threshold']) && $input['threshold'] !== '' ? (float) $input['threshold'] : null;
+        if ($given === null) {
+            return self::THRESHOLD;
+        }
+        if ($given < 0) {
+            return self::error('seoprostats_experiment_threshold', __('The threshold is a percent (or places, for position) of 0 or more.', 'seoprostats'));
+        }
+        return (int) round($metric === 4 ? $given * 10 : $given);
+    }
+
+    /**
+     * A new experiment's goal id: one that exists for conversions, else ''.
+     *
+     * @param array<string,mixed> $input  goal.
+     * @param int                 $metric Metric code.
+     * @return string|WP_Error
+     */
+    private static function goal_field(array $input, $metric) {
+        if ($metric !== 6) {
+            return '';
+        }
+        $goal = isset($input['goal']) ? trim((string) $input['goal']) : '';
+        require_once __DIR__ . self::GOALS_FILE;
+        if ($goal === '' || !SEOProStats_Goals::find('goals', $goal)) {
+            return self::error('seoprostats_experiment_goal', __('Conversions need a goal: give its id (wp seoprostats goals list shows them).', 'seoprostats'));
+        }
+        return $goal;
     }
 
     /**
