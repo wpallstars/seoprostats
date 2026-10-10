@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.2.0
+Version: 1.3.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -519,6 +519,14 @@ Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submis
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.3.0
+
+- New: Search → Backlinks → Reported pages lists every referring page a link export named, with its check state, the links found on it and the export's date, filterable by source. Search Console exports name the linking page, not the page linked to, so their links appear once each page is opened.
+- New: after a link export import, its pages are opened by a catch-up check every minute until each was opened once (it used to take weeks), plus Check now on Search → Backlinks. Links an export reported are dated from the export, not marked new.
+- New: Settings → Import → Links keeps a history of imports with a private Download of each file as uploaded and a link to its results; REST, WP-CLI and ability access to the history and the reported pages.
+- Fixed: the backlink check keeps the page facts of referring pages from backlink exports instead of saving "Array" with a PHP warning; the Links import status reads in words.
+- Developers: the migration, demo and backlink classes split their long functions into named helpers. No queries, REST answers, WP-CLI output or stored data changed.
 
 ### 1.2.0
 
