@@ -85,7 +85,10 @@ final class SEOProStats_Migrate_Slimstat extends SEOProStats_Migrate_Source {
         global $wpdb;
         $opts    = get_option(self::SETTINGS_OPTION, array());
         $version = $this->installed_version();
-        $out     = array('version' => $version !== '' ? $version : (is_array($opts) && isset($opts['version']) ? (string) $opts['version'] : ''), 'from' => '', 'to' => '');
+        if ($version === '' && is_array($opts) && isset($opts['version'])) {
+            $version = (string) $opts['version'];
+        }
+        $out = array('version' => $version, 'from' => '', 'to' => '');
         foreach ($this->tables() as $table) {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- another plugin's table: MIN and MAX on its dt index.
             $span = $wpdb->get_row($wpdb->prepare('SELECT MIN(dt) AS a, MAX(dt) AS b FROM %i WHERE dt > 0', $table), ARRAY_A);

@@ -14,6 +14,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/** Disposable shop customer's address. */
+const SEOPROSTATS_SHOP_TEST_EMAIL = 'shop@example.com';
+
+/** Message proving the disposable site's debug log works. */
+const SEOPROSTATS_SHOP_TEST_CANARY = 'shop-test debug canary';
+
 add_filter('pre_wp_mail', '__return_true');
 add_action('doing_it_wrong_run', static function ($function, $message) {
     if ($function === '_load_textdomain_just_in_time') {
@@ -73,8 +79,8 @@ add_action('template_redirect', static function () {
     if ($action === 'edd') {
         $product = (int) get_option('seoprostats_shop_test_download');
         $id = edd_build_order(array(
-            'user_email' => 'shop@example.com',
-            'user_info' => array('id' => 0, 'email' => 'shop@example.com', 'first_name' => 'Shop', 'last_name' => 'Test'),
+            'user_email' => SEOPROSTATS_SHOP_TEST_EMAIL,
+            'user_info' => array('id' => 0, 'email' => SEOPROSTATS_SHOP_TEST_EMAIL, 'first_name' => 'Shop', 'last_name' => 'Test'),
             'downloads' => array(array('id' => $product, 'options' => array(), 'quantity' => 1)),
             'cart_details' => array(array('id' => $product, 'name' => 'Shop test download', 'item_number' => array('id' => $product, 'options' => array()), 'item_price' => 49, 'quantity' => 1, 'price' => 49, 'subtotal' => 49, 'tax' => 0, 'discount' => 0)),
             'price' => 49, 'subtotal' => 49, 'tax' => 0, 'discount' => 0,
@@ -93,7 +99,7 @@ add_action('template_redirect', static function () {
     }
     if ($action === 'fluentcart') {
         $customer = \FluentCart\App\Models\Customer::create(array(
-            'email' => 'shop@example.com', 'first_name' => 'Shop', 'last_name' => 'Test',
+            'email' => SEOPROSTATS_SHOP_TEST_EMAIL, 'first_name' => 'Shop', 'last_name' => 'Test',
         ));
         $order = \FluentCart\App\Models\Order::create(array(
             'status' => 'processing', 'payment_status' => 'pending', 'type' => 'payment',
@@ -161,14 +167,14 @@ function seoprostats_shop_test_assert() {
 /** Fail on PHP messages except WooCommerce's known independent notice. */
 function seoprostats_shop_test_log() {
     // A canary proves WP_DEBUG_LOG works; it is the only fixture message ignored.
-    error_log('shop-test debug canary');
+    error_log(SEOPROSTATS_SHOP_TEST_CANARY);
     $log = file_get_contents(WP_CONTENT_DIR . '/debug.log');
-    if (!is_string($log) || strpos($log, 'shop-test debug canary') === false) {
+    if (!is_string($log) || strpos($log, SEOPROSTATS_SHOP_TEST_CANARY) === false) {
         WP_CLI::error('FAIL debug log canary missing');
     }
     $allowed = 0;
     foreach (explode("\n", $log) as $line) {
-        if ($line === '' || strpos($line, 'shop-test debug canary') !== false) {
+        if ($line === '' || strpos($line, SEOPROSTATS_SHOP_TEST_CANARY) !== false) {
             continue;
         }
         if (strpos($line, '_load_textdomain_just_in_time') !== false && strpos($line, 'woocommerce') !== false && strpos($line, 'seoprostats') === false) {
