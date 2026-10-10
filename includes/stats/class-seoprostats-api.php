@@ -139,6 +139,11 @@ final class SEOProStats_API {
             'permission_callback' => array(__CLASS__, 'can_read'),
         );
 
+        register_rest_route($ns, '/indexnow', array(
+            'methods'             => WP_REST_Server::READABLE,
+            'permission_callback' => array(__CLASS__, 'can_change'),
+            'callback'            => array(__CLASS__, 'indexnow'),
+        ));
         register_rest_route($ns, '/stats', $read + array(
             'callback' => array(__CLASS__, 'stats'),
             'args'     => $base,
@@ -954,6 +959,12 @@ final class SEOProStats_API {
      */
     public static function can_change() {
         return SEOProStats_Settings::can_change();
+    }
+
+    /** @return WP_REST_Response Stored IndexNow status; never sends a request. */
+    public static function indexnow() {
+        require_once __DIR__ . '/class-seoprostats-indexnow.php';
+        return new WP_REST_Response(SEOProStats_IndexNow::status());
     }
 
     /**

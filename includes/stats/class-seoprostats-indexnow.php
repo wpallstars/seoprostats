@@ -27,7 +27,12 @@ final class SEOProStats_IndexNow {
         add_action('init', array(__CLASS__, 'rewrite'));
         add_filter('query_vars', array(__CLASS__, 'query_vars'));
         add_action('parse_request', array(__CLASS__, 'serve_key'));
-        add_action(self::RETRY, array(__CLASS__, 'enqueue'), 10, 2);
+        add_action(self::RETRY, array(__CLASS__, 'retry'), 10, 2);
+    }
+
+    /** @param string[] $urls Addresses. @param int $id Change ID. */
+    public static function retry(array $urls, $id) {
+        self::enqueue($urls, $id);
     }
 
     /** @return bool Whether the owner opted in. */
@@ -66,9 +71,14 @@ final class SEOProStats_IndexNow {
         if (self::enabled()) {
             self::key();
             self::rewrite();
-            flush_rewrite_rules(false);
+            $rules = get_option('rewrite_rules', array());
+            if (!is_array($rules) || !isset($rules['^([a-f0-9]{32})\.txt$'])) {
+                flush_rewrite_rules(false);
+            }
         } else {
-            delete_option(self::STATE);
+            if (get_option(self::STATE, false) !== false) {
+                self::mutate(static function ($state) { $state['queue'] = array(); return $state; });
+            }
             wp_clear_scheduled_hook(self::RETRY);
         }
     }
@@ -122,7 +132,12 @@ final class SEOProStats_IndexNow {
     public static function url($url) {
         $parts = wp_parse_url($url);
         $home = wp_parse_url(home_url('/'));
-        if (!is_array($parts) || !is_array($home) || empty($parts['host']) || !isset($parts['scheme']) || !in_array($parts['scheme'], array('http', 'https'), true) || strtolower($parts['host']) !== strtolower($home['host']) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) || ($parts['port'] ?? null) !== ($home['port'] ?? null)) {
+        if (!is_array($parts) || !is_array($home) || empty($parts['host']) || empty($home['host']) || !isset($parts['scheme']) || !in_array($parts['scheme'], array('http', 'https'), true) || strtolower($parts['host']) !== strtolower($home['host']) || isset($parts['user']) || isset($parts['pass']) || isset($parts['fragment']) || ($parts['port'] ?? null) !== ($home['port'] ?? null)) {
+            return '';
+        }
+        $root = $home['path'] ?? '/';
+        $path = $parts['path'] ?? '/';
+        if (strpos($path, $root) !== 0 || preg_match('~(?:^|/)\.\.(?:/|$)~', rawurldecode($path))) {
             return '';
         }
         return esc_url_raw($url, array('http', 'https'));
@@ -142,6 +157,9 @@ final class SEOProStats_IndexNow {
             $paths[] = (string) $row['old'];
         }
         $home = wp_parse_url(home_url('/'));
+        if (!is_array($home) || !isset($home['scheme'], $home['host'])) {
+            return;
+        }
         $origin = $home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '');
         $urls = array();
         foreach ($paths as $path) {
@@ -184,6 +202,9 @@ final class SEOProStats_IndexNow {
         if (!self::enabled() || (!wp_doing_cron() && !(defined('WP_CLI') && WP_CLI))) {
             return;
         }
+        if (!self::state()['queue']) {
+            return;
+        }
         // Atomic owner lock; the request times out well before this stale cutoff.
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- remove only an expired lock owned by this feature.
@@ -216,11 +237,26 @@ final class SEOProStats_IndexNow {
             return;
         }
         $key = self::key();
+        $body = wp_json_encode(array('host' => wp_parse_url(home_url('/'), PHP_URL_HOST), 'key' => $key, 'keyLocation' => home_url('/' . $key . '.txt'), 'urlList' => array_keys($batch)));
+        if ($body === false) {
+            return;
+        }
+        // Reserve the hourly allowance before contacting the service, even if
+        // the process dies after the POST. The pending queue remains durable.
+        if (!self::mutate(static function ($latest) use ($batch, $now) {
+            $latest['recent'] = array_filter($latest['recent'], static function ($ts) use ($now) { return $ts > $now - HOUR_IN_SECONDS; });
+            foreach (array_keys($batch) as $url) {
+                $latest['recent'][$url] = $now;
+            }
+            return $latest;
+        }) || !self::enabled()) {
+            return;
+        }
         $response = wp_remote_post(self::ENDPOINT, array(
-            'timeout' => 15,
+            'timeout' => 3,
             'redirection' => 0,
             'headers' => array('Content-Type' => 'application/json; charset=utf-8'),
-            'body' => wp_json_encode(array('host' => wp_parse_url(home_url('/'), PHP_URL_HOST), 'key' => $key, 'keyLocation' => home_url('/' . $key . '.txt'), 'urlList' => array_keys($batch))),
+            'body' => $body,
         ));
         $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
         $sent = in_array($code, array(200, 202), true);

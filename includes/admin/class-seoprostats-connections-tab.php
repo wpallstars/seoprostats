@@ -176,9 +176,33 @@ final class SEOProStats_Connections_Tab {
                 foreach (SEOProStats_Connections::statuses() as $status) {
                     self::render_source($status);
                 }
+                self::render_indexnow();
                 ?>
             </div>
         </div>
+        <?php
+    }
+
+    /** Draw the stored notification status; no service request. */
+    private static function render_indexnow() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexnow.php';
+        $status = SEOProStats_IndexNow::status();
+        ?>
+        <section class="spst-card spst-connection" id="spst-connection-indexnow">
+            <h3><?php esc_html_e('IndexNow', 'seoprostats'); ?></h3>
+            <p><?php esc_html_e('Changed page addresses are sent to api.indexnow.org and shared by participating engines, including Bing, not Google. Received does not mean indexed.', 'seoprostats'); ?></p>
+            <p><a href="<?php echo esc_url(SEOProStats_Admin_Manager::tab_url('data')); ?>"><?php echo esc_html($status['enabled'] ? __('On — change under Settings → Data', 'seoprostats') : __('Off — enable under Settings → Data', 'seoprostats')); ?></a></p>
+            <p><?php echo esc_html(sprintf(/* translators: %d: queued page count. */ __('Queued pages: %d', 'seoprostats'), $status['queued'])); ?></p>
+            <?php if ($status['key_url']) : ?>
+                <p><a href="<?php echo esc_url($status['key_url']); ?>"><?php esc_html_e('Public verification key', 'seoprostats'); ?></a></p>
+            <?php endif; ?>
+            <?php if ($status['last']) : ?>
+                <p><?php echo esc_html(sprintf(/* translators: 1: date, 2: page count, 3: HTTP code. */ __('Last submission: %1$s · %2$d pages · HTTP %3$d', 'seoprostats'), wp_date('Y-m-d H:i', $status['last']['time']), $status['last']['count'], $status['last']['code'])); ?></p>
+            <?php endif; ?>
+            <?php if ($status['error']) : ?>
+                <p role="alert"><?php echo esc_html($status['error']); ?></p>
+            <?php endif; ?>
+        </section>
         <?php
     }
 

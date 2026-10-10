@@ -480,6 +480,16 @@ Actions:
 
 Read a setting with `SEOProStats_Settings::get( 'key' )`.
 
+### IndexNow notifications
+
+**Settings → Data → Notify search engines of changed pages (IndexNow)** is off by default. Published, unpublished, moved, retitled, content and SEO-field changes queue their page addresses. Moved pages include both addresses; unpublished or deleted pages include the old address. The minute cron sends one batch of up to 10,000 addresses to `api.indexnow.org`, with the site's host and a public verification key, never visitor data. Participating engines, including Bing, share notifications; Google does not participate.
+
+The key is generated on first use and served at `/<key>.txt` under the site's home address by WordPress, without writing a file. The site and key must be publicly reachable. On a subdirectory site, the key verifies pages under that directory. The queue deduplicates addresses and allows at most one attempt per address per hour; further edits wait for that allowance. Failed attempts stay queued for an hourly retry. WP-Cron needs traffic or a system cron running due events every minute; the plugin does not guarantee a crawl time.
+
+**Settings → Connections → IndexNow** shows the queued count, last answer and key, validation or rate-limit errors. **Changes** shows each submitted change's receipt. HTTP 200 means received; 202 means received with key validation pending. Neither proves a page was crawled or indexed. Turning the setting off discards pending notifications and makes the key address return 404; the last 100 receipts remain until uninstall.
+
+Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submission). WP-CLI: `wp seoprostats indexnow status`, or `wp seoprostats indexnow send <url>... --user=<administrator>` to queue and send this site's addresses now, with the same opt-in and hourly allowance. Status is JSON; `log` contains time, count, HTTP code and `sent` (received), and matching change rows carry `meta.indexnow`. Ordinary visitor pages run no rewrite flush, database write or remote call.
+
 ## Uninstall
 
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
@@ -488,6 +498,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: opt-in IndexNow page-change notifications, a virtual verification key, minute-cron batches with an hourly allowance, receipts on Changes and a status card under Connections; REST status and WP-CLI send/status.
 - Fixed: disconnecting a search source while it imports in the background no longer leaves it connected.
 - New: **Sign in with Google** for Search Console under Settings → Connections: sign in, allow read access, and the site connects, with no Google Cloud setup. It goes through our relay, which keeps nothing; disconnecting removes the access with Google. The service account key still works as before.
 - New: backlink CSV exports from Search Console and backlink tools, with background progress, per-source scores and dates, REST and CLI imports, and How found filtering.

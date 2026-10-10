@@ -71,6 +71,36 @@ Build: `npm ci && npm run build` (wp-scripts for the app, esbuild for the
 tracker). `npm run check` type-checks and lints. Commit `assets/build/`
 with the source change; CI rebuilds and fails when they differ.
 
+## IndexNow notifications
+
+`SEOProStats_IndexNow` is opt-in (`indexnow`, Settings → Data, false).
+`SEOProStats_Changes::record()` passes successfully inserted live page-change
+rows and their primary keys to the queue; demo writes and imports do not send.
+Kinds 1–7 and 10–13 cover publication, removal, moves, titles, content, links
+and SEO fields. Moves include the old path; removals already carry it.
+Addresses retain the site's subdirectory and are validated against its exact
+host. WP-CLI accepts only same-host HTTP(S) addresses without credentials or
+fragments. A subdirectory key covers only that directory's addresses.
+
+The non-autoloaded `seoprostats_indexnow` option keeps deduplicated pending
+URLs with change IDs, recent attempts and the last 100 receipts. Atomic
+compare-and-swap writes preserve concurrent edits; contention retries use
+`seoprostats_indexnow_enqueue` single events. The minute processor calls
+`run()`, which refuses ordinary requests and takes an atomic sender lock.
+Before its single POST (up to 10,000 URLs, three-second timeout, no redirects)
+it reserves each URL's hourly allowance. Failures remain queued; successful
+submissions remove only the change IDs in their snapshot, preserving new edits.
+Receipts update live change metadata by primary key (`meta.indexnow`), never
+a scan. The public status route requires settings permission and reads only.
+
+`seoprostats_indexnow_key` holds a random 32-character key generated on a save
+or first submission. A generic rewrite serves its virtual `.txt` file; normal
+visitor requests never read this option or the queue. Rules are flushed only
+on an opted-in settings save if missing. Opt-out clears the queue/retry events
+and makes the key return 404, retaining receipts. Uninstall deletes all three
+options and retry events. No filesystem write or visitor information is involved.
+200/202 mean receipt, not indexing; Google does not participate.
+
 ## Collection
 
 ### Tracker
