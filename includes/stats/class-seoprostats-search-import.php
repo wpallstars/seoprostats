@@ -235,6 +235,10 @@ final class SEOProStats_Search_Import {
             if ($i > 0 && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
                 break;
             }
+            if ($i > 0 && !SEOProStats_Connections::still_connected($source)) {
+                // Disconnected while this run was under way: stop, write nothing more.
+                break;
+            }
             list($day, $edge) = $job;
             if (!$import) {
                 $import = self::start($source, $property, $day);
@@ -327,6 +331,9 @@ final class SEOProStats_Search_Import {
         $rows   = 0;
         $days   = array();
         while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
+            if (!SEOProStats_Connections::still_connected($source)) {
+                break;
+            }
             $value = (string) $queue[0];
             $data  = $class::appearances($token, $property, $from, $to, $value);
             if (is_wp_error($data)) {
@@ -486,6 +493,9 @@ final class SEOProStats_Search_Import {
         $days   = array();
         while ($queue) {
             if (($pages > 0 || $result['days'] > 0) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+                break;
+            }
+            if (!SEOProStats_Connections::still_connected($source)) {
                 break;
             }
             if (!$import) {

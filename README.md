@@ -488,6 +488,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- Fixed: disconnecting a search source while it imports in the background no longer leaves it connected.
 - New: **Sign in with Google** for Search Console under Settings → Connections: sign in, allow read access, and the site connects, with no Google Cloud setup. It goes through our relay, which keeps nothing; disconnecting removes the access with Google. The service account key still works as before.
 - New: backlink CSV exports from Search Console and backlink tools, with background progress, per-source scores and dates, REST and CLI imports, and How found filtering.
 - Fixed: the Read Me tab keeps a line's text, unformatted, when its formatting cannot be read, instead of showing nothing.

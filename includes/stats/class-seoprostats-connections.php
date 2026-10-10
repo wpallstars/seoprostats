@@ -213,6 +213,33 @@ final class SEOProStats_Connections {
     }
 
     /**
+     * Every stored connection, read again from the database, for a write.
+     * An import runs in its own request for a minute or so; if the source
+     * is disconnected meanwhile, that request's cached copy still holds the
+     * connection, and writing its state back from the copy would bring the
+     * connection (and revoked credentials) back.
+     *
+     * @return array<string,array<string,mixed>>
+     */
+    private static function all_fresh() {
+        wp_cache_delete(self::OPTION, 'options');
+        wp_cache_delete('notoptions', 'options');
+        return self::all();
+    }
+
+    /**
+     * Whether a source is still connected, from the database (a running
+     * import checks between days, so a disconnect stops it).
+     *
+     * @param string $source Source key.
+     * @return bool
+     */
+    public static function still_connected($source) {
+        $all = self::all_fresh();
+        return isset($all[$source]) && is_array($all[$source]);
+    }
+
+    /**
      * The connected sources' keys.
      *
      * @return string[]
@@ -274,7 +301,7 @@ final class SEOProStats_Connections {
         if (is_wp_error($secret)) {
             return $secret;
         }
-        $all          = self::all();
+        $all          = self::all_fresh();
         $before       = isset($all[$source]) && is_array($all[$source]) ? $all[$source] : array();
         $all[$source] = array(
             'secret'    => $secret,
@@ -293,7 +320,7 @@ final class SEOProStats_Connections {
      * @param array<string,mixed> $values Values.
      */
     public static function update_state($source, array $values) {
-        $all = self::all();
+        $all = self::all_fresh();
         if (!isset($all[$source]) || !is_array($all[$source])) {
             return;
         }
@@ -315,7 +342,7 @@ final class SEOProStats_Connections {
      * @param string $source Source key.
      */
     public static function remove($source) {
-        $all = self::all();
+        $all = self::all_fresh();
         unset($all[$source]);
         if ($all) {
             update_option(self::OPTION, $all, false);
