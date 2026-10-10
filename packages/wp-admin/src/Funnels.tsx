@@ -27,7 +27,7 @@ function stepName(step: GoalStep): string {
 	return step.name || step.match;
 }
 
-function FunnelEditor({ funnel, onClose }: { funnel: FunnelRow | null; onClose: () => void }) {
+function FunnelEditor({ funnel, onClose }: Readonly<{ funnel: FunnelRow | null; onClose: () => void }>) {
 	const data = useDataSet();
 	const [name, setName] = useState(funnel?.name ?? '');
 	const [steps, setSteps] = useState<GoalStep[]>(
@@ -98,7 +98,7 @@ function FunnelEditor({ funnel, onClose }: { funnel: FunnelRow | null; onClose: 
 	);
 }
 
-function FunnelCard({ funnel, comparing, onEdit, onDelete, props }: { funnel: FunnelRow; comparing: boolean; onEdit: () => void; onDelete: () => void; props: ViewProps }) {
+function FunnelCard({ funnel, comparing, onEdit, onDelete, props }: Readonly<{ funnel: FunnelRow; comparing: boolean; onEdit: () => void; onDelete: () => void; props: ViewProps }>) {
 	const { state, update } = props;
 	const id = `spst-funnel-${funnel.id}`;
 	return (
@@ -183,7 +183,7 @@ function FunnelCard({ funnel, comparing, onEdit, onDelete, props }: { funnel: Fu
 	);
 }
 
-export function Funnels(props: ViewProps) {
+export function Funnels(props: Readonly<ViewProps>) {
 	const { state } = props;
 	const data = useDataSet();
 	const query = useFunnels(state);

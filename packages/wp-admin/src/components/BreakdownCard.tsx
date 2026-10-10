@@ -70,7 +70,7 @@ function filterValue(dimension: Dimension, row: { value: string; label: string }
 	return NAMED_DIMENSIONS.includes(dimension) && row.value !== '0' && row.label ? row.label : row.value;
 }
 
-function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewState; update: Props['update'] }) {
+function Rows({ dimension, state, update }: Readonly<{ dimension: Dimension; state: ViewState; update: Props['update'] }>) {
 	const query = useBreakdown(state, dimension);
 	const metric = countOf(dimension);
 	const byPageviews = metric === 'pageviews';
@@ -158,7 +158,7 @@ function Rows({ dimension, state, update }: { dimension: Dimension; state: ViewS
 	);
 }
 
-export function BreakdownCard({ card, title, tabs: all, state, update, wide = false }: Props) {
+export function BreakdownCard({ card, title, tabs: all, state, update, wide = false }: Readonly<Props>) {
 	const printAll = usePrintAll();
 	// A shared report that hides some breakdowns shows no tab for them (and no card when none are left).
 	const tabs = all.filter((tab) => !shareAccess.hidden.includes(tab.dimension));

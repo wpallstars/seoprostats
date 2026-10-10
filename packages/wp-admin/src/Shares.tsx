@@ -85,7 +85,7 @@ function chooseImage(title: string, done: (id: number, url: string) => void): vo
 }
 
 /** The private link: shown once, with Copy and Open (a new window). */
-export function ShareLink({ url, name, onDismiss }: { url: string; name?: string; onDismiss: () => void }) {
+export function ShareLink({ url, name, onDismiss }: Readonly<{ url: string; name?: string; onDismiss: () => void }>) {
     const id = useId();
     const input = useRef<HTMLInputElement>(null);
     const [copied, setCopied] = useState(false);
@@ -118,7 +118,7 @@ export function ShareLink({ url, name, onDismiss }: { url: string; name?: string
     );
 }
 
-function LogoField({ label, help, id, url, choose, clear }: { label: string; help: string; id: number; url: string; choose: () => void; clear: () => void }) {
+function LogoField({ label, help, id, url, choose, clear }: Readonly<{ label: string; help: string; id: number; url: string; choose: () => void; clear: () => void }>) {
     const canChoose = !!mediaLibrary();
     return (
         <div className="spst-share-logo">
@@ -149,7 +149,7 @@ function DragHandleIcon() {
  * Tab to the handle, press Space, move it with the arrow keys (Home, End)
  * and press Space again; Escape puts it back. Each move is announced.
  */
-function SectionOrder({ views, setViews }: { views: ViewState[]; setViews: (views: ViewState[]) => void }) {
+function SectionOrder({ views, setViews }: Readonly<{ views: ViewState[]; setViews: (views: ViewState[]) => void }>) {
     const help = useId();
     const list = useRef<HTMLOListElement>(null);
     const handles = useRef(new Map<string, HTMLButtonElement>());
@@ -302,7 +302,7 @@ function SectionOrder({ views, setViews }: { views: ViewState[]; setViews: (view
     );
 }
 
-export function ShareEditor({ state, share, close, saved }: { state: ViewState; share?: SharedReport; close: () => void; saved: (share: SharedReport) => void }) {
+export function ShareEditor({ state, share, close, saved }: Readonly<{ state: ViewState; share?: SharedReport; close: () => void; saved: (share: SharedReport) => void }>) {
     const first = shareView(state) ?? { ...state, view: 'overview' as const };
     const [name, setName] = useState(share?.name ?? '');
     const [note, setNote] = useState(share?.note ?? '');
@@ -528,7 +528,7 @@ export function ShareEditor({ state, share, close, saved }: { state: ViewState; 
 
 const when = (time: number) => (time ? new Date(time * 1000).toLocaleString(locale, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
-export function Shares({ state }: { state: ViewState }) {
+export function Shares({ state }: Readonly<{ state: ViewState }>) {
     const [shares, setShares] = useState<SharedReport[]>([]);
     const [loaded, setLoaded] = useState(false);
     const [editing, setEditing] = useState<SharedReport | 'new' | null>(null);

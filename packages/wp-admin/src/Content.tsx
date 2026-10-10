@@ -51,7 +51,7 @@ type ContentProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Content({ state, update, open, onEngines }: ContentProps) {
+export function Content({ state, update, open, onEngines }: Readonly<ContentProps>) {
 	// Most impressions first unless a header was chosen.
 	const by = tableSort(CONTENT_SORTS, state.sort, state.order);
 	const goal = state.goal ?? '';
@@ -191,7 +191,7 @@ export function Content({ state, update, open, onEngines }: ContentProps) {
 }
 
 /** The totals: search clicks, visits from search, their bounce rate, conversions. */
-function Tiles({ answer, engine }: { answer: ContentAnswer | undefined; engine: SearchEngineChoice }) {
+function Tiles({ answer, engine }: Readonly<{ answer: ContentAnswer | undefined; engine: SearchEngineChoice }>) {
 	const totals = answer?.totals;
 	const then = answer?.compare?.totals;
 	const change = answer?.compare?.change;
@@ -247,7 +247,7 @@ interface PageTableProps extends TableSortProps<ContentSort> {
 	refreshing: boolean;
 }
 
-function PageTable({ answer, sort, order, onSort, open, refreshing }: PageTableProps) {
+function PageTable({ answer, sort, order, onSort, open, refreshing }: Readonly<PageTableProps>) {
 	const goal = answer.goal !== null;
 	const header = (column: ContentSort, label: string) => <SortHeader column={column} label={label} sort={sort} order={order} onSort={onSort} />;
 	return (
@@ -277,7 +277,7 @@ function PageTable({ answer, sort, order, onSort, open, refreshing }: PageTableP
 	);
 }
 
-function PageRow({ row, goal, open }: { row: ContentRow; goal: boolean; open: ContentProps['open'] }) {
+function PageRow({ row, goal, open }: Readonly<{ row: ContentRow; goal: boolean; open: ContentProps['open'] }>) {
 	const then: ContentMetrics | undefined = row.compare;
 	const change = row.compare?.change;
 	return (

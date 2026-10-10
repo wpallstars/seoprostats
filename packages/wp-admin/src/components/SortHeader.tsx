@@ -40,7 +40,7 @@ function hint(column: string, label: string, next: SortOrder): string {
 		: sprintf(/* translators: %s: column name, e.g. "Clicks". */ __('Sort by %s, highest first', 'seoprostats'), label);
 }
 
-export function SortHeader<K extends string>({ column, label, sort, order, onSort, className = 'num' }: SortHeaderProps<K>) {
+export function SortHeader<K extends string>({ column, label, sort, order, onSort, className = 'num' }: Readonly<SortHeaderProps<K>>) {
 	const active = sort === column;
 	const arrow = active && <span aria-hidden="true">{order === 'asc' ? ' ↑' : ' ↓'}</span>;
 	const ariaSort = active ? (order === 'asc' ? 'ascending' : 'descending') : undefined;

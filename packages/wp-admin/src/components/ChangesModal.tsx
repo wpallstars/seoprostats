@@ -30,7 +30,7 @@ interface Props {
 	onOpen: () => void;
 }
 
-export function ChangesModal({ pick, onClose, onOpen }: Props) {
+export function ChangesModal({ pick, onClose, onOpen }: Readonly<Props>) {
 	const rows = [...pick.markers].sort((a, b) => Date.parse(b.t) - Date.parse(a.t) || b.id - a.id);
 	return (
 		<Modal

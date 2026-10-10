@@ -172,7 +172,7 @@ function infoKey(state: ViewState): InfoKey {
 	return state.report && SEARCH_REPORTS.includes(state.report) ? state.report : 'rankings';
 }
 
-export function InfoPanel({ state }: { state: ViewState }) {
+export function InfoPanel({ state }: Readonly<{ state: ViewState }>) {
 	const { data, improve } = info(infoKey(state));
 	return (
 		<Card className="spst-card is-wide spst-info" size="small">

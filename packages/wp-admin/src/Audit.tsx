@@ -134,7 +134,7 @@ type AuditProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Audit({ state, update, open, onEngines }: AuditProps) {
+export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) {
 	const finding: AuditFinding | '' = state.finding ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Most impressions first unless a header was chosen.
@@ -251,7 +251,7 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 }
 
 /** Notes under the list: what was read and when, and the rules. */
-function Notes({ answer }: { answer: AuditAnswer }) {
+function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 	const r = answer.rules;
 	const notes: string[] = [];
 	const plugin = pluginName(answer.plugin);
@@ -323,7 +323,7 @@ interface AuditTableProps extends TableSortProps<SearchSort> {
 	refreshing: boolean;
 }
 
-function AuditTable({ rows, open, refreshing, sort, order, onSort }: AuditTableProps) {
+function AuditTable({ rows, open, refreshing, sort, order, onSort }: Readonly<AuditTableProps>) {
 	const header = (column: SearchSort, label: string) => <SortHeader column={column} label={label} sort={sort} order={order} onSort={onSort} />;
 	return (
 		<TableScroll label={__('Content audit', 'seoprostats')}>

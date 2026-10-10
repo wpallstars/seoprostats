@@ -162,7 +162,7 @@ function title(page: string, query: string, engine: SearchEngineChoice): string 
 }
 
 /** An × in a text box: empties it and applies at once. */
-function ClearButton({ label, onClear }: { label: string; onClear: () => void }) {
+function ClearButton({ label, onClear }: Readonly<{ label: string; onClear: () => void }>) {
 	return (
 		<button type="button" className="spst-clearable__clear" aria-label={label} title={label} onClick={onClear}>
 			<span className="dashicons dashicons-no-alt" aria-hidden="true" />
@@ -171,7 +171,7 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 }
 
 /** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
-export function Search(props: ViewProps & { shared?: boolean }) {
+export function Search(props: Readonly<ViewProps & { shared?: boolean }>) {
 	const { state, update, shared = false } = props;
 	// A shared report: its section is one engine, without the owner's Plan and Experiments.
 	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
@@ -279,7 +279,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 	);
 }
 
-function Rankings({ state, update, onEngines }: SearchReportProps) {
+function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 	const engine: SearchEngineChoice = state.engine ?? 'google';
 	const kind: SearchKind = state.tab ?? 'queries';
 	const metric: SearchMetricKey = state.chart ?? 'clicks';
@@ -569,7 +569,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 }
 
 /** Paper: every kind of the top searches, each under its name. */
-function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }) {
+function PrintedSearches({ state, kinds, page, query, choose }: Readonly<{ state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }>) {
 	return (
 		<Card className="spst-card is-wide spst-section is-print-all" size="small">
 			<CardHeader className="spst-card__header">
@@ -585,7 +585,7 @@ function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewSta
 	);
 }
 
-function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }) {
+function PrintedKind({ state, kind, page, query, choose }: Readonly<{ state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }>) {
 	// Paper has no pages: every day (week or month) of the period, in the screen's order where the kind has its column.
 	const by = tableSort(searchSorts(kind), state.sort, state.order);
 	const search = useSearch(state, kind, page, query, kind === 'days' ? 1000 : PER_PAGE, 0, by);
@@ -599,7 +599,7 @@ function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; k
 }
 
 /** Why the rows add up to less than the totals, by engine. */
-function SearchNote({ engine, kind }: { engine: SearchEngineChoice; kind?: SearchKind }) {
+function SearchNote({ engine, kind }: Readonly<{ engine: SearchEngineChoice; kind?: SearchKind }>) {
 	if (kind === 'days') {
 		return <p className="spst-note">{__('Each row is a point of the chart; together they make the period’s totals.', 'seoprostats')}</p>;
 	}
@@ -667,7 +667,7 @@ function changesByDay(answer: SearchAnswer | undefined, markers: Marker[] | unde
 }
 
 /** One kind of top searches: loading, empty, or its table. */
-function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker, sort, order, onSort }: SearchTableProps) {
+function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker, sort, order, onSort }: Readonly<SearchTableProps>) {
 	const rows = answer?.kind === kind ? answer.rows : [];
 	// The order the answer says it has (the asked one while it loads).
 	const by = tableSort(searchSorts(kind), answer?.kind === kind ? answer.sort : sort, answer?.kind === kind ? answer.order : order);
@@ -738,7 +738,7 @@ interface RowProps {
 	onMarker?: (pick: MarkerPick) => void;
 }
 
-function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: RowProps) {
+function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: Readonly<RowProps>) {
 	const before = row.compare;
 	const when = kind === 'days' ? longLabel(row.from ?? row.value, grain) : '';
 	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? when : row.label}</span>;
