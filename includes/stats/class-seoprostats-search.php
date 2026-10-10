@@ -428,7 +428,9 @@ final class SEOProStats_Search {
     /**
      * A range's days, cut to the days with search data (all time: from
      * the first), as a range SEOProStats_Query can compare: start and end
-     * (the day after the last) in the site time zone.
+     * (the day after the last) in the site time zone. A whole-week range
+     * (SEOProStats_Query::WEEK_RANGES) keeps its length, ending on the
+     * newest day with data, so it is compared with the same weekdays.
      *
      * An engine whose pages and queries come by week ($weekly) has its
      * range widened at the start to whole weeks, the weeks the range's
@@ -451,6 +453,13 @@ final class SEOProStats_Search {
         $last  = (new DateTimeImmutable('@' . max((int) $range['from'], (int) $range['to'] - 1)))->setTimezone($tz)->format('Y-m-d');
         if ($bounds['to'] !== '') {
             $last = min($last, $bounds['to']);
+        }
+        // Whole weeks keep their length, ending on the newest day with data,
+        // so the previous period starts on the same weekday.
+        if (in_array($range['key'], SEOProStats_Query::WEEK_RANGES, true)) {
+            /** @var DateTimeImmutable $range_end */
+            $range_end = $range['end'];
+            $first     = self::add_days(new DateTimeImmutable($last, $tz), 1 - (int) $start->diff($range_end)->days)->format('Y-m-d');
         }
         // All time starts at the first visit; search data may start earlier.
         if ($range['key'] === 'all' && $bounds['from'] !== '') {

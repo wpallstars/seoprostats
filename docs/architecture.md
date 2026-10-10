@@ -1647,7 +1647,10 @@ points are by week (`grain` `week`, each point the week's last day,
 lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
-number of days, so days not imported yet never look like a drop.
+number of days, so days not imported yet never look like a drop. Ranges
+in whole weeks (7d, 28d, 91d, 182d, 364d, `SEOProStats_Query::WEEK_RANGES`)
+keep their length instead, ending at `through`, as Search Console's own
+periods do, so the comparison starts on the same weekday.
 Rankings, Opportunities and Content also take `engine=all`, **Combined**
 (`SEOProStats_Search::ALL`, not a stored engine code): every engine with
 data (`with_data()`), read with `engine IN (…)` (`engine_where()`; each

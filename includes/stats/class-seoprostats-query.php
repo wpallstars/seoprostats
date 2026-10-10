@@ -45,6 +45,9 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
     /** Ranges of whole days counted back from today: the number is the days. */
     const DAY_RANGES = array('7d', '28d', '30d', '90d', '91d', '182d', '364d');
 
+    /** DAY_RANGES that are whole weeks: search reports keep their length (SEOProStats_Search::days()). */
+    const WEEK_RANGES = array('7d', '28d', '91d', '182d', '364d');
+
     /** Comparisons. */
     const COMPARE = array('none', 'prev', 'year');
 
