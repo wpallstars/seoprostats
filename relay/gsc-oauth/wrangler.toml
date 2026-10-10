@@ -1,0 +1,16 @@
+# Sign in with Google relay for the Search Console connection (README.md here).
+# Secrets (never in this file): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, STATE_KEY.
+# The Cloudflare account comes from CLOUDFLARE_ACCOUNT_ID at deploy time.
+name = "seoprostats-gsc-oauth"
+main = "worker.mjs"
+compatibility_date = "2025-09-01"
+workers_dev = false
+routes = [{ pattern = "gsc-oauth.wpallstars.com", custom_domain = true }]
+
+[vars]
+PRIVACY_URL = "https://www.wpallstars.com/privacy/"
+PLUGIN_URL = "https://github.com/wpallstars/seoprostats"
+
+# No request logs: a log line could hold a token.
+[observability]
+enabled = false

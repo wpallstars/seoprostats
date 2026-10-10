@@ -609,9 +609,50 @@ each linking to the Google page it needs
 (`SEOProStats_Connections_Tab::LINKS`, as Google's own documentation
 links them). Connecting signs in and lists the properties it
 can read before anything is stored; without a property asked for, the
-site's own is chosen (a domain property before an address one). Sign in
-with Google through a relay we host is planned (issue #50); an OAuth
-client each owner makes is not.
+site's own is chosen (a domain property before an address one). An OAuth
+client each owner makes is not offered (as much Google Cloud work as the
+service account, with an "unverified app" warning on top).
+
+**Sign in with Google** (issue #50) is the first choice on the tab. A
+Google OAuth app has a fixed list of redirect addresses and a client
+secret, so a plugin on many sites goes through one address we run: the
+relay in `relay/gsc-oauth` (a Cloudflare Worker at
+`gsc-oauth.wpallstars.com`, left out of the zips; `SEOPROSTATS_GOOGLE_RELAY`
+points a test site at another). It is stateless:
+
+1. The button (admin-post `seoprostats_google_start`, nonce and
+   `can_change()` checked) stores a one-time nonce for the admin (its
+   hash, in the `seoprostats_google_signin` transient, 15 minutes) and
+   sends the browser to the relay's `/start` with the site's return
+   address (admin-post `seoprostats_google_signin`) and the nonce. The
+   relay names the site, signs both into OAuth `state` (HMAC) and sends
+   the browser to Google's consent screen (`webmasters.readonly`,
+   offline, `prompt=consent`).
+2. Google returns to the relay's `/callback`, which checks `state`,
+   swaps the code for tokens (with the client secret) and posts them to
+   the return address in a self-submitting form, never in an address.
+   The post is cross-site, so it may come without the admin's cookies
+   (both the `admin_post_` and `admin_post_nopriv_` hooks take it): the
+   nonce says whose sign-in it is, and is used once. The refresh token
+   waits there, encrypted, for that admin.
+3. The browser lands on the tab, whose script connects at once
+   (`POST /connections/search-console` with `google: true`): the
+   properties are listed with the new token and the site's own chosen,
+   or the account's offered when it is not found. Only then is the
+   refresh token stored, as the credentials (`type: google`).
+4. Imports ask the relay's `/refresh` for an access token; the answer is
+   kept encrypted in the `seoprostats_google_access` transient until two
+   minutes before it expires, so the relay sees about one request an
+   hour per site while imports run. `invalid_grant` (access removed in
+   the Google account, or a test-mode token's seven days) says to sign in
+   again.
+5. Disconnecting revokes the refresh token with Google directly
+   (`oauth2.googleapis.com/revoke`, no secret needed), then forgets it.
+
+The relay keeps nothing and logs nothing (Workers observability off);
+its client ID, secret and state key are Worker secrets. The connection's
+settings say `method` (`google` or `key`); `account` is empty for a
+sign-in.
 
 The connection is one option, `seoprostats_connections` (autoload off):
 per source the credentials, encrypted with libsodium's secretbox (a
@@ -620,8 +661,8 @@ account address) and the job's state. The key comes from
 `SEOPROSTATS_ENCRYPTION_KEY` when `wp-config.php` defines it, else from
 the site's `AUTH_KEY` and `AUTH_SALT`, so new security keys mean
 connecting again (the status says so). Credentials are never returned by
-the REST API, WP-CLI or the screen. Sign-in is a JWT signed with the key
-(RS256, OpenSSL) for a one-hour token, kept for the request.
+the REST API, WP-CLI or the screen. With a key, sign-in is a JWT signed
+with it (RS256, OpenSSL) for a one-hour token, kept for the request.
 
 The import job (`SEOProStats_Search_Import`, hook
 `seoprostats_search_import`) is scheduled hourly only while a source is
@@ -1890,7 +1931,7 @@ Every chart has a table view for screen readers.
 
 | Integration | How | Stored in |
 |---|---|---|
-| Search Console | Opt-in: a service account's key, stored encrypted (Sign in with Google through our relay later, issue #50); hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
+| Search Console | Opt-in: Sign in with Google through our relay (a refresh token) or a service account's key, stored encrypted; hourly job for new final days, 16-month history on connect, newest first; pages, queries, pairs and device × country totals (Search Console above) | `gsc_*`, `imports` |
 | Bing Webmaster Tools | Opt-in: the owner's API key, stored encrypted; the same hourly job, each week once Bing gives it, 16-month history on connect; the site's clicks and impressions by day, pages and queries by week, then each top page's queries (Bing Webmaster Tools above) | `gsc_*` (engine 2), `imports` |
 | Changes | WordPress, WooCommerce and Easy Digital Downloads hooks (Changes below); later page snapshots for word diffs and page detail | `changes`, `snapshots` |
 | Search engine updates | Opt-in: Google Search Status Dashboard's JSON history and the owner's other feeds, daily (Search engine updates above) | `changes` |

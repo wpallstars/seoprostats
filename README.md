@@ -328,7 +328,11 @@ At the top right of the screen, **Source code** opens the plugin’s [GitHub rep
 
 ### Connecting Google Search Console and Bing
 
-**Google Search Console** (off until you connect it under Settings → Connections): clicks, impressions and average position for each page and search query, by day, kept with the visits so search and traffic can sit on one timeline. It connects through a Google Cloud service account, set up once while signed in to Google as an owner of the site's Search Console property (the Connections tab shows the same steps, with the links):
+**Google Search Console** (off until you connect it under Settings → Connections): clicks, impressions and average position for each page and search query, by day, kept with the visits so search and traffic can sit on one timeline.
+
+The quick way is **Sign in with Google**: choose it, sign in with the Google account that has the site in Search Console, allow read access on Google's screen, and the site connects to its property (if the site's own is not found, choose one of the account's). The sign-in goes through our small relay at `gsc-oauth.wpallstars.com`, which holds the sign-in app's secret, passes Google's answer straight back to the site and keeps nothing; while imports run, the site asks it for a fresh one-hour access pass from Google about once an hour. Disconnecting removes the site's access with Google. Until Google has reviewed the sign-in app, Google shows a warning that it is unverified.
+
+The other way needs no outside service: a Google Cloud service account, set up once while signed in to Google as an owner of the site's Search Console property (the Connections tab shows the same steps, with the links):
 
 1. **Make a Google Cloud project**: [Create a project](https://console.cloud.google.com/projectcreate), give it any name and choose Create. A project you already have works too.
 2. **Turn on the Search Console API**: open the [Google Search Console API](https://console.cloud.google.com/apis/library/searchconsole.googleapis.com), check your project is chosen at the top, and choose Enable.
@@ -339,7 +343,7 @@ At the top right of the screen, **Source code** opens the plugin’s [GitHub rep
 
 If Google says key creation is turned off by an organisation policy, make the project with Location: No organization, or ask the organisation's administrator to allow keys for it.
 
-The key is stored encrypted and never shown again. On connecting, the 16 months Search Console keeps are imported in the background, newest first; after that each day is added once Search Console marks its figures final, about three days later. **Import now** fetches what is ready; each import is listed and can be undone. Disconnecting stops the imports and keeps the data unless you also delete it. Search data by page and query is kept 25 months (Settings → Data); daily totals are kept.
+The key (or the sign-in's refresh token) is stored encrypted and never shown again. On connecting, the 16 months Search Console keeps are imported in the background, newest first; after that each day is added once Search Console marks its figures final, about three days later. **Import now** fetches what is ready; each import is listed and can be undone. Disconnecting stops the imports and keeps the data unless you also delete it. Search data by page and query is kept 25 months (Settings → Data); daily totals are kept.
 
 **Bing Webmaster Tools** (off until you connect it under Settings → Connections): Bing's clicks and impressions for the site by day, and its top pages and search queries by week with their average position, beside Google's. It needs only an API key, no Cloud project:
 
@@ -484,6 +488,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: **Sign in with Google** for Search Console under Settings → Connections: sign in, allow read access, and the site connects, with no Google Cloud setup. It goes through our relay, which keeps nothing; disconnecting removes the access with Google. The service account key still works as before.
 - New: backlink CSV exports from Search Console and backlink tools, with background progress, per-source scores and dates, REST and CLI imports, and How found filtering.
 - Fixed: the Read Me tab keeps a line's text, unformatted, when its formatting cannot be read, instead of showing nothing.
 - Developers: PHPStan runs at level 8 (`phpstan.neon.dist`).

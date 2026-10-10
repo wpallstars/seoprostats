@@ -26,6 +26,9 @@ final class SEOProStats_Connections_Tab {
     /** The tab's script. */
     const JS_FILE = 'admin/js/seoprostats-connections.js';
 
+    /** The connections class's file, loaded only where needed. */
+    const CONNECTIONS_FILE = 'includes/stats/class-seoprostats-connections.php';
+
     /**
      * The pages for the setup steps, as Google's and Microsoft's own
      * documentation links them (the Search Console API's page is its API
@@ -48,6 +51,64 @@ final class SEOProStats_Connections_Tab {
     public static function init() {
         add_filter('seoprostats_admin_tabs', array(__CLASS__, 'tabs'));
         add_action('seoprostats_admin_enqueue', array(__CLASS__, 'enqueue'));
+        // Sign in with Google: the button, then the relay's post back. The
+        // post is cross-site, so it may come without the admin's cookies;
+        // its one-time nonce says whose sign-in it is.
+        add_action('admin_post_' . self::START, array(__CLASS__, 'start_signin'));
+        add_action('admin_post_' . self::RETURN_ACTION, array(__CLASS__, 'receive_signin'));
+        add_action('admin_post_nopriv_' . self::RETURN_ACTION, array(__CLASS__, 'receive_signin'));
+        add_filter('removable_query_args', array(__CLASS__, 'removable'));
+    }
+
+    /** admin-post action of the Sign in with Google button. */
+    const START = 'seoprostats_google_start';
+
+    /** admin-post action the relay posts to (SEOProStats_Source_Search_Console::return_url()). */
+    const RETURN_ACTION = 'seoprostats_google_signin';
+
+    /**
+     * Take the sign-in result argument out of the address after it is shown.
+     *
+     * @param string[] $args Query args.
+     * @return string[]
+     */
+    public static function removable($args) {
+        $args[] = 'spst_google';
+        return $args;
+    }
+
+    /**
+     * The Sign in with Google button: check the admin and their nonce,
+     * then send them to the relay.
+     */
+    public static function start_signin() {
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
+        if (!SEOProStats_Settings::can_change()) {
+            wp_die(esc_html__('Sorry, you are not allowed to change these settings.', 'seoprostats'), 403);
+        }
+        check_admin_referer(self::START);
+        SEOProStats_Connections::source_class('search-console'); // Loads its class.
+        // phpcs:ignore WordPress.Security.SafeRedirect.wp_redirect_wp_redirect -- the relay is our own fixed address, on another host.
+        wp_redirect(SEOProStats_Source_Search_Console::start_url(get_current_user_id()));
+        exit;
+    }
+
+    /**
+     * The relay's post: keep the result for the admin who started it, and
+     * send the browser back to the tab, which finishes connecting.
+     */
+    public static function receive_signin() {
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
+        SEOProStats_Connections::source_class('search-console'); // Loads its class.
+        $fields = array();
+        foreach (array('nonce', 'refresh_token', 'access_token', 'expires_in', 'error') as $name) {
+            // phpcs:ignore WordPress.Security.NonceVerification.Missing -- the relay's one-time nonce is checked in receive().
+            $fields[$name] = isset($_POST[$name]) ? sanitize_text_field(wp_unslash((string) $_POST[$name])) : '';
+        }
+        $user = SEOProStats_Source_Search_Console::receive($fields);
+        $args = is_wp_error($user) ? array('spst_google' => 'unknown') : array('spst_google' => '1');
+        wp_safe_redirect(SEOProStats_Admin_Manager::tab_url(self::TAB, $args) . '#spst-connection-search-console');
+        exit;
     }
 
     /**
@@ -100,7 +161,7 @@ final class SEOProStats_Connections_Tab {
      * Draw the tab.
      */
     public static function render() {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
         // Puts back the hourly job if it went missing (a cron reset).
         SEOProStats_Search_Import::schedule();
@@ -160,8 +221,46 @@ final class SEOProStats_Connections_Tab {
             self::render_connect_bing($id);
             return;
         }
+        SEOProStats_Connections::source_class($source); // Loads its class.
+        $signin = SEOProStats_Source_Search_Console::signed_in(get_current_user_id());
+        $error  = is_array($signin) && isset($signin['error']) ? (string) $signin['error'] : '';
+        if ($error !== '') {
+            SEOProStats_Source_Search_Console::forget_signin(get_current_user_id());
+        }
+        // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- only picks a message to show.
+        $unknown = isset($_GET['spst_google']) && sanitize_key(wp_unslash($_GET['spst_google'])) === 'unknown';
         ?>
         <p class="spst-setting__desc"><?php esc_html_e('Clicks, impressions and average position for each page and search query, by day, so search and visits sit on one timeline. On connecting, the 16 months Search Console keeps are imported; after that each day is added once Search Console marks it final, about three days later.', 'seoprostats'); ?></p>
+        <?php if ($error !== '' || $unknown) : ?>
+            <div class="notice notice-error inline"><p><?php echo esc_html($error !== '' ? SEOProStats_Source_Search_Console::signin_error($error) : __('This sign-in was not started here, or has expired. Choose Sign in with Google again.', 'seoprostats')); ?></p></div>
+        <?php endif; ?>
+        <?php if (is_array($signin) && $error === '') : ?>
+            <div data-spst-google-ready>
+                <p><?php esc_html_e('Signed in with Google. Finishing the connection…', 'seoprostats'); ?></p>
+                <p>
+                    <label for="<?php echo esc_attr($id . '-google-property'); ?>"><strong><?php esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
+                    <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-google-property'); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
+                </p>
+                <div class="spst-connection__actions">
+                    <button type="button" class="button button-primary" data-spst-action="connect" data-spst-google="1"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
+                </div>
+            </div>
+            <?php
+            return;
+        endif;
+        ?>
+        <p><?php esc_html_e('Sign in with the Google account that has this site in Search Console, and allow SEO Pro Stats to read it. Nothing to set up in Google Cloud.', 'seoprostats'); ?></p>
+        <div class="spst-connection__actions">
+            <a class="button button-primary" href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=' . self::START), self::START)); ?>"><?php esc_html_e('Sign in with Google', 'seoprostats'); ?></a>
+        </div>
+        <p class="description">
+            <?php
+            /* translators: %s: the sign-in service's address */
+            echo esc_html(sprintf(__('The sign-in goes through %s, which passes Google\'s answer to this site and keeps nothing. Then every hour or so, while imports run, this site asks it for a fresh access pass from Google.', 'seoprostats'), (string) wp_parse_url(SEOProStats_Source_Search_Console::relay(), PHP_URL_HOST)));
+            ?>
+        </p>
+        <details>
+            <summary><?php esc_html_e('Or connect with a service account key (no outside service)', 'seoprostats'); ?></summary>
         <p><?php esc_html_e('Set it up once, signed in to Google with the account that owns this site in Search Console. Each link opens in a new tab.', 'seoprostats'); ?></p>
         <ol class="spst-connection__steps">
             <?php
@@ -188,8 +287,9 @@ final class SEOProStats_Connections_Tab {
             <span class="description"><?php esc_html_e('Leave empty to use the property for this site; a domain property (sc-domain:) is chosen before an address one.', 'seoprostats'); ?></span>
         </p>
         <div class="spst-connection__actions">
-            <button type="button" class="button button-primary" data-spst-action="connect"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
+            <button type="button" class="button" data-spst-action="connect"><?php esc_html_e('Connect', 'seoprostats'); ?></button>
         </div>
+        </details>
         <?php
     }
 
@@ -368,6 +468,12 @@ final class SEOProStats_Connections_Tab {
         <?php // A table of facts with row headers, so not role="presentation" (it would hide the headers from screen readers). ?>
         <table class="form-table">
             <tbody>
+                <?php if (isset($status['method']) && $status['method'] === 'google') : ?>
+                    <tr>
+                        <th scope="row"><?php esc_html_e('Connected with', 'seoprostats'); ?></th>
+                        <td><?php esc_html_e('Sign in with Google', 'seoprostats'); ?></td>
+                    </tr>
+                <?php endif; ?>
                 <?php if ((string) $status['account'] !== '') : ?>
                     <tr>
                         <th scope="row"><?php esc_html_e('Service account', 'seoprostats'); ?></th>
@@ -439,7 +545,18 @@ final class SEOProStats_Connections_Tab {
         <?php endif; ?>
 
         <details>
-            <summary><?php $bing ? esc_html_e('Change the site or key', 'seoprostats') : esc_html_e('Change the property or key', 'seoprostats'); ?></summary>
+            <?php $signed_in = isset($status['method']) && $status['method'] === 'google'; ?>
+            <summary>
+                <?php
+                if ($bing) {
+                    esc_html_e('Change the site or key', 'seoprostats');
+                } elseif ($signed_in) {
+                    esc_html_e('Change the property, or use a key instead', 'seoprostats');
+                } else {
+                    esc_html_e('Change the property or key', 'seoprostats');
+                }
+                ?>
+            </summary>
             <p>
                 <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
                 <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" value="<?php echo esc_attr((string) $status['property']); ?>">
@@ -451,7 +568,7 @@ final class SEOProStats_Connections_Tab {
                     <input type="password" class="regular-text" id="<?php echo esc_attr($id . '-key'); ?>" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>">
                 <?php else : ?>
                     <label for="<?php echo esc_attr($id . '-key'); ?>"><strong><?php esc_html_e('New service account key (JSON)', 'seoprostats'); ?></strong></label>
-                    <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
+                    <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="4" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="<?php $signed_in ? esc_attr_e('Leave empty to keep the Google sign-in.', 'seoprostats') : esc_attr_e('Leave empty to keep the saved key.', 'seoprostats'); ?>"></textarea>
                 <?php endif; ?>
             </p>
             <div class="spst-connection__actions">
@@ -461,7 +578,7 @@ final class SEOProStats_Connections_Tab {
 
         <details>
             <summary><?php esc_html_e('Disconnect', 'seoprostats'); ?></summary>
-            <p><?php esc_html_e('Forgets the key: nothing more is imported. The search data already imported stays, unless you delete it too.', 'seoprostats'); ?></p>
+            <p><?php isset($status['method']) && $status['method'] === 'google' ? esc_html_e('Removes this site\'s access with Google and forgets it: nothing more is imported. The search data already imported stays, unless you delete it too.', 'seoprostats') : esc_html_e('Forgets the key: nothing more is imported. The search data already imported stays, unless you delete it too.', 'seoprostats'); ?></p>
             <p>
                 <label>
                     <input type="checkbox" data-spst-field="delete_data">

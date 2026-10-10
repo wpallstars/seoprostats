@@ -1,12 +1,19 @@
 <?php
 /**
- * Google Search Console, connected with a service account's JSON key: the
- * owner makes the account in Google Cloud and adds its address as a user
- * of their Search Console property. No OAuth app or outside server.
+ * Google Search Console, connected one of two ways:
  *
- * The key signs a short-lived token request (RS256, PHP's OpenSSL) to
- * Google's fixed token address, with read-only access to Search Console.
- * Requests come only from cron, WP-CLI or an administrator's action.
+ * - Sign in with Google: the owner approves read access on Google's
+ *   consent screen through our relay (relay/gsc-oauth, a Cloudflare
+ *   Worker that holds the OAuth client's secret). The site keeps the
+ *   refresh token, encrypted, and asks the relay for an access token
+ *   when it needs one.
+ * - A service account's JSON key: the owner makes the account in Google
+ *   Cloud and adds its address as a user of their Search Console
+ *   property. No outside server: the key signs a short-lived token
+ *   request (RS256, PHP's OpenSSL) to Google's fixed token address.
+ *
+ * Either way, read-only access to Search Console. Requests come only from
+ * cron, WP-CLI or an administrator's action.
  * Design: docs/architecture.md → Integrations → Search Console.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -59,30 +66,60 @@ final class SEOProStats_Source_Search_Console {
     /** Seconds a request may take. */
     const TIMEOUT = 30;
 
+    /**
+     * The Sign in with Google relay (relay/gsc-oauth). A test site can
+     * point at another with SEOPROSTATS_GOOGLE_RELAY in wp-config.php.
+     */
+    const RELAY = 'https://gsc-oauth.wpallstars.com';
+
+    /** Google's address for revoking a token (needs no secret). */
+    const REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
+
+    /** Credentials type of a Google sign-in (a service account's key has none). */
+    const GOOGLE = 'google';
+
+    /** Sign-ins in progress and just finished, for 15 minutes (one transient). */
+    const SIGNIN = 'seoprostats_google_signin';
+
+    /** Seconds a sign-in may take, and its result waits to be used. */
+    const SIGNIN_TTL = 900;
+
+    /** The last access token of a Google sign-in, encrypted, while it lasts. */
+    const ACCESS = 'seoprostats_google_access';
+
     /** @var array<string,array{token:string,expires:int}> Access tokens by account, for this request. */
     private static $tokens = array();
 
     /**
-     * Check what the owner gave (a key, and maybe a property) by signing
-     * in and listing the properties, and say what to store.
+     * Check what the owner gave (a Google sign-in or a key, and maybe a
+     * property) by signing in and listing the properties, and say what to
+     * store.
      *
-     * @param array<string,mixed>      $input    key (the JSON key's text; '' keeps the saved one), property ('' to choose).
+     * @param array<string,mixed>      $input    google (true: the current user's finished sign-in), key (the JSON key's text; '' keeps the saved credentials), property ('' to choose).
      * @param array<string,mixed>|null $existing Saved credentials, or null.
      * @return array{credentials:array<string,mixed>,settings:array<string,mixed>,properties:array<string,string>}|WP_Error
      */
     public static function connect(array $input, $existing) {
-        $json = isset($input['key']) ? trim((string) $input['key']) : '';
-        if ($json !== '') {
+        $json   = isset($input['key']) ? trim((string) $input['key']) : '';
+        $signin = null;
+        if (!empty($input['google'])) {
+            $signin = self::signed_in(get_current_user_id());
+            $key    = $signin === null ? new WP_Error('seoprostats_google_expired', __('The Google sign-in has expired. Choose Sign in with Google again.', 'seoprostats')) : $signin;
+            if (is_array($key) && isset($key['error'])) {
+                $key = new WP_Error('seoprostats_google_' . $key['error'], self::signin_error((string) $key['error']));
+            }
+        } elseif ($json !== '') {
             $key = self::parse_key($json);
         } elseif (is_array($existing)) {
             $key = $existing;
         } else {
-            $key = new WP_Error('seoprostats_key_missing', __('Paste the service account\'s JSON key.', 'seoprostats'));
+            $key = new WP_Error('seoprostats_key_missing', __('Choose Sign in with Google, or paste the service account\'s JSON key.', 'seoprostats'));
         }
         if (is_wp_error($key)) {
             return $key;
         }
-        $token = self::token($key);
+        $google = self::is_google($key);
+        $token  = self::token($key);
         if (is_wp_error($token)) {
             return $token;
         }
@@ -90,19 +127,301 @@ final class SEOProStats_Source_Search_Console {
         if (is_wp_error($properties)) {
             return $properties;
         }
-        $property = self::pick_property($properties, isset($input['property']) ? (string) $input['property'] : '');
+        $property = self::pick_property($properties, isset($input['property']) ? (string) $input['property'] : '', $google);
         if (is_wp_error($property)) {
-            $property->add_data(array('status' => 400, 'properties' => array_keys($properties), 'account' => $key['client_email']));
+            $property->add_data(array('status' => 400, 'properties' => array_keys($properties), 'account' => $google ? '' : $key['client_email']));
             return $property;
         }
+        if ($signin !== null) {
+            self::forget_signin(get_current_user_id());
+        }
         return array(
-            'credentials' => $key,
+            'credentials' => $google ? array('type' => self::GOOGLE, 'refresh_token' => (string) $key['refresh_token']) : $key,
             'settings'    => array(
                 'property' => $property,
-                'account'  => (string) $key['client_email'],
+                'account'  => $google ? '' : (string) $key['client_email'],
+                'method'   => $google ? self::GOOGLE : 'key',
             ),
             'properties'  => $properties,
         );
+    }
+
+    /**
+     * Whether credentials are a Google sign-in's (a refresh token).
+     *
+     * @param array<string,mixed> $key Credentials.
+     * @return bool
+     */
+    public static function is_google(array $key) {
+        return isset($key['type'], $key['refresh_token']) && $key['type'] === self::GOOGLE && is_string($key['refresh_token']) && $key['refresh_token'] !== '';
+    }
+
+    /**
+     * The relay's address, without a trailing slash.
+     *
+     * @return string
+     */
+    public static function relay() {
+        $relay = defined('SEOPROSTATS_GOOGLE_RELAY') && is_string(SEOPROSTATS_GOOGLE_RELAY) && SEOPROSTATS_GOOGLE_RELAY !== '' ? SEOPROSTATS_GOOGLE_RELAY : self::RELAY;
+        return untrailingslashit($relay);
+    }
+
+    /**
+     * Where the relay posts Google's answer: admin-post.php, which takes
+     * it with or without the admin's cookies (a cross-site post may come
+     * without them), then sends the browser to the Connections tab.
+     *
+     * @return string
+     */
+    public static function return_url() {
+        return admin_url('admin-post.php?action=' . self::SIGNIN);
+    }
+
+    /**
+     * Start a sign-in for a user: remember a one-time nonce for them, and
+     * give the relay's address to send their browser to.
+     *
+     * @param int $user_id User.
+     * @return string
+     */
+    public static function start_url($user_id) {
+        $nonce = wp_generate_password(43, false);
+        $all   = self::signins();
+        $all['states'][hash('sha256', $nonce)] = array('user' => (int) $user_id, 'expires' => time() + self::SIGNIN_TTL);
+        self::save_signins($all);
+        return add_query_arg(array(
+            'site'  => rawurlencode(self::return_url()),
+            'nonce' => $nonce,
+        ), self::relay() . '/start');
+    }
+
+    /**
+     * Take the relay's post: check its nonce, and keep the refresh token
+     * (encrypted) or the error for the user who started the sign-in.
+     *
+     * @param array<string,string> $fields nonce, and refresh_token, access_token and expires_in, or error.
+     * @return int|WP_Error The user who started it.
+     */
+    public static function receive(array $fields) {
+        $nonce = isset($fields['nonce']) ? (string) $fields['nonce'] : '';
+        $hash  = hash('sha256', $nonce);
+        $all   = self::signins();
+        if ($nonce === '' || !isset($all['states'][$hash])) {
+            return new WP_Error('seoprostats_google_unknown', __('This sign-in was not started here, or has expired. Choose Sign in with Google again.', 'seoprostats'), array('status' => 400));
+        }
+        $user = (int) $all['states'][$hash]['user'];
+        unset($all['states'][$hash]);
+        $error   = isset($fields['error']) ? sanitize_key((string) $fields['error']) : '';
+        $refresh = isset($fields['refresh_token']) ? (string) $fields['refresh_token'] : '';
+        if ($error === '' && $refresh === '') {
+            $error = 'no_refresh_token';
+        }
+        if ($error !== '') {
+            $all['done'][$user] = array('error' => $error, 'expires' => time() + self::SIGNIN_TTL);
+            self::save_signins($all);
+            return $user;
+        }
+        $secret = SEOProStats_Connections::encrypt((string) wp_json_encode(array('type' => self::GOOGLE, 'refresh_token' => $refresh)));
+        if (is_wp_error($secret)) {
+            return $secret;
+        }
+        $all['done'][$user] = array('secret' => $secret, 'expires' => time() + self::SIGNIN_TTL);
+        self::save_signins($all);
+        $access = isset($fields['access_token']) ? (string) $fields['access_token'] : '';
+        if ($access !== '') {
+            self::keep_access($refresh, $access, isset($fields['expires_in']) ? (int) $fields['expires_in'] : 0);
+        }
+        return $user;
+    }
+
+    /**
+     * A user's finished sign-in: credentials, or array('error' => code);
+     * null when there is none.
+     *
+     * @param int $user_id User.
+     * @return array<string,mixed>|null
+     */
+    public static function signed_in($user_id) {
+        $all  = self::signins();
+        $done = isset($all['done'][$user_id]) ? $all['done'][$user_id] : null;
+        if (!is_array($done)) {
+            return null;
+        }
+        if (isset($done['error'])) {
+            return array('error' => (string) $done['error']);
+        }
+        $json = isset($done['secret']) ? SEOProStats_Connections::decrypt((string) $done['secret']) : false;
+        $data = $json !== false ? json_decode($json, true) : null;
+        return is_array($data) && self::is_google($data) ? $data : null;
+    }
+
+    /**
+     * Forget a user's finished sign-in.
+     *
+     * @param int $user_id User.
+     */
+    public static function forget_signin($user_id) {
+        $all = self::signins();
+        unset($all['done'][$user_id]);
+        self::save_signins($all);
+    }
+
+    /**
+     * A sign-in error from the relay, in words.
+     *
+     * @param string $code access_denied, scope_denied, no_refresh_token, exchange_failed or google_error.
+     * @return string
+     */
+    public static function signin_error($code) {
+        switch ($code) {
+            case 'access_denied':
+                return __('The sign-in was cancelled on Google\'s screen. Choose Sign in with Google to try again.', 'seoprostats');
+            case 'scope_denied':
+                return __('Google was not allowed to share Search Console data: on Google\'s screen, leave the Search Console box ticked. Choose Sign in with Google to try again.', 'seoprostats');
+            case 'no_refresh_token':
+                return __('Google did not give lasting access. Choose Sign in with Google to try again.', 'seoprostats');
+            default:
+                return __('Google could not complete the sign-in. Choose Sign in with Google to try again.', 'seoprostats');
+        }
+    }
+
+    /**
+     * Sign-ins in progress (states, by the nonce's hash) and finished
+     * (done, by user), without expired ones.
+     *
+     * @return array{states:array<string,array{user:int,expires:int}>,done:array<int,array<string,mixed>>}
+     */
+    private static function signins() {
+        $all = get_transient(self::SIGNIN);
+        $out = array('states' => array(), 'done' => array());
+        $now = time();
+        foreach (is_array($all) && isset($all['states']) && is_array($all['states']) ? $all['states'] : array() as $hash => $row) {
+            if (is_array($row) && isset($row['user'], $row['expires']) && (int) $row['expires'] > $now) {
+                $out['states'][(string) $hash] = array('user' => (int) $row['user'], 'expires' => (int) $row['expires']);
+            }
+        }
+        foreach (is_array($all) && isset($all['done']) && is_array($all['done']) ? $all['done'] : array() as $user => $row) {
+            if (is_array($row) && isset($row['expires']) && (int) $row['expires'] > $now) {
+                $out['done'][(int) $user] = $row;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Save sign-ins, or delete the transient when there are none.
+     *
+     * @param array<string,array<mixed>> $all signins().
+     */
+    private static function save_signins(array $all) {
+        if (empty($all['states']) && empty($all['done'])) {
+            delete_transient(self::SIGNIN);
+            return;
+        }
+        set_transient(self::SIGNIN, $all, self::SIGNIN_TTL);
+    }
+
+    /**
+     * Keep a Google sign-in's access token, encrypted, until shortly before
+     * it expires, so imports a minute apart ask the relay about once an hour.
+     *
+     * @param string $refresh Refresh token it belongs to.
+     * @param string $token   Access token.
+     * @param int    $expires Seconds it lasts.
+     */
+    private static function keep_access($refresh, $token, $expires) {
+        $expires = $expires > 0 ? $expires : 3000;
+        $until   = time() + $expires;
+        self::$tokens[self::cache_key($refresh)] = array('token' => $token, 'expires' => $until);
+        $secret = SEOProStats_Connections::encrypt((string) wp_json_encode(array('for' => self::cache_key($refresh), 'token' => $token, 'expires' => $until)));
+        if (!is_wp_error($secret) && $expires > 300) {
+            set_transient(self::ACCESS, $secret, $expires - 120);
+        }
+    }
+
+    /**
+     * A kept access token for a refresh token, or ''.
+     *
+     * @param string $refresh Refresh token.
+     * @return string
+     */
+    private static function kept_access($refresh) {
+        $key = self::cache_key($refresh);
+        if (isset(self::$tokens[$key]) && self::$tokens[$key]['expires'] > time() + 60) {
+            return self::$tokens[$key]['token'];
+        }
+        $stored = get_transient(self::ACCESS);
+        $json   = is_string($stored) ? SEOProStats_Connections::decrypt($stored) : false;
+        $data   = $json !== false ? json_decode($json, true) : null;
+        if (!is_array($data) || !isset($data['for'], $data['token'], $data['expires']) || $data['for'] !== $key || (int) $data['expires'] <= time() + 60) {
+            return '';
+        }
+        self::$tokens[$key] = array('token' => (string) $data['token'], 'expires' => (int) $data['expires']);
+        return (string) $data['token'];
+    }
+
+    /**
+     * A short fingerprint of a refresh token, to match a kept access token
+     * to it (never the token itself).
+     *
+     * @param string $refresh Refresh token.
+     * @return string
+     */
+    private static function cache_key($refresh) {
+        return 'g:' . substr(hash('sha256', (string) $refresh), 0, 32);
+    }
+
+    /**
+     * An access token from the relay for a Google sign-in.
+     *
+     * @param array<string,mixed> $key Credentials (type google, refresh_token).
+     * @return string|WP_Error
+     */
+    private static function google_token(array $key) {
+        $refresh = (string) $key['refresh_token'];
+        $kept    = self::kept_access($refresh);
+        if ($kept !== '') {
+            return $kept;
+        }
+        $response = wp_remote_post(self::relay() . '/refresh', array(
+            'timeout'    => self::TIMEOUT,
+            'user-agent' => self::user_agent(),
+            'headers'    => array('Content-Type' => 'application/json'),
+            'body'       => (string) wp_json_encode(array('refresh_token' => $refresh)),
+        ));
+        if (is_wp_error($response)) {
+            /* translators: %s: error message */
+            return new WP_Error('seoprostats_google_relay', sprintf(__('The sign-in service could not be reached: %s', 'seoprostats'), $response->get_error_message()));
+        }
+        $code = (int) wp_remote_retrieve_response_code($response);
+        $data = json_decode((string) wp_remote_retrieve_body($response), true);
+        if ($code === 200 && is_array($data) && !empty($data['access_token'])) {
+            self::keep_access($refresh, (string) $data['access_token'], isset($data['expires_in']) ? (int) $data['expires_in'] : 0);
+            return (string) $data['access_token'];
+        }
+        if (is_array($data) && isset($data['error']) && $data['error'] === 'invalid_grant') {
+            return new WP_Error('seoprostats_google_revoked', __('Google no longer accepts this connection: access was removed, or it expired. Disconnect, then choose Sign in with Google again.', 'seoprostats'), array('status' => 401));
+        }
+        /* translators: %d: HTTP status code */
+        return new WP_Error('seoprostats_google_relay', sprintf(__('The sign-in service could not get access from Google (HTTP %d). The next import tries again.', 'seoprostats'), $code));
+    }
+
+    /**
+     * Revoke a Google sign-in's access with Google (disconnecting). Errors
+     * are ignored: the site forgets the token either way.
+     *
+     * @param array<string,mixed> $key Credentials.
+     */
+    public static function revoke(array $key) {
+        if (!self::is_google($key)) {
+            return;
+        }
+        delete_transient(self::ACCESS);
+        wp_remote_post(self::REVOKE_URL, array(
+            'timeout'    => 3,
+            'user-agent' => self::user_agent(),
+            'body'       => array('token' => (string) $key['refresh_token']),
+        ));
     }
 
     /**
@@ -134,12 +453,16 @@ final class SEOProStats_Source_Search_Console {
     }
 
     /**
-     * An access token for the account (one per hour, kept for the request).
+     * An access token (one per hour): from the relay for a Google sign-in,
+     * else signed with the service account's key and kept for the request.
      *
-     * @param array<string,mixed> $key From parse_key().
+     * @param array<string,mixed> $key Credentials: a Google sign-in's, or from parse_key().
      * @return string|WP_Error
      */
     public static function token(array $key) {
+        if (self::is_google($key)) {
+            return self::google_token($key);
+        }
         $email = isset($key['client_email']) ? (string) $key['client_email'] : '';
         if (isset(self::$tokens[$email]) && self::$tokens[$email]['expires'] > time() + 60) {
             return self::$tokens[$email]['token'];
@@ -217,13 +540,18 @@ final class SEOProStats_Source_Search_Console {
      *
      * @param array<string,string> $properties From properties().
      * @param string               $wanted     Property asked for, or '' to choose.
+     * @param bool                 $google     Signed in with Google (else a service account).
      * @return string|WP_Error
      */
-    public static function pick_property(array $properties, $wanted = '') {
+    public static function pick_property(array $properties, $wanted = '', $google = false) {
         $wanted = trim((string) $wanted);
         if ($wanted !== '') {
             if (isset($properties[$wanted])) {
                 return $wanted;
+            }
+            if ($google) {
+                /* translators: %s: Search Console property */
+                return new WP_Error('seoprostats_property_access', sprintf(__('The Google account you signed in with cannot read the property %s. Choose one of its properties, or sign in with an account that is a user of that property.', 'seoprostats'), $wanted));
             }
             /* translators: %s: Search Console property */
             return new WP_Error('seoprostats_property_access', sprintf(__('The service account cannot read the property %s. In Search Console, open the property → Settings → Users and permissions, and add the service account\'s address.', 'seoprostats'), $wanted));
@@ -248,6 +576,13 @@ final class SEOProStats_Source_Search_Console {
         }
         if ($best !== '') {
             return $best;
+        }
+        if ($google) {
+            if (!$properties) {
+                return new WP_Error('seoprostats_property_none', __('The Google account you signed in with has no Search Console property. Add this site in Search Console, or sign in with the account that has it.', 'seoprostats'));
+            }
+            /* translators: %s: the site's address */
+            return new WP_Error('seoprostats_property_choose', sprintf(__('None of your Search Console properties is for %s. Choose one.', 'seoprostats'), $home));
         }
         if (!$properties) {
             return new WP_Error('seoprostats_property_none', __('The service account cannot read any Search Console property yet. In Search Console, open the property → Settings → Users and permissions, and add the service account\'s address.', 'seoprostats'));

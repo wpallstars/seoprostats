@@ -94,11 +94,16 @@ long-term record.
 - [x] Search Console connection (service account, key stored encrypted),
       import of final days and the 16-month history, undo, retention;
       Settings → Connections, REST and WP-CLI (GH#43).
-- [ ] Search Console by Sign in with Google, through a stateless relay
-      we host (Cloudflare Worker) and a verified Google app; waits on the
-      owner's domain, Cloudflare and Google setup (issue #50). An OAuth
-      client each owner makes was dropped: as much Google Cloud work as the
-      service account, plus an "unverified app" warning.
+- [x] Search Console by Sign in with Google, through a stateless relay
+      we host (Cloudflare Worker, relay/gsc-oauth at
+      gsc-oauth.wpallstars.com) (GH#50). An OAuth client each owner makes
+      was dropped: as much Google Cloud work as the service account, plus
+      an "unverified app" warning.
+- [ ] Google verification of the sign-in app (owner): an SEO Pro Stats
+      page on wpallstars.com as its homepage, a privacy policy section on
+      Google user data (Limited Use), domain verification, a demo video;
+      then the app In production. Until then, test users only and
+      refresh tokens last seven days.
 - [x] Rankings: a Search section with clicks, impressions, CTR and
       position against the previous period, queries, pages, countries
       and devices, page ↔ query drill-down; REST `search`, WP-CLI, the
