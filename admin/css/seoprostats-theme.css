@@ -70,6 +70,9 @@ html.spst-dark body {
 	--wpds-color-foreground-interactive-brand: var(--spst-ui-accent);
 	--wpds-color-foreground-interactive-brand-active: var(--spst-ui-text);
 
+	/* Menu items' focus ring: WordPress's design tokens fix it at #3858e9 in every scheme. */
+	--wpds-color-stroke-focus: var(--spst-ui-accent);
+
 	color: var(--spst-ui-text);
 	background: var(--spst-ui-canvas);
 }
@@ -113,10 +116,17 @@ html.spst-dark body {
  * greys (#f0f0f0) and behind white labels. Darker schemes' colours, such as
  * Modern's, are under the cap and stay as they are. Read on body, where
  * WordPress sets them; used by everything inside it, which is all of
- * WordPress's buttons, fields and components on these screens.
+ * WordPress's buttons, fields and components on these screens. Menu items'
+ * focus ring reads a design token WordPress fixes at #3858e9 in every
+ * scheme; it takes the scheme's colour too.
  */
+html:not(.spst-dark) body {
+	--wpds-color-stroke-focus: var(--wp-admin-theme-color, #2271b1);
+}
+
 @supports (color: color(from red xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) z)) {
 	html:not(.spst-dark) body {
+		--wpds-color-stroke-focus: var(--spst-scheme-fill);
 		--spst-scheme-fill: color(from var(--wp-admin-theme-color, #2271b1) xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) calc(z * min(1, 0.15 / y)));
 		--spst-scheme-fill-10: color(from var(--wp-admin-theme-color-darker-10, #135e96) xyz-d65 calc(x * min(1, 0.12 / y)) min(y, 0.12) calc(z * min(1, 0.12 / y)));
 		--spst-scheme-fill-20: color(from var(--wp-admin-theme-color-darker-20, #0a4b78) xyz-d65 calc(x * min(1, 0.096 / y)) min(y, 0.096) calc(z * min(1, 0.096 / y)));
