@@ -121,7 +121,8 @@ final class SEOProStats_Backlinks_Stage {
 
     /** Publish the job after staging succeeds. @param string $source Provider. @param int $total Count. @return array<string,mixed> */
     private static function job($source, $total) {
-        $job = array('status' => $total ? 'running' : 'done', 'source' => $source, 'total' => $total, 'done' => 0, 'accepted' => 0, 'skipped' => 0);
+        // started ties the job to its entry in the import history.
+        $job = array('status' => $total ? 'running' : 'done', 'source' => $source, 'total' => $total, 'done' => 0, 'accepted' => 0, 'skipped' => 0, 'started' => time());
         update_option(SEOProStats_Schema::option(SEOProStats_Backlinks_Import::OPTION), $job, false);
         if ($total) {
             wp_schedule_single_event(time() + 5, SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
