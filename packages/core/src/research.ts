@@ -22,12 +22,12 @@ export function researchUrl(engine: ResearchEngine, query: string): string {
 /** The first lexical word is an explicit, predictable URL-word seed. */
 export function researchLinks(engine: ResearchEngine, text: string, site: string): ResearchLink[] {
 	const query = Array.from(text, (character) => {
-		const code = character.charCodeAt(0);
+		const code = character.codePointAt(0) ?? 0;
 		return code < 32 || code === 127 ? ' ' : character;
 	}).join('').replace(/["“”]/g, ' ').trim();
 	if (!query) return [];
 	const phrase = `"${query}"`;
-	const word = query.match(/[\p{L}\p{N}]+/u)?.[0] ?? '';
+	const word = /[\p{L}\p{N}]+/u.exec(query)?.[0] ?? '';
 	const host = /^[a-z0-9.-]+$/i.test(site) ? site : '';
 	const templates: [string, string, string, boolean][] = [
 		['query', 'Search the query', query, true],
