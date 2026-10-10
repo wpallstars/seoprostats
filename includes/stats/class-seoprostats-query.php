@@ -184,9 +184,11 @@ final class SEOProStats_Query {
         $values  = array();
         $current = '';
         $length  = strlen($text);
-        for ($i = 0; $i < $length; $i++) {
+        $i       = 0;
+        while ($i < $length) {
             $char = $text[$i];
             $next = $i + 1 < $length ? $text[$i + 1] : '';
+            $i++;
             if ($char === '\\' && ($next === ',' || $next === '\\')) {
                 $current .= $next;
                 $i++;
@@ -224,32 +226,59 @@ final class SEOProStats_Query {
 
         $out = array();
         foreach ($raw as $filter) {
-            if (is_string($filter)) {
-                $parts = explode(':', $filter, 3);
-                if (count($parts) === 2) {
-                    array_splice($parts, 1, 0, 'is');
-                }
-                if (count($parts) !== 3) {
-                    return self::filter_error($filter);
-                }
-                $filter = array('dimension' => $parts[0], 'op' => $parts[1], 'values' => self::split_values($parts[2]));
+            $parsed = self::parse_filter($filter);
+            if (is_wp_error($parsed)) {
+                return $parsed;
             }
-            if (!is_array($filter) || !isset($filter['dimension'], $filter['values'])) {
-                $json = wp_json_encode($filter);
-                return self::filter_error(is_string($json) ? $json : '');
-            }
-            $dimension = (string) $filter['dimension'];
-            $op        = isset($filter['op']) ? (string) $filter['op'] : 'is';
-            if (!isset(self::DIMENSIONS[$dimension]) || !in_array($op, self::OPS, true)) {
-                return self::filter_error($dimension . ':' . $op);
-            }
-            $values = array_values(array_unique(array_map('strval', (array) $filter['values'])));
-            if (!$values || count($values) > 100) {
-                return self::filter_error($dimension . ':' . $op);
-            }
-            $out[] = array('dimension' => $dimension, 'op' => $op, 'values' => $values);
+            $out[] = $parsed;
         }
         return $out;
+    }
+
+    /**
+     * Normalise and validate one filter, retaining the original error text.
+     *
+     * @param mixed $filter String or filter object.
+     * @return array{dimension:string,op:string,values:string[]}|WP_Error
+     */
+    private static function parse_filter($filter) {
+        if (is_string($filter)) {
+            $filter = self::filter_string($filter);
+            if (is_wp_error($filter)) {
+                return $filter;
+            }
+        }
+        if (!is_array($filter) || !isset($filter['dimension'], $filter['values'])) {
+            $json = wp_json_encode($filter);
+            return self::filter_error(is_string($json) ? $json : '');
+        }
+        $dimension = (string) $filter['dimension'];
+        $op        = isset($filter['op']) ? (string) $filter['op'] : 'is';
+        if (!isset(self::DIMENSIONS[$dimension]) || !in_array($op, self::OPS, true)) {
+            return self::filter_error($dimension . ':' . $op);
+        }
+        $values = array_values(array_unique(array_map('strval', (array) $filter['values'])));
+        if (!$values || count($values) > 100) {
+            return self::filter_error($dimension . ':' . $op);
+        }
+        return array('dimension' => $dimension, 'op' => $op, 'values' => $values);
+    }
+
+    /**
+     * Read a filter string, including the short dimension:values form.
+     *
+     * @param string $filter Filter string.
+     * @return array{dimension:string,op:string,values:string[]}|WP_Error
+     */
+    private static function filter_string($filter) {
+        $parts = explode(':', $filter, 3);
+        if (count($parts) === 2) {
+            array_splice($parts, 1, 0, 'is');
+        }
+        if (count($parts) !== 3) {
+            return self::filter_error($filter);
+        }
+        return array('dimension' => $parts[0], 'op' => $parts[1], 'values' => self::split_values($parts[2]));
     }
 
     /**
@@ -675,7 +704,12 @@ final class SEOProStats_Query {
      */
     private static function daily_sums(array $part, $group = '') {
         global $wpdb;
-        $select = $group === 'month' ? 'LEFT(day, 7)' : ($group === 'day' ? 'day' : "''");
+        $select = "''";
+        if ($group === 'month') {
+            $select = 'LEFT(day, 7)';
+        } elseif ($group === 'day') {
+            $select = 'day';
+        }
         $by     = $group === '' ? '' : ' GROUP BY b';
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `dim_val_day`; $select and $by are fixed SQL.
         $rows = $wpdb->get_results($wpdb->prepare("SELECT $select AS b, SUM(visitors) AS visitors, SUM(visits) AS visits, SUM(pageviews) AS pageviews, SUM(IF(visits > 0, pageviews, 0)) AS visit_pageviews, SUM(bounces) AS bounces, SUM(engaged_ms) AS engaged_ms, SUM(events) AS events FROM %i WHERE dim = %d AND val = %d AND day >= %s AND day < %s$by", SEOProStats_Schema::table('daily'), $part['dim'], $part['val'], $part['from'], $part['to']), ARRAY_A);
@@ -1406,7 +1440,10 @@ final class SEOProStats_Query {
     private static function grain(array $range, $grain) {
         $days = ($range['to'] - $range['from']) / DAY_IN_SECONDS;
         if ($grain === 'auto') {
-            return $days <= 2 ? 'hour' : ($days <= 120 ? 'day' : 'month');
+            if ($days <= 2) {
+                return 'hour';
+            }
+            return $days <= 120 ? 'day' : 'month';
         }
         if ($grain === 'hour' && $days > 31) {
             return 'day';
