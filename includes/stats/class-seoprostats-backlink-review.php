@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Backlink_Review {
+final class SEOProStats_Backlink_Review { // NOSONAR: one review facade for REST, WP-CLI, abilities and the backlink check; private helpers decompose its signals and report.
     const DECISIONS = array('keep', 'disavow', 'undecided');
     const MAX_BYTES = 2097152;
     const MAX_LINES = 100000;
