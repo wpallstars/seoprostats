@@ -1688,7 +1688,10 @@ points are by week (`grain` `week`, each point the week's last day,
 lined up with the newest week), and it has no devices or countries. The range's days
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
-number of days, so days not imported yet never look like a drop.
+number of days, so days not imported yet never look like a drop. Ranges
+in whole weeks (7d, 28d, 91d, 182d, 364d, `SEOProStats_Query::WEEK_RANGES`)
+keep their length instead, ending at `through`, as Search Console's own
+periods do, so the comparison starts on the same weekday.
 Rankings, Opportunities and Content also take `engine=all`, **Combined**
 (`SEOProStats_Search::ALL`, not a stored engine code): every engine with
 data (`with_data()`), read with `engine IN (…)` (`engine_where()`; each
@@ -1835,10 +1838,12 @@ the change. Search figures are the chosen engine's (`engine`), visits
 any engine's, so the two differ.
 
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
-yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
-months, last year, all time, custom; comparison with the previous period
-or the same period last year (custom comparison later). A range that ends
-in the future meets the same length of the other period.
+yesterday, 24h, 7d, 28d, 30d, 90d, 91d, 182d, 364d, this week, this
+month, this year, last 12 months, last year, all time, custom; comparison
+with the previous period or the same period last year (custom comparison
+later). The previous period has as many whole days, just before; 7d, 28d,
+91d, 182d and 364d are whole weeks, so each day meets the same weekday.
+A range that ends in the future meets the same length of the other period.
 
 ### Interfaces
 

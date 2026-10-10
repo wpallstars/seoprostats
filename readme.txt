@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.2.0
+Stable tag: 1.3.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -119,9 +119,11 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.2.0 =
-* New: Search → Backlinks → Review: explained spam signals, local keep or disavow decisions and a Google disavow file to download. Nothing is submitted.
-* New: opt-in IndexNow change notifications; Research menus on four search engines and Keyword Golden Ratio bands for targets.
-* Fixed: readme.txt lists IndexNow with the services that are off by default.
+= 1.3.0 =
+* New: Last 28, 91, 182 and 364 days periods, in whole weeks.
+* New: Search → Backlinks → Reported pages: every page a link export named, with its check and the links found on it.
+* New: imported pages are checked within the hour instead of over weeks, plus Check now; reported links are not marked new.
+* New: Settings → Import → Links keeps an import history with each file to download again and a link to its results.
+* Fixed: page facts of referring pages from backlink exports are kept (no more "Array" and PHP warning).
 
 Every change: changelog.txt.
