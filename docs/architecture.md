@@ -607,8 +607,11 @@ until the daily 20-second run had opened each page, which took weeks. Now:
   rows with an export bit (`EXPORTS`, dataforseo to generic), read by
   `path_checked` (at most 5,000, never checked first), with each page's
   check state (`unchecked`, `links`, `none`, `error`, `gone`), the live
-  links found on it, the export's date and the last check. Totals add
-  `reported`, `reported_domains` and `reported_checked`.
+  links found on it (`links`, and `targets`: each one's page of this
+  site, text, rel and first seen, taken from the report's own read of
+  live links, no extra query), the export's date and the last check.
+  Totals add `reported`, `reported_domains` and `reported_checked`. In
+  wp-admin a page's link count opens a row with its targets.
 - When an import ends, and after every locked run, cron
   `seoprostats_backlinks_check` is scheduled a minute ahead while the
   check is on and an export-named page was never opened (`waiting()`,

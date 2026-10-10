@@ -1395,6 +1395,14 @@ export type BacklinkSource = (typeof BACKLINK_SOURCES)[number];
 /** A reported page's check: not opened yet, links to the site, none seen, could not be opened, or gone. */
 export type BacklinkReportedState = 'unchecked' | 'links' | 'none' | 'error' | 'gone';
 
+/** One live link on a reported page: the page of this site it links to, its text ('' when none) and rel. */
+export interface BacklinkReportedTarget {
+	page: string;
+	anchor: string;
+	rel: BacklinkRel[];
+	first_seen: string | null;
+}
+
 /** A referring page a link export named. */
 export interface BacklinkReportedRow {
 	/** The page linking (as the export gave it). */
@@ -1404,6 +1412,8 @@ export interface BacklinkReportedRow {
 	state: BacklinkReportedState;
 	/** Live links to the site found on it. */
 	links: number;
+	/** Those live links, first found first: the page of this site each links to, its text and rel. */
+	targets: BacklinkReportedTarget[];
 	/** ISO times: the export's newest date for it, and its last check. */
 	reported: string | null;
 	checked: string | null;
