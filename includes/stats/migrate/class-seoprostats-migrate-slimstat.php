@@ -258,36 +258,9 @@ final class SEOProStats_Migrate_Slimstat extends SEOProStats_Migrate_Source {
         if (!is_array($opts)) {
             return $out;
         }
-        $names = wp_roles()->get_names();
-        if (isset($opts['ignore_wp_users']) && $opts['ignore_wp_users'] === 'on') {
-            $out[] = array(
-                'key'   => 'tracking_skip_roles',
-                'label' => 'WP Users',
-                'from'  => __('On', 'seoprostats'),
-                'value' => array_keys($names),
-            );
-        } elseif (!empty($opts['ignore_capabilities']) && is_string($opts['ignore_capabilities'])) {
-            // Roles it leaves out: a role named in the list, or with a capability in it (* any characters).
-            $patterns = array();
-            foreach (array_filter(array_map('trim', explode(',', $opts['ignore_capabilities']))) as $item) {
-                $patterns[] = '@^' . str_replace(array('\\*', '\\!'), array('.*', '.'), preg_quote($item, '@')) . '$@i';
-            }
-            $roles = array();
-            foreach (wp_roles()->roles as $role => $info) {
-                $names_to_match = array_merge(array((string) $role), array_keys(array_filter(isset($info['capabilities']) ? (array) $info['capabilities'] : array())));
-                foreach ($patterns as $pattern) {
-                    if (preg_grep($pattern, $names_to_match)) {
-                        $roles[] = (string) $role;
-                        break;
-                    }
-                }
-            }
-            $out[] = array(
-                'key'   => 'tracking_skip_roles',
-                'label' => 'Capabilities',
-                'from'  => $opts['ignore_capabilities'],
-                'value' => $roles,
-            );
+        $roles = self::roles_setting($opts);
+        if ($roles) {
+            $out[] = $roles;
         }
         $ips = self::ip_lines(isset($opts['ignore_ip']) && is_string($opts['ignore_ip']) ? $opts['ignore_ip'] : '');
         if ($ips) {
@@ -327,6 +300,58 @@ final class SEOProStats_Migrate_Slimstat extends SEOProStats_Migrate_Source {
                 );
         }
         return $out;
+    }
+
+    /**
+     * Roles it leaves out: every role for its WP Users choice, else the
+     * roles its capabilities list matches.
+     *
+     * @param array<string,mixed> $opts Its settings.
+     * @return array<string,mixed>|null The setting; null when neither is set.
+     */
+    private static function roles_setting(array $opts) {
+        if (isset($opts['ignore_wp_users']) && $opts['ignore_wp_users'] === 'on') {
+            return array(
+                'key'   => 'tracking_skip_roles',
+                'label' => 'WP Users',
+                'from'  => __('On', 'seoprostats'),
+                'value' => array_keys(wp_roles()->get_names()),
+            );
+        }
+        if (empty($opts['ignore_capabilities']) || !is_string($opts['ignore_capabilities'])) {
+            return null;
+        }
+        return array(
+            'key'   => 'tracking_skip_roles',
+            'label' => 'Capabilities',
+            'from'  => $opts['ignore_capabilities'],
+            'value' => self::capability_roles($opts['ignore_capabilities']),
+        );
+    }
+
+    /**
+     * Roles named in its list, or with a capability in it (* any
+     * characters).
+     *
+     * @param string $list Comma-separated roles and capabilities.
+     * @return string[]
+     */
+    private static function capability_roles($list) {
+        $patterns = array();
+        foreach (array_filter(array_map('trim', explode(',', $list))) as $item) {
+            $patterns[] = '@^' . str_replace(array('\\*', '\\!'), array('.*', '.'), preg_quote($item, '@')) . '$@i';
+        }
+        $roles = array();
+        foreach (wp_roles()->roles as $role => $info) {
+            $names_to_match = array_merge(array((string) $role), array_keys(array_filter(isset($info['capabilities']) ? (array) $info['capabilities'] : array())));
+            foreach ($patterns as $pattern) {
+                if (preg_grep($pattern, $names_to_match)) {
+                    $roles[] = (string) $role;
+                    break;
+                }
+            }
+        }
+        return $roles;
     }
 
     /**
