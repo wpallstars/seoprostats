@@ -752,24 +752,11 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         /* translators: 1: clicks, 2: dead clicks, 3: percentage, 4: outbound, 5: affiliate, 6: file links, 7: form submits, 8: visits */
         WP_CLI::log(sprintf(__('%1$d clicks, %2$d dead (%3$s); %4$d outbound, %5$d affiliate, %6$d file links; %7$d forms sent; in %8$d visits.', 'seoprostats'), $totals['clicks'], $totals['dead'], sprintf(self::PERCENT_FORMAT, $totals['dead_rate'] * 100), $totals['outbound'], $totals['affiliate'], $totals['downloads'], $totals['forms'], $totals['visits']));
         if ($page !== '') {
-            $info = $answer['page_info'];
-            /* translators: %s: page path. */
-            WP_CLI::log(sprintf(__('Page: %s', 'seoprostats'), $page));
-            if ($info !== null) {
-                WP_CLI::log($info['url']);
-                if ($info['post_id']) {
-                    /* translators: %d: post ID. */
-                    WP_CLI::log(sprintf(__('Post ID: %d', 'seoprostats'), $info['post_id']));
-                }
-                if ($info['edit_url'] !== null) {
-                    WP_CLI::log($info['edit_url']);
-                }
-            }
+            self::page_info_lines($page, $answer['page_info']);
         }
         if (isset($answer['compare'])) {
-            $change = $answer['compare']['change']['clicks'];
             /* translators: 1: clicks in the other period, 2: change */
-            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s).', 'seoprostats'), $answer['compare']['totals']['clicks'], $change === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change * 100)));
+            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s).', 'seoprostats'), $answer['compare']['totals']['clicks'], self::change_text($answer['compare']['change']['clicks'])));
         }
         if (!$answer['rows']) {
             WP_CLI::line(__('No clicks of this kind in this range.', 'seoprostats'));
@@ -793,6 +780,38 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             'pages'     => array('path', 'count', 'dead', 'dead_rate', 'links', 'forms', 'visits'),
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields[$answer['kind']]);
+    }
+
+    /**
+     * Print the page a report is about: its path, address, post and edit link.
+     *
+     * @param string                   $page Path.
+     * @param array<string,mixed>|null $info Page info, or null when unknown.
+     */
+    private static function page_info_lines($page, $info) {
+        /* translators: %s: page path. */
+        WP_CLI::log(sprintf(__('Page: %s', 'seoprostats'), $page));
+        if ($info === null) {
+            return;
+        }
+        WP_CLI::log($info['url']);
+        if ($info['post_id']) {
+            /* translators: %d: post ID. */
+            WP_CLI::log(sprintf(__('Post ID: %d', 'seoprostats'), $info['post_id']));
+        }
+        if ($info['edit_url'] !== null) {
+            WP_CLI::log($info['edit_url']);
+        }
+    }
+
+    /**
+     * A relative change as a signed percentage, or – when there is none.
+     *
+     * @param float|null $change Change (0.1 is +10%).
+     * @return string
+     */
+    private static function change_text($change) {
+        return $change === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change * 100);
     }
 
     /**
@@ -940,12 +959,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         $totals = $answer['totals'];
         /* translators: 1: clicks, 2: impressions, 3: CTR, 4: average position */
-        WP_CLI::log(sprintf(__('%1$d clicks, %2$d impressions, CTR %3$s, average position %4$s.', 'seoprostats'), $totals['clicks'], $totals['impressions'], sprintf(self::PERCENT_FORMAT, $totals['ctr'] * 100), $totals['impressions'] ? sprintf('%.1f', $totals['position']) : '–'));
+        WP_CLI::log(sprintf(__('%1$d clicks, %2$d impressions, CTR %3$s, average position %4$s.', 'seoprostats'), $totals['clicks'], $totals['impressions'], sprintf(self::PERCENT_FORMAT, $totals['ctr'] * 100), self::position_text($totals)));
         if (isset($answer['compare'])) {
-            $then   = $answer['compare']['totals'];
-            $change = $answer['compare']['change'];
-            /* translators: 1: clicks, 2: change, 3: impressions, 4: change, 5: position, 6: change in places (lower is better) */
-            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s), %3$d impressions (%4$s), position %5$s (%6$s places).', 'seoprostats'), $then['clicks'], $change['clicks'] === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change['clicks'] * 100), $then['impressions'], $change['impressions'] === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change['impressions'] * 100), $then['impressions'] ? sprintf('%.1f', $then['position']) : '–', $change['position'] === null ? '–' : sprintf('%+.1f', $change['position'])));
+            self::search_compare_line($answer['compare']);
         }
         if (!$answer['rows']) {
             WP_CLI::line(__('No search data of this kind in this range.', 'seoprostats'));
@@ -966,6 +982,29 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             'days'       => 'label',
         );
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array($first[$answer['kind']], 'clicks', 'impressions', 'ctr', 'position', 'share'));
+    }
+
+    /**
+     * Average position with one decimal, or – without impressions.
+     *
+     * @param array<string,mixed> $totals Search totals.
+     * @return string
+     */
+    private static function position_text(array $totals) {
+        return $totals['impressions'] ? sprintf('%.1f', $totals['position']) : '–';
+    }
+
+    /**
+     * Print the search totals of the period compared.
+     *
+     * @param array<string,mixed> $compare The answer's compare part.
+     */
+    private static function search_compare_line(array $compare) {
+        $then   = $compare['totals'];
+        $change = $compare['change'];
+        $places = $change['position'] === null ? '–' : sprintf('%+.1f', $change['position']);
+        /* translators: 1: clicks, 2: change, 3: impressions, 4: change, 5: position, 6: change in places (lower is better) */
+        WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s), %3$d impressions (%4$s), position %5$s (%6$s places).', 'seoprostats'), $then['clicks'], self::change_text($change['clicks']), $then['impressions'], self::change_text($change['impressions']), self::position_text($then), $places));
     }
 
     /**
@@ -1103,63 +1142,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::line(__('No opportunities of this kind in this range.', 'seoprostats'));
             return;
         }
-        $pct  = static function ($value) {
-            return sprintf(self::PERCENT_FORMAT, (float) $value * 100);
-        };
         $rows = array();
         foreach ($answer['rows'] as $row) {
-            if ($answer['kind'] === 'decay') {
-                $rows[] = array(
-                    'path'     => $row['path'],
-                    'clicks'   => $row['clicks'],
-                    'was'      => $row['compare']['clicks'],
-                    'lost'     => $row['lost'],
-                    'position' => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
-                    'was_pos'  => sprintf('%.1f', $row['compare']['position']),
-                    'cause'    => $row['cause'],
-                    'queries'  => implode('; ', array_column($row['queries'], 'query')),
-                    'changes'  => implode('; ', array_map(static function ($c) {
-                        return substr((string) $c['t'], 0, 10) . ' ' . $c['label'];
-                    }, $row['changes'])),
-                );
-                continue;
-            }
-            if ($answer['kind'] === 'overlap') {
-                $rows[] = array(
-                    'query'       => $row['query'],
-                    'impressions' => $row['impressions'],
-                    'clicks'      => $row['clicks'],
-                    'pages'       => implode('; ', array_map(static function ($page) use ($pct) {
-                        return sprintf('%s %s pos %.1f', $page['path'], $pct($page['share']), $page['position']);
-                    }, $row['pages'])) . ($row['page_count'] > count($row['pages']) ? sprintf('; +%d', $row['page_count'] - count($row['pages'])) : ''),
-                    'switched'    => $row['switched'] ? implode(' → ', $row['leaders']) : '',
-                    'potential'   => $row['potential'],
-                );
-                continue;
-            }
-            if ($answer['kind'] === 'missing') {
-                $rows[] = array(
-                    'path'        => $row['path'],
-                    'query'       => $row['query'],
-                    'impressions' => $row['impressions'],
-                    'clicks'      => $row['clicks'],
-                    'position'    => sprintf('%.1f', $row['position']),
-                    'match'       => $row['match'],
-                    'missing'     => implode(' ', $row['missing']),
-                    'question'    => $row['question'] ? 'yes' : '',
-                );
-                continue;
-            }
-            $rows[] = array(
-                'path'         => $row['path'],
-                'query'        => $row['query'],
-                'clicks'       => $row['clicks'],
-                'impressions'  => $row['impressions'],
-                'ctr'          => $pct($row['ctr']),
-                'expected_ctr' => $pct($row['expected_ctr']),
-                'position'     => sprintf('%.1f', $row['position']),
-                'potential'    => $row['potential'],
-            );
+            $rows[] = self::opportunity_row($answer['kind'], $row);
         }
         if ($answer['kind'] === 'overlap') {
             WP_CLI::log(__('Candidates to review, not faults: two pages can both be right for one search. switched: the page with most impressions in each half of the period; potential: clicks with the best of the pages\' CTRs.', 'seoprostats'));
@@ -1169,6 +1154,89 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             /* translators: %s: search engine updates */
             WP_CLI::log(sprintf(__('Search engine updates in these periods: %s.', 'seoprostats'), implode('; ', array_column($answer['updates'], 'label'))));
         }
+    }
+
+    /**
+     * One opportunity as a table row.
+     *
+     * @param string              $kind striking, ctr, decay, overlap or missing.
+     * @param array<string,mixed> $row  Report row.
+     * @return array<string,mixed>
+     */
+    private static function opportunity_row($kind, array $row) {
+        if ($kind === 'decay') {
+            return self::decay_row($row);
+        }
+        if ($kind === 'overlap') {
+            return self::overlap_row($row);
+        }
+        if ($kind === 'missing') {
+            return array(
+                'path'        => $row['path'],
+                'query'       => $row['query'],
+                'impressions' => $row['impressions'],
+                'clicks'      => $row['clicks'],
+                'position'    => sprintf('%.1f', $row['position']),
+                'match'       => $row['match'],
+                'missing'     => implode(' ', $row['missing']),
+                'question'    => $row['question'] ? 'yes' : '',
+            );
+        }
+        return array(
+            'path'         => $row['path'],
+            'query'        => $row['query'],
+            'clicks'       => $row['clicks'],
+            'impressions'  => $row['impressions'],
+            'ctr'          => self::percent_text($row['ctr']),
+            'expected_ctr' => self::percent_text($row['expected_ctr']),
+            'position'     => sprintf('%.1f', $row['position']),
+            'potential'    => $row['potential'],
+        );
+    }
+
+    /**
+     * A page losing clicks as a table row.
+     *
+     * @param array<string,mixed> $row Report row.
+     * @return array<string,mixed>
+     */
+    private static function decay_row(array $row) {
+        return array(
+            'path'     => $row['path'],
+            'clicks'   => $row['clicks'],
+            'was'      => $row['compare']['clicks'],
+            'lost'     => $row['lost'],
+            'position' => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
+            'was_pos'  => sprintf('%.1f', $row['compare']['position']),
+            'cause'    => $row['cause'],
+            'queries'  => implode('; ', array_column($row['queries'], 'query')),
+            'changes'  => implode('; ', array_map(static function ($c) {
+                return substr((string) $c['t'], 0, 10) . ' ' . $c['label'];
+            }, $row['changes'])),
+        );
+    }
+
+    /**
+     * A search shown with several pages as a table row.
+     *
+     * @param array<string,mixed> $row Report row.
+     * @return array<string,mixed>
+     */
+    private static function overlap_row(array $row) {
+        $pages = implode('; ', array_map(static function ($page) {
+            return sprintf('%s %s pos %.1f', $page['path'], self::percent_text($page['share']), $page['position']);
+        }, $row['pages']));
+        if ($row['page_count'] > count($row['pages'])) {
+            $pages .= sprintf('; +%d', $row['page_count'] - count($row['pages']));
+        }
+        return array(
+            'query'       => $row['query'],
+            'impressions' => $row['impressions'],
+            'clicks'      => $row['clicks'],
+            'pages'       => $pages,
+            'switched'    => $row['switched'] ? implode(' → ', $row['leaders']) : '',
+            'potential'   => $row['potential'],
+        );
     }
 
     /**
@@ -1269,13 +1337,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-audit.php';
         $action = isset($args[0]) ? (string) $args[0] : 'list';
         if ($action === 'run') {
-            if (!SEOProStats_Schema::maybe_upgrade()) {
-                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
-            }
-            $limit = isset($assoc['limit']) ? max(1, (int) $assoc['limit']) : SEOProStats_Audit::BATCH;
-            $done  = SEOProStats_Audit::batch($limit, 600);
-            /* translators: 1: posts read, 2: posts looked at */
-            WP_CLI::success(sprintf(__('Read %1$d posts of %2$d looked at.', 'seoprostats'), $done['read'], $done['looked']) . ($done['done'] ? ' ' . __('Every post has been looked at; the next run starts from the first.', 'seoprostats') : ''));
+            self::audit_run($assoc);
             return;
         }
         $engine  = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
@@ -1310,12 +1372,28 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
                 'path'        => $row['path'],
                 'impressions' => $row['impressions'],
                 'clicks'      => $row['clicks'],
-                'position'    => $row['impressions'] ? sprintf('%.1f', $row['position']) : '–',
+                'position'    => self::position_text($row),
                 'words'       => $row['facts']['words'],
                 'findings'    => implode(', ', $row['findings']),
             );
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * wp seoprostats audit run: read a batch of posts now.
+     *
+     * @param array<string,string> $assoc Options (limit).
+     */
+    private static function audit_run(array $assoc) {
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+        }
+        $limit = isset($assoc['limit']) ? max(1, (int) $assoc['limit']) : SEOProStats_Audit::BATCH;
+        $done  = SEOProStats_Audit::batch($limit, 600);
+        $all   = $done['done'] ? ' ' . __('Every post has been looked at; the next run starts from the first.', 'seoprostats') : '';
+        /* translators: 1: posts read, 2: posts looked at */
+        WP_CLI::success(sprintf(__('Read %1$d posts of %2$d looked at.', 'seoprostats'), $done['read'], $done['looked']) . $all);
     }
 
     /**
@@ -1530,16 +1608,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         $action = isset($args[0]) ? (string) $args[0] : 'list';
         if ($action === 'run') {
-            if (!SEOProStats_Schema::maybe_upgrade()) {
-                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
-            }
-            $done = SEOProStats_Indexation::read_sitemaps(120);
-            if (!$done['enabled']) {
-                WP_CLI::warning(__('WordPress’s sitemaps are off (an SEO plugin may make its own); no addresses were read.', 'seoprostats'));
-                return;
-            }
-            /* translators: %d: sitemap addresses */
-            WP_CLI::success(sprintf(__('Read %d sitemap addresses besides the posts.', 'seoprostats'), $done['addresses']) . ($done['complete'] ? '' : ' ' . __('Not every sitemap was read (time or address limit).', 'seoprostats')));
+            self::indexation_run();
             return;
         }
         $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
@@ -1567,32 +1636,72 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         $rows = array();
         foreach ($answer['rows'] as $row) {
-            $line = array(
-                'path'            => $row['path'],
-                'state'           => $row['state'],
-                'last_impression' => $row['last_impression'] === null ? '–' : $row['last_impression'],
-                'days'            => $row['age'],
-            );
-            if ($answer['kind'] === 'pages') {
-                $line += array(
-                    'published' => substr((string) $row['published'], 0, 10),
-                    'words'     => $row['words'],
-                    'links_in'  => $row['links_in'],
-                );
-            } else {
-                $line += array(
-                    'first_seen' => substr((string) $row['first_seen'], 0, 10),
-                    'source'     => $row['source'],
-                );
-            }
-            if ($answer['inspections'] !== null) {
-                // Google's reason from URL Inspection, or its verdict when it gives none.
-                $google         = isset($row['google']) && is_array($row['google']) ? $row['google'] : null;
-                $line['google'] = $google === null ? '–' : (string) ($google['coverage'] !== null ? $google['coverage'] : $google['verdict']);
-            }
-            $rows[] = $line;
+            $rows[] = self::indexation_row($answer['kind'], $answer['inspections'] !== null, $row);
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * wp seoprostats indexation run: read the sitemaps now.
+     */
+    private static function indexation_run() {
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+        }
+        $done = SEOProStats_Indexation::read_sitemaps(120);
+        if (!$done['enabled']) {
+            WP_CLI::warning(__('WordPress’s sitemaps are off (an SEO plugin may make its own); no addresses were read.', 'seoprostats'));
+            return;
+        }
+        $partial = $done['complete'] ? '' : ' ' . __('Not every sitemap was read (time or address limit).', 'seoprostats');
+        /* translators: %d: sitemap addresses */
+        WP_CLI::success(sprintf(__('Read %d sitemap addresses besides the posts.', 'seoprostats'), $done['addresses']) . $partial);
+    }
+
+    /**
+     * One indexation report row as a table row.
+     *
+     * @param string              $kind     pages or sitemap.
+     * @param bool                $inspects Whether URL Inspection results are known.
+     * @param array<string,mixed> $row      Report row.
+     * @return array<string,mixed>
+     */
+    private static function indexation_row($kind, $inspects, array $row) {
+        $line = array(
+            'path'            => $row['path'],
+            'state'           => $row['state'],
+            'last_impression' => $row['last_impression'] === null ? '–' : $row['last_impression'],
+            'days'            => $row['age'],
+        );
+        if ($kind === 'pages') {
+            $line += array(
+                'published' => substr((string) $row['published'], 0, 10),
+                'words'     => $row['words'],
+                'links_in'  => $row['links_in'],
+            );
+        } else {
+            $line += array(
+                'first_seen' => substr((string) $row['first_seen'], 0, 10),
+                'source'     => $row['source'],
+            );
+        }
+        if ($inspects) {
+            $line['google'] = self::google_state(isset($row['google']) && is_array($row['google']) ? $row['google'] : null);
+        }
+        return $line;
+    }
+
+    /**
+     * Google's reason from URL Inspection, or its verdict when it gives none.
+     *
+     * @param array<string,mixed>|null $google Inspection, or null when none.
+     * @return string
+     */
+    private static function google_state($google) {
+        if ($google === null) {
+            return '–';
+        }
+        return (string) ($google['coverage'] !== null ? $google['coverage'] : $google['verdict']);
     }
 
     /**
@@ -1680,81 +1789,129 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         $kind = isset($args[0]) ? (string) $args[0] : 'links';
         if ($kind === 'review' || $kind === 'disavow') {
-            require_once __DIR__ . '/class-seoprostats-backlink-review.php';
-            if (!current_user_can('manage_options')) {
-                WP_CLI::error(__('Use --user with an administrator for backlink decisions and exports.', 'seoprostats'));
-            }
-            $merge = '';
-            if (isset($assoc['merge'])) {
-                $file = $assoc['merge'];
-                if (strpos($file, '://') !== false || !is_file($file) || !is_readable($file) || filesize($file) > SEOProStats_Backlink_Review::MAX_BYTES) {
-                    WP_CLI::error(__('Give a readable local text file of at most 2 MB.', 'seoprostats'));
-                }
-                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- bounded local file supplied by the CLI operator.
-                $merge = file_get_contents($file);
-                if ($merge === false) {
-                    WP_CLI::error(__('The list could not be read.', 'seoprostats'));
-                }
-            }
-            $req = $this->request($assoc + array('range' => '30d', 'limit' => '25'));
-            $answer = $this->on_data($assoc, static function () use ($kind, $assoc, $req, $merge) {
-                if ($kind === 'disavow') {
-                    return SEOProStats_Backlink_Review::export($merge);
-                }
-                return isset($assoc['decision']) ? SEOProStats_Backlink_Review::decide($assoc) : SEOProStats_Backlink_Review::report($req);
-            });
-            if (is_wp_error($answer)) {
-                WP_CLI::error($answer->get_error_message());
-            }
-            WP_CLI::line(is_string($answer) ? rtrim($answer, "\n") : (string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            $this->backlinks_review($kind, $assoc);
             return;
         }
         if ($kind === 'import') {
-            require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
-            if (!isset($args[1]) || !is_readable($args[1])) {
-                WP_CLI::error(__('Give a readable CSV file.', 'seoprostats'));
-            }
-            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- local file explicitly supplied by the CLI operator.
-            $stream = fopen($args[1], 'r');
-            if (!$stream) {
-                WP_CLI::error(__('The CSV could not be opened.', 'seoprostats'));
-                return;
-            }
-            try {
-                $job = SEOProStats_Backlinks_Import::start($stream, isset($assoc['source']) ? $assoc['source'] : '');
-            } finally {
-                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- the CLI import stream.
-                fclose($stream);
-            }
-            if (is_wp_error($job)) {
-                WP_CLI::error($job->get_error_message());
-            }
-            do {
-                $job = SEOProStats_Backlinks_Import::run(20);
-                WP_CLI::log(sprintf('%d/%d', $job['done'], $job['total']));
-            } while ($job['status'] === 'running');
-            if ($job['status'] === 'error') {
-                WP_CLI::error(__('The import could not finish. Check database writes.', 'seoprostats'));
-            }
-            WP_CLI::line((string) wp_json_encode($job));
+            self::backlinks_import($args, $assoc);
             return;
         }
         if ($kind === 'check') {
-            if (!SEOProStats_Schema::maybe_upgrade()) {
-                WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
-            }
-            $done = SEOProStats_Backlinks::run(120, true, !empty($assoc['all']));
-            if ($this->format($assoc) === 'json') {
-                WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                return;
-            }
-            /* translators: 1: referring pages read from visits, 2: pages opened, 3: new links, 4: lost links, 5: pages that could not be opened, 6: pages skipped (no link and no visit since their last check) */
-            WP_CLI::success(sprintf(__('Referring pages from visits: %1$d. Opened: %2$d. New links: %3$d. Lost links: %4$d. Could not open: %5$d. Skipped: %6$d.', 'seoprostats'), $done['new_pages'], $done['checked'], $done['links_new'], $done['links_lost'], $done['errors'], $done['skipped']) . ($done['more'] ? ' ' . __('More pages are due; run it again.', 'seoprostats') : ''));
+            $this->backlinks_check($assoc);
             return;
         }
-        $req    = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
+        $this->backlinks_report($kind, $assoc);
+    }
+
+    /**
+     * wp seoprostats backlinks review|disavow: decisions and the disavow
+     * export.
+     *
+     * @param string               $kind  review or disavow.
+     * @param array<string,string> $assoc Options.
+     */
+    private function backlinks_review($kind, array $assoc) {
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        if (!current_user_can('manage_options')) {
+            WP_CLI::error(__('Use --user with an administrator for backlink decisions and exports.', 'seoprostats'));
+        }
+        $merge  = isset($assoc['merge']) ? self::disavow_merge_file($assoc['merge']) : '';
+        $req    = $this->request($assoc + array('range' => '30d', 'limit' => '25'));
+        $answer = $this->on_data($assoc, static function () use ($kind, $assoc, $req, $merge) {
+            if ($kind === 'disavow') {
+                return SEOProStats_Backlink_Review::export($merge);
+            }
+            return isset($assoc['decision']) ? SEOProStats_Backlink_Review::decide($assoc) : SEOProStats_Backlink_Review::report($req);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        WP_CLI::line(is_string($answer) ? rtrim($answer, "\n") : (string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
+     * Read a disavow list to merge into the export.
+     *
+     * @param string $file Local file.
+     * @return string
+     */
+    private static function disavow_merge_file($file) {
+        if (strpos($file, '://') !== false || !is_file($file) || !is_readable($file) || filesize($file) > SEOProStats_Backlink_Review::MAX_BYTES) {
+            WP_CLI::error(__('Give a readable local text file of at most 2 MB.', 'seoprostats'));
+        }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- bounded local file supplied by the CLI operator.
+        $merge = file_get_contents($file);
+        if ($merge === false) {
+            WP_CLI::error(__('The list could not be read.', 'seoprostats'));
+        }
+        return (string) $merge;
+    }
+
+    /**
+     * wp seoprostats backlinks import <file>: import a CSV of backlinks.
+     *
+     * @param string[]             $args  Positional arguments.
+     * @param array<string,string> $assoc Options (source).
+     */
+    private static function backlinks_import(array $args, array $assoc) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        if (!isset($args[1]) || !is_readable($args[1])) {
+            WP_CLI::error(__('Give a readable CSV file.', 'seoprostats'));
+        }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- local file explicitly supplied by the CLI operator.
+        $stream = fopen($args[1], 'r');
+        if (!$stream) {
+            WP_CLI::error(__('The CSV could not be opened.', 'seoprostats'));
+            return;
+        }
+        try {
+            $job = SEOProStats_Backlinks_Import::start($stream, isset($assoc['source']) ? $assoc['source'] : '');
+        } finally {
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- the CLI import stream.
+            fclose($stream);
+        }
+        if (is_wp_error($job)) {
+            WP_CLI::error($job->get_error_message());
+        }
+        do {
+            $job = SEOProStats_Backlinks_Import::run(20);
+            WP_CLI::log(sprintf('%d/%d', $job['done'], $job['total']));
+        } while ($job['status'] === 'running');
+        if ($job['status'] === 'error') {
+            WP_CLI::error(__('The import could not finish. Check database writes.', 'seoprostats'));
+        }
+        WP_CLI::line((string) wp_json_encode($job));
+    }
+
+    /**
+     * wp seoprostats backlinks check: open the referring pages due.
+     *
+     * @param array<string,string> $assoc Options (all, format).
+     */
+    private function backlinks_check(array $assoc) {
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
+        }
+        $done = SEOProStats_Backlinks::run(120, true, !empty($assoc['all']));
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $more = $done['more'] ? ' ' . __('More pages are due; run it again.', 'seoprostats') : '';
+        /* translators: 1: referring pages read from visits, 2: pages opened, 3: new links, 4: lost links, 5: pages that could not be opened, 6: pages skipped (no link and no visit since their last check) */
+        WP_CLI::success(sprintf(__('Referring pages from visits: %1$d. Opened: %2$d. New links: %3$d. Lost links: %4$d. Could not open: %5$d. Skipped: %6$d.', 'seoprostats'), $done['new_pages'], $done['checked'], $done['links_new'], $done['links_lost'], $done['errors'], $done['skipped']) . $more);
+    }
+
+    /**
+     * wp seoprostats backlinks [links|domains|pages|new|lost]: the report.
+     *
+     * @param string               $kind  Report kind.
+     * @param array<string,string> $assoc Options.
+     */
+    private function backlinks_report($kind, array $assoc) {
+        $req           = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
         $req['source'] = isset($assoc['source']) ? $assoc['source'] : '';
-        $answer = $this->on_data($assoc, static function () use ($req, $kind) {
+        $answer        = $this->on_data($assoc, static function () use ($req, $kind) {
             return SEOProStats_Backlinks::report($req, $kind);
         });
         if ($this->format($assoc) === 'json') {
@@ -1774,22 +1931,31 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         $rows = array();
         foreach ($answer['rows'] as $row) {
-            switch ($answer['kind']) {
-                case 'domains':
-                    $rows[] = array('host' => $row['host'], 'links' => $row['links'], 'followed' => $row['followed'], 'pages' => $row['pages'], 'new' => $row['new'], 'lost' => $row['lost'], 'visits' => $row['visits'], 'first_seen' => substr((string) $row['first_seen'], 0, 10));
-                    break;
-                case 'pages':
-                    $rows[] = array('page' => $row['page'], 'domains' => $row['domains'], 'links' => $row['links'], 'new' => $row['new'], 'first_seen' => substr((string) $row['first_seen'], 0, 10));
-                    break;
-                default:
-                    $line = array('source' => $row['source'], 'page' => $row['page'], 'anchor' => $row['anchor'], 'rel' => implode(' ', $row['rel']), 'first_seen' => substr((string) $row['first_seen'], 0, 10), 'last_seen' => substr((string) $row['last_seen'], 0, 10));
-                    if ($answer['kind'] === 'lost') {
-                        $line['lost'] = substr((string) $row['lost'], 0, 10);
-                    }
-                    $rows[] = $line;
-            }
+            $rows[] = self::backlink_row($answer['kind'], $row);
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * One backlinks report row as a table row.
+     *
+     * @param string              $kind Report kind.
+     * @param array<string,mixed> $row  Report row.
+     * @return array<string,mixed>
+     */
+    private static function backlink_row($kind, array $row) {
+        $first = substr((string) $row['first_seen'], 0, 10);
+        if ($kind === 'domains') {
+            return array('host' => $row['host'], 'links' => $row['links'], 'followed' => $row['followed'], 'pages' => $row['pages'], 'new' => $row['new'], 'lost' => $row['lost'], 'visits' => $row['visits'], 'first_seen' => $first);
+        }
+        if ($kind === 'pages') {
+            return array('page' => $row['page'], 'domains' => $row['domains'], 'links' => $row['links'], 'new' => $row['new'], 'first_seen' => $first);
+        }
+        $line = array('source' => $row['source'], 'page' => $row['page'], 'anchor' => $row['anchor'], 'rel' => implode(' ', $row['rel']), 'first_seen' => $first, 'last_seen' => substr((string) $row['last_seen'], 0, 10));
+        if ($kind === 'lost') {
+            $line['lost'] = substr((string) $row['lost'], 0, 10);
+        }
+        return $line;
     }
 
     /**
@@ -1860,14 +2026,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-changes.php';
         $json = $this->format($assoc) === 'json';
-        $page = isset($args[0]) ? trim((string) $args[0]) : '';
-        if ($page !== '') {
-            $page = strpos($page, '/') === 0 ? $page : SEOProStats_Changes::path($page);
-            if ($page === '' || $page[0] !== '/') {
-                WP_CLI::error(__('Give a page as a path such as /pricing/, or its address on this site.', 'seoprostats'));
-            }
-        }
-        if (!empty($assoc['run'])) {
+        $page = isset($args[0]) ? self::inspect_page((string) $args[0]) : '';
+        $run  = !empty($assoc['run']);
+        if ($run) {
             if (($assoc['data'] ?? 'live') === 'demo') {
                 WP_CLI::error(__('Google is asked about live data only.', 'seoprostats'));
             }
@@ -1876,70 +2037,12 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             }
         }
         if (!empty($assoc['sitemaps'])) {
-            // As kept by the daily read; --run reads them from Search Console first.
-            if (!empty($assoc['run'])) {
-                $read = SEOProStats_Inspections::read_sitemaps();
-                if (is_wp_error($read)) {
-                    WP_CLI::error($read->get_error_message());
-                }
-            }
-            $all = $this->on_data($assoc, static function () {
-                return SEOProStats_Inspections::sitemaps();
-            });
-            if ($json) {
-                WP_CLI::line((string) wp_json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                return;
-            }
-            if (!$all['submitted']) {
-                /* translators: %s: the site's sitemap address */
-                WP_CLI::warning(sprintf(__('The site\'s sitemap %s is not submitted in Search Console.', 'seoprostats'), (string) $all['own']));
-            }
-            if (!$all['rows']) {
-                WP_CLI::line(__('No sitemap is submitted for the property.', 'seoprostats'));
-                return;
-            }
-            $rows = array();
-            foreach ($all['rows'] as $row) {
-                $rows[] = array(
-                    'sitemap'    => $row['path'],
-                    'type'       => $row['type'] . ($row['index'] ? ' (index)' : ''),
-                    'submitted'  => substr((string) $row['submitted'], 0, 10),
-                    'downloaded' => substr((string) $row['downloaded'], 0, 10),
-                    'errors'     => $row['errors'],
-                    'warnings'   => $row['warnings'],
-                    'problems'   => implode(', ', $row['problems']),
-                );
-            }
-            WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+            $this->inspect_sitemaps($run, $json, $assoc);
             return;
         }
-        if (!empty($assoc['run'])) {
-            $done = SEOProStats_Inspections::run_now(120, $page !== '' ? array(0 => $page) : null);
-            if (is_wp_error($done)) {
-                WP_CLI::error($done->get_error_message());
-                return;
-            }
-            if ($json) {
-                WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                return;
-            }
-            if ($done['error'] !== null) {
-                /* translators: %s: Google's message */
-                WP_CLI::warning(sprintf(__('Google stopped the run: %s', 'seoprostats'), $done['error']));
-            }
-            /* translators: 1: pages inspected, 2: addresses Google would not inspect, 3: inspections today, 4: daily cap */
-            $line = sprintf(__('Inspected: %1$d. Not inspected by Google: %2$d. Today: %3$d of %4$d.', 'seoprostats'), $done['inspected'], $done['failed'], $done['used'], $done['daily']);
-            if ($done['daily'] < 1) {
-                $line .= ' ' . __('Inspections are off (Settings → Data).', 'seoprostats');
-            } elseif ($done['left'] < 1) {
-                $line .= ' ' . __('The daily cap is reached; the rest wait for tomorrow (Pacific time).', 'seoprostats');
-            } elseif ($done['more']) {
-                $line .= ' ' . __('More pages are due; run it again.', 'seoprostats');
-            }
-            WP_CLI::success($line);
-            if ($page === '') {
-                return;
-            }
+        // A run prints its summary; a run for one page shows that page next.
+        if ($run && (!self::inspect_run($page, $json) || $page === '')) {
+            return;
         }
         $req    = $this->request($assoc + array('limit' => '20'));
         $filter = $page !== '' ? array(array('dimension' => 'page', 'op' => 'is', 'values' => array($page))) : array();
@@ -1950,6 +2053,17 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
         }
+        $this->inspect_list($answer, $page, $assoc);
+    }
+
+    /**
+     * Print the pages inspected.
+     *
+     * @param array<string,mixed>  $answer From SEOProStats_Inspections::report().
+     * @param string               $page   The page asked about, or empty.
+     * @param array<string,string> $assoc  Options.
+     */
+    private function inspect_list(array $answer, $page, array $assoc) {
         $progress = $answer['progress'];
         /* translators: 1: pages inspected, 2: inspections today, 3: daily cap */
         WP_CLI::log(sprintf(__('Pages inspected: %1$d. Today: %2$d of %3$d.', 'seoprostats'), $answer['inspected'], $progress['used'], $progress['daily']) . ($answer['connected'] ? '' : ' ' . __('Search Console is not connected (Settings → Connections).', 'seoprostats')));
@@ -1974,6 +2088,103 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             );
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * The page given to inspect, as a path on this site.
+     *
+     * @param string $page A path or an address.
+     * @return string Empty when none was given.
+     */
+    private static function inspect_page($page) {
+        $page = trim($page);
+        if ($page === '') {
+            return '';
+        }
+        $page = strpos($page, '/') === 0 ? $page : SEOProStats_Changes::path($page);
+        if ($page === '' || $page[0] !== '/') {
+            WP_CLI::error(__('Give a page as a path such as /pricing/, or its address on this site.', 'seoprostats'));
+        }
+        return $page;
+    }
+
+    /**
+     * wp seoprostats inspect --sitemaps: the property's sitemaps, as kept by
+     * the daily read; --run reads them from Search Console first.
+     *
+     * @param bool                 $run   Read them now.
+     * @param bool                 $json  As JSON.
+     * @param array<string,string> $assoc Options.
+     */
+    private function inspect_sitemaps($run, $json, array $assoc) {
+        if ($run) {
+            $read = SEOProStats_Inspections::read_sitemaps();
+            if (is_wp_error($read)) {
+                WP_CLI::error($read->get_error_message());
+            }
+        }
+        $all = $this->on_data($assoc, static function () {
+            return SEOProStats_Inspections::sitemaps();
+        });
+        if ($json) {
+            WP_CLI::line((string) wp_json_encode($all, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        if (!$all['submitted']) {
+            /* translators: %s: the site's sitemap address */
+            WP_CLI::warning(sprintf(__('The site\'s sitemap %s is not submitted in Search Console.', 'seoprostats'), (string) $all['own']));
+        }
+        if (!$all['rows']) {
+            WP_CLI::line(__('No sitemap is submitted for the property.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($all['rows'] as $row) {
+            $rows[] = array(
+                'sitemap'    => $row['path'],
+                'type'       => $row['type'] . ($row['index'] ? ' (index)' : ''),
+                'submitted'  => substr((string) $row['submitted'], 0, 10),
+                'downloaded' => substr((string) $row['downloaded'], 0, 10),
+                'errors'     => $row['errors'],
+                'warnings'   => $row['warnings'],
+                'problems'   => implode(', ', $row['problems']),
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * wp seoprostats inspect --run: inspect the page given, or the pages due.
+     *
+     * @param string $page Path, or empty for the pages due.
+     * @param bool   $json As JSON.
+     * @return bool False when the answer was printed as JSON (nothing more to show).
+     */
+    private static function inspect_run($page, $json) {
+        $done = SEOProStats_Inspections::run_now(120, $page !== '' ? array(0 => $page) : null);
+        if (is_wp_error($done)) {
+            WP_CLI::error($done->get_error_message());
+            return false;
+        }
+        if ($json) {
+            WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return false;
+        }
+        if ($done['error'] !== null) {
+            /* translators: %s: Google's message */
+            WP_CLI::warning(sprintf(__('Google stopped the run: %s', 'seoprostats'), $done['error']));
+        }
+        /* translators: 1: pages inspected, 2: addresses Google would not inspect, 3: inspections today, 4: daily cap */
+        $line = sprintf(__('Inspected: %1$d. Not inspected by Google: %2$d. Today: %3$d of %4$d.', 'seoprostats'), $done['inspected'], $done['failed'], $done['used'], $done['daily']);
+        if ($done['daily'] < 1) {
+            $line .= ' ' . __('Inspections are off (Settings → Data).', 'seoprostats');
+        } elseif ($done['left'] < 1) {
+            $line .= ' ' . __('The daily cap is reached; the rest wait for tomorrow (Pacific time).', 'seoprostats');
+        } elseif ($done['more']) {
+            $line .= ' ' . __('More pages are due; run it again.', 'seoprostats');
+        }
+        WP_CLI::success($line);
+        return true;
     }
 
     /**
@@ -2091,15 +2302,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $action = isset($args[0]) ? (string) $args[0] : 'list';
         $what   = array_slice($args, 1);
         if ($action === 'set') {
-            $fields = array_intersect_key($assoc, array_flip(array('allintitle', 'volume', 'allintitle_measured', 'volume_measured')));
-            $query = isset($what[0]) ? $what[0] : '';
-            $done = $this->on_data($assoc, static function () use ($query, $fields) {
-                return SEOProStats_Targets::set($query, $fields);
-            });
-            if (is_wp_error($done)) {
-                WP_CLI::error($done->get_error_message());
-            }
-            WP_CLI::success(__('Target research measurements saved.', 'seoprostats'));
+            $this->targets_set($what, $assoc);
             return;
         }
         if ($action === 'import') {
@@ -2107,18 +2310,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             return;
         }
         if ($action === 'delete') {
-            $all = !empty($assoc['all']);
-            if ($all) {
-                WP_CLI::confirm(__('Delete every search target?', 'seoprostats'), $assoc);
-            }
-            $done = $this->on_data($assoc, static function () use ($what, $all) {
-                return SEOProStats_Targets::delete($what, $all);
-            });
-            if (is_wp_error($done)) {
-                WP_CLI::error($done->get_error_message());
-            }
-            /* translators: 1: targets deleted, 2: targets left */
-            WP_CLI::success(sprintf(__('Deleted %1$d targets; %2$d left.', 'seoprostats'), $done['deleted'], $done['total']));
+            $this->targets_delete($what, $assoc);
             return;
         }
         if ($action !== 'list') {
@@ -2146,26 +2338,93 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::line(__('No targets. Import a list with: wp seoprostats targets import <file>', 'seoprostats'));
             return;
         }
-        $rows = array();
-        foreach ($answer['rows'] as $row) {
-            $rows[] = array(
-                'query'       => $row['query'],
-                'allintitle'  => $row['allintitle'],
-                'volume'      => $row['volume'],
-                'kgr'         => $row['kgr'],
-                'kgr_band'    => $row['kgr_band'],
-                'measured'    => wp_json_encode($row['measured']),
-                'priority'    => $row['priority'],
-                'status'      => $row['status'],
-                'state'       => $row['state'],
-                'page'        => $row['page'] ? $row['page']['path'] : '–',
-                'shown'       => $row['shown'] ? $row['shown']['path'] : '–',
-                'position'    => $row['position'] === null ? '–' : $row['position'],
-                'clicks'      => $row['clicks'],
-                'impressions' => $row['impressions'],
-            );
-        }
+        $rows = array_map(array(__CLASS__, 'target_row'), $answer['rows']);
         WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * One search target as a table row.
+     *
+     * @param array<string,mixed> $row Report row.
+     * @return array<string,mixed>
+     */
+    private static function target_row(array $row) {
+        return array(
+            'query'       => $row['query'],
+            'allintitle'  => $row['allintitle'],
+            'volume'      => $row['volume'],
+            'kgr'         => $row['kgr'],
+            'kgr_band'    => $row['kgr_band'],
+            'measured'    => wp_json_encode($row['measured']),
+            'priority'    => $row['priority'],
+            'status'      => $row['status'],
+            'state'       => $row['state'],
+            'page'        => $row['page'] ? $row['page']['path'] : '–',
+            'shown'       => $row['shown'] ? $row['shown']['path'] : '–',
+            'position'    => $row['position'] === null ? '–' : $row['position'],
+            'clicks'      => $row['clicks'],
+            'impressions' => $row['impressions'],
+        );
+    }
+
+    /**
+     * wp seoprostats targets set: save a target's research measurements.
+     *
+     * @param string[]             $what  The search.
+     * @param array<string,string> $assoc Options.
+     */
+    private function targets_set(array $what, array $assoc) {
+        $fields = array_intersect_key($assoc, array_flip(array('allintitle', 'volume', 'allintitle_measured', 'volume_measured')));
+        $query  = isset($what[0]) ? $what[0] : '';
+        $done   = $this->on_data($assoc, static function () use ($query, $fields) {
+            return SEOProStats_Targets::set($query, $fields);
+        });
+        if (is_wp_error($done)) {
+            WP_CLI::error($done->get_error_message());
+        }
+        WP_CLI::success(__('Target research measurements saved.', 'seoprostats'));
+    }
+
+    /**
+     * wp seoprostats targets delete: delete some targets, or all.
+     *
+     * @param string[]             $what  The searches.
+     * @param array<string,string> $assoc Options (all, yes).
+     */
+    private function targets_delete(array $what, array $assoc) {
+        $all = !empty($assoc['all']);
+        if ($all) {
+            WP_CLI::confirm(__('Delete every search target?', 'seoprostats'), $assoc);
+        }
+        $done = $this->on_data($assoc, static function () use ($what, $all) {
+            return SEOProStats_Targets::delete($what, $all);
+        });
+        if (is_wp_error($done)) {
+            WP_CLI::error($done->get_error_message());
+        }
+        /* translators: 1: targets deleted, 2: targets left */
+        WP_CLI::success(sprintf(__('Deleted %1$d targets; %2$d left.', 'seoprostats'), $done['deleted'], $done['total']));
+    }
+
+    /**
+     * Read the target list to import.
+     *
+     * @param string $file The file, or - for standard input.
+     * @return string
+     */
+    private static function targets_text($file) {
+        if ($file === '') {
+            WP_CLI::error(__('Name the file to import, or - for standard input.', 'seoprostats'));
+        }
+        if ($file === '-') {
+            return (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the list piped in.
+        }
+        if (is_readable($file) && is_file($file)) {
+            return (string) file_get_contents($file, false, null, 0, SEOProStats_Targets::MAX_BYTES + 1); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
+        }
+        /* translators: %s: file name */
+        WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
+        return '';
     }
 
     /**
@@ -2175,19 +2434,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * @param array<string,string> $assoc Options.
      */
     private function targets_import(array $what, array $assoc) {
-        $file = isset($what[0]) ? (string) $what[0] : '';
-        if ($file === '') {
-            WP_CLI::error(__('Name the file to import, or - for standard input.', 'seoprostats'));
-        }
-        $text = '';
-        if ($file === '-') {
-            $text = (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the list piped in.
-        } elseif (is_readable($file) && is_file($file)) {
-            $text = (string) file_get_contents($file, false, null, 0, SEOProStats_Targets::MAX_BYTES + 1); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
-        } else {
-            /* translators: %s: file name */
-            WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
-        }
+        $text    = self::targets_text(isset($what[0]) ? (string) $what[0] : '');
         $replace = !empty($assoc['replace']);
         $done    = $this->on_data($assoc, static function () use ($text, $replace) {
             $parsed = SEOProStats_Targets::parse($text);
@@ -2757,66 +3004,16 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::error(__('Give the experiment\'s id: wp seoprostats experiments list shows them.', 'seoprostats'));
         }
         if ($action === 'delete') {
-            $deleted = $this->on_data($assoc, static function () use ($id) {
-                return SEOProStats_Experiments::delete($id);
-            });
-            if (!$deleted) {
-                /* translators: %d: experiment id */
-                WP_CLI::error(sprintf(__('There is no experiment %d.', 'seoprostats'), $id));
-            }
-            /* translators: %d: experiment id */
-            WP_CLI::success(sprintf(__('Experiment %d deleted.', 'seoprostats'), $id));
+            $this->experiments_delete($id, $assoc);
             return;
         }
         if ($action === 'list') {
-            $opts   = array(
-                'status' => isset($assoc['status']) ? (string) $assoc['status'] : '',
-                'page'   => isset($assoc['page']) ? (string) $assoc['page'] : '',
-            );
-            $answer = $this->on_data($assoc, static function () use ($opts) {
-                return SEOProStats_Experiments::list_experiments($opts);
-            });
-            if (is_wp_error($answer)) {
-                WP_CLI::error($answer->get_error_message());
-            }
-            if ($this->format($assoc) === 'json') {
-                WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-                return;
-            }
-            if (!$answer['experiments']) {
-                WP_CLI::line(__('No experiments yet: wp seoprostats experiments add records one.', 'seoprostats'));
-                return;
-            }
-            $rows = array_map(array($this, 'experiment_row'), $answer['experiments']);
-            WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+            $this->experiments_list($assoc);
             return;
         }
 
         $answer = $this->on_data($assoc, static function () use ($action, $second, $id, $args, $assoc) {
-            if ($action === 'add') {
-                return SEOProStats_Experiments::add(array(
-                    'name'       => $second,
-                    'change'     => isset($assoc['change']) ? (int) $assoc['change'] : 0,
-                    'start'      => isset($assoc['start']) ? (string) $assoc['start'] : '',
-                    'pages'      => isset($assoc['page']) ? (string) $assoc['page'] : '',
-                    'days'       => isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Experiments::DAYS,
-                    'engine'     => isset($assoc['engine']) ? (string) $assoc['engine'] : 'google',
-                    'metric'     => isset($assoc['metric']) ? (string) $assoc['metric'] : 'clicks',
-                    'direction'  => isset($assoc['direction']) ? (string) $assoc['direction'] : 'up',
-                    'threshold'  => isset($assoc['threshold']) ? (string) $assoc['threshold'] : '',
-                    'goal'       => isset($assoc['goal']) ? (string) $assoc['goal'] : '',
-                    'hypothesis' => isset($assoc['hypothesis']) ? (string) $assoc['hypothesis'] : '',
-                    'note'       => isset($assoc['note']) ? (string) $assoc['note'] : '',
-                ));
-            }
-            if ($action === 'show') {
-                return SEOProStats_Experiments::get($id);
-            }
-            return SEOProStats_Experiments::update($id, array(
-                'action' => $action,
-                'result' => isset($args[2]) ? (string) $args[2] : '',
-                'note'   => isset($assoc['note']) ? (string) $assoc['note'] : '',
-            ));
+            return self::experiment_action($action, $second, $id, $args, $assoc);
         });
         if (is_wp_error($answer)) {
             WP_CLI::error($answer->get_error_message());
@@ -2826,14 +3023,112 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             return;
         }
         if ($this->format($assoc) === 'json') {
-            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            self::json_line($answer);
             return;
         }
         $this->experiment_detail($answer);
         if ($action !== 'show') {
+            $state = $answer['result'] !== null ? $answer['status'] . ' (' . $answer['result'] . ')' : $answer['status'];
             /* translators: 1: experiment id, 2: its state */
-            WP_CLI::success(sprintf(__('Experiment %1$d: %2$s.', 'seoprostats'), $answer['id'], $answer['result'] !== null ? $answer['status'] . ' (' . $answer['result'] . ')' : $answer['status']));
+            WP_CLI::success(sprintf(__('Experiment %1$d: %2$s.', 'seoprostats'), $answer['id'], $state));
         }
+    }
+
+    /**
+     * wp seoprostats experiments delete.
+     *
+     * @param int                  $id    Experiment id.
+     * @param array<string,string> $assoc Options.
+     */
+    private function experiments_delete($id, array $assoc) {
+        $deleted = $this->on_data($assoc, static function () use ($id) {
+            return SEOProStats_Experiments::delete($id);
+        });
+        if (!$deleted) {
+            /* translators: %d: experiment id */
+            WP_CLI::error(sprintf(__('There is no experiment %d.', 'seoprostats'), $id));
+        }
+        /* translators: %d: experiment id */
+        WP_CLI::success(sprintf(__('Experiment %d deleted.', 'seoprostats'), $id));
+    }
+
+    /**
+     * wp seoprostats experiments list.
+     *
+     * @param array<string,string> $assoc Options (status, page).
+     */
+    private function experiments_list(array $assoc) {
+        $opts   = array(
+            'status' => isset($assoc['status']) ? (string) $assoc['status'] : '',
+            'page'   => isset($assoc['page']) ? (string) $assoc['page'] : '',
+        );
+        $answer = $this->on_data($assoc, static function () use ($opts) {
+            return SEOProStats_Experiments::list_experiments($opts);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            self::json_line($answer);
+            return;
+        }
+        if (!$answer['experiments']) {
+            WP_CLI::line(__('No experiments yet: wp seoprostats experiments add records one.', 'seoprostats'));
+            return;
+        }
+        $rows = array_map(array($this, 'experiment_row'), $answer['experiments']);
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * Add, show or change an experiment (in the data set chosen).
+     *
+     * @param string               $action add, show, decide, cancel or note.
+     * @param string               $second The name (add) or id.
+     * @param int                  $id     Experiment id.
+     * @param string[]             $args   Positional arguments.
+     * @param array<string,string> $assoc  Options.
+     * @return array<string,mixed>|WP_Error
+     */
+    private static function experiment_action($action, $second, $id, array $args, array $assoc) {
+        if ($action === 'add') {
+            return SEOProStats_Experiments::add(self::experiment_fields($second, $assoc));
+        }
+        if ($action === 'show') {
+            return SEOProStats_Experiments::get($id);
+        }
+        return SEOProStats_Experiments::update($id, array(
+            'action' => $action,
+            'result' => isset($args[2]) ? (string) $args[2] : '',
+            'note'   => isset($assoc['note']) ? (string) $assoc['note'] : '',
+        ));
+    }
+
+    /**
+     * A new experiment's fields from the command's options.
+     *
+     * @param string               $name  Its name.
+     * @param array<string,string> $assoc Options.
+     * @return array<string,mixed>
+     */
+    private static function experiment_fields($name, array $assoc) {
+        $text = static function ($key, $default) use ($assoc) {
+            return isset($assoc[$key]) ? (string) $assoc[$key] : $default;
+        };
+        return array(
+            'name'       => $name,
+            'change'     => isset($assoc['change']) ? (int) $assoc['change'] : 0,
+            'start'      => $text('start', ''),
+            'pages'      => $text('page', ''),
+            'days'       => isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Experiments::DAYS,
+            'engine'     => $text('engine', 'google'),
+            'metric'     => $text('metric', 'clicks'),
+            'direction'  => $text('direction', 'up'),
+            'threshold'  => $text('threshold', ''),
+            'goal'       => $text('goal', ''),
+            'hypothesis' => $text('hypothesis', ''),
+            'note'       => $text('note', ''),
+        );
     }
 
     /**
@@ -2901,62 +3196,61 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::error($answer->get_error_message());
         }
         if ($this->format($assoc) === 'json') {
-            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            self::json_line($answer);
             return;
         }
         if ($id === '') {
-            if (!$answer['tests']) {
-                WP_CLI::line(__('No A/B tests yet: add an A/B test block to a post or page and start it.', 'seoprostats'));
-                return;
-            }
-            $rows = array();
-            foreach ($answer['tests'] as $test) {
-                $rows[] = array(
-                    'id'       => $test['id'],
-                    'name'     => $test['name'],
-                    'status'   => $test['status'],
-                    'page'     => (string) $test['post']['path'],
-                    'started'  => substr((string) $test['started'], 0, 10),
-                    'visits'   => $test['visits'],
-                    'mixed'    => $test['mixed']['visits'],
-                    'variants' => implode(', ', array_map(static function ($v) {
-                        return sprintf('%s %d (%s)', $v['label'], $v['visits'], self::percent_text($v['rate']));
-                    }, $test['variants'])),
-                    'metric'   => $test['primary']['name'],
-                    'leader'   => $test['leader'] ? $test['leader']['label'] : '',
-                    'verdict'  => $test['verdict']['code'],
-                );
-            }
-            WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+            $this->ab_tests_list($answer, $assoc);
             return;
         }
+        $this->ab_test_detail($answer, $assoc);
+    }
+
+    /**
+     * Print the list of A/B tests.
+     *
+     * @param array<string,mixed>  $answer From SEOProStats_AB_Report::list_tests().
+     * @param array<string,string> $assoc  Options.
+     */
+    private function ab_tests_list(array $answer, array $assoc) {
+        if (!$answer['tests']) {
+            WP_CLI::line(__('No A/B tests yet: add an A/B test block to a post or page and start it.', 'seoprostats'));
+            return;
+        }
+        $rows = array();
+        foreach ($answer['tests'] as $test) {
+            $rows[] = array(
+                'id'       => $test['id'],
+                'name'     => $test['name'],
+                'status'   => $test['status'],
+                'page'     => (string) $test['post']['path'],
+                'started'  => substr((string) $test['started'], 0, 10),
+                'visits'   => $test['visits'],
+                'mixed'    => $test['mixed']['visits'],
+                'variants' => implode(', ', array_map(static function ($v) {
+                    return sprintf('%s %d (%s)', $v['label'], $v['visits'], self::percent_text($v['rate']));
+                }, $test['variants'])),
+                'metric'   => $test['primary']['name'],
+                'leader'   => $test['leader'] ? $test['leader']['label'] : '',
+                'verdict'  => $test['verdict']['code'],
+            );
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
+     * Print one A/B test's variants side by side.
+     *
+     * @param array<string,mixed>  $answer From SEOProStats_AB_Report::get().
+     * @param array<string,string> $assoc  Options.
+     */
+    private function ab_test_detail(array $answer, array $assoc) {
         $test = $answer['test'];
         /* translators: 1: test id, 2: name, 3: status */
         WP_CLI::log(sprintf(__('A/B test %1$s: %2$s (%3$s)', 'seoprostats'), $test['id'], $test['name'], $test['status']));
         /* translators: 1: first day, 2: last day, 3: days, 4: visits, 5: mixed visits */
         WP_CLI::log(sprintf(__('%1$s to %2$s (%3$d days): %4$d visits saw it; %5$d saw more than one variant (left out).', 'seoprostats'), substr($answer['period']['from'], 0, 10), substr($answer['period']['to'], 0, 10), $answer['period']['days'], $answer['visits'], $answer['mixed']['visits']));
-        $rows = array();
-        foreach ($answer['variants'] as $v) {
-            $row = array(
-                'variant'     => $v['label'] . ($v['control'] ? ' ' . __('(control)', 'seoprostats') : ''),
-                'visits'      => $v['visits'],
-                'bounce_rate' => self::percent_text($v['bounce_rate']),
-                'engaged'     => $v['engaged_time'] . 's',
-                'clicked'     => self::percent_text($v['click_rate']),
-            );
-            foreach ($v['goals'] as $goal) {
-                $row[$goal['name']] = sprintf('%d (%s)', $goal['conversions'], self::percent_text($goal['rate']));
-                if ($goal['revenue']) {
-                    $row[$goal['name'] . ' revenue'] = self::money_text($goal['revenue']);
-                }
-            }
-            $p                  = $v['primary'];
-            $row['uplift']      = $p['uplift'] === null ? '' : sprintf(self::CHANGE_PERCENT_FORMAT, $p['uplift'] * 100);
-            $row['interval']    = $p['interval'] === null ? '' : sprintf('%+.1f%% to %+.1f%%', $p['interval'][0] * 100, $p['interval'][1] * 100);
-            $row['beats']       = $p['probability'] === null ? '' : self::percent_text($p['probability']);
-            $row['verdict']     = $p['verdict'];
-            $rows[]             = $row;
-        }
+        $rows = array_map(array(__CLASS__, 'ab_variant_row'), $answer['variants']);
         $keys = array();
         foreach ($rows as $row) {
             $keys = array_merge($keys, array_keys($row));
@@ -2967,6 +3261,34 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         WP_CLI\Utils\format_items($this->format($assoc), $rows, $keys);
         WP_CLI::log($answer['verdict']['text']);
+    }
+
+    /**
+     * One A/B test variant as a table row.
+     *
+     * @param array<string,mixed> $v Variant.
+     * @return array<string,mixed>
+     */
+    private static function ab_variant_row(array $v) {
+        $row = array(
+            'variant'     => $v['label'] . ($v['control'] ? ' ' . __('(control)', 'seoprostats') : ''),
+            'visits'      => $v['visits'],
+            'bounce_rate' => self::percent_text($v['bounce_rate']),
+            'engaged'     => $v['engaged_time'] . 's',
+            'clicked'     => self::percent_text($v['click_rate']),
+        );
+        foreach ($v['goals'] as $goal) {
+            $row[$goal['name']] = sprintf('%d (%s)', $goal['conversions'], self::percent_text($goal['rate']));
+            if ($goal['revenue']) {
+                $row[$goal['name'] . ' revenue'] = self::money_text($goal['revenue']);
+            }
+        }
+        $p               = $v['primary'];
+        $row['uplift']   = $p['uplift'] === null ? '' : sprintf(self::CHANGE_PERCENT_FORMAT, $p['uplift'] * 100);
+        $row['interval'] = $p['interval'] === null ? '' : sprintf('%+.1f%% to %+.1f%%', $p['interval'][0] * 100, $p['interval'][1] * 100);
+        $row['beats']    = $p['probability'] === null ? '' : self::percent_text($p['probability']);
+        $row['verdict']  = $p['verdict'];
+        return $row;
     }
 
     /**
@@ -3102,34 +3424,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
         $req    = $this->request($assoc + array('range' => '90d', 'limit' => '20', 'compare' => 'none'));
         if ($action !== 'list') {
-            if ($key === '') {
-                WP_CLI::error(__('Give the item\'s key: wp seoprostats queue lists them.', 'seoprostats'));
-            }
-            $input  = array(
-                'action'    => $action,
-                'effort'    => isset($args[2]) ? (int) $args[2] : 0,
-                'note'      => isset($assoc['note']) ? (string) $assoc['note'] : '',
-                'name'      => isset($assoc['name']) ? (string) $assoc['name'] : '',
-                'days'      => isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Experiments::DAYS,
-                'threshold' => isset($assoc['threshold']) ? (string) $assoc['threshold'] : '',
-            );
-            $answer = $this->on_data($assoc, static function () use ($key, $input, $req, $engine, $goal) {
-                return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
-            });
-            if (is_wp_error($answer)) {
-                WP_CLI::error($answer->get_error_message());
-            }
-            if ($this->format($assoc) === 'json') {
-                WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-                return;
-            }
-            WP_CLI\Utils\format_items('table', array($this->queue_row($answer)), array_keys($this->queue_row($answer)));
-            if ($answer['experiment']) {
-                /* translators: 1: experiment id, 2: its name, 3: review day */
-                WP_CLI::log(sprintf(__('Experiment %1$d: %2$s (review %3$s).', 'seoprostats'), $answer['experiment']['id'], $answer['experiment']['name'], $answer['experiment']['review']));
-            }
-            /* translators: 1: item key, 2: its state */
-            WP_CLI::success(sprintf(__('Item %1$s: %2$s.', 'seoprostats'), $answer['key'], $answer['status']));
+            $this->queue_update($action, $key, $args, $assoc, $req, $engine, $goal);
             return;
         }
         $status = isset($assoc['status']) ? (string) $assoc['status'] : 'open';
@@ -3141,9 +3436,61 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::error($answer->get_error_message());
         }
         if ($this->format($assoc) === 'json') {
-            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            self::json_line($answer);
             return;
         }
+        $this->queue_list($answer, $assoc);
+    }
+
+    /**
+     * wp seoprostats queue <action> <key>: change an item's state.
+     *
+     * @param string               $action accept, done, dismiss, restore, effort or note.
+     * @param string               $key    Item key.
+     * @param string[]             $args   Positional arguments.
+     * @param array<string,string> $assoc  Options.
+     * @param array<string,mixed>  $req    Report request.
+     * @param string               $engine Search engine.
+     * @param string               $goal   Goal id.
+     */
+    private function queue_update($action, $key, array $args, array $assoc, array $req, $engine, $goal) {
+        if ($key === '') {
+            WP_CLI::error(__('Give the item\'s key: wp seoprostats queue lists them.', 'seoprostats'));
+        }
+        $input  = array(
+            'action'    => $action,
+            'effort'    => isset($args[2]) ? (int) $args[2] : 0,
+            'note'      => isset($assoc['note']) ? (string) $assoc['note'] : '',
+            'name'      => isset($assoc['name']) ? (string) $assoc['name'] : '',
+            'days'      => isset($assoc['days']) ? (int) $assoc['days'] : SEOProStats_Experiments::DAYS,
+            'threshold' => isset($assoc['threshold']) ? (string) $assoc['threshold'] : '',
+        );
+        $answer = $this->on_data($assoc, static function () use ($key, $input, $req, $engine, $goal) {
+            return SEOProStats_Queue::update($key, $input, $req, $engine, $goal);
+        });
+        if (is_wp_error($answer)) {
+            WP_CLI::error($answer->get_error_message());
+        }
+        if ($this->format($assoc) === 'json') {
+            self::json_line($answer);
+            return;
+        }
+        WP_CLI\Utils\format_items('table', array($this->queue_row($answer)), array_keys($this->queue_row($answer)));
+        if ($answer['experiment']) {
+            /* translators: 1: experiment id, 2: its name, 3: review day */
+            WP_CLI::log(sprintf(__('Experiment %1$d: %2$s (review %3$s).', 'seoprostats'), $answer['experiment']['id'], $answer['experiment']['name'], $answer['experiment']['review']));
+        }
+        /* translators: 1: item key, 2: its state */
+        WP_CLI::success(sprintf(__('Item %1$s: %2$s.', 'seoprostats'), $answer['key'], $answer['status']));
+    }
+
+    /**
+     * Print the decision queue.
+     *
+     * @param array<string,mixed>  $answer From SEOProStats_Queue::report().
+     * @param array<string,string> $assoc  Options.
+     */
+    private function queue_list(array $answer, array $assoc) {
         $this->search_connected($answer);
         $this->range_line($answer['range']);
         /* translators: 1: new, 2: accepted, 3: done, 4: dismissed */
@@ -3181,8 +3528,23 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             'value'      => $item['parts']['value'],
             'confidence' => $item['parts']['confidence'],
             'effort'     => $item['parts']['effort'],
-            'experiment' => $exp ? '#' . $exp['id'] . ' ' . ($exp['result'] !== null ? (string) $exp['result'] : ($exp['due'] ? 'due' : (string) $exp['status'])) . ($exp['suggested'] !== null && $exp['result'] === null ? ' (' . $exp['suggested'] . ')' : '') : '',
+            'experiment' => $exp ? self::queue_experiment_text($exp) : '',
         );
+    }
+
+    /**
+     * A queue item's experiment: its id and result, or its state with the
+     * suggested result.
+     *
+     * @param array<string,mixed> $exp Experiment summary.
+     * @return string
+     */
+    private static function queue_experiment_text(array $exp) {
+        if ($exp['result'] !== null) {
+            return '#' . $exp['id'] . ' ' . (string) $exp['result'];
+        }
+        $text = '#' . $exp['id'] . ' ' . ($exp['due'] ? 'due' : (string) $exp['status']);
+        return $exp['suggested'] !== null ? $text . ' (' . $exp['suggested'] . ')' : $text;
     }
 
     /**
@@ -3327,7 +3689,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         /* translators: 1: id, 2: name */
         WP_CLI::log(sprintf(__('Experiment %1$d: %2$s', 'seoprostats'), $item['id'], $item['name']));
         /* translators: 1: pages, 2: start, 3: measure, 4: direction, 5: threshold */
-        WP_CLI::log(sprintf(__('Pages: %1$s. Start: %2$s. Expected: %3$s %4$s by at least %5$s.', 'seoprostats'), implode(', ', $item['pages']), $item['start'], $item['metric'], $item['direction'], $item['metric'] === 'position' ? sprintf(/* translators: %s: places, such as 1 or 1.5 */ _n('%s place', '%s places', (int) ceil((float) $item['threshold']), 'seoprostats'), $item['threshold']) : $item['threshold'] . '%'));
+        WP_CLI::log(sprintf(__('Pages: %1$s. Start: %2$s. Expected: %3$s %4$s by at least %5$s.', 'seoprostats'), implode(', ', $item['pages']), $item['start'], $item['metric'], $item['direction'], self::threshold_text($item['metric'], $item['threshold'])));
         if (!$m) {
             /* translators: %s: state */
             WP_CLI::log(sprintf(__('Status: %s.', 'seoprostats'), $item['status']));
@@ -3354,18 +3716,42 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             /* translators: 1: low, 2: high, 3: pages */
             WP_CLI::log(sprintf(__('Usual spread of unchanged pages: %1$s to %2$s (%3$d pages).', 'seoprostats'), self::effect_text($item['metric'], $m['noise']['low']), self::effect_text($item['metric'], $m['noise']['high']), $m['noise']['pages']));
         }
-        foreach (array('updates' => __('Search engine updates', 'seoprostats'), 'site' => __('Site-wide changes', 'seoprostats'), 'pages' => __('Other changes on its pages', 'seoprostats')) as $key => $label) {
-            if ($m['confounders'][$key]) {
-                WP_CLI::log($label . ': ' . implode('; ', array_map(static function ($c) {
-                    return substr((string) $c['t'], 0, 10) . ' ' . $c['label'];
-                }, $m['confounders'][$key])));
-            }
-        }
+        self::confounders_lines($m['confounders']);
         /* translators: 1: suggested result, 2: reasons */
         WP_CLI::log(sprintf(__('Suggested: %1$s (%2$s).', 'seoprostats'), $m['suggested'], implode(', ', $m['reasons'])));
         if ($item['note'] !== '') {
             /* translators: %s: note */
             WP_CLI::log(sprintf(__('Note: %s', 'seoprostats'), $item['note']));
+        }
+    }
+
+    /**
+     * An experiment's threshold as text: places for position, else percent.
+     *
+     * @param string           $metric    Metric name.
+     * @param string|int|float $threshold Threshold.
+     * @return string
+     */
+    private static function threshold_text($metric, $threshold) {
+        if ($metric !== 'position') {
+            return $threshold . '%';
+        }
+        /* translators: %s: places, such as 1 or 1.5 */
+        return sprintf(_n('%s place', '%s places', (int) ceil((float) $threshold), 'seoprostats'), $threshold);
+    }
+
+    /**
+     * Print what else changed during an experiment, by kind.
+     *
+     * @param array<string,array<int,array<string,mixed>>> $confounders Changes by kind.
+     */
+    private static function confounders_lines(array $confounders) {
+        foreach (array('updates' => __('Search engine updates', 'seoprostats'), 'site' => __('Site-wide changes', 'seoprostats'), 'pages' => __('Other changes on its pages', 'seoprostats')) as $key => $label) {
+            if ($confounders[$key]) {
+                WP_CLI::log($label . ': ' . implode('; ', array_map(static function ($c) {
+                    return substr((string) $c['t'], 0, 10) . ' ' . $c['label'];
+                }, $confounders[$key])));
+            }
         }
     }
 
@@ -3400,13 +3786,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::error(sprintf(__('Give the id: wp seoprostats %s list shows them.', 'seoprostats'), $type));
         }
         $answer = $this->on_data($assoc, static function () use ($type, $action, $id, $save) {
-            if ($action === 'list') {
-                return $type === 'funnels' ? SEOProStats_Goals::funnels() : SEOProStats_Goals::goals();
-            }
-            if ($action === 'delete') {
-                return SEOProStats_Goals::delete($type, $id) ? true : new WP_Error('seoprostats_not_found', __('There is no such goal or funnel.', 'seoprostats'));
-            }
-            return $save($action === 'update' ? $id : '');
+            return self::define_action($type, $action, $id, $save);
         });
         if (is_wp_error($answer)) {
             WP_CLI::error($answer->get_error_message());
@@ -3416,28 +3796,57 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             return;
         }
         if ($action === 'list') {
-            if ($this->format($assoc) === 'json') {
-                WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-                return;
-            }
-            $items = array();
-            foreach ((array) $answer as $item) {
-                if (isset($item['steps'])) {
-                    $item['steps'] = implode(' → ', array_map(static function ($step) {
-                        return $step['kind'] . ':' . $step['match'];
-                    }, $item['steps']));
-                }
-                $items[] = $item;
-            }
-            if (!$items) {
-                WP_CLI::line(__('None yet.', 'seoprostats'));
-                return;
-            }
-            WP_CLI\Utils\format_items($this->format($assoc), $items, array_keys($items[0]));
+            $this->define_list($answer, $assoc);
             return;
         }
         WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         WP_CLI::success($action === 'add' ? __('Added.', 'seoprostats') : __('Updated.', 'seoprostats'));
+    }
+
+    /**
+     * List, delete or save goals or funnels (in the data set chosen).
+     *
+     * @param string   $type   goals or funnels.
+     * @param string   $action list, add, update or delete.
+     * @param string   $id     Id, for update and delete.
+     * @param callable $save   Takes the id ('' to add); saves.
+     * @return mixed
+     */
+    private static function define_action($type, $action, $id, callable $save) {
+        if ($action === 'list') {
+            return $type === 'funnels' ? SEOProStats_Goals::funnels() : SEOProStats_Goals::goals();
+        }
+        if ($action === 'delete') {
+            return SEOProStats_Goals::delete($type, $id) ? true : new WP_Error('seoprostats_not_found', __('There is no such goal or funnel.', 'seoprostats'));
+        }
+        return $save($action === 'update' ? $id : '');
+    }
+
+    /**
+     * Print the goals or funnels.
+     *
+     * @param mixed                $answer Goals or funnels.
+     * @param array<string,string> $assoc  Options.
+     */
+    private function define_list($answer, array $assoc) {
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
+        $items = array();
+        foreach ((array) $answer as $item) {
+            if (isset($item['steps'])) {
+                $item['steps'] = implode(' → ', array_map(static function ($step) {
+                    return $step['kind'] . ':' . $step['match'];
+                }, $item['steps']));
+            }
+            $items[] = $item;
+        }
+        if (!$items) {
+            WP_CLI::line(__('None yet.', 'seoprostats'));
+            return;
+        }
+        WP_CLI\Utils\format_items($this->format($assoc), $items, array_keys($items[0]));
     }
 
     /**
@@ -3622,8 +4031,8 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $months = SEOProStats_Rollup::retention();
         /* translators: 1: months visits are kept, 2: months events are kept, 3: months search data by page and query is kept (0: forever) */
         WP_CLI::log(sprintf(__('Retention: visits %1$d months, events %2$d months, search data %3$d months (0: forever; SEO Pro Stats → Settings → Data).', 'seoprostats'), $months['visits'], $months['events'], $months['search']));
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_PATH;
+        require_once SEOPROSTATS_DIR . self::SEARCH_IMPORT_PATH;
         // Visits and events go only once their days are summarised; search data by its own retention.
         $summarised = SEOProStats_Rollup::through() !== '';
         if (!$summarised) {
@@ -3784,35 +4193,13 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      */
     public function connect($args, $assoc) {
         $this->load_connections();
-        $key = '';
-        if (isset($assoc['key-file'])) {
-            $file = (string) $assoc['key-file'];
-            if ($file === '-') {
-                $key = (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the key piped in.
-            } elseif (is_readable($file)) {
-                $key = (string) file_get_contents($file); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
-            } else {
-                /* translators: %s: file name */
-                WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
-            }
-        }
+        $key    = isset($assoc['key-file']) ? self::key_text((string) $assoc['key-file']) : '';
         $status = SEOProStats_Connections::connect($args[0], array(
             'key'      => $key,
             'property' => isset($assoc['property']) ? (string) $assoc['property'] : '',
         ));
         if (is_wp_error($status)) {
-            $data = $status->get_error_data();
-            if (is_array($data) && !empty($data['account'])) {
-                /* translators: %s: service account address */
-                WP_CLI::log(sprintf(__('Service account: %s', 'seoprostats'), $data['account']));
-            }
-            if (is_array($data) && !empty($data['properties'])) {
-                WP_CLI::log($args[0] === 'bing' ? __('Verified sites of the key:', 'seoprostats') : __('Properties it can read:', 'seoprostats'));
-                foreach ($data['properties'] as $property) {
-                    WP_CLI::log('  ' . $property);
-                }
-            }
-            WP_CLI::error($status->get_error_message());
+            self::connect_failed($args[0], $status);
             return;
         }
         $this->connection_status($status, $assoc);
@@ -3820,6 +4207,46 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             /* translators: 1: source name, 2: source key */
             WP_CLI::success(sprintf(__('%1$s is connected. The import runs in cron; wp seoprostats %2$s import runs it now.', 'seoprostats'), $status['name'], $args[0]));
         }
+    }
+
+    /**
+     * Read a source's key.
+     *
+     * @param string $file The key file, or - for standard input.
+     * @return string
+     */
+    private static function key_text($file) {
+        if ($file === '-') {
+            return (string) stream_get_contents(STDIN); // phpcs:ignore WordPress.WP.AlternativeFunctions -- reads the key piped in.
+        }
+        if (is_readable($file)) {
+            return (string) file_get_contents($file); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- a local file the operator names.
+        }
+        /* translators: %s: file name */
+        WP_CLI::error(sprintf(__('Cannot read %s.', 'seoprostats'), $file));
+        return '';
+    }
+
+    /**
+     * Say why a connection failed: the service account and the properties
+     * the key can read, when known, then the error.
+     *
+     * @param string   $source Source key.
+     * @param WP_Error $status The error.
+     */
+    private static function connect_failed($source, WP_Error $status) {
+        $data = $status->get_error_data();
+        if (is_array($data) && !empty($data['account'])) {
+            /* translators: %s: service account address */
+            WP_CLI::log(sprintf(__('Service account: %s', 'seoprostats'), $data['account']));
+        }
+        if (is_array($data) && !empty($data['properties'])) {
+            WP_CLI::log($source === 'bing' ? __('Verified sites of the key:', 'seoprostats') : __('Properties it can read:', 'seoprostats'));
+            foreach ($data['properties'] as $property) {
+                WP_CLI::log('  ' . $property);
+            }
+        }
+        WP_CLI::error($status->get_error_message());
     }
 
     /**
@@ -4048,112 +4475,176 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $action = $args[0];
         $source = isset($args[1]) ? (string) $args[1] : '';
         $json   = $this->format($assoc) === 'json';
-        $print  = function ($data) {
-            WP_CLI::line((string) wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-        };
         if (in_array($action, array('run', 'cleanup'), true) && $source === '') {
             WP_CLI::error(__('Name the plugin: wp seoprostats migrate list shows them.', 'seoprostats'));
         }
+        switch ($action) {
+            case 'list':
+                $this->migrate_list($json);
+                return;
+            case 'imports':
+                $this->migrate_imports($json);
+                return;
+            case 'undo':
+                $this->migrate_undo($assoc);
+                return;
+            case 'cleanup':
+                $this->migrate_cleanup($source, $assoc, $json);
+                return;
+            default:
+                $this->migrate_run($source, $assoc, $json);
+        }
+    }
 
-        if ($action === 'list') {
-            $status = SEOProStats_Migrate::status(true);
-            if ($json) {
-                $print($status);
-                return;
-            }
-            if (!$status['sources']) {
-                WP_CLI::log(__('No statistics plugin\'s data found on this site.', 'seoprostats'));
-                return;
-            }
-            $rows = array();
-            foreach ($status['sources'] as $found) {
-                $rows[] = array(
-                    'source'    => $found['key'],
-                    'name'      => $found['name'],
-                    'version'   => $found['version'],
-                    'plugin'    => $found['plugin']['state'],
-                    'from'      => $found['from'],
-                    'to'        => $found['to'],
-                    'days'      => $found['days'],
-                    'leftovers' => $found['leftovers'] ? 'yes' : ($found['plugin']['state'] === 'active' || $found['plugin']['state'] === 'network' ? 'while active: no' : 'no'),
-                    'note'      => isset($found['unavailable']) ? (string) $found['unavailable'] : '',
-                );
-            }
-            WP_CLI\Utils\format_items('table', $rows, array('source', 'name', 'version', 'plugin', 'from', 'to', 'days', 'leftovers', 'note'));
-            /* translators: %s: day */
-            WP_CLI::log(sprintf(__('SEO Pro Stats\'s own days start %s; imports fill only days before it.', 'seoprostats'), $status['own_from']));
+    /**
+     * Print data as pretty JSON, Unicode as is.
+     *
+     * @param mixed $data Data.
+     */
+    private static function json_line($data) {
+        WP_CLI::line((string) wp_json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    /**
+     * wp seoprostats migrate list: the statistics plugins found.
+     *
+     * @param bool $json As JSON.
+     */
+    private function migrate_list($json) {
+        $status = SEOProStats_Migrate::status(true);
+        if ($json) {
+            self::json_line($status);
             return;
         }
-
-        if ($action === 'imports') {
-            $rows = SEOProStats_Migrate::imports();
-            if ($json) {
-                $print($rows);
-                return;
-            }
-            if (!$rows) {
-                WP_CLI::log(__('No imports yet.', 'seoprostats'));
-                return;
-            }
-            foreach ($rows as &$row) {
-                $row['check'] = isset($row['check']['source']['pageviews']) ? sprintf('%d / %d pageviews', $row['check']['imported']['pageviews'], $row['check']['source']['pageviews']) : '';
-            }
-            unset($row);
-            WP_CLI\Utils\format_items('table', $rows, array('id', 'source', 'status', 'from', 'to', 'days', 'rows', 'check', 'error'));
+        if (!$status['sources']) {
+            WP_CLI::log(__('No statistics plugin\'s data found on this site.', 'seoprostats'));
             return;
         }
+        $rows = array();
+        foreach ($status['sources'] as $found) {
+            $rows[] = array(
+                'source'    => $found['key'],
+                'name'      => $found['name'],
+                'version'   => $found['version'],
+                'plugin'    => $found['plugin']['state'],
+                'from'      => $found['from'],
+                'to'        => $found['to'],
+                'days'      => $found['days'],
+                'leftovers' => self::leftovers_text($found),
+                'note'      => isset($found['unavailable']) ? (string) $found['unavailable'] : '',
+            );
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('source', 'name', 'version', 'plugin', 'from', 'to', 'days', 'leftovers', 'note'));
+        /* translators: %s: day */
+        WP_CLI::log(sprintf(__('SEO Pro Stats\'s own days start %s; imports fill only days before it.', 'seoprostats'), $status['own_from']));
+    }
 
-        if ($action === 'undo') {
-            if (empty($assoc['id'])) {
-                WP_CLI::error(__('Give the import with --id (wp seoprostats migrate imports lists them).', 'seoprostats'));
-            }
-            $deleted = SEOProStats_Migrate::undo((int) $assoc['id']);
-            if (is_wp_error($deleted)) {
-                WP_CLI::error($deleted->get_error_message());
-                return;
-            }
-            /* translators: 1: import ID, 2: number of rows */
-            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. Settings it carried over stay; run the import again to bring the days back.', 'seoprostats'), (int) $assoc['id'], $deleted));
+    /**
+     * Whether a statistics plugin left data behind; while it is active its
+     * own data is not leftovers.
+     *
+     * @param array<string,mixed> $found A source from SEOProStats_Migrate::status().
+     * @return string
+     */
+    private static function leftovers_text(array $found) {
+        if ($found['leftovers']) {
+            return 'yes';
+        }
+        return $found['plugin']['state'] === 'active' || $found['plugin']['state'] === 'network' ? 'while active: no' : 'no';
+    }
+
+    /**
+     * wp seoprostats migrate imports: the last imports.
+     *
+     * @param bool $json As JSON.
+     */
+    private function migrate_imports($json) {
+        $rows = SEOProStats_Migrate::imports();
+        if ($json) {
+            self::json_line($rows);
             return;
         }
-
-        if ($action === 'cleanup') {
-            $dry    = !empty($assoc['dry-run']) || empty($assoc['yes']);
-            $result = SEOProStats_Migrate::cleanup($source, true);
-            if (is_wp_error($result)) {
-                WP_CLI::error($result->get_error_message());
-                return;
-            }
-            if ($json && $dry) {
-                $print($result);
-                return;
-            }
-            $this->leftovers_table($result['leftovers']);
-            if ($dry) {
-                if (empty($assoc['dry-run'])) {
-                    /* translators: %s: source key */
-                    WP_CLI::log(sprintf(__('Nothing deleted. Back up the database, then: wp seoprostats migrate cleanup %s --yes', 'seoprostats'), $source));
-                }
-                return;
-            }
-            $result = SEOProStats_Migrate::cleanup($source, false);
-            if (is_wp_error($result)) {
-                WP_CLI::error($result->get_error_message());
-                return;
-            }
-            if ($json) {
-                $print($result);
-                return;
-            }
-            $removed = array();
-            foreach ($result['removed'] as $kind => $count) {
-                $removed[] = $kind . ': ' . $count;
-            }
-            /* translators: 1: plugin name, 2: counts */
-            WP_CLI::success(sprintf(__('Leftover data of %1$s removed (%2$s). Imported days stay.', 'seoprostats'), $result['name'], implode(', ', $removed)));
+        if (!$rows) {
+            WP_CLI::log(__('No imports yet.', 'seoprostats'));
             return;
         }
+        foreach ($rows as &$row) {
+            $row['check'] = isset($row['check']['source']['pageviews']) ? sprintf('%d / %d pageviews', $row['check']['imported']['pageviews'], $row['check']['source']['pageviews']) : '';
+        }
+        unset($row);
+        WP_CLI\Utils\format_items('table', $rows, array('id', 'source', 'status', 'from', 'to', 'days', 'rows', 'check', 'error'));
+    }
 
+    /**
+     * wp seoprostats migrate undo: delete an import's rows.
+     *
+     * @param array<string,string> $assoc Options (id).
+     */
+    private function migrate_undo(array $assoc) {
+        if (empty($assoc['id'])) {
+            WP_CLI::error(__('Give the import with --id (wp seoprostats migrate imports lists them).', 'seoprostats'));
+        }
+        $deleted = SEOProStats_Migrate::undo((int) $assoc['id']);
+        if (is_wp_error($deleted)) {
+            WP_CLI::error($deleted->get_error_message());
+            return;
+        }
+        /* translators: 1: import ID, 2: number of rows */
+        WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. Settings it carried over stay; run the import again to bring the days back.', 'seoprostats'), (int) $assoc['id'], $deleted));
+    }
+
+    /**
+     * wp seoprostats migrate cleanup: list a statistics plugin's leftover
+     * data, or with --yes delete it.
+     *
+     * @param string               $source Source key.
+     * @param array<string,string> $assoc  Options (dry-run, yes).
+     * @param bool                 $json   As JSON.
+     */
+    private function migrate_cleanup($source, array $assoc, $json) {
+        $dry    = !empty($assoc['dry-run']) || empty($assoc['yes']);
+        $result = SEOProStats_Migrate::cleanup($source, true);
+        if (is_wp_error($result)) {
+            WP_CLI::error($result->get_error_message());
+            return;
+        }
+        if ($json && $dry) {
+            self::json_line($result);
+            return;
+        }
+        $this->leftovers_table($result['leftovers']);
+        if ($dry) {
+            if (empty($assoc['dry-run'])) {
+                /* translators: %s: source key */
+                WP_CLI::log(sprintf(__('Nothing deleted. Back up the database, then: wp seoprostats migrate cleanup %s --yes', 'seoprostats'), $source));
+            }
+            return;
+        }
+        $result = SEOProStats_Migrate::cleanup($source, false);
+        if (is_wp_error($result)) {
+            WP_CLI::error($result->get_error_message());
+            return;
+        }
+        if ($json) {
+            self::json_line($result);
+            return;
+        }
+        $removed = array();
+        foreach ($result['removed'] as $kind => $count) {
+            $removed[] = $kind . ': ' . $count;
+        }
+        /* translators: 1: plugin name, 2: counts */
+        WP_CLI::success(sprintf(__('Leftover data of %1$s removed (%2$s). Imported days stay.', 'seoprostats'), $result['name'], implode(', ', $removed)));
+    }
+
+    /**
+     * An import's options from the command's: days, the plugin preferred
+     * where two overlap, and the settings to carry over.
+     *
+     * @param array<string,string> $assoc Options.
+     * @return array<string,mixed>
+     */
+    private static function migrate_options(array $assoc) {
         $run = array(
             'from'   => isset($assoc['from']) ? (string) $assoc['from'] : '',
             'to'     => isset($assoc['to']) ? (string) $assoc['to'] : '',
@@ -4163,34 +4654,27 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $chosen          = strtolower(trim((string) $assoc['settings']));
             $run['settings'] = $chosen === 'none' || $chosen === '' ? array() : array_values(array_filter(array_map('trim', explode(',', $chosen))));
         }
+        return $run;
+    }
+
+    /**
+     * wp seoprostats migrate run: import a statistics plugin's days, or
+     * with --dry-run say what it would do.
+     *
+     * @param string               $source Source key.
+     * @param array<string,string> $assoc  Options.
+     * @param bool                 $json   As JSON.
+     */
+    private function migrate_run($source, array $assoc, $json) {
+        $run      = self::migrate_options($assoc);
         $requests = !empty($assoc['requests']);
         if (!empty($assoc['dry-run'])) {
-            $plan = SEOProStats_Migrate::plan($source, $run);
-            if (is_wp_error($plan)) {
-                if ($requests) {
-                    $this->migrate_log($source, $json);
-                }
-                WP_CLI::error($plan->get_error_message());
-                return;
-            }
-            if ($json) {
-                $print($requests ? $plan + array('requests' => $this->migrate_requests($source)) : $plan);
-                return;
-            }
-            $this->migrate_plan($plan);
-            if ($requests) {
-                $this->migrate_log($source, false);
-            }
+            $this->migrate_dry_run($source, $run, $requests, $json);
             return;
         }
         $job = SEOProStats_Migrate::run($source, $run, function ($job) use ($json) {
             if (!$json) {
-                foreach ($job['queue'] as $item) {
-                    if ($item['total'] && $item['done'] < $item['total']) {
-                        /* translators: 1: plugin name, 2: days done, 3: days */
-                        WP_CLI::log(sprintf(__('%1$s: %2$d of %3$d days', 'seoprostats'), $item['name'], $item['done'], $item['total']));
-                    }
-                }
+                self::migrate_progress($job);
             }
         });
         if (is_wp_error($job)) {
@@ -4208,29 +4692,80 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             return in_array($row['id'], $ids, true);
         }));
         if ($json) {
-            $print(array('job' => $job, 'imports' => $imports));
+            self::json_line(array('job' => $job, 'imports' => $imports));
             return;
         }
         foreach (array_reverse($imports) as $row) {
-            /* translators: 1: plugin name, 2: days, 3: rows, 4: import ID */
-            WP_CLI::success(sprintf(__('%1$s: %2$d days imported, %3$d rows (import %4$d).', 'seoprostats'), $row['name'], $row['days'], $row['rows'], $row['id']));
-            if (!empty($row['check']['source'])) {
-                $check = array();
-                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
-                    $check[] = array('metric' => $metric, 'plugin' => $row['check']['source'][$metric], 'imported' => $row['check']['imported'][$metric]);
-                }
-                WP_CLI\Utils\format_items('table', $check, array('metric', 'plugin', 'imported'));
-            }
-            foreach ((array) $row['settings'] as $key => $change) {
-                /* translators: 1: setting key, 2: before, 3: after */
-                WP_CLI::log(sprintf(__('Setting %1$s: %2$s → %3$s', 'seoprostats'), $key, $change[0], $change[1]));
-            }
-            if ($row['error'] !== '') {
-                WP_CLI::warning($row['error']);
-            }
+            self::migrate_done($row);
         }
         if ($requests) {
             $this->migrate_log($source, false);
+        }
+    }
+
+    /**
+     * wp seoprostats migrate run --dry-run: print the plan.
+     *
+     * @param string              $source   Source key.
+     * @param array<string,mixed> $run      Import options.
+     * @param bool                $requests Also print what the adapter asked for.
+     * @param bool                $json     As JSON.
+     */
+    private function migrate_dry_run($source, array $run, $requests, $json) {
+        $plan = SEOProStats_Migrate::plan($source, $run);
+        if (is_wp_error($plan)) {
+            if ($requests) {
+                $this->migrate_log($source, $json);
+            }
+            WP_CLI::error($plan->get_error_message());
+            return;
+        }
+        if ($json) {
+            self::json_line($requests ? $plan + array('requests' => $this->migrate_requests($source)) : $plan);
+            return;
+        }
+        $this->migrate_plan($plan);
+        if ($requests) {
+            $this->migrate_log($source, false);
+        }
+    }
+
+    /**
+     * Print an import's progress: each plugin's days not done yet.
+     *
+     * @param array<string,mixed> $job The import job.
+     */
+    private static function migrate_progress(array $job) {
+        foreach ($job['queue'] as $item) {
+            if ($item['total'] && $item['done'] < $item['total']) {
+                /* translators: 1: plugin name, 2: days done, 3: days */
+                WP_CLI::log(sprintf(__('%1$s: %2$d of %3$d days', 'seoprostats'), $item['name'], $item['done'], $item['total']));
+            }
+        }
+    }
+
+    /**
+     * Print a finished import: its days and rows, its counts against the
+     * plugin's, the settings carried over and any error.
+     *
+     * @param array<string,mixed> $row From SEOProStats_Migrate::imports().
+     */
+    private static function migrate_done(array $row) {
+        /* translators: 1: plugin name, 2: days, 3: rows, 4: import ID */
+        WP_CLI::success(sprintf(__('%1$s: %2$d days imported, %3$d rows (import %4$d).', 'seoprostats'), $row['name'], $row['days'], $row['rows'], $row['id']));
+        if (!empty($row['check']['source'])) {
+            $check = array();
+            foreach (array('pageviews', 'visits', 'visitors') as $metric) {
+                $check[] = array('metric' => $metric, 'plugin' => $row['check']['source'][$metric], 'imported' => $row['check']['imported'][$metric]);
+            }
+            WP_CLI\Utils\format_items('table', $check, array('metric', 'plugin', 'imported'));
+        }
+        foreach ((array) $row['settings'] as $key => $change) {
+            /* translators: 1: setting key, 2: before, 3: after */
+            WP_CLI::log(sprintf(__('Setting %1$s: %2$s → %3$s', 'seoprostats'), $key, $change[0], $change[1]));
+        }
+        if ($row['error'] !== '') {
+            WP_CLI::warning($row['error']);
         }
     }
 
@@ -4291,10 +4826,23 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $rows[] = array('field' => 'shares days with', 'value' => sprintf('%s: %s – %s, %d days; suggested --prefer=%s', $overlap['name'], $overlap['from'], $overlap['to'], $overlap['days'], $overlap['suggested']));
         }
         foreach ($plan['settings'] as $setting) {
-            $rows[] = array('field' => 'setting ' . $setting['key'], 'value' => sprintf('%s → %s (%s)', $setting['now'], $setting['to'], $setting['change'] ? 'would change' : ($setting['reason'] === 'same' ? 'already so' : 'kept: changed from the default')));
+            $rows[] = array('field' => 'setting ' . $setting['key'], 'value' => sprintf('%s → %s (%s)', $setting['now'], $setting['to'], self::setting_text($setting)));
         }
         WP_CLI\Utils\format_items('table', $rows, array('field', 'value'));
         WP_CLI::log(__('Dry run: nothing written.', 'seoprostats'));
+    }
+
+    /**
+     * What a dry run would do with a setting.
+     *
+     * @param array<string,mixed> $setting From SEOProStats_Migrate::plan().
+     * @return string
+     */
+    private static function setting_text(array $setting) {
+        if ($setting['change']) {
+            return 'would change';
+        }
+        return $setting['reason'] === 'same' ? 'already so' : 'kept: changed from the default';
     }
 
     /**
@@ -4336,30 +4884,11 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         $this->need_tables();
         $action = $args[0];
         if ($action === 'imports') {
-            $rows = SEOProStats_Search_Import::imports($source, 20);
-            if ($this->format($assoc) === 'json') {
-                WP_CLI::line((string) wp_json_encode($rows, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-                return;
-            }
-            if (!$rows) {
-                WP_CLI::log(__('No imports yet.', 'seoprostats'));
-                return;
-            }
-            WP_CLI\Utils\format_items('table', $rows, array('id', 'status', 'from', 'to', 'days', 'rows', 'error'));
+            $this->imports_list($source, $assoc);
             return;
         }
         if ($action === 'undo') {
-            if (empty($assoc['id'])) {
-                /* translators: %s: source key */
-                WP_CLI::error(sprintf(__('Give the import with --id (wp seoprostats %s imports lists them).', 'seoprostats'), $source));
-            }
-            $deleted = SEOProStats_Search_Import::undo((int) $assoc['id']);
-            if (is_wp_error($deleted)) {
-                WP_CLI::error($deleted->get_error_message());
-                return;
-            }
-            /* translators: 1: import ID, 2: number of rows, 3: source key */
-            WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. wp seoprostats %3$s reimport brings its days back.', 'seoprostats'), (int) $assoc['id'], $deleted, $source));
+            self::imports_undo($source, $assoc);
             return;
         }
         if (!SEOProStats_Connections::get($source)) {
@@ -4367,40 +4896,99 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             WP_CLI::error(sprintf(__('%1$s is not connected: wp seoprostats connect %2$s --key-file=<file>.', 'seoprostats'), SEOProStats_Connections::status($source)['name'], $source));
         }
         if ($action === 'reimport') {
-            $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
-            $to   = isset($assoc['to']) ? (string) $assoc['to'] : $from;
-            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
-                WP_CLI::error(__('Give the days with --from and --to (Y-m-d).', 'seoprostats'));
-            }
-            $result = SEOProStats_Search_Import::reimport($source, $from, $to);
+            self::imports_reimport($source, $assoc);
+            return;
+        }
+        if ($action === 'import') {
+            self::imports_run($source);
+        }
+        $this->connection_status(SEOProStats_Connections::status($source), $assoc);
+    }
+
+    /**
+     * wp seoprostats <source> imports: the last 20 imports.
+     *
+     * @param string               $source Source key.
+     * @param array<string,string> $assoc  Options.
+     */
+    private function imports_list($source, array $assoc) {
+        $rows = SEOProStats_Search_Import::imports($source, 20);
+        if ($this->format($assoc) === 'json') {
+            self::json_line($rows);
+            return;
+        }
+        if (!$rows) {
+            WP_CLI::log(__('No imports yet.', 'seoprostats'));
+            return;
+        }
+        WP_CLI\Utils\format_items('table', $rows, array('id', 'status', 'from', 'to', 'days', 'rows', 'error'));
+    }
+
+    /**
+     * wp seoprostats <source> undo: delete an import's rows.
+     *
+     * @param string               $source Source key.
+     * @param array<string,string> $assoc  Options (id).
+     */
+    private static function imports_undo($source, array $assoc) {
+        if (empty($assoc['id'])) {
+            /* translators: %s: source key */
+            WP_CLI::error(sprintf(__('Give the import with --id (wp seoprostats %s imports lists them).', 'seoprostats'), $source));
+        }
+        $deleted = SEOProStats_Search_Import::undo((int) $assoc['id']);
+        if (is_wp_error($deleted)) {
+            WP_CLI::error($deleted->get_error_message());
+            return;
+        }
+        /* translators: 1: import ID, 2: number of rows, 3: source key */
+        WP_CLI::success(sprintf(__('Import %1$d undone: %2$d rows deleted. wp seoprostats %3$s reimport brings its days back.', 'seoprostats'), (int) $assoc['id'], $deleted, $source));
+    }
+
+    /**
+     * wp seoprostats <source> reimport: import some days again.
+     *
+     * @param string               $source Source key.
+     * @param array<string,string> $assoc  Options (from, to).
+     */
+    private static function imports_reimport($source, array $assoc) {
+        $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
+        $to   = isset($assoc['to']) ? (string) $assoc['to'] : $from;
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) {
+            WP_CLI::error(__('Give the days with --from and --to (Y-m-d).', 'seoprostats'));
+        }
+        $result = SEOProStats_Search_Import::reimport($source, $from, $to);
+        if (is_wp_error($result)) {
+            WP_CLI::error($result->get_error_message());
+            return;
+        }
+        /* translators: 1: days, 2: rows, 3: import ID */
+        WP_CLI::success(sprintf(__('%1$d days imported again: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
+    }
+
+    /**
+     * wp seoprostats <source> import: import until done, saying what each
+     * step brought.
+     *
+     * @param string $source Source key.
+     */
+    private static function imports_run($source) {
+        $check = true;
+        do {
+            $result = SEOProStats_Search_Import::run($source, SEOProStats_Search_Import::BUDGET, $check);
             if (is_wp_error($result)) {
                 WP_CLI::error($result->get_error_message());
                 return;
             }
-            /* translators: 1: days, 2: rows, 3: import ID */
-            WP_CLI::success(sprintf(__('%1$d days imported again: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
-            return;
-        }
-        if ($action === 'import') {
-            $check = true;
-            do {
-                $result = SEOProStats_Search_Import::run($source, SEOProStats_Search_Import::BUDGET, $check);
-                if (is_wp_error($result)) {
-                    WP_CLI::error($result->get_error_message());
-                    return;
-                }
-                $check = false;
-                if ($result['days']) {
-                    /* translators: 1: days, 2: rows, 3: import ID */
-                    WP_CLI::log(sprintf(__('%1$d days imported: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
-                }
-                if (!empty($result['pages'])) {
-                    /* translators: %d: pages */
-                    WP_CLI::log(sprintf(__('Search queries of %d pages imported.', 'seoprostats'), $result['pages']));
-                }
-            } while (!$result['done']);
-        }
-        $this->connection_status(SEOProStats_Connections::status($source), $assoc);
+            $check = false;
+            if ($result['days']) {
+                /* translators: 1: days, 2: rows, 3: import ID */
+                WP_CLI::log(sprintf(__('%1$d days imported: %2$d rows (import %3$d).', 'seoprostats'), $result['days'], $result['rows'], $result['import']));
+            }
+            if (!empty($result['pages'])) {
+                /* translators: %d: pages */
+                WP_CLI::log(sprintf(__('Search queries of %d pages imported.', 'seoprostats'), $result['pages']));
+            }
+        } while (!$result['done']);
     }
 
     /**
@@ -4425,7 +5013,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             array('field' => 'property', 'value' => $status['property']),
             array('field' => 'imported', 'value' => $imported['from'] !== '' ? $imported['from'] . ' – ' . $imported['to'] : 'nothing yet'),
             array('field' => 'history', 'value' => $imported['complete'] ? 'complete' : sprintf('%d of %d days', $imported['days'], $imported['of'])),
-            array('field' => 'pages\' queries', 'value' => $status['pages_left'] === 0 ? 'in' : ($status['pages_left'] === null ? 'due' : sprintf('%d pages left', $status['pages_left']))),
+            array('field' => 'pages\' queries', 'value' => self::pages_left_text($status['pages_left'])),
             array('field' => 'final through', 'value' => $status['final_through'] !== '' ? $status['final_through'] : 'not asked yet'),
             array('field' => 'last run', 'value' => $status['last_run'] ? human_time_diff($status['last_run']) . ' ago' : 'never'),
             array('field' => 'next run', 'value' => $status['next_run'] ? 'in ' . human_time_diff($status['next_run']) : 'not scheduled'),
@@ -4437,11 +5025,24 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
     }
 
     /**
+     * How far a search source's per-page queries are imported.
+     *
+     * @param int|null $left Pages left (null: not started).
+     * @return string
+     */
+    private static function pages_left_text($left) {
+        if ($left === 0) {
+            return 'in';
+        }
+        return $left === null ? 'due' : sprintf('%d pages left', $left);
+    }
+
+    /**
      * Load the connection classes.
      */
     private function load_connections() {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_PATH;
+        require_once SEOPROSTATS_DIR . self::SEARCH_IMPORT_PATH;
     }
 
     /**
@@ -4589,8 +5190,14 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
                     $failed[] = $source['name'] . ': ' . $source['error'];
                 }
             }
-            $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
-            $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
+            if ($updates['last']) {
+                $when = 'fetched ' . human_time_diff($updates['last']) . ' ago';
+                $from = ' from ' . count($updates['sources']) . ' source(s)';
+            } else {
+                $when = 'not fetched yet';
+                $from = '';
+            }
+            $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . $from, 'warn');
         }
     }
 
@@ -4662,7 +5269,8 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $cache  = SEOProStats_Page_Cache::state();
             $purged = isset($cache['purged']) ? (int) $cache['purged'] : 0;
             $caches = isset($cache['caches']) && is_array($cache['caches']) && $cache['caches'] ? implode(', ', $cache['caches']) : 'none known active';
-            $detail = $purged ? sprintf('purged %s ago (%s): %s', human_time_diff($purged), isset($cache['why']) ? (string) $cache['why'] : '', $caches) : 'not purged yet (an admin page schedules it after an update)';
+            $why    = isset($cache['why']) ? (string) $cache['why'] : '';
+            $detail = $purged ? sprintf('purged %s ago (%s): %s', human_time_diff($purged), $why, $caches) : 'not purged yet (an admin page schedules it after an update)';
             if (wp_next_scheduled(SEOProStats_Page_Cache::PURGE_HOOK)) {
                 $detail .= '; a purge for the new tracker is scheduled for the next WP-Cron run';
             }
