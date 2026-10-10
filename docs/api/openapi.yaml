@@ -2162,6 +2162,13 @@ paths:
         none chosen yet), `priority` (0–100, or high 80, medium 50, low
         20; 50 when left out) and `status` (candidate, targeted, live,
         won or retired; `active` is targeted; targeted when left out).
+        Optional research fields are `allintitle` (Google result count),
+        `volume` (monthly search volume), `allintitle_measured` and
+        `volume_measured` (YYYY-MM-DD, no future dates; today when omitted).
+        Counts are whole numbers from 0 to 4294967295, or JSON null to clear.
+        Omitted research fields preserve existing values and dates.
+        KGR is null for unknown counts, zero volume or volume above 250.
+        Research facts do not come from Search Console impressions.
         Queries are stored lower case. Each row is checked: no query
         text, an address not on this site, a priority or status that
         cannot be read, a search already in an earlier row, or a new
@@ -2189,6 +2196,20 @@ paths:
                         type: [integer, string]
                       status:
                         type: string
+                      allintitle:
+                        type: [integer, 'null']
+                        minimum: 0
+                        maximum: 4294967295
+                      volume:
+                        type: [integer, 'null']
+                        minimum: 0
+                        maximum: 4294967295
+                      allintitle_measured:
+                        type: string
+                        format: date
+                      volume_measured:
+                        type: string
+                        format: date
                 text:
                   type: string
                 replace:
@@ -4703,10 +4724,32 @@ components:
 
     TargetRow:
       type: object
-      required: [query, priority, status, source, state, band, clicks, impressions, ctr, position, then_position, then_clicks, page, shown, pages, updated]
+      required: [query, allintitle, volume, measured, kgr, kgr_band, priority, status, source, state, band, clicks, impressions, ctr, position, then_position, then_clicks, page, shown, pages, updated]
       properties:
         query:
           type: string
+        allintitle:
+          type: [integer, 'null']
+          minimum: 0
+        volume:
+          type: [integer, 'null']
+          minimum: 0
+        measured:
+          type: object
+          required: [allintitle, volume]
+          properties:
+            allintitle:
+              type: [string, 'null']
+              format: date
+            volume:
+              type: [string, 'null']
+              format: date
+        kgr:
+          type: [number, 'null']
+          description: Google allintitle count divided by positive monthly volume up to 250. A heuristic, not a ranking promise.
+        kgr_band:
+          type: string
+          enum: [good, possible, crowded, volume_too_high, unknown]
         priority:
           type: integer
           minimum: 0

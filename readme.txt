@@ -41,6 +41,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
 * **Backlinks**: links from visits and CSV exports (Settings → Import → Links), with source filtering, scores and dates per provider.
 * **IndexNow**: opt-in changed-page notifications, with submission receipts; received does not mean indexed.
+* **Targets and research**: operator-search links on four engines; dated allintitle counts and monthly volumes, with sortable/filterable Keyword Golden Ratio bands (a heuristic, not a ranking promise).
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
 * **A/B tests**: test blocks in the block editor, with results and a winner, without cookies.

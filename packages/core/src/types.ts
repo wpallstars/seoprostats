@@ -1462,6 +1462,11 @@ export interface TargetPage extends OpportunityPage {
 
 export interface TargetRow {
 	query: string;
+	allintitle: number | null;
+	volume: number | null;
+	measured: { allintitle: string | null; volume: string | null };
+	kgr: number | null;
+	kgr_band: 'good' | 'possible' | 'crowded' | 'volume_too_high' | 'unknown';
 	/** 0–100. */
 	priority: number;
 	status: TargetStatus;
@@ -1512,7 +1517,7 @@ export interface TargetSkipped {
 	/** 1 for the first data row. */
 	row: number;
 	query: string;
-	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit';
+	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit' | 'measurements';
 	message: string;
 }
 

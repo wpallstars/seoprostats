@@ -4,6 +4,7 @@ Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
 * New: opt-in IndexNow change notifications (GH#150), Settings → Data. A virtual public key file, changed and old page addresses queued from the live change log, one batch in minute cron, at most one attempt per URL per hour. Last 100 receipts retained without autoload, meta.indexnow on submitted changes, timeline display and Connections error/status card. GET /indexnow and wp seoprostats indexnow status|send; uninstall removes key, queue, logs and retry events. Received (200/202) is not proof of indexing; Google does not participate.
+* New: Research menus beside search queries and targets, opening Google, Bing, Brave and DuckDuckGo without scraping; unsupported operators are marked. Targets keep nullable allintitle counts, monthly volumes and separate measurement dates (schema v21), with KGR bands, sorting/filtering, owner editing and CSV/JSON/TOON import. REST and abilities expose the facts; wp seoprostats targets set updates research without changing the target's page. KGR is a heuristic only for positive monthly volumes up to 250 (GH#148).
 
 = 1.1.0 =
 * Developers: simplified nested conditionals and shared repeated literals in migration adapters, search sources, admin screens and the shop-test fixture; the fast collector's validated local config path has an inline security-scanner reason. No queries, public interfaces or collection work changed (GH#160).

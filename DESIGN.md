@@ -193,6 +193,8 @@ Each section of the statistics screen, and each Search tab, ends with an **Info 
 
 ### Query coverage
 
+Query rows carry a small **Research** WordPress dropdown beside their existing action, grouped by engine. Anchors open in a new tab with no referrer; unsupported operators are labelled and disabled. Keyboard navigation follows the core dropdown's arrow, Enter and Escape behavior. Target research uses text labels (not colour alone), individual measurement dates, core form controls and the existing horizontally scrollable table at narrow widths. Sorting and KGR-band filtering apply to all targets before pagination.
+
 Where a query's words are on its page reads as a short label in 12 px semibold (`CoverageBadges`, `.spst-coverage`): In the title, In a heading or In the text in the text colour, Partly or Not on the page in the error colour, then for Partly the words missing in muted text, and Question as a 2 px-rounded tag in the accent on its soft background. The words always say it, so colour is never the only sign. The same labels serve Opportunities → Missing from the page and the editor's Search queries panel, which follows the block editor's sidebar: plain headings per part (Focus keywords, Not covered by the page's words, Questions people search), each query in bold with its labels and figures under it, up to eight per part with "and N more".
 
 ## 3. Typography

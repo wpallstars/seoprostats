@@ -101,6 +101,8 @@ final class SEOProStats_Targets {
         'page'     => array('page', 'address', 'url', 'target_url', 'path', 'target'),
         'priority' => array('priority'),
         'status'   => array('status'),
+        'allintitle' => array('allintitle'),
+        'volume' => array('volume'),
     );
 
     // ------------------------------------------------------------------
@@ -272,6 +274,11 @@ final class SEOProStats_Targets {
         $then_metrics = $then ? SEOProStats_Search::metrics($then['c'], $then['i'], $then['p']) : null;
         return array(
             'query'         => $query,
+            'allintitle'    => $target['allintitle'],
+            'volume'        => $target['volume'],
+            'measured'      => array('allintitle' => $target['allintitle_measured'] ?: null, 'volume' => $target['volume_measured'] ?: null),
+            'kgr'           => self::kgr($target['allintitle'], $target['volume']),
+            'kgr_band'      => self::kgr_band($target['allintitle'], $target['volume']),
             'priority'      => (int) $target['priority'],
             'status'        => (string) $target['status'],
             'source'        => (string) $target['source'],
@@ -386,7 +393,7 @@ final class SEOProStats_Targets {
             return array();
         }
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own small table, by its primary key.
-        $rows = (array) $wpdb->get_results($wpdb->prepare('SELECT query_id, path_id, priority, status, source, created, updated FROM %i FORCE INDEX (`PRIMARY`) ORDER BY query_id LIMIT %d', SEOProStats_Schema::table('targets'), self::MAX_TARGETS), ARRAY_A);
+        $rows = (array) $wpdb->get_results($wpdb->prepare('SELECT query_id, path_id, priority, status, source, created, updated, allintitle, volume, allintitle_measured, volume_measured FROM %i FORCE INDEX (`PRIMARY`) ORDER BY query_id LIMIT %d', SEOProStats_Schema::table('targets'), self::MAX_TARGETS), ARRAY_A);
         $out  = array();
         foreach ($rows as $row) {
             $out[(int) $row['query_id']] = array(
@@ -396,6 +403,10 @@ final class SEOProStats_Targets {
                 'source'   => isset(self::SOURCES[(int) $row['source']]) ? self::SOURCES[(int) $row['source']] : 'list',
                 'created'  => (int) $row['created'],
                 'updated'  => (int) $row['updated'],
+                'allintitle' => $row['allintitle'] === null ? null : (int) $row['allintitle'],
+                'volume' => $row['volume'] === null ? null : (int) $row['volume'],
+                'allintitle_measured' => (string) $row['allintitle_measured'],
+                'volume_measured' => (string) $row['volume_measured'],
             );
         }
         return $out;
@@ -630,7 +641,7 @@ final class SEOProStats_Targets {
             }
             $page = $target['page'] !== '' && isset($path_id[SEOProStats_Dict::clean($target['page'])]) ? (int) $path_id[SEOProStats_Dict::clean($target['page'])] : 0;
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key.
-            $wpdb->query($wpdb->prepare(
+            $saved = $wpdb->query($wpdb->prepare(
                 'INSERT INTO %i (query_id, path_id, priority, status, source, created, updated, user_id) VALUES (%d, %d, %d, %d, %d, %d, %d, %d) ON DUPLICATE KEY UPDATE path_id = VALUES(path_id), priority = VALUES(priority), status = VALUES(status), source = VALUES(source), updated = VALUES(updated), user_id = VALUES(user_id)',
                 $table,
                 $query_id,
@@ -642,6 +653,10 @@ final class SEOProStats_Targets {
                 $now,
                 $user
             ));
+            if ($saved === false || !self::save_measurements($query_id, $target['measurements'])) {
+                self::touch();
+                return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
+            }
             if ($known) {
                 ++$updated;
             } else {
@@ -667,7 +682,7 @@ final class SEOProStats_Targets {
      * none), priority and status; or why it is skipped.
      *
      * @param array<string,mixed> $row Row.
-     * @return array{query:string,page:string,priority:int,status:string}|string The reason code when skipped.
+     * @return array{query:string,page:string,priority:int,status:string,measurements:array<string,mixed>}|string The reason code when skipped.
      */
     private static function check(array $row) {
         $raw   = self::field($row, 'query');
@@ -688,7 +703,111 @@ final class SEOProStats_Targets {
         if (!in_array($status, self::STATUSES, true)) {
             return 'status';
         }
-        return array('query' => $query, 'page' => $page, 'priority' => $priority, 'status' => $status);
+        $measurements = self::measurements($row);
+        if ($measurements === null) {
+            return 'measurements';
+        }
+        return array('query' => $query, 'page' => $page, 'priority' => $priority, 'status' => $status, 'measurements' => $measurements);
+    }
+
+    /**
+     * Validate supplied research facts; omitted fields keep their earlier facts.
+     *
+     * @param array<string,mixed> $row Input.
+     * @return array<string,mixed>|null Null when invalid.
+     */
+    private static function measurements(array $row) {
+        $out = array();
+        foreach (array('allintitle', 'volume') as $field) {
+            if (!array_key_exists($field, $row)) {
+                continue;
+            }
+            $value = $row[$field];
+            if ($value === '') {
+                continue; // An empty CSV cell is unknown, not a zero or a deletion.
+            }
+            if ($value !== null && (is_bool($value) || !is_scalar($value) || !preg_match('/^\d{1,10}$/', (string) $value) || (float) $value > 4294967295)) {
+                return null;
+            }
+            $date = isset($row[$field . '_measured']) && $row[$field . '_measured'] !== '' ? $row[$field . '_measured'] : wp_date('Y-m-d');
+            if (!is_string($date) || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]) || $date > wp_date('Y-m-d')) {
+                return null;
+            }
+            $out[$field] = $value === null ? null : (int) $value;
+            $out[$field . '_measured'] = $value === null ? '' : $date;
+        }
+        return $out;
+    }
+
+    /**
+     * Save validated measurements by primary key.
+     *
+     * @param int $id Query id.
+     * @param array<string,mixed> $fields Validated fields.
+     * @return bool Saved.
+     */
+    private static function save_measurements($id, array $fields) {
+        global $wpdb;
+        if (!$fields) {
+            return true;
+        }
+        $fields['updated'] = time();
+        $fields['user_id'] = get_current_user_id();
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own bounded targets table, by primary key; wpdb escapes values and handles NULL.
+        return $wpdb->update(SEOProStats_Schema::table('targets'), $fields, array('query_id' => $id)) !== false;
+    }
+
+    /**
+     * Set research facts on an existing target without changing its chosen page.
+     *
+     * @param string $query Query.
+     * @param array<string,mixed> $fields Counts and dates.
+     * @return array<string,mixed>|WP_Error Saved fields.
+     */
+    public static function set($query, array $fields) {
+        self::load();
+        if (!SEOProStats_Schema::maybe_upgrade()) {
+            return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
+        }
+        $query = function_exists('mb_strtolower') ? mb_strtolower(trim((string) $query), 'UTF-8') : strtolower(trim((string) $query));
+        $ids = SEOProStats_Dict::find(SEOProStats_Schema::DICT_QUERY, array($query));
+        $id = $ids ? (int) reset($ids) : 0;
+        $stored = self::stored();
+        $checked = self::measurements($fields);
+        if (!$id || !isset($stored[$id]) || !$checked) {
+            return self::error('seoprostats_targets_measurements', __('Choose an existing target and give non-negative whole counts and valid measurement dates.', 'seoprostats'));
+        }
+        if (!self::save_measurements($id, $checked)) {
+            return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
+        }
+        self::touch();
+        return array('query' => $query) + $checked;
+    }
+
+    /**
+     * KGR is defined only for a known count and positive monthly volume up to 250.
+     *
+     * @param int|null $count Google allintitle count.
+     * @param int|null $volume Monthly volume.
+     * @return float|null Ratio.
+     */
+    public static function kgr($count, $volume) {
+        return $count !== null && $volume !== null && $volume > 0 && $volume <= 250 ? $count / $volume : null;
+    }
+
+    /**
+     * Band the unrounded ratio, never the displayed decimal.
+     *
+     * @param int|null $count Google allintitle count.
+     * @param int|null $volume Monthly volume.
+     * @return string Band.
+     */
+    public static function kgr_band($count, $volume) {
+        if ($volume !== null && $volume > 250) {
+            return 'volume_too_high';
+        }
+        $ratio = self::kgr($count, $volume);
+        return $ratio === null ? 'unknown' : ($ratio < 0.25 ? 'good' : ($ratio <= 1 ? 'possible' : 'crowded'));
     }
 
     /**
@@ -774,6 +893,7 @@ final class SEOProStats_Targets {
             'query'     => __('No search text.', 'seoprostats'),
             'address'   => __('The address is not a page of this site.', 'seoprostats'),
             'priority'  => __('The priority is not 0 to 100 (or high, medium, low).', 'seoprostats'),
+            'measurements' => __('Research counts must be non-negative whole numbers with valid measurement dates.', 'seoprostats'),
             /* translators: %s: list of statuses */
             'status'    => sprintf(__('The status is not one of: %s.', 'seoprostats'), implode(', ', self::STATUSES)),
             'duplicate' => __('The same search is in an earlier row.', 'seoprostats'),

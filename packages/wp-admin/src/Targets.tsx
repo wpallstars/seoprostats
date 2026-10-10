@@ -15,12 +15,13 @@
  */
 
 import { useState } from 'react';
-import { Button, Card, CardBody, CardHeader, CheckboxControl, Notice, SelectControl, TextareaControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, CheckboxControl, Notice, SelectControl, TextareaControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import {
 	apiArgs,
 	formatDecimal,
 	formatNumber,
+	researchUrl,
 	TARGET_FILTERS,
 	singleEngine,
 	type SearchEngine,
@@ -39,6 +40,7 @@ import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
+import { ResearchMenu } from './components/ResearchMenu';
 
 const PER_PAGE = 50;
 
@@ -101,10 +103,15 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
-	const query = useTargets(state, status, PER_PAGE, offset);
+	// Targets are bounded to 1,000; sort/filter the complete list before paging.
+	const query = useTargets(state, status, 1000, 0);
 	const answer = query.data;
 	useReportEngines(answer, onEngines);
-	const rows = answer?.rows ?? [];
+	const [kgrFilter, setKgrFilter] = useState('all');
+	const [sortKgr, setSortKgr] = useState(false);
+	const list = (answer?.rows ?? []).filter((row) => kgrFilter === 'all' || row.kgr_band === kgrFilter);
+	if (sortKgr) list.sort((a, b) => (a.kgr ?? Infinity) - (b.kgr ?? Infinity) || a.query.localeCompare(b.query));
+	const rows = list.slice(offset, offset + PER_PAGE);
 	const [error, setError] = useState('');
 	const [importing, setImporting] = useState(false);
 	const empty = !!answer && filterCount(answer, 'all') === 0;
@@ -135,6 +142,8 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 						)}
 					</div>
 					<div className="spst-changes__filters spst-plan__filters">
+						<SelectControl __nextHasNoMarginBottom label={__('KGR band', 'seoprostats')} value={kgrFilter} options={['all', 'good', 'possible', 'crowded', 'volume_too_high', 'unknown'].map((value) => ({ value, label: value === 'all' ? __('All', 'seoprostats') : kgrName(value) }))} onChange={(next: string) => { setKgrFilter(next); setOffset(0); }} />
+						<CheckboxControl __nextHasNoMarginBottom label={__('Lowest KGR first', 'seoprostats')} checked={sortKgr} onChange={(next) => { setSortKgr(next); setOffset(0); }} />
 						{answer && !empty && (
 							<SelectControl
 								__nextHasNoMarginBottom
@@ -175,21 +184,21 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 					)}
 					{rows.length > 0 && <RowsTable rows={rows} compared={!!answer?.compare} open={open} refreshing={query.isFetching} onError={setError} />}
 					{answer && !empty && <Notes answer={answer} />}
-					{answer && answer.total > PER_PAGE && (
+					{answer && list.length > PER_PAGE && (
 						<nav className="spst-changes__pager" aria-label={__('Pages of the search targets', 'seoprostats')}>
 							<span className="spst-muted">
 								{sprintf(
 									/* translators: 1: first row shown, 2: last row shown, 3: number of rows. */
 									__('%1$s–%2$s of %3$s', 'seoprostats'),
 									number(offset + 1),
-									number(Math.min(offset + PER_PAGE, answer.total)),
-									number(answer.total)
+									number(Math.min(offset + PER_PAGE, list.length)),
+									number(list.length)
 								)}
 							</span>
 							<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
 								{__('Previous', 'seoprostats')}
 							</Button>
-							<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
+							<Button variant="secondary" disabled={offset + PER_PAGE >= list.length} onClick={() => setOffset(offset + PER_PAGE)}>
 								{__('Next', 'seoprostats')}
 							</Button>
 						</nav>
@@ -276,6 +285,9 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 							{__('Priority', 'seoprostats')}
 						</th>
 						<th scope="col">{__('Status', 'seoprostats')}</th>
+						<th scope="col">{__('Allintitle results', 'seoprostats')}</th>
+						<th scope="col">{__('Monthly volume', 'seoprostats')}</th>
+						<th scope="col">{__('KGR', 'seoprostats')}</th>
 						<th scope="col">{__('Page meant for it', 'seoprostats')}</th>
 						<th scope="col">{__('Search shows', 'seoprostats')}</th>
 						<th scope="col" className="num">
@@ -297,9 +309,17 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 								<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: '', query: row.query })}>
 									{row.query}
 								</button>
+								<ResearchMenu query={row.query} />
 							</td>
 							<td className="num">{number(row.priority)}</td>
 							<td>{targetStatusName(row.status)}</td>
+							<td>
+								{row.allintitle === null ? '–' : number(row.allintitle)}
+								<span className="spst-meta">{row.measured.allintitle ?? __('Not measured', 'seoprostats')}</span>
+								<a href={researchUrl('google', `allintitle:"${row.query.replace(/"/g, '')}"`)} target="_blank" rel="noopener noreferrer">{__('Check allintitle (new tab)', 'seoprostats')}</a>
+							</td>
+							<td>{row.volume === null ? '–' : number(row.volume)}<span className="spst-meta">{row.measured.volume ?? __('Not measured', 'seoprostats')}</span></td>
+							<td>{row.kgr === null ? '–' : decimal(row.kgr)}<span className="spst-meta">{kgrName(row.kgr_band)}</span></td>
 							<td>
 								{row.page ? (
 									<PageCell
@@ -336,6 +356,7 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 							<td className="num">{number(row.impressions)}</td>
 							{boot.canManage && (
 								<td>
+									<MeasurementForm row={row} onError={onError} />
 									<Button variant="tertiary" size="small" isDestructive disabled={busy === row.query} onClick={() => void remove(row)}>
 										{__('Delete', 'seoprostats')}
 									</Button>
@@ -347,6 +368,46 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 			</table>
 		</TableScroll>
 	);
+}
+
+function kgrName(band: string): string {
+	const names: Record<string, string> = {
+		good: __('Good (under 0.25)', 'seoprostats'), possible: __('May work (0.25–1)', 'seoprostats'), crowded: __('Crowded (over 1)', 'seoprostats'),
+		volume_too_high: __('Volume too high for KGR', 'seoprostats'), unknown: __('Not enough data for KGR', 'seoprostats'),
+	};
+	return names[band] ?? band;
+}
+
+function MeasurementForm({ row, onError }: { row: TargetRow; onError: (message: string) => void }) {
+	const data = useDataSet();
+	const [editing, setEditing] = useState(false);
+	const [count, setCount] = useState(String(row.allintitle ?? ''));
+	const [volume, setVolume] = useState(String(row.volume ?? ''));
+	const [countDate, setCountDate] = useState('');
+	const [volumeDate, setVolumeDate] = useState('');
+	const [busy, setBusy] = useState(false);
+	const save = async () => {
+		setBusy(true);
+		try {
+			const fields: Record<string, unknown> = { query: row.query, page: row.page?.path ?? '', priority: row.priority, status: row.status };
+			if (count !== String(row.allintitle ?? '') || countDate) { fields.allintitle = count === '' ? null : count; if (countDate) fields.allintitle_measured = countDate; }
+			if (volume !== String(row.volume ?? '') || volumeDate) { fields.volume = volume === '' ? null : volume; if (volumeDate) fields.volume_measured = volumeDate; }
+			const done = await importTargets(data, JSON.stringify([fields]), false);
+			const [skipped] = done.skipped;
+			if (skipped) throw new Error(skipped.message);
+			onError(''); setEditing(false);
+		} catch (error) { onError(errorMessage(error, __('Measurements could not be saved.', 'seoprostats'))); }
+		setBusy(false);
+	};
+	if (!editing) return <Button variant="tertiary" size="small" onClick={() => { setCount(String(row.allintitle ?? '')); setVolume(String(row.volume ?? '')); setCountDate(''); setVolumeDate(''); setEditing(true); }}>{__('Edit research', 'seoprostats')}</Button>;
+	return <div>
+		<TextControl __nextHasNoMarginBottom label={__('Allintitle results', 'seoprostats')} type="number" min={0} step={1} value={count} onChange={setCount} />
+		<TextControl __nextHasNoMarginBottom label={__('Count measured on', 'seoprostats')} type="date" value={countDate} onChange={setCountDate} help={__('Today when changed without a date', 'seoprostats')} />
+		<TextControl __nextHasNoMarginBottom label={__('Monthly volume', 'seoprostats')} type="number" min={0} step={1} value={volume} onChange={setVolume} />
+		<TextControl __nextHasNoMarginBottom label={__('Volume measured on', 'seoprostats')} type="date" value={volumeDate} onChange={setVolumeDate} />
+		<Button variant="secondary" disabled={busy} isBusy={busy} onClick={() => void save()}>{__('Save research', 'seoprostats')}</Button>
+		<Button variant="tertiary" disabled={busy} onClick={() => setEditing(false)}>{__('Cancel', 'seoprostats')}</Button>
+	</div>;
 }
 
 /** Import a list as text: the result, with the rows skipped and why. */
