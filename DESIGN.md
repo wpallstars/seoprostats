@@ -5,6 +5,9 @@ description: seoprostats interface design system
 # Backlink exports: Settings → Import has a native file input, primary submit,
 # accessible status and progress. Search → Backlinks has a WordPress SelectControl
 # for How found; scores and export freshness stay labelled by provider.
+# IndexNow reuses the Connections card: status, queued count, public key link
+# and plain error text with role=alert. Submission receipts stay in each
+# Changes row's existing metadata line, with HTTP code and no indexing claim.
 colors:
   # Canonical palette (required: primary; recommended MD3 baseline families: secondary, tertiary, error, surface, background, outline)
   # WordPress admin colours (packages/wp-admin/src/common.css); primary follows the admin colour scheme.
