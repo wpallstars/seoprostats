@@ -532,6 +532,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 - Fixed: page rows show Edit for posts of custom post types whose addresses have no base (a plugin or theme removes it), and for category, tag and custom taxonomy archives, which open the term's edit screen. The REST API's page rows carry `term_id` and `taxonomy` for term archives.
 - New: when WP-Cron is turned off (`DISABLE_WP_CRON`) and no server cron job runs WordPress's scheduled jobs, so new visits wait uncounted, the Statistics and Settings screens say so once the jobs are 15 minutes late, with the commands for a cron job in the hosting control panel. The `seoprostats_schedule_notice` filter hides it.
 - Fixed: `wp seoprostats doctor` warns about WP-Cron only when its jobs are late, and says an overdue job is "due 1 hour ago" instead of "next in 1 hour".
+- Fixed: in dark mode, accent text, links, tabs and the chart line follow the admin colour scheme chosen in the profile, at a lighter tone of its hue; text no longer turns dark on hover or focus; notices read on the dark background; and the world map shades countries from the no-visits grey towards the accent.
 - Changed: on Search → Plan, each row's buttons stand in one column of equal widths; the Research menu after a query is a small "Research…" link on the query's line.
 
 ### 1.4.1
