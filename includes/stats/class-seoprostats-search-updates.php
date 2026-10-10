@@ -230,28 +230,42 @@ final class SEOProStats_Search_Updates {
         }
         $out = array();
         foreach ($data as $incident) {
-            if (!is_array($incident) || empty($incident['id']) || empty($incident['begin'])) {
-                continue;
+            $entry = is_array($incident) ? self::google_entry($incident) : null;
+            if ($entry !== null) {
+                $out[] = $entry;
             }
-            $id      = (string) $incident['id'];
-            $started = strtotime((string) $incident['begin']);
-            if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $id) || !$started) {
-                continue;
-            }
-            $ended = !empty($incident['end']) ? (int) strtotime((string) $incident['end']) : 0;
-            $title = isset($incident['external_desc']) ? self::text($incident['external_desc']) : '';
-            $uri   = isset($incident['uri']) ? (string) $incident['uri'] : '';
-            $out[] = array(
-                'id'      => $id,
-                'title'   => $title !== '' ? $title : __('Google Search incident', 'seoprostats'),
-                'type'    => self::type($title, self::google_product($incident)),
-                'started' => (int) $started,
-                'ended'   => $ended > $started ? $ended : 0,
-                'url'     => preg_match('#^incidents/[A-Za-z0-9_-]+$#', $uri) ? self::GOOGLE_BASE . $uri : self::GOOGLE_BASE,
-                'span'    => true,
-            );
         }
         return $out;
+    }
+
+    /**
+     * One Google incident as an entry, or null without a usable id and
+     * start.
+     *
+     * @param array<string,mixed> $incident Incident.
+     * @return array<string,mixed>|null
+     */
+    private static function google_entry(array $incident) {
+        if (empty($incident['id']) || empty($incident['begin'])) {
+            return null;
+        }
+        $id      = (string) $incident['id'];
+        $started = strtotime((string) $incident['begin']);
+        if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $id) || !$started) {
+            return null;
+        }
+        $ended = !empty($incident['end']) ? (int) strtotime((string) $incident['end']) : 0;
+        $title = isset($incident['external_desc']) ? self::text($incident['external_desc']) : '';
+        $uri   = isset($incident['uri']) ? (string) $incident['uri'] : '';
+        return array(
+            'id'      => $id,
+            'title'   => $title !== '' ? $title : __('Google Search incident', 'seoprostats'),
+            'type'    => self::type($title, self::google_product($incident)),
+            'started' => (int) $started,
+            'ended'   => $ended > $started ? $ended : 0,
+            'url'     => preg_match('#^incidents/[A-Za-z0-9_-]+$#', $uri) ? self::GOOGLE_BASE . $uri : self::GOOGLE_BASE,
+            'span'    => true,
+        );
     }
 
     /**
@@ -322,23 +336,8 @@ final class SEOProStats_Search_Updates {
      */
     private static function feed_items($body) {
         $body = ltrim($body, "\xEF\xBB\xBF \t\r\n");
-        $out  = array();
         if ($body !== '' && $body[0] === '{') {
-            $data = json_decode($body, true);
-            if (!is_array($data) || !isset($data['items']) || !is_array($data['items'])) {
-                return new WP_Error('seoprostats_search_updates_format', __('The feed is JSON but not a JSON Feed (it has no items).', 'seoprostats'));
-            }
-            foreach ($data['items'] as $item) {
-                if (is_array($item)) {
-                    $out[] = array(
-                        'id'    => isset($item['id']) ? (string) $item['id'] : '',
-                        'title' => isset($item['title']) ? (string) $item['title'] : '',
-                        'url'   => isset($item['url']) ? (string) $item['url'] : '',
-                        'date'  => (string) ($item['date_published'] ?? ($item['date_modified'] ?? '')),
-                    );
-                }
-            }
-            return $out;
+            return self::json_feed_items($body);
         }
         if (!function_exists('simplexml_load_string')) {
             return new WP_Error('seoprostats_search_updates_xml', __('PHP\'s SimpleXML extension is needed to read RSS and Atom feeds.', 'seoprostats'));
@@ -352,6 +351,7 @@ final class SEOProStats_Search_Updates {
             return new WP_Error('seoprostats_search_updates_format', __('The feed is not RSS, Atom or JSON Feed.', 'seoprostats'));
         }
         if (isset($xml->channel->item)) {
+            $out = array();
             foreach ($xml->channel->item as $item) {
                 $out[] = array(
                     'id'    => (string) $item->guid,
@@ -362,6 +362,46 @@ final class SEOProStats_Search_Updates {
             }
             return $out;
         }
+        $out = self::atom_items($xml);
+        if (!$out && $xml->getName() !== 'feed') {
+            return new WP_Error('seoprostats_search_updates_format', __('The feed is not RSS, Atom or JSON Feed.', 'seoprostats'));
+        }
+        return $out;
+    }
+
+    /**
+     * A JSON Feed's items as id, title, url and date.
+     *
+     * @param string $body JSON.
+     * @return array<int,array{id:string,title:string,url:string,date:string}>|WP_Error
+     */
+    private static function json_feed_items($body) {
+        $data = json_decode($body, true);
+        if (!is_array($data) || !isset($data['items']) || !is_array($data['items'])) {
+            return new WP_Error('seoprostats_search_updates_format', __('The feed is JSON but not a JSON Feed (it has no items).', 'seoprostats'));
+        }
+        $out = array();
+        foreach ($data['items'] as $item) {
+            if (is_array($item)) {
+                $out[] = array(
+                    'id'    => isset($item['id']) ? (string) $item['id'] : '',
+                    'title' => isset($item['title']) ? (string) $item['title'] : '',
+                    'url'   => isset($item['url']) ? (string) $item['url'] : '',
+                    'date'  => (string) ($item['date_published'] ?? ($item['date_modified'] ?? '')),
+                );
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * An Atom feed's entries as id, title, url and date (entries in the
+     * Atom namespace, or without one).
+     *
+     * @param SimpleXMLElement $xml Feed.
+     * @return array<int,array{id:string,title:string,url:string,date:string}>
+     */
+    private static function atom_items(SimpleXMLElement $xml) {
         $atom = $xml->children('http://www.w3.org/2005/Atom');
         $list = array();
         if (isset($atom->entry)) {
@@ -369,26 +409,33 @@ final class SEOProStats_Search_Updates {
         } elseif (isset($xml->entry)) {
             $list = $xml->entry;
         }
+        $out = array();
         foreach ($list as $entry) {
-            $url = '';
-            foreach ($entry->link as $link) {
-                $rel = (string) $link['rel'];
-                if ($rel === '' || $rel === 'alternate') {
-                    $url = (string) $link['href'];
-                    break;
-                }
-            }
             $out[] = array(
                 'id'    => (string) $entry->id,
                 'title' => (string) $entry->title,
-                'url'   => $url,
+                'url'   => self::atom_link($entry),
                 'date'  => (string) $entry->published !== '' ? (string) $entry->published : (string) $entry->updated,
             );
         }
-        if (!$out && $xml->getName() !== 'feed') {
-            return new WP_Error('seoprostats_search_updates_format', __('The feed is not RSS, Atom or JSON Feed.', 'seoprostats'));
-        }
         return $out;
+    }
+
+    /**
+     * An Atom entry's address: its first link without a rel, or with rel
+     * alternate.
+     *
+     * @param SimpleXMLElement $entry Entry.
+     * @return string
+     */
+    private static function atom_link(SimpleXMLElement $entry) {
+        foreach ($entry->link as $link) {
+            $rel = (string) $link['rel'];
+            if ($rel === '' || $rel === 'alternate') {
+                return (string) $link['href'];
+            }
+        }
+        return '';
     }
 
     /**
@@ -453,36 +500,12 @@ final class SEOProStats_Search_Updates {
             }
             $out = array('added' => 0, 'updated' => 0);
             foreach ($entries as $entry) {
-                $meta = array(
-                    'name'   => $entry['title'],
-                    'engine' => $source['name'],
-                    'url'    => $entry['url'],
-                );
-                if ($entry['span']) {
-                    $meta['ended'] = $entry['ended'] ? gmdate('c', $entry['ended']) : '';
-                }
-                if ($source['format'] === 'feed') {
-                    $meta['feed'] = $source['url'];
-                }
-                $id = (string) $entry['id'];
+                $meta = self::entry_meta($source, $entry);
+                $id   = (string) $entry['id'];
                 if (isset($have[$id])) {
-                    $old = json_decode((string) $have[$id]['meta'], true);
-                    if ($old === $meta && (int) $have[$id]['ts'] === (int) $entry['started']) {
-                        continue;
+                    if (self::update_entry($table, $have[$id], $entry, $meta)) {
+                        $out['updated']++;
                     }
-                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
-                    $wpdb->update(
-                        $table,
-                        array(
-                            'ts'   => (int) $entry['started'],
-                            'old'  => (string) $entry['type'],
-                            'meta' => (string) wp_json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                        ),
-                        array('id' => (int) $have[$id]['id']),
-                        array('%d', '%s', '%s'),
-                        array('%d')
-                    );
-                    $out['updated']++;
                     continue;
                 }
                 $added = SEOProStats_Changes::record(SEOProStats_Changes::SEARCH_UPDATE, array(
@@ -503,6 +526,59 @@ final class SEOProStats_Search_Updates {
         } finally {
             SEOProStats_Schema::use_set($before);
         }
+    }
+
+    /**
+     * The meta a change keeps for an update: name, engine, address, the
+     * end for incidents with a span, and the feed it came from.
+     *
+     * @param array{url:string,engine:string,name:string,format:string} $source Source.
+     * @param array<string,mixed>                                       $entry  Entry.
+     * @return array<string,mixed>
+     */
+    private static function entry_meta(array $source, array $entry) {
+        $meta = array(
+            'name'   => $entry['title'],
+            'engine' => $source['name'],
+            'url'    => $entry['url'],
+        );
+        if ($entry['span']) {
+            $meta['ended'] = $entry['ended'] ? gmdate('c', $entry['ended']) : '';
+        }
+        if ($source['format'] === 'feed') {
+            $meta['feed'] = $source['url'];
+        }
+        return $meta;
+    }
+
+    /**
+     * Bring a stored update up to date, if its start or meta changed.
+     *
+     * @param string              $table The changes table.
+     * @param array<string,mixed> $have  The stored row: id, ts, new, meta.
+     * @param array<string,mixed> $entry Entry.
+     * @param array<string,mixed> $meta  entry_meta().
+     * @return bool Whether it was updated.
+     */
+    private static function update_entry($table, array $have, array $entry, array $meta) {
+        global $wpdb;
+        $old = json_decode((string) $have['meta'], true);
+        if ($old === $meta && (int) $have['ts'] === (int) $entry['started']) {
+            return false;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        $wpdb->update(
+            $table,
+            array(
+                'ts'   => (int) $entry['started'],
+                'old'  => (string) $entry['type'],
+                'meta' => (string) wp_json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ),
+            array('id' => (int) $have['id']),
+            array('%d', '%s', '%s'),
+            array('%d')
+        );
+        return true;
     }
 
     /**
