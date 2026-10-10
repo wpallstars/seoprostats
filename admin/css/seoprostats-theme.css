@@ -15,8 +15,8 @@
  * variables (--wp-components-color-*) take their dark values from it;
  * WordPress's classic admin styles, which paint fixed light colours, get
  * the same values below. The admin colour scheme's accent stays the fill
- * of primary buttons; text and lines in the accent use a lighter mix of
- * it, so they read at 4.5:1 on the dark surfaces.
+ * of primary buttons; text and lines in the accent use a lighter tone of
+ * its hue, so they read at 4.5:1 on the dark surfaces.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -35,8 +35,6 @@ html.spst-dark {
 	--spst-ui-text: #f0f0f1;
 	--spst-ui-muted: #c3c4c7;
 	--spst-ui-subtle: #a7aaad;
-	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
-	--spst-ui-accent: #72aee6;
 	--spst-ui-good: #68de7c;
 	--spst-ui-bad: #ff8085;
 	--spst-ui-warning: #f0c33c;
@@ -45,9 +43,27 @@ html.spst-dark {
 	background: var(--spst-ui-canvas);
 }
 
+/*
+ * The accent, on body: WordPress sets the admin colour scheme's
+ * --wp-admin-theme-color on body (admin-color-*), so on html it is still
+ * the default blue. The text accent keeps the scheme's hue and raises its
+ * lightness (OKLCH) to read at 4.5:1 on every dark surface; older
+ * browsers mix it with white instead.
+ */
+html.spst-dark body {
+	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
+	--spst-ui-accent: #72aee6;
+}
+
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
-	html.spst-dark {
+	html.spst-dark body {
 		--spst-ui-accent: color-mix(in srgb, var(--spst-ui-accent-fill) 55%, #fff);
+	}
+}
+
+@supports (color: oklch(from red max(l, 0.75) min(c, 0.15) h)) {
+	html.spst-dark body {
+		--spst-ui-accent: oklch(from var(--spst-ui-accent-fill) max(l, 0.75) min(c, 0.15) h);
 	}
 }
 

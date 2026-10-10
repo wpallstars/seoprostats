@@ -175,7 +175,7 @@ Dark palette (WordPress admin greys, `--spst-ui-*`, defined once):
 - **Raised (`#2c3338`)**: hover, tooltips, notices; also dividers.
 - **Border (`#3c434a`)**; field borders `#8c8f94` (3:1 on surface).
 - **Text (`#f0f0f1`)**, muted `#c3c4c7`, subtle `#a7aaad`.
-- **Accent**: primary buttons, switches and the logo keep the admin colour scheme's colour as a fill; accent text, links, tabs and the chart line use `color-mix(accent 55%, #fff)` (fallback `#72aee6`) for 4.5:1.
+- **Accent**: follows the person's admin colour scheme (Profile → Admin Color Scheme). Primary buttons, switches and the logo keep the scheme's colour as a fill; accent text, links, tabs and the chart line keep its hue at a lighter tone, `oklch(from accent max(l, 0.75) min(c, 0.15) h)`, which reads at 5.4:1 or more on every dark surface for every core scheme (older browsers: `color-mix(accent 55%, #fff)`, then `#72aee6`). The tokens sit on `body`, where WordPress sets the scheme's `--wp-admin-theme-color`.
 - **Good `#68de7c`**, **bad `#ff8085`**, warning `#f0c33c`; markers lighten to content `#7b90ff`, SEO `#b48ef0`, products `#4ab866`, site `#dba617`, search engines `#f086ae`, notes `#dcdcde`. Shared reports in dark use the same marker and tooltip colours.
 
 The plugin's tokens (`--spst-*`) and WordPress components' theme variables (`--wp-components-color-*`) take these values; classic wp-admin elements on those screens (fields, buttons, notices, tables) get them through low-specificity `:where()` rules, so WordPress's focus styles and any class rule still win. Charts read the tokens and redraw on the `spst-themechange` event. Colours ease for 0.2 s between modes, never on load, and not with reduced motion.
