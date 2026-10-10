@@ -6,9 +6,10 @@
  *
  * Everything here waits for the `spst-dark` class on <html>, which a small
  * script in the screen's <head> sets before anything is drawn (Dark, or
- * System while the computer is dark), so light mode is WordPress's own and
- * nothing flashes. Only the plugin's screens load this file; the rest of
- * wp-admin keeps the admin colour scheme.
+ * System while the computer is dark), so nothing flashes. Light mode is
+ * WordPress's own, with the scheme's colour at a brightness that reads at
+ * 4.5:1 (below). Only the plugin's screens load this file; the rest of
+ * wp-admin keeps the admin colour scheme as it is.
  *
  * The dark palette is WordPress's admin greys, in one place (--spst-ui-*).
  * The plugin's own tokens (--spst-*) and WordPress components' theme
@@ -103,6 +104,39 @@ html.spst-dark body {
 		background: var(--spst-ui-primary-hover);
 		border-color: var(--spst-ui-primary-hover);
 	}
+}
+
+/*
+ * Light mode keeps the scheme's hue, at a brightness that reads at 4.5:1:
+ * its luminance is lowered to at most 0.15 (0.12 and 0.096 for the darker
+ * tones), which keeps its hue and saturation and reads on the lightest
+ * greys (#f0f0f0) and behind white labels. Darker schemes' colours, such as
+ * Modern's, are under the cap and stay as they are. Read on body, where
+ * WordPress sets them; used by everything inside it, which is all of
+ * WordPress's buttons, fields and components on these screens.
+ */
+@supports (color: color(from red xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) z)) {
+	html:not(.spst-dark) body {
+		--spst-scheme-fill: color(from var(--wp-admin-theme-color, #2271b1) xyz-d65 calc(x * min(1, 0.15 / y)) min(y, 0.15) calc(z * min(1, 0.15 / y)));
+		--spst-scheme-fill-10: color(from var(--wp-admin-theme-color-darker-10, #135e96) xyz-d65 calc(x * min(1, 0.12 / y)) min(y, 0.12) calc(z * min(1, 0.12 / y)));
+		--spst-scheme-fill-20: color(from var(--wp-admin-theme-color-darker-20, #0a4b78) xyz-d65 calc(x * min(1, 0.096 / y)) min(y, 0.096) calc(z * min(1, 0.096 / y)));
+	}
+
+	html:not(.spst-dark) body > * {
+		--wp-admin-theme-color: var(--spst-scheme-fill);
+		--wp-admin-theme-color-darker-10: var(--spst-scheme-fill-10);
+		--wp-admin-theme-color-darker-20: var(--spst-scheme-fill-20);
+	}
+}
+
+/*
+ * The classic schemes (Light, Blue, Midnight, Sunrise, Ectoplasm, Ocean,
+ * Coffee) brighten links on hover and focus, to 3.3:1 on white; this is
+ * their link blue darkened instead. As specific as their rule, so it wins
+ * by order and any rule with a class still wins.
+ */
+:where(html:not(.spst-dark) body:is(.admin-color-light, .admin-color-blue, .admin-color-midnight, .admin-color-sunrise, .admin-color-ectoplasm, .admin-color-ocean, .admin-color-coffee) :is(#wpbody, .components-modal__frame)) a:is(:hover, :active, :focus) {
+	color: #005e8e;
 }
 
 /* The plugin's tokens: the header and settings (.spst-wrap) ... */
