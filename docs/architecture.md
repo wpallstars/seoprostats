@@ -513,6 +513,36 @@ and the `seoprostats/backlinks` ability read it; `check` runs the check
 now for two minutes, even when the setting is off. The dashboard shows it
 under Search → Backlinks (not in shared reports).
 
+CSV exports (GH#146, schema v20) use `SEOProStats_Backlinks_Import`:
+the job/lease facade delegates header and row parsing to `Backlinks_CSV`,
+bounded staging to `Backlinks_Stage` and idempotent upserts to `Backlinks_Store`
+(all classes have the `SEOProStats_` prefix). Each component has one responsibility.
+UTF-8 comma-separated header detection, or explicit source; multipart and JSON
+`POST /backlinks/import`, progress `GET /backlinks/import`, CLI `backlinks import
+<file>`. Settings → Import has a Links card. Staging uses non-autoloaded options,
+at most 200 chunks of 500 rows (100,000 rows, 50 MB), with a single job and a
+five-minute crash-recovery lease. Cron `seoprostats_backlinks_import` runs within
+20 seconds, checkpoints completed batches and the final partial batch, removes
+consumed chunks, and schedules recovery before processing, including busy-lock
+returns. Terminal status is checkpointed before final-chunk removal. Replaying a
+batch after a crash is idempotent. Uninstall/reset removes staging, state, lease
+and the hook. No public upload attachment or visitor-page work.
+
+`found` is now smallint: referrer 1 and dataforseo 2 retain their meanings;
+gsc 4, ahrefs 8, semrush 16, majestic 32, moz 64, bing 128, generic 256,
+verified 512 (a page check). Only source-only candidate provenance is inherited
+by newly verified links; target-specific provider bits stay on their exact rows.
+`providers` JSON stores authority (0–100 or null) and last_seen per export
+source, distinct from the existing provider score and verification times.
+The own-host target restriction uses the collector's host list. Source-only
+Search Console rows create `path_id=0` candidates, not invented backlinks.
+Imported pages join the existing safe HTTP verifier only while checking is on;
+unlike visit-only pages, a first miss does not prevent a second weekly check.
+Exports never reset checked/misses/lost/status, never infer lost from absence,
+and merge first/last dates and source bits. Source filtering is in memory over
+the existing indexed 5,000-row reads, before aggregation and pagination;
+cache keys include source and import progress invalidates the version.
+
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
 value), that page. `packages/charts/src/markers.ts` draws the lane under the

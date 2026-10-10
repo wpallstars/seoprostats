@@ -15,9 +15,9 @@
  */
 
 import { useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { formatNumber, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
+import { BACKLINK_SOURCES, formatNumber, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
 import { errorMessage, useBacklinks } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
@@ -74,12 +74,13 @@ type BacklinksProps = SearchReportProps & {
 
 export function Backlinks({ state, update, open }: BacklinksProps) {
 	const kind: BacklinkKind = state.backlinks ?? 'links';
+	const [source, setSource] = useState<(typeof BACKLINK_SOURCES)[number] | ''>('');
 	// Back to the first rows when the period or list change.
-	const scope = JSON.stringify([state.range, state.from, state.to, kind]);
+	const scope = JSON.stringify([state.range, state.from, state.to, kind, source]);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
-	const query = useBacklinks(state, kind, PER_PAGE, offset);
+	const query = useBacklinks(state, kind, PER_PAGE, offset, source);
 	const answer = query.data;
 	const rows = answer?.rows ?? [];
 	// While another list loads, the last answer stays: its rows are drawn as its own kind.
@@ -108,6 +109,7 @@ export function Backlinks({ state, update, open }: BacklinksProps) {
 				))}
 			</div>
 			<CardBody className="spst-card__body">
+				<SelectControl label={__('How found', 'seoprostats')} value={source} onChange={setSource} options={[{ label: __('All sources', 'seoprostats'), value: '' }, ...BACKLINK_SOURCES.map((value) => ({ value, label: foundLabel([value]) }))]} />
 				{query.isError && (
 					<Notice status="error" isDismissible={false} className="spst-notice">
 						{errorMessage(query.error, __('The backlinks could not be loaded. Reload the page to try again.', 'seoprostats'))}
@@ -200,7 +202,7 @@ function Notes({ answer }: { answer: BacklinksAnswer }) {
 	notes.push(
 		sprintf(
 			/* translators: 1: number of days, 2: number of checks. */
-			__('Found by opening the pages that sent visits (often only the other site’s home page, as browsers send just its address), daily, and each again every %1$s days. A link missing on %2$s checks in a row, or on a page that is gone, is lost. Links from sites that never sent a visit are not found.', 'seoprostats'),
+			__('Found from visits and imported link exports. While the check is on, referring pages are opened daily and each again every %1$s days. A link missing on %2$s checks in a row, or on a page that is gone, is lost. Exports are samples: missing rows never mean lost links.', 'seoprostats'),
 			number(answer.rules.recheck_days),
 			number(answer.rules.misses)
 		)
@@ -221,7 +223,8 @@ function relLabel(rel: BacklinkRow['rel']): string {
 
 /** How a link was found. */
 function foundLabel(found: string[]): string {
-	return found.map((how) => (how === 'referrer' ? __('A visit', 'seoprostats') : how === 'dataforseo' ? 'DataForSEO' : how)).join(', ') || '–';
+	const names: Record<string, string> = { referrer: __('A visit', 'seoprostats'), dataforseo: 'DataForSEO', gsc: 'Search Console export', ahrefs: 'Ahrefs export', semrush: 'Semrush export', majestic: 'Majestic export', moz: 'Moz export', bing: 'Bing export', generic: __('CSV export', 'seoprostats'), verified: __('Page check', 'seoprostats') };
+	return found.map((how) => names[how] ?? how).join(', ') || '–';
 }
 
 /** The site's page: opens in Rankings. */
@@ -272,7 +275,7 @@ function LinksTable({ rows, kind, open, refreshing }: { rows: BacklinkRow[]; kin
 							<td>{relLabel(row.rel)}</td>
 							<td>{day(row.first_seen)}</td>
 							<td>{day(kind === 'lost' ? row.lost : row.last_seen)}</td>
-							<td>{foundLabel(row.found)}</td>
+							<td>{foundLabel(row.found)}{Object.entries(row.providers ?? {}).map(([provider, facts]) => <span className="spst-meta" key={provider}>{foundLabel([provider])}: {facts.authority ?? '–'} · {day(facts.last_seen)}</span>)}</td>
 						</tr>
 					))}
 				</tbody>

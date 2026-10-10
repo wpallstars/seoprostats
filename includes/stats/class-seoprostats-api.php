@@ -396,6 +396,7 @@ final class SEOProStats_API {
                     'enum'        => SEOProStats_Backlinks::KINDS,
                     'default'     => 'links',
                 ),
+                'source' => array('type' => 'string', 'enum' => array_merge(array(''), array_keys(SEOProStats_Backlinks::FOUND)), 'default' => ''),
                 'limit'  => array('maximum' => SEOProStats_Backlinks::MAX_LIMIT, 'default' => SEOProStats_Backlinks::LIMIT) + self::args(true)['limit'],
                 'offset' => self::args(true)['offset'],
             ),
@@ -465,6 +466,18 @@ final class SEOProStats_API {
         self::target_routes($read, $manage, $base, $engine);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
+        register_rest_route($ns, '/backlinks/import', array(
+            array(
+                'methods' => WP_REST_Server::CREATABLE,
+                'permission_callback' => $settings,
+                'callback' => array(__CLASS__, 'backlinks_import'),
+            ),
+            array(
+                'methods' => WP_REST_Server::READABLE,
+                'permission_callback' => $settings,
+                'callback' => array(__CLASS__, 'backlinks_import_status'),
+            ),
+        ));
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
         register_rest_route($ns, '/connections', array(
             'methods'             => WP_REST_Server::READABLE,
@@ -1813,9 +1826,49 @@ final class SEOProStats_API {
      */
     public static function backlinks($request) {
         $kind = (string) $request->get_param('kind');
-        return self::report($request, static function ($req) use ($kind) {
+        $source = (string) $request->get_param('source');
+        return self::report($request, static function ($req) use ($kind, $source) {
+            $req['source'] = $source;
             return SEOProStats_Backlinks::report($req, $kind);
         });
+    }
+
+    /** Start a links export import. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlinks_import($request) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        $files = $request->get_file_params();
+        $source = $request->get_param('source');
+        $source = is_string($source) ? $source : '';
+        if (isset($files['file'])) {
+            $file = $files['file'];
+            if ($file['error'] !== UPLOAD_ERR_OK || $file['size'] > SEOProStats_Backlinks_Import::MAX_BYTES || !is_uploaded_file($file['tmp_name'])) {
+                return new WP_Error('seoprostats_links_upload', __('Upload a CSV of at most 50 MB.', 'seoprostats'), array('status' => 400));
+            }
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen -- read PHP's authenticated temporary upload, never a caller-supplied path.
+            $stream = fopen($file['tmp_name'], 'r');
+            if (!$stream) {
+                return new WP_Error('seoprostats_links_upload', __('The upload could not be read.', 'seoprostats'), array('status' => 400));
+            }
+            try {
+                $job = SEOProStats_Backlinks_Import::start($stream, $source);
+            } finally {
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- the temporary upload stream.
+                fclose($stream);
+            }
+        } else {
+            $rows = $request->get_param('rows');
+            if (!is_array($rows) || count($rows) > SEOProStats_Backlinks_Import::MAX_ROWS || strlen($request->get_body()) > SEOProStats_Backlinks_Import::MAX_BYTES) {
+                return new WP_Error('seoprostats_links_rows', __('Supply up to 100,000 JSON rows or a CSV file.', 'seoprostats'), array('status' => 400));
+            }
+            $job = SEOProStats_Backlinks_Import::start(array_values($rows), $source);
+        }
+        return is_wp_error($job) ? $job : new WP_REST_Response($job, 202);
+    }
+
+    /** Import progress (cron does the work). @param WP_REST_Request $request Request. @return WP_REST_Response */
+    public static function backlinks_import_status($request) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        return new WP_REST_Response(SEOProStats_Backlinks_Import::status());
     }
 
     /**

@@ -39,7 +39,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Rankings**: queries, pages, countries, devices and search appearance, for Google, Bing or both combined.
 * **Opportunities**: striking-distance queries, low CTR, pages losing clicks with the likely cause, queries missing from the page and overlapping pages.
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
-* **Backlinks**: links from the pages that sent you visitors, found without an outside service.
+* **Backlinks**: links from visits and CSV exports (Settings → Import → Links), with source filtering, scores and dates per provider.
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
 * **A/B tests**: test blocks in the block editor, with results and a winner, without cookies.
