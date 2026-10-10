@@ -28,7 +28,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Experiments {
+/**
+ * Experiments: record, list, measure and decide.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") Recording, measuring and the verdict share the windows, metrics and rules; each step is a small private helper.
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") The measurement's reads and figures belong to one contract.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each read and rule readable.
+ */
+final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST, WP-CLI and abilities; private helpers decompose recording and measuring.
 
     /** Measures: code (the metric column) => name. Codes never change meaning. */
     const METRICS = array(

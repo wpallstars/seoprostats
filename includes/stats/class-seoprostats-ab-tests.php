@@ -30,7 +30,14 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_AB_Tests {
+/**
+ * The A/B test blocks, their registry and the variant swap.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") Blocks, saving and the winner share the test's attributes and rows; each step is a small private helper.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each block, save and marker readable.
+ * @SuppressWarnings("PHPMD.TooManyPublicMethods") WordPress hooks, the REST API and the report call these entry points.
+ */
+final class SEOProStats_AB_Tests { // NOSONAR: one block pair and its registry; private helpers decompose rendering, saving and markers.
 
     /** Block names. */
     const TEST    = 'seoprostats/ab-test';
