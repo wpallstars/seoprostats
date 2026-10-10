@@ -121,69 +121,9 @@ final class SEOProStats_Search {
         $sort   = in_array($sort, $sorts, true) ? (string) $sort : $sorts[0];
         $order  = self::sort_order($sort, $order);
 
-        $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'sort' => $sort, 'order' => $order, 'imports' => self::version()), static function () use ($req, $kind, $page, $query, $engine, $sort, $order) {
-            $code    = self::codes($engine);
-            $bounds  = self::span($engine);
-            $range   = SEOProStats_Query::range($req);
-            $ignored = array();
-            $pages   = self::page_ids($req['filters'], $page, $ignored);
-            $queries = $query === '' ? null : self::query_ids($query);
-            $weekly  = self::weekly($engine);
-            $now     = self::days($range, $bounds, $weekly);
-            $scope   = self::scope($code, $now, $pages, $queries);
-            $grain   = self::grain($engine, $now, $scope);
-            // Combined weeks end on the period's last day, so each holds one week of every engine.
-            $anchor = '';
-            if ($grain === 'week' && $now) {
-                $anchor = $engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds);
-            }
-            $totals  = self::totals($scope);
-            $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
-            $by      = array('sort' => $sort, 'order' => $order);
-            if ($kind !== 'days') {
-                $rows = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals, $by);
-            } else {
-                // No search data yet: no rows of zeros (as the chart, which is not drawn then).
-                $rows = $bounds['to'] !== '' ? self::day_rows($points, $now, $grain, $anchor, (int) $req['limit'], (int) $req['offset'], $totals, $by) : array();
-            }
-            $more    = count($rows) > (int) $req['limit'];
-            $rows    = array_slice($rows, 0, (int) $req['limit']);
-
-            $answer = array(
-                'engine'    => $engine,
-                'engines'   => self::engines(),
-                'combined'  => self::combinable(),
-                'range'     => $now ? self::range_out($now) : SEOProStats_Query::range_out($range),
-                'through'   => $bounds['to'],
-                'first'     => $bounds['from'],
-                'kind'      => $kind,
-                'sort'      => $sort,
-                'order'     => $order,
-                'page'      => $page,
-                'query'     => $query,
-                'page_info' => SEOProStats_Clicks::page_info($page),
-                'ignored'   => array_values(array_unique($ignored)),
-                'totals'    => $totals,
-                'grain'     => $grain,
-                'points'    => $points,
-                'rows'      => $rows,
-                'more'      => $more,
-            );
-            $other = $now ? SEOProStats_Query::compare_range($now, $req['compare']) : null;
-            if ($other) {
-                $then_days = self::days($other, array('from' => '', 'to' => ''), $weekly);
-                $then      = self::scope($code, $then_days, $pages, $queries);
-                $before    = self::totals($then);
-                $then_end  = $engine === self::ALL && $anchor !== '' && $then_days ? (string) $then_days['day_to'] : $anchor;
-                $answer['rows']    = self::with_compare($then, $kind, $answer['rows']);
-                $answer['compare'] = array(
-                    'range'  => SEOProStats_Query::range_out($other),
-                    'totals' => $before,
-                    'change' => self::change($totals, $before),
-                    'points' => $then_days ? self::series($then, $then_days, $grain, $then_end) : array(),
-                );
-            }
-            return $answer;
+        $args   = array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'sort' => $sort, 'order' => $order);
+        $answer = SEOProStats_Query::cached('search', $req + $args + array('imports' => self::version()), static function () use ($req, $args) {
+            return self::build_report($req, $args);
         });
 
         $answer['connected'] = !$live || self::connected($engine);
@@ -197,6 +137,112 @@ final class SEOProStats_Search {
             }
             unset($row);
         }
+        return $answer;
+    }
+
+    /**
+     * The search report as report() caches it (without the viewer's
+     * editor links or the connection).
+     *
+     * @param array<string,mixed>  $req  From SEOProStats_Query::request().
+     * @param array<string,string> $args kind, page, query, engine, sort and order, as report() checked them.
+     * @return array<string,mixed>
+     */
+    private static function build_report(array $req, array $args) {
+        $kind    = $args['kind'];
+        $page    = $args['page'];
+        $query   = $args['query'];
+        $engine  = $args['engine'];
+        $code    = self::codes($engine);
+        $bounds  = self::span($engine);
+        $range   = SEOProStats_Query::range($req);
+        $ignored = array();
+        $pages   = self::page_ids($req['filters'], $page, $ignored);
+        $queries = $query === '' ? null : self::query_ids($query);
+        $weekly  = self::weekly($engine);
+        $now     = self::days($range, $bounds, $weekly);
+        $scope   = self::scope($code, $now, $pages, $queries);
+        $grain   = self::grain($engine, $now, $scope);
+        $anchor  = self::anchor($engine, $code, $bounds, $grain, $now);
+        $totals  = self::totals($scope);
+        $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
+        $by      = array('sort' => $args['sort'], 'order' => $args['order']);
+        if ($kind !== 'days') {
+            $rows = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals, $by);
+        } else {
+            // No search data yet: no rows of zeros (as the chart, which is not drawn then).
+            $rows = $bounds['to'] !== '' ? self::day_rows($points, $now, $grain, $anchor, (int) $req['limit'], (int) $req['offset'], $totals, $by) : array();
+        }
+        $more    = count($rows) > (int) $req['limit'];
+        $rows    = array_slice($rows, 0, (int) $req['limit']);
+
+        $answer = array(
+            'engine'    => $engine,
+            'engines'   => self::engines(),
+            'combined'  => self::combinable(),
+            'range'     => $now ? self::range_out($now) : SEOProStats_Query::range_out($range),
+            'through'   => $bounds['to'],
+            'first'     => $bounds['from'],
+            'kind'      => $kind,
+            'sort'      => $args['sort'],
+            'order'     => $args['order'],
+            'page'      => $page,
+            'query'     => $query,
+            'page_info' => SEOProStats_Clicks::page_info($page),
+            'ignored'   => array_values(array_unique($ignored)),
+            'totals'    => $totals,
+            'grain'     => $grain,
+            'points'    => $points,
+            'rows'      => $rows,
+            'more'      => $more,
+        );
+        $other = $now ? SEOProStats_Query::compare_range($now, $req['compare']) : null;
+        if ($other) {
+            $answer = self::with_compare_period($answer, $other, array('code' => $code, 'pages' => $pages, 'queries' => $queries, 'weekly' => $weekly), $anchor);
+        }
+        return $answer;
+    }
+
+    /**
+     * The last day of the chart's weeks, for weeks: Combined weeks end on
+     * the period's last day, so each holds one week of every engine.
+     *
+     * @param string                    $engine From report_engine().
+     * @param int[]                     $code   From codes().
+     * @param array{from:string,to:string} $bounds From span().
+     * @param string                    $grain  day, week or month.
+     * @param array<string,mixed>|null  $now    From days().
+     * @return string Y-m-d, or '' (not weeks).
+     */
+    private static function anchor($engine, array $code, array $bounds, $grain, $now) {
+        if ($grain !== 'week' || !$now) {
+            return '';
+        }
+        return $engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds);
+    }
+
+    /**
+     * Add the comparison period to the answer: its rows' figures, totals,
+     * change and chart.
+     *
+     * @param array<string,mixed> $answer From build_report().
+     * @param array<string,mixed> $other  The other period, from SEOProStats_Query::compare_range().
+     * @param array<string,mixed> $what   code, pages, queries and weekly, as for the period.
+     * @param string              $anchor From anchor().
+     * @return array<string,mixed>
+     */
+    private static function with_compare_period(array $answer, array $other, array $what, $anchor) {
+        $then_days = self::days($other, array('from' => '', 'to' => ''), $what['weekly']);
+        $then      = self::scope($what['code'], $then_days, $what['pages'], $what['queries']);
+        $before    = self::totals($then);
+        $then_end  = $answer['engine'] === self::ALL && $anchor !== '' && $then_days ? (string) $then_days['day_to'] : $anchor;
+        $answer['rows']    = self::with_compare($then, $answer['kind'], $answer['rows']);
+        $answer['compare'] = array(
+            'range'  => SEOProStats_Query::range_out($other),
+            'totals' => $before,
+            'change' => self::change($answer['totals'], $before),
+            'points' => $then_days ? self::series($then, $then_days, $answer['grain'], $then_end) : array(),
+        );
         return $answer;
     }
 
@@ -788,40 +834,13 @@ final class SEOProStats_Search {
      * @return array<int,array<string,mixed>>
      */
     private static function series($scope, array $days, $grain, $anchor = '') {
-        global $wpdb;
-        $by = array();
-        if ($scope !== null) {
-            $bucket = $grain === 'month' ? "DATE_FORMAT(day, '%%Y-%%m-01')" : 'day';
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as in totals(); $bucket is fixed SQL.
-            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $bucket AS b, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$scope['sql']} GROUP BY b ORDER BY NULL", array_merge(array(SEOProStats_Schema::table($scope['table'])), $scope['args'])), ARRAY_A);
-            $last = $grain === 'week' && $anchor !== '' ? (int) gmdate('w', self::utc_day($anchor)) : null;
-            foreach ($rows as $row) {
-                $key = (string) $row['b'];
-                if ($last !== null) {
-                    // A day goes to the week it is in (Combined adds daily engines to weekly ones).
-                    $at  = self::utc_day($key);
-                    $key = gmdate('Y-m-d', $at + ((($last - (int) gmdate('w', $at)) + 7) % 7) * DAY_IN_SECONDS);
-                }
-                foreach (array('c', 'i', 'p') as $col) {
-                    $by[$key][$col] = (isset($by[$key][$col]) ? $by[$key][$col] : 0) + (int) $row[$col];
-                }
-            }
+        $by = self::series_sums($scope, $grain, $anchor);
+        if ($grain === 'week') {
+            return self::week_points($by, $days, $anchor);
         }
         $out = array();
         /** @var DateTimeImmutable $at */
         $at = $days['start'];
-        if ($grain === 'week') {
-            // The first week's last day in the period: the anchor's weekday.
-            $gap = $anchor !== '' ? (int) round(((new DateTimeImmutable($anchor, $at->getTimezone()))->getTimestamp() - $at->getTimestamp()) / DAY_IN_SECONDS) : 6;
-            $at  = self::add_days($at, (($gap % 7) + 7) % 7);
-            for ($n = 0; $at < $days['end'] && $n < 1000; $at = $at->modify('+7 days'), $n++) {
-                $key   = $at->format('Y-m-d');
-                $row   = isset($by[$key]) ? $by[$key] : array('c' => 0, 'i' => 0, 'p' => 0);
-                $from  = max($days['start'], $at->modify('-6 days'));
-                $out[] = array('t' => $from->format('c')) + self::metrics($row['c'], $row['i'], $row['p']);
-            }
-            return $out;
-        }
         if ($grain === 'month') {
             $at = $at->modify('first day of this month');
         }
@@ -830,6 +849,64 @@ final class SEOProStats_Search {
             $key   = $at->format('Y-m-d');
             $row   = isset($by[$key]) ? $by[$key] : array('c' => 0, 'i' => 0, 'p' => 0);
             $out[] = array('t' => ($n === 0 ? $days['start'] : $at)->format('c')) + self::metrics($row['c'], $row['i'], $row['p']);
+        }
+        return $out;
+    }
+
+    /**
+     * Clicks, impressions and position sums per day, month (its first
+     * day) or week (its last day, the weekday of $anchor).
+     *
+     * @param array<string,mixed>|null $scope  From scope().
+     * @param string                   $grain  day, week or month.
+     * @param string                   $anchor The last day of a week (Y-m-d), for weeks.
+     * @return array<string,array<string,int>> Y-m-d => c, i, p.
+     */
+    private static function series_sums($scope, $grain, $anchor) {
+        global $wpdb;
+        $by = array();
+        if ($scope === null) {
+            return $by;
+        }
+        $bucket = $grain === 'month' ? "DATE_FORMAT(day, '%%Y-%%m-01')" : 'day';
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- as in totals(); $bucket is fixed SQL.
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT $bucket AS b, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$scope['sql']} GROUP BY b ORDER BY NULL", array_merge(array(SEOProStats_Schema::table($scope['table'])), $scope['args'])), ARRAY_A);
+        $last = $grain === 'week' && $anchor !== '' ? (int) gmdate('w', self::utc_day($anchor)) : null;
+        foreach ($rows as $row) {
+            $key = (string) $row['b'];
+            if ($last !== null) {
+                // A day goes to the week it is in (Combined adds daily engines to weekly ones).
+                $at  = self::utc_day($key);
+                $key = gmdate('Y-m-d', $at + ((($last - (int) gmdate('w', $at)) + 7) % 7) * DAY_IN_SECONDS);
+            }
+            foreach (array('c', 'i', 'p') as $col) {
+                $by[$key][$col] = (isset($by[$key][$col]) ? $by[$key][$col] : 0) + (int) $row[$col];
+            }
+        }
+        return $by;
+    }
+
+    /**
+     * series() by week: each point starts six days before its last day,
+     * or at the period's start.
+     *
+     * @param array<string,array<string,int>> $by     From series_sums().
+     * @param array<string,mixed>             $days   From days().
+     * @param string                          $anchor The last day of a week (Y-m-d), or ''.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function week_points(array $by, array $days, $anchor) {
+        $out = array();
+        /** @var DateTimeImmutable $at */
+        $at = $days['start'];
+        // The first week's last day in the period: the anchor's weekday.
+        $gap = $anchor !== '' ? (int) round(((new DateTimeImmutable($anchor, $at->getTimezone()))->getTimestamp() - $at->getTimestamp()) / DAY_IN_SECONDS) : 6;
+        $at  = self::add_days($at, (($gap % 7) + 7) % 7);
+        for ($n = 0; $at < $days['end'] && $n < 1000; $at = $at->modify('+7 days'), $n++) {
+            $key   = $at->format('Y-m-d');
+            $row   = isset($by[$key]) ? $by[$key] : array('c' => 0, 'i' => 0, 'p' => 0);
+            $from  = max($days['start'], $at->modify('-6 days'));
+            $out[] = array('t' => $from->format('c')) + self::metrics($row['c'], $row['i'], $row['p']);
         }
         return $out;
     }
@@ -1008,16 +1085,7 @@ final class SEOProStats_Search {
         $out  = array();
         foreach ($rows as $row) {
             $id = (string) $row['v'];
-            if ($kind === 'countries') {
-                $value = self::country($id);
-                $label = $value === '' ? __('Unknown', 'seoprostats') : $value;
-            } elseif ($kind === 'devices') {
-                $value = isset(self::DEVICES[(int) $id]) ? self::DEVICES[(int) $id] : 'unknown';
-                $label = SEOProStats_Query::device_labels()[$value];
-            } else {
-                $value = isset($text[(int) $id]) ? $text[(int) $id] : '';
-                $label = $value;
-            }
+            list($value, $label) = self::row_label($kind, $id, $text);
             $item = array('id' => $id, 'value' => $value, 'label' => $label) + self::metrics($row['c'], $row['i'], $row['p']);
             $item['share'] = $totals['clicks'] ? round($item['clicks'] / $totals['clicks'], 4) : 0.0;
             if ($kind === 'pages') {
@@ -1026,6 +1094,28 @@ final class SEOProStats_Search {
             $out[] = $item;
         }
         return $out;
+    }
+
+    /**
+     * A row's value and label: a country (Unknown without one), a device,
+     * or the dictionary's text.
+     *
+     * @param string            $kind One of KINDS.
+     * @param string            $id   The grouped column's value.
+     * @param array<int,string> $text Dictionary id => text.
+     * @return array{0:string,1:string}
+     */
+    private static function row_label($kind, $id, array $text) {
+        if ($kind === 'countries') {
+            $value = self::country($id);
+            return array($value, $value === '' ? __('Unknown', 'seoprostats') : $value);
+        }
+        if ($kind === 'devices') {
+            $value = isset(self::DEVICES[(int) $id]) ? self::DEVICES[(int) $id] : 'unknown';
+            return array($value, SEOProStats_Query::device_labels()[$value]);
+        }
+        $value = isset($text[(int) $id]) ? $text[(int) $id] : '';
+        return array($value, $value);
     }
 
     /**

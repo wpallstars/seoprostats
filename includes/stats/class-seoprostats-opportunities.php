@@ -45,7 +45,13 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Opportunities {
+/**
+ * Where search effort pays: five kinds of opportunity in one report.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") The five kinds share the period, engine, page filter and rules; their reads belong to one report.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each kind's reads and rows readable.
+ */
+final class SEOProStats_Opportunities { // NOSONAR: one report with five kinds of opportunity; private helpers decompose each kind's reads and rows.
 
     /** Kinds of opportunity. */
     const KINDS = array('striking', 'ctr', 'decay', 'missing', 'overlap');
@@ -159,48 +165,98 @@ final class SEOProStats_Opportunities {
             'rows'     => array(),
             'total'    => 0,
             'more'     => false,
-        );
-        if ($kind === 'decay') {
-            $answer['compare'] = null;
-            $answer['updates'] = array();
-        } elseif ($kind === 'overlap') {
-            $answer['halves'] = null;
-        } elseif ($kind !== 'missing') {
-            $answer['curve'] = null;
-        }
+        ) + self::kind_keys($kind);
         if (!$now || ($pages !== null && !$pages)) {
             return $answer;
         }
 
+        $read = array('engine' => $engine, 'now' => $now, 'pages' => $pages, 'weekly' => $weekly, 'offset' => $offset, 'limit' => $limit);
         if ($kind === 'decay') {
             // Always against an earlier period: the previous one unless a year ago is asked for.
-            $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $req['compare'] === 'year' ? 'year' : 'prev');
-            $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
-            if (!$then) {
+            list($answer, $list) = self::decay_answer($answer, $read, $req['compare'] === 'year' ? 'year' : 'prev');
+            if ($list === null) {
                 return $answer;
             }
-            $list              = self::decay($engine, $now, $then, $pages, $answer['rules']);
-            $answer['compare'] = array('range' => SEOProStats_Query::range_out($then));
-            $answer['updates'] = SEOProStats_Changes::updates_between((int) $then['from'], (int) $now['to']);
-            $answer['span']    = array((int) $then['from'], (int) $now['to']);
-            $answer['rows']    = self::decay_rows($engine, $now, $then, array_slice($list, $offset, $limit));
-        } elseif ($kind === 'missing') {
-            $list           = self::missing_list($engine, $now, $pages, $answer['rules']);
-            $answer['rows'] = self::missing_rows(array_slice($list, $offset, $limit));
-        } elseif ($kind === 'overlap') {
-            $list             = self::overlap_list($engine, $now, $pages, $answer['rules']);
-            $halves           = self::halves($now, $weekly);
-            $answer['halves'] = $halves ? array_map(array('SEOProStats_Query', 'range_out'), $halves) : null;
-            $answer['rows']   = self::overlap_rows($engine, $halves, $pages, array_slice($list, $offset, $limit));
         } else {
-            $curve           = self::curve($engine, $now);
-            $answer['curve'] = $curve;
-            $list            = self::pairs_list($kind, $engine, $now, $pages, $curve['ctr'], $answer['rules']);
-            $answer['rows']  = self::pair_rows(array_slice($list, $offset, $limit));
+            list($answer, $list) = self::kind_answer($answer, $kind, $read);
         }
         $answer['total'] = count($list);
         $answer['more']  = $offset + $limit < count($list);
         return $answer;
+    }
+
+    /**
+     * The answer's keys for a kind, empty until read: decay's comparison
+     * and updates, overlap's halves, the CTR curve of striking and ctr.
+     *
+     * @param string $kind One of KINDS.
+     * @return array<string,mixed>
+     */
+    private static function kind_keys($kind) {
+        if ($kind === 'decay') {
+            return array('compare' => null, 'updates' => array());
+        }
+        if ($kind === 'overlap') {
+            return array('halves' => null);
+        }
+        return $kind !== 'missing' ? array('curve' => null) : array();
+    }
+
+    /**
+     * Losing pages against an earlier period: the answer with its
+     * comparison, updates, span and rows, and the whole list; the list is
+     * null when there is no earlier period.
+     *
+     * @param array<string,mixed> $answer  From build().
+     * @param array<string,mixed> $read    engine, now, pages, weekly, offset and limit.
+     * @param string              $compare prev or year.
+     * @return array{0:array<string,mixed>,1:array<int,array<string,mixed>>|null}
+     */
+    private static function decay_answer(array $answer, array $read, $compare) {
+        $now   = $read['now'];
+        $other = SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $compare);
+        $then  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $read['weekly']) : null;
+        if (!$then) {
+            return array($answer, null);
+        }
+        $list              = self::decay($read['engine'], $now, $then, $read['pages'], $answer['rules']);
+        $answer['compare'] = array('range' => SEOProStats_Query::range_out($then));
+        $answer['updates'] = SEOProStats_Changes::updates_between((int) $then['from'], (int) $now['to']);
+        $answer['span']    = array((int) $then['from'], (int) $now['to']);
+        $answer['rows']    = self::decay_rows($read['engine'], $now, $then, array_slice($list, $read['offset'], $read['limit']));
+        return array($answer, $list);
+    }
+
+    /**
+     * The other kinds: the answer with its rows (and halves or curve), and
+     * the whole list.
+     *
+     * @param array<string,mixed> $answer From build().
+     * @param string              $kind   missing, overlap, striking or ctr.
+     * @param array<string,mixed> $read   engine, now, pages, weekly, offset and limit.
+     * @return array{0:array<string,mixed>,1:array<int,array<string,mixed>>}
+     */
+    private static function kind_answer(array $answer, $kind, array $read) {
+        $engine = $read['engine'];
+        $now    = $read['now'];
+        $pages  = $read['pages'];
+        if ($kind === 'missing') {
+            $list           = self::missing_list($engine, $now, $pages, $answer['rules']);
+            $answer['rows'] = self::missing_rows(array_slice($list, $read['offset'], $read['limit']));
+            return array($answer, $list);
+        }
+        if ($kind === 'overlap') {
+            $list             = self::overlap_list($engine, $now, $pages, $answer['rules']);
+            $halves           = self::halves($now, $read['weekly']);
+            $answer['halves'] = $halves ? array_map(array('SEOProStats_Query', 'range_out'), $halves) : null;
+            $answer['rows']   = self::overlap_rows($engine, $halves, $pages, array_slice($list, $read['offset'], $read['limit']));
+            return array($answer, $list);
+        }
+        $curve           = self::curve($engine, $now);
+        $answer['curve'] = $curve;
+        $list            = self::pairs_list($kind, $engine, $now, $pages, $curve['ctr'], $answer['rules']);
+        $answer['rows']  = self::pair_rows(array_slice($list, $read['offset'], $read['limit']));
+        return array($answer, $list);
     }
 
     /**
@@ -563,72 +619,108 @@ final class SEOProStats_Opportunities {
      * @return array<int,array<string,mixed>>
      */
     private static function overlap_rows($engine, $halves, $pages, array $list) {
-        global $wpdb;
         if (!$list) {
             return array();
         }
-        $first = array();
-        if ($halves) {
-            $ids   = array_column($list, 'query_id');
-            $on    = SEOProStats_Search::engine_where($engine);
-            $where = 'query_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ') AND day >= %s AND day <= %s AND ' . $on['sql'];
-            $args  = array_merge($ids, array((string) $halves[0]['day_from'], (string) $halves[0]['day_to']), $on['args']);
-            if ($pages !== null) {
-                $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
-                $args   = array_merge($args, array_map('intval', $pages));
-            }
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by key query_day (query_id, day); $where holds only placeholders.
-            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT query_id AS q, path_id AS pg, SUM(impressions) AS i FROM %i FORCE INDEX (`query_day`) WHERE $where GROUP BY query_id, path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $args)), ARRAY_A);
-            foreach ($rows as $row) {
-                $first[(int) $row['q'] . ':' . (int) $row['pg']] = (int) $row['i'];
-            }
-        }
-
-        $ids  = array_column($list, 'query_id');
+        $first = $halves ? self::first_half($engine, $halves[0], $pages, array_column($list, 'query_id')) : null;
+        $ids   = array_column($list, 'query_id');
         foreach ($list as $row) {
             $ids = array_merge($ids, array_column($row['pairs'], 'path_id'));
         }
         $text = SEOProStats_Query::texts($ids);
         $out  = array();
         foreach ($list as $row) {
-            $q     = (int) $row['query_id'];
-            $best  = 0.0;
-            $lead  = array(null, null);
-            $most  = array(0, 0);
-            $items = array();
-            foreach ($row['pairs'] as $pair) {
-                $m    = SEOProStats_Search::metrics($pair['c'], $pair['i'], $pair['p']);
-                $best = max($best, (float) $m['ctr']);
-                if ($halves) {
-                    $was  = isset($first[$q . ':' . $pair['path_id']]) ? min($pair['i'], $first[$q . ':' . $pair['path_id']]) : 0;
-                    $half = array($was, $pair['i'] - $was);
-                    foreach (array(0, 1) as $h) {
-                        if ($half[$h] > $most[$h]) {
-                            $most[$h] = $half[$h];
-                            $lead[$h] = $pair['path_id'];
-                        }
-                    }
-                }
-                $items[] = self::page($pair['path_id'], $text) + $m + array('share' => round($pair['i'] / max(1, $row['sum']['i']), 4));
-            }
-            $shown     = array_slice($items, 0, self::OVERLAP_PAGES);
-            $listed    = array_sum(array_column($items, 'impressions'));
-            $clicks    = array_sum(array_column($items, 'clicks'));
-            $path_of   = static function ($id) use ($text) {
-                return $id !== null && isset($text[$id]) ? $text[$id] : null;
-            };
-            // The row is the leading page's, with the query's sums over all its pages read.
-            $out[] = self::page($row['pairs'][0]['path_id'], $text) + array(
-                'query' => isset($text[$q]) ? $text[$q] : '',
-            ) + SEOProStats_Search::metrics($row['sum']['c'], $row['sum']['i'], $row['sum']['p']) + array(
-                'pages'      => $shown,
-                'page_count' => count($items),
-                'leaders'    => array($path_of($lead[0]), $path_of($lead[1])),
-                'switched'   => $lead[0] !== null && $lead[1] !== null && $lead[0] !== $lead[1],
-                'potential'  => max(0, (int) round($listed * $best - $clicks)),
-            );
+            $out[] = self::overlap_row($row, $first, $text);
         }
         return $out;
+    }
+
+    /**
+     * Impressions of the shown queries' pages in the first half, by key
+     * query_day.
+     *
+     * @param int|int[]           $engine Engine code, or codes (Combined).
+     * @param array<string,mixed> $half   The first half, from halves().
+     * @param int[]|null          $pages  Path ids, or null for every page.
+     * @param int[]               $ids    Query ids.
+     * @return array<string,int> "query_id:path_id" => impressions.
+     */
+    private static function first_half($engine, array $half, $pages, array $ids) {
+        global $wpdb;
+        $on    = SEOProStats_Search::engine_where($engine);
+        $where = 'query_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ') AND day >= %s AND day <= %s AND ' . $on['sql'];
+        $args  = array_merge($ids, array((string) $half['day_from'], (string) $half['day_to']), $on['args']);
+        if ($pages !== null) {
+            $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
+            $args   = array_merge($args, array_map('intval', $pages));
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by key query_day (query_id, day); $where holds only placeholders.
+        $rows  = (array) $wpdb->get_results($wpdb->prepare("SELECT query_id AS q, path_id AS pg, SUM(impressions) AS i FROM %i FORCE INDEX (`query_day`) WHERE $where GROUP BY query_id, path_id ORDER BY NULL", array_merge(array(SEOProStats_Schema::table('gsc_pairs')), $args)), ARRAY_A);
+        $first = array();
+        foreach ($rows as $row) {
+            $first[(int) $row['q'] . ':' . (int) $row['pg']] = (int) $row['i'];
+        }
+        return $first;
+    }
+
+    /**
+     * One shared query's row; see overlap_rows().
+     *
+     * @param array<string,mixed>    $row   From overlap_list().
+     * @param array<string,int>|null $first From first_half(), or null without halves.
+     * @param array<int,string>      $text  Texts by id.
+     * @return array<string,mixed>
+     */
+    private static function overlap_row(array $row, $first, array $text) {
+        $q     = (int) $row['query_id'];
+        $best  = 0.0;
+        $lead  = array(null, null);
+        $most  = array(0, 0);
+        $items = array();
+        foreach ($row['pairs'] as $pair) {
+            $m    = SEOProStats_Search::metrics($pair['c'], $pair['i'], $pair['p']);
+            $best = max($best, (float) $m['ctr']);
+            if ($first !== null) {
+                self::take_lead($pair, isset($first[$q . ':' . $pair['path_id']]) ? $first[$q . ':' . $pair['path_id']] : null, $most, $lead);
+            }
+            $items[] = self::page($pair['path_id'], $text) + $m + array('share' => round($pair['i'] / max(1, $row['sum']['i']), 4));
+        }
+        $listed  = array_sum(array_column($items, 'impressions'));
+        $clicks  = array_sum(array_column($items, 'clicks'));
+        $path_of = static function ($id) use ($text) {
+            return $id !== null && isset($text[$id]) ? $text[$id] : null;
+        };
+        // The row is the leading page's, with the query's sums over all its pages read.
+        return self::page($row['pairs'][0]['path_id'], $text) + array(
+            'query' => isset($text[$q]) ? $text[$q] : '',
+        ) + SEOProStats_Search::metrics($row['sum']['c'], $row['sum']['i'], $row['sum']['p']) + array(
+            'pages'      => array_slice($items, 0, self::OVERLAP_PAGES),
+            'page_count' => count($items),
+            'leaders'    => array($path_of($lead[0]), $path_of($lead[1])),
+            'switched'   => $lead[0] !== null && $lead[1] !== null && $lead[0] !== $lead[1],
+            'potential'  => max(0, (int) round($listed * $best - $clicks)),
+        );
+    }
+
+    /**
+     * Make a page the leader of a half where it has the most impressions
+     * so far (the first page wins a tie).
+     *
+     * @param array{path_id:int,c:int,i:int,p:int} $pair The page's sums for the query, from overlap_list().
+     * @param int|null                    $early Its impressions in the first half, or null.
+     * @param array{0:int,1:int}          $most  Most impressions by half; changed.
+     * @param array{0:int|null,1:int|null} $lead  Leading path id by half; changed.
+     * @return void
+     */
+    private static function take_lead(array $pair, $early, array &$most, array &$lead) {
+        $was  = $early !== null ? min($pair['i'], $early) : 0;
+        $half = array($was, $pair['i'] - $was);
+        foreach (array(0, 1) as $h) {
+            if ($half[$h] > $most[$h]) {
+                $most[$h] = $half[$h];
+                $lead[$h] = $pair['path_id'];
+            }
+        }
     }
 
     /**
@@ -709,12 +801,34 @@ final class SEOProStats_Opportunities {
         if (!$list) {
             return array();
         }
-        $ids    = array_column($list, 'path_id');
-        $after  = self::sums('gsc_pairs', $engine, $now, $ids);
-        $before = self::sums('gsc_pairs', $engine, $then, $ids);
-        $zero   = array('c' => 0, 'i' => 0, 'p' => 0);
+        $ids     = array_column($list, 'path_id');
+        $lost_by = self::lost_by(self::sums('gsc_pairs', $engine, $now, $ids), self::sums('gsc_pairs', $engine, $then, $ids));
+        $query_ids = array();
+        foreach ($lost_by as $queries) {
+            $query_ids = array_merge($query_ids, array_column($queries, 'query_id'));
+        }
+        $query_ids = array_values(array_unique($query_ids));
+        // Every page's figures for those queries, in both periods: which other page overtook a losing one.
+        $rivals = self::rivals($lost_by, self::by_query($engine, $now, $query_ids), self::by_query($engine, $then, $query_ids));
+        $text   = SEOProStats_Query::texts(array_merge($ids, $query_ids, array_column($rivals, 'path_id')));
 
-        // The queries each page lost most clicks on.
+        $out = array();
+        foreach ($list as $row) {
+            $out[] = self::decay_row($row, isset($lost_by[$row['path_id']]) ? $lost_by[$row['path_id']] : array(), $rivals, $text);
+        }
+        return $out;
+    }
+
+    /**
+     * The queries each page lost most clicks on, at most PER_PAGE a page,
+     * most lost first.
+     *
+     * @param array<string,array{c:int,i:int,p:int}> $after  From sums() (gsc_pairs), this period.
+     * @param array<string,array{c:int,i:int,p:int}> $before The same, the earlier period.
+     * @return array<int,array<int,array<string,mixed>>> Path id => query_id, lost, now, then.
+     */
+    private static function lost_by(array $after, array $before) {
+        $zero    = array('c' => 0, 'i' => 0, 'p' => 0);
         $lost_by = array();
         foreach ($before as $key => $was) {
             list($path_id, $query_id) = array_map('intval', explode(':', $key));
@@ -724,19 +838,25 @@ final class SEOProStats_Opportunities {
                 $lost_by[$path_id][] = array('query_id' => $query_id, 'lost' => $lost, 'now' => $is, 'then' => $was);
             }
         }
-        $query_ids = array();
         foreach ($lost_by as $path_id => $queries) {
             usort($queries, static function ($a, $b) {
                 return array($b['lost'], $a['query_id']) <=> array($a['lost'], $b['query_id']);
             });
             $lost_by[$path_id] = array_slice($queries, 0, self::PER_PAGE);
-            $query_ids         = array_merge($query_ids, array_column($lost_by[$path_id], 'query_id'));
         }
-        $query_ids = array_values(array_unique($query_ids));
-        // Every page's figures for those queries, in both periods: which other page overtook a losing one.
-        $all_now  = self::by_query($engine, $now, $query_ids);
-        $all_then = self::by_query($engine, $then, $query_ids);
-        $rivals   = array();
+        return $lost_by;
+    }
+
+    /**
+     * The page that overtook each losing page for each of its queries.
+     *
+     * @param array<int,array<int,array<string,mixed>>>       $lost_by  From lost_by().
+     * @param array<int,array<int,array{c:int,i:int,p:int}>> $all_now  From by_query(), this period.
+     * @param array<int,array<int,array{c:int,i:int,p:int}>> $all_then From by_query(), the earlier one.
+     * @return array<string,array<string,mixed>> "path_id:query_id" => rival().
+     */
+    private static function rivals(array $lost_by, array $all_now, array $all_then) {
+        $rivals = array();
         foreach ($lost_by as $path_id => $queries) {
             foreach ($queries as $q) {
                 $rival = self::rival($path_id, $q['query_id'], $all_now, $all_then);
@@ -745,38 +865,57 @@ final class SEOProStats_Opportunities {
                 }
             }
         }
-        $text = SEOProStats_Query::texts(array_merge($ids, $query_ids, array_column($rivals, 'path_id')));
+        return $rivals;
+    }
 
-        $out = array();
-        foreach ($list as $row) {
-            $is    = SEOProStats_Search::metrics($row['now']['c'], $row['now']['i'], $row['now']['p']);
-            $was   = SEOProStats_Search::metrics($row['then']['c'], $row['then']['i'], $row['then']['p']);
-            $cause = self::cause($is, $was);
-            $item  = self::page($row['path_id'], $text) + $is + array(
-                'compare' => $was + array('change' => SEOProStats_Search::change($is, $was)),
-                'lost'    => $row['lost'],
-                'cause'   => $cause[0],
-                'why'     => $cause[1],
-                'queries' => array(),
-                'changes' => array(),
-            );
-            foreach (isset($lost_by[$row['path_id']]) ? $lost_by[$row['path_id']] : array() as $q) {
-                $q_now             = SEOProStats_Search::metrics($q['now']['c'], $q['now']['i'], $q['now']['p']);
-                $q_then            = SEOProStats_Search::metrics($q['then']['c'], $q['then']['i'], $q['then']['p']);
-                $rival             = isset($rivals[$row['path_id'] . ':' . $q['query_id']]) ? $rivals[$row['path_id'] . ':' . $q['query_id']] : null;
-                $item['queries'][] = array(
-                    'query'         => isset($text[$q['query_id']]) ? $text[$q['query_id']] : '',
-                    'lost'          => $q['lost'],
-                    'clicks'        => $q_now['clicks'],
-                    'then_clicks'   => $q_then['clicks'],
-                    'position'      => $q_now['impressions'] ? $q_now['position'] : null,
-                    'then_position' => $q_then['impressions'] ? $q_then['position'] : null,
-                    'rival'         => $rival ? self::page($rival['path_id'], $text) + array_diff_key($rival, array('path_id' => 0)) : null,
-                );
-            }
-            $out[] = $item;
+    /**
+     * One losing page as the answer gives it.
+     *
+     * @param array<string,mixed>               $row     From decay().
+     * @param array<int,array<string,mixed>>    $queries Its queries from lost_by().
+     * @param array<string,array<string,mixed>> $rivals  From rivals().
+     * @param array<int,string>                 $text    Texts by id.
+     * @return array<string,mixed>
+     */
+    private static function decay_row(array $row, array $queries, array $rivals, array $text) {
+        $is    = SEOProStats_Search::metrics($row['now']['c'], $row['now']['i'], $row['now']['p']);
+        $was   = SEOProStats_Search::metrics($row['then']['c'], $row['then']['i'], $row['then']['p']);
+        $cause = self::cause($is, $was);
+        $item  = self::page($row['path_id'], $text) + $is + array(
+            'compare' => $was + array('change' => SEOProStats_Search::change($is, $was)),
+            'lost'    => $row['lost'],
+            'cause'   => $cause[0],
+            'why'     => $cause[1],
+            'queries' => array(),
+            'changes' => array(),
+        );
+        foreach ($queries as $q) {
+            $key               = $row['path_id'] . ':' . $q['query_id'];
+            $item['queries'][] = self::lost_query($q, isset($rivals[$key]) ? $rivals[$key] : null, $text);
         }
-        return $out;
+        return $item;
+    }
+
+    /**
+     * A query a page lost clicks on, with the page that overtook it there.
+     *
+     * @param array<string,mixed>      $q     From lost_by().
+     * @param array<string,mixed>|null $rival From rival().
+     * @param array<int,string>        $text  Texts by id.
+     * @return array<string,mixed>
+     */
+    private static function lost_query(array $q, $rival, array $text) {
+        $q_now  = SEOProStats_Search::metrics($q['now']['c'], $q['now']['i'], $q['now']['p']);
+        $q_then = SEOProStats_Search::metrics($q['then']['c'], $q['then']['i'], $q['then']['p']);
+        return array(
+            'query'         => isset($text[$q['query_id']]) ? $text[$q['query_id']] : '',
+            'lost'          => $q['lost'],
+            'clicks'        => $q_now['clicks'],
+            'then_clicks'   => $q_then['clicks'],
+            'position'      => $q_now['impressions'] ? $q_now['position'] : null,
+            'then_position' => $q_then['impressions'] ? $q_then['position'] : null,
+            'rival'         => $rival ? self::page($rival['path_id'], $text) + array_diff_key($rival, array('path_id' => 0)) : null,
+        );
     }
 
     /**
@@ -822,19 +961,16 @@ final class SEOProStats_Opportunities {
         if (!$sum) {
             return null;
         }
-        $was  = isset($then[$query_id]) ? $then[$query_id] : array();
-        $mine = isset($pages[$path_id]) && $pages[$path_id]['i'] ? $pages[$path_id]['p'] / $pages[$path_id]['i'] : null;
-        $was_mine = isset($was[$path_id]) && $was[$path_id]['i'] ? $was[$path_id]['p'] / $was[$path_id]['i'] : null;
-        $best = null;
+        $was      = isset($then[$query_id]) ? $then[$query_id] : array();
+        $mine     = self::position_of($pages, $path_id);
+        $was_mine = self::position_of($was, $path_id);
+        $best     = null;
         foreach ($pages as $other => $sums) {
             if ($other === (int) $path_id || $sums['i'] < $sum * self::OVERLAP_SHARE) {
                 continue;
             }
-            $position      = $sums['p'] / $sums['i'];
-            $then_position = isset($was[$other]) && $was[$other]['i'] ? $was[$other]['p'] / $was[$other]['i'] : null;
-            $ahead_now     = $mine === null || $position < $mine;
-            $ahead_then    = $then_position !== null && ($was_mine === null || $then_position < $was_mine);
-            if (!$ahead_now || $ahead_then) {
+            $then_position = self::position_of($was, $other);
+            if (!self::overtook($sums['p'] / $sums['i'], $then_position, $mine, $was_mine)) {
                 continue;
             }
             if ($best === null || $sums['c'] > $best['clicks']) {
@@ -850,6 +986,34 @@ final class SEOProStats_Opportunities {
             }
         }
         return $best;
+    }
+
+    /**
+     * A page's exact average position for a query, or null when it was
+     * not shown.
+     *
+     * @param array<int,array{c:int,i:int,p:int}> $pages Path id => sums.
+     * @param int                                 $id    Path id.
+     * @return float|int|null
+     */
+    private static function position_of(array $pages, $id) {
+        return isset($pages[$id]) && $pages[$id]['i'] ? $pages[$id]['p'] / $pages[$id]['i'] : null;
+    }
+
+    /**
+     * Whether another page ranks better than the losing page now and did
+     * not before (or was not shown then).
+     *
+     * @param float|int      $position      The other page's position now.
+     * @param float|int|null $then_position Its position before.
+     * @param float|int|null $mine          The losing page's position now.
+     * @param float|int|null $was_mine      Its position before.
+     * @return bool
+     */
+    private static function overtook($position, $then_position, $mine, $was_mine) {
+        $ahead_now  = $mine === null || $position < $mine;
+        $ahead_then = $then_position !== null && ($was_mine === null || $then_position < $was_mine);
+        return $ahead_now && !$ahead_then;
     }
 
     /**
