@@ -235,8 +235,7 @@ final class SEOProStats_Search_Import {
             if ($i > 0 && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
                 break;
             }
-            if ($i > 0 && !SEOProStats_Connections::still_connected($source)) {
-                // Disconnected while this run was under way: stop, write nothing more.
+            if (self::disconnected($source, $import)) {
                 break;
             }
             list($day, $edge) = $job;
@@ -257,6 +256,9 @@ final class SEOProStats_Search_Import {
             SEOProStats_Connections::update_state($source, array($edge => $day));
         }
         self::finish($import, self::DONE, $span, $rows);
+        if (self::disconnected($source, $import)) {
+            return array('days' => $count, 'rows' => $rows, 'import' => $import, 'done' => true);
+        }
         SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
         self::pairs_due($source, $class, $span);
         self::appearance_due($source, $class, $span);
@@ -331,7 +333,7 @@ final class SEOProStats_Search_Import {
         $rows   = 0;
         $days   = array();
         while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
-            if (!SEOProStats_Connections::still_connected($source)) {
+            if (self::disconnected($source, $import)) {
                 break;
             }
             $value = (string) $queue[0];
@@ -343,6 +345,10 @@ final class SEOProStats_Search_Import {
                 return self::failed($source, $data);
             }
             if (!$import) {
+                // Disconnected during the request above: start no import.
+                if (self::disconnected($source, 0)) {
+                    break;
+                }
                 $import = self::start($source, $property, $from);
                 if (!$import) {
                     return self::failed($source, new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats')));
@@ -363,6 +369,12 @@ final class SEOProStats_Search_Import {
         }
         if ($import) {
             self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
+        }
+        if (self::disconnected($source, $import)) {
+            $result['done'] = true;
+            return $result;
+        }
+        if ($import) {
             SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
             $result['rows']  += $rows;
             $result['import'] = $import;
@@ -495,7 +507,7 @@ final class SEOProStats_Search_Import {
             if (($pages > 0 || $result['days'] > 0) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
                 break;
             }
-            if (!SEOProStats_Connections::still_connected($source)) {
+            if (self::disconnected($source, $import)) {
                 break;
             }
             if (!$import) {
@@ -523,6 +535,11 @@ final class SEOProStats_Search_Import {
         }
         if ($import) {
             self::finish($import, self::DONE, $days ? $days : array($from, $to), $rows);
+        }
+        if (self::disconnected($source, $import)) {
+            return array('days' => $result['days'], 'rows' => $result['rows'] + $rows, 'import' => $result['import'] ? $result['import'] : $import, 'done' => true, 'pages' => $pages);
+        }
+        if ($import) {
             SEOProStats_Connections::update_state($source, array('last_run' => time(), 'last_import' => $import, 'error' => null, 'error_at' => null));
         }
         if (!$queue) {
@@ -996,6 +1013,28 @@ final class SEOProStats_Search_Import {
             'meta'     => (string) wp_json_encode(array('property' => $property)),
         ), array('%s', '%d', '%d', '%s', '%s', '%s'));
         return $ok ? (int) $wpdb->insert_id : 0;
+    }
+
+    /**
+     * Whether the source was disconnected while this run was under way, so
+     * the run stops. A disconnect that deleted the data took this run's
+     * imports row with it; rows the run wrote after that (its Google
+     * request was in flight) are deleted again here.
+     *
+     * @param string $source Source key.
+     * @param int    $import This run's imports.id, 0 before its first write.
+     * @return bool
+     */
+    private static function disconnected($source, $import) {
+        if (SEOProStats_Connections::still_connected($source)) {
+            return false;
+        }
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by primary key.
+        if ($import && !$wpdb->get_var($wpdb->prepare('SELECT id FROM %i WHERE id = %d', SEOProStats_Schema::table('imports'), $import))) {
+            self::delete_data($source);
+        }
+        return true;
     }
 
     /**
