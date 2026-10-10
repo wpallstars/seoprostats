@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.0
+Stable tag: 1.4.1
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -119,8 +119,8 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.4.0 =
-* New: dark mode for the plugin's screens: Light, Dark or System, chosen by each person with the button next to Buy me a coffee.
-* Changed: loading placeholders follow the text colour, so they show in light and dark screens and shared reports.
+= 1.4.1 =
+* Fixed: a links import no longer waits at "0 of N rows" when its background run is lost; the Import tab shows progress and keeps trying instead of stopping on "not a valid JSON response".
+* Changed: the dashboard opens on Last 91 days; Search periods keep their full length.
 
 Every change: changelog.txt.

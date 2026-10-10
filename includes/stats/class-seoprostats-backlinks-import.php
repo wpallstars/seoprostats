@@ -18,6 +18,8 @@ final class SEOProStats_Backlinks_Import {
     const MAX_ROWS = 100000;
     const MAX_BYTES = 52428800;
     const BATCH = 500;
+    /** Seconds of work per status poll while an administrator watches. */
+    const POLL_BUDGET = 4;
     const SOURCES = array('gsc', 'ahrefs', 'semrush', 'majestic', 'moz', 'bing', 'generic');
 
     /** Public progress, never staged rows. @return array<string,mixed> */

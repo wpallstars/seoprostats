@@ -96,8 +96,14 @@ final class SEOProStats_Clicks {
      * Only called for the selected page and the bounded returned page rows
      * (here and in SEOProStats_Search).
      *
+     * A post is found by url_to_postid(), or else by the path's last part
+     * among published posts of every viewable post type, kept only when its
+     * own permalink has this path: url_to_postid() misses custom post types
+     * whose permalinks have no base. A path that is no post may be a term
+     * archive of a viewable taxonomy, found and checked the same way.
+     *
      * @param string $path Page path.
-     * @return array{path:string,url:string,post_id:int,edit_url:null}|null
+     * @return array{path:string,url:string,post_id:int,edit_url:null,term_id?:int,taxonomy?:string}|null
      */
     public static function page_info($path) {
         if ($path === '' || $path[0] !== '/' || strpos($path, '//') === 0 || strpos($path, '*') !== false || strpos($path, '\\') !== false) {
@@ -108,12 +114,122 @@ final class SEOProStats_Clicks {
             return null;
         }
         // Paths include the installation directory already on subdirectory sites.
-        $url = esc_url_raw($home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '') . $path);
-        return array('path' => $path, 'url' => $url, 'post_id' => url_to_postid($url), 'edit_url' => null);
+        $url  = esc_url_raw($home['scheme'] . '://' . $home['host'] . (isset($home['port']) ? ':' . $home['port'] : '') . $path);
+        $info = array('path' => $path, 'url' => $url, 'post_id' => url_to_postid($url), 'edit_url' => null);
+        if (!$info['post_id']) {
+            $info['post_id'] = self::post_at($path);
+        }
+        if (!$info['post_id']) {
+            $term = self::term_at($path);
+            if ($term) {
+                $info['term_id']  = (int) $term->term_id;
+                $info['taxonomy'] = (string) $term->taxonomy;
+            }
+        }
+        return $info;
     }
 
     /**
-     * Add the current viewer's editor link, outside the shared report cache.
+     * A published post of a viewable post type whose permalink has this
+     * path, found by its slug (indexed `post_name`).
+     *
+     * @param string $path Page path.
+     * @return int Post ID, or 0.
+     */
+    private static function post_at($path) {
+        $slug  = self::last_slug($path);
+        $types = array_values(array_diff(array_filter(get_post_types(array('public' => true)), 'is_post_type_viewable'), array('attachment')));
+        if ($slug === '' || !$types) {
+            return 0;
+        }
+        $ids = get_posts(array(
+            'name'                   => $slug,
+            'post_type'              => $types,
+            'post_status'            => 'publish',
+            'fields'                 => 'ids',
+            'posts_per_page'         => 10,
+            'no_found_rows'          => true,
+            'ignore_sticky_posts'    => true,
+            'update_post_meta_cache' => false,
+            'update_post_term_cache' => false,
+        ));
+        foreach ($ids as $id) {
+            if (self::same_path(get_permalink((int) $id), $path)) {
+                return (int) $id;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * A term of a viewable taxonomy whose archive has this path, found by
+     * its slug (indexed `slug`).
+     *
+     * @param string $path Page path.
+     * @return WP_Term|null
+     */
+    private static function term_at($path) {
+        $slug       = self::last_slug($path);
+        $taxonomies = array_values(array_filter(get_taxonomies(array('public' => true)), 'is_taxonomy_viewable'));
+        if ($slug === '' || !$taxonomies) {
+            return null;
+        }
+        $terms = get_terms(array(
+            'taxonomy'               => $taxonomies,
+            'slug'                   => $slug,
+            'hide_empty'             => false,
+            'number'                 => 10,
+            'update_term_meta_cache' => false,
+        ));
+        if (!is_array($terms)) {
+            return null;
+        }
+        foreach ($terms as $term) {
+            $link = get_term_link($term);
+            if (!is_wp_error($link) && self::same_path($link, $path)) {
+                return $term;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The last part of a path as WordPress stores slugs, or ''.
+     *
+     * @param string $path Page path.
+     * @return string
+     */
+    private static function last_slug($path) {
+        $only  = wp_parse_url($path, PHP_URL_PATH);
+        $parts = is_string($only) ? preg_split('#/#', $only, -1, PREG_SPLIT_NO_EMPTY) : false;
+        if (!$parts) {
+            return '';
+        }
+        // As get_page_by_path(): non-ASCII slugs are stored percent-encoded.
+        $slug = sanitize_title_for_query(rawurlencode(urldecode(end($parts))));
+        return strlen($slug) <= 200 ? $slug : '';
+    }
+
+    /**
+     * Whether an address has this path, ignoring a trailing slash, case and
+     * percent-encoding.
+     *
+     * @param mixed  $link Address, or false.
+     * @param string $path Page path.
+     * @return bool
+     */
+    private static function same_path($link, $path) {
+        $have = is_string($link) ? wp_parse_url($link, PHP_URL_PATH) : null;
+        $want = wp_parse_url($path, PHP_URL_PATH);
+        if (!is_string($have) || !is_string($want)) {
+            return false;
+        }
+        return strtolower(untrailingslashit(rawurldecode($have))) === strtolower(untrailingslashit(rawurldecode($want)));
+    }
+
+    /**
+     * Add the current viewer's editor link, outside the shared report cache:
+     * the post's with edit_post, or the term archive's with edit_term.
      * Shared read-only interfaces must omit this field entirely.
      *
      * @param array<string,mixed> $info Page identity or page row.
@@ -121,9 +237,14 @@ final class SEOProStats_Clicks {
      */
     public static function with_edit_url(array $info) {
         $post_id          = (int) $info['post_id'];
+        $term_id          = isset($info['term_id']) ? (int) $info['term_id'] : 0;
         $info['edit_url'] = null;
-        if ($post_id && current_user_can('edit_post', $post_id)) {
-            $info['edit_url'] = get_edit_post_link($post_id, 'raw') ?: null;
+        if ($post_id) {
+            if (current_user_can('edit_post', $post_id)) {
+                $info['edit_url'] = get_edit_post_link($post_id, 'raw') ?: null;
+            }
+        } elseif ($term_id && !empty($info['taxonomy']) && current_user_can('edit_term', $term_id)) {
+            $info['edit_url'] = get_edit_term_link($term_id, (string) $info['taxonomy']) ?: null;
         }
         return $info;
     }

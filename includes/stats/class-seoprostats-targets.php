@@ -125,21 +125,10 @@ final class SEOProStats_Targets {
         }
         $engine = SEOProStats_Search::engine_name($engine);
         $live   = SEOProStats_Schema::set() === 'live';
-        $key    = array(
-            'range'   => isset($req['range']) ? $req['range'] : '',
-            'from'    => isset($req['from']) ? $req['from'] : '',
-            'to'      => isset($req['to']) ? $req['to'] : '',
-            'compare' => isset($req['compare']) ? $req['compare'] : 'none',
-            'engine'  => $engine,
-            'imports' => SEOProStats_Search::version(),
-            'targets' => self::version(),
-        );
-        $all    = SEOProStats_Query::cached('targets', $key, static function () use ($req, $engine) {
+        $all    = SEOProStats_Query::cached('targets', self::cache_key($req, $engine), static function () use ($req, $engine) {
             return self::build($req, $engine);
         });
-        $list   = array_values(array_filter((array) $all['list'], static function ($row) use ($status) {
-            return $status === 'all' || $row['status'] === $status || ($status === 'open' && in_array($row['status'], self::OPEN, true));
-        }));
+        $list   = self::with_status((array) $all['list'], $status);
         unset($all['list']);
         $counts = array_fill_keys(self::STATES, 0);
         foreach ($list as $row) {
@@ -147,16 +136,8 @@ final class SEOProStats_Targets {
         }
         $limit  = max(1, min(self::MAX_LIMIT, isset($req['limit']) ? (int) $req['limit'] : self::LIMIT));
         $offset = max(0, isset($req['offset']) ? (int) $req['offset'] : 0);
-        $rows   = array_slice($list, $offset, $limit);
         // Editor links depend on the viewer, so they are added outside the shared cache.
-        foreach ($rows as &$row) {
-            foreach (array('page', 'shown') as $field) {
-                if ($row[$field] !== null && (int) $row[$field]['post_id']) {
-                    $row[$field] = SEOProStats_Clicks::with_edit_url($row[$field]);
-                }
-            }
-        }
-        unset($row);
+        $rows   = self::with_edit_urls(array_slice($list, $offset, $limit));
         return $all + array(
             'connected' => !$live || SEOProStats_Search::connected($engine),
             'status'    => $status,
@@ -165,6 +146,56 @@ final class SEOProStats_Targets {
             'total'     => count($list),
             'more'      => $offset + $limit < count($list),
         );
+    }
+
+    /**
+     * The cache key of the shared part of the report.
+     *
+     * @param array<string,mixed> $req    Request.
+     * @param string              $engine Engine name.
+     * @return array<string,mixed>
+     */
+    private static function cache_key(array $req, $engine) {
+        return array(
+            'range'   => isset($req['range']) ? $req['range'] : '',
+            'from'    => isset($req['from']) ? $req['from'] : '',
+            'to'      => isset($req['to']) ? $req['to'] : '',
+            'compare' => isset($req['compare']) ? $req['compare'] : 'none',
+            'engine'  => $engine,
+            'imports' => SEOProStats_Search::version(),
+            'targets' => self::version(),
+        );
+    }
+
+    /**
+     * The rows with a status: all, open (any of OPEN) or one status.
+     *
+     * @param array<int,array<string,mixed>> $list   Rows.
+     * @param string                         $status One of FILTERS.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function with_status(array $list, $status) {
+        return array_values(array_filter($list, static function ($row) use ($status) {
+            return $status === 'all' || $row['status'] === $status || ($status === 'open' && in_array($row['status'], self::OPEN, true));
+        }));
+    }
+
+    /**
+     * Rows with editor links on their pages that are posts.
+     *
+     * @param array<int,array<string,mixed>> $rows Rows.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function with_edit_urls(array $rows) {
+        foreach ($rows as &$row) {
+            foreach (array('page', 'shown') as $field) {
+                if ($row[$field] !== null && (int) $row[$field]['post_id']) {
+                    $row[$field] = SEOProStats_Clicks::with_edit_url($row[$field]);
+                }
+            }
+        }
+        unset($row);
+        return $rows;
     }
 
     /**
@@ -219,7 +250,21 @@ final class SEOProStats_Targets {
             $then              = self::query_sums($engine, $ids, $before);
             $answer['compare'] = array('range' => SEOProStats_Query::range_out($before));
         }
-        // Texts of the queries and of every page named.
+        $text           = SEOProStats_Query::texts(self::text_ids($ids, $targets, $pairs));
+        $answer['list'] = self::target_rows($targets, array('now' => $totals, 'pairs' => $pairs, 'then' => $then), $before !== null, $text);
+        return $answer;
+    }
+
+    /**
+     * Dictionary ids whose texts the rows need: the queries and every
+     * page named.
+     *
+     * @param int[]                                            $ids     Query ids.
+     * @param array<int,array<string,mixed>>                   $targets Stored targets.
+     * @param array<int,array<int,array{c:int,i:int,p:int}>>   $pairs   Query id => path id => sums.
+     * @return int[]
+     */
+    private static function text_ids(array $ids, array $targets, array $pairs) {
         $text_ids = $ids;
         foreach ($targets as $target) {
             $text_ids[] = $target['path_id'];
@@ -227,19 +272,28 @@ final class SEOProStats_Targets {
         foreach ($pairs as $pages) {
             $text_ids = array_merge($text_ids, array_keys($pages));
         }
-        $text = SEOProStats_Query::texts(array_values(array_unique(array_filter($text_ids))));
+        return array_values(array_unique(array_filter($text_ids)));
+    }
 
+    /**
+     * Every target's row, highest priority first, then most impressions.
+     *
+     * @param array<int,array<string,mixed>> $targets  Stored targets.
+     * @param array<string,array<int,mixed>> $sums     now (query sums), pairs (sums by page) and then (comparison sums), by query id.
+     * @param bool                           $compared Whether there is a comparison period.
+     * @param array<int,string>              $text     Dictionary texts.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function target_rows(array $targets, array $sums, $compared, array $text) {
         $list = array();
         foreach ($targets as $query_id => $target) {
-            $sums = isset($totals[$query_id]) ? $totals[$query_id] : array('c' => 0, 'i' => 0, 'p' => 0);
-            $list[] = self::row($target, isset($text[$query_id]) ? (string) $text[$query_id] : '', $sums, isset($pairs[$query_id]) ? $pairs[$query_id] : array(), isset($then[$query_id]) ? $then[$query_id] : null, $before !== null, $text);
+            $now    = isset($sums['now'][$query_id]) ? $sums['now'][$query_id] : array('c' => 0, 'i' => 0, 'p' => 0);
+            $list[] = self::row($target, isset($text[$query_id]) ? (string) $text[$query_id] : '', $now, isset($sums['pairs'][$query_id]) ? $sums['pairs'][$query_id] : array(), isset($sums['then'][$query_id]) ? $sums['then'][$query_id] : null, $compared, $text);
         }
-        // Highest priority first, then most impressions.
         usort($list, static function ($a, $b) {
             return array($b['priority'], $b['impressions'], $a['query']) <=> array($a['priority'], $a['impressions'], $b['query']);
         });
-        $answer['list'] = $list;
-        return $answer;
+        return $list;
     }
 
     /**
@@ -255,28 +309,11 @@ final class SEOProStats_Targets {
      * @return array<string,mixed>
      */
     private static function row(array $target, $query, array $sums, array $pages, $then, $compared, array $text) {
-        $metrics = SEOProStats_Search::metrics($sums['c'], $sums['i'], $sums['p']);
-        // The page search shows most for the query: most impressions, then clicks.
-        $shown_id = 0;
-        foreach ($pages as $path_id => $page) {
-            if (!$shown_id || array($page['i'], $page['c'], -$path_id) > array($pages[$shown_id]['i'], $pages[$shown_id]['c'], -$shown_id)) {
-                $shown_id = (int) $path_id;
-            }
-        }
-        $meant = (int) $target['path_id'];
-        if (!$metrics['impressions']) {
-            $state = 'not_shown';
-        } elseif (!$meant) {
-            $state = 'no_page';
-        } else {
-            // Without pages for the query (search can leave them out), no other page is known to rank.
-            $state = $shown_id && $shown_id !== $meant ? 'wrong_page' : 'ranking';
-        }
-        $then_metrics = $then ? SEOProStats_Search::metrics($then['c'], $then['i'], $then['p']) : null;
-        $then_clicks  = null;
-        if ($compared) {
-            $then_clicks = $then_metrics ? $then_metrics['clicks'] : 0;
-        }
+        $metrics  = SEOProStats_Search::metrics($sums['c'], $sums['i'], $sums['p']);
+        $shown_id = self::shown_page($pages);
+        $meant    = (int) $target['path_id'];
+        $state    = self::target_state($metrics['impressions'], $meant, $shown_id);
+        list($then_position, $then_clicks) = self::then_figures($then, $compared);
         $meant_page = $meant ? self::page($meant, $text, $pages[$meant] ?? null, $metrics['impressions']) : null;
         return array(
             'query'         => $query,
@@ -294,13 +331,69 @@ final class SEOProStats_Targets {
             'impressions'   => $metrics['impressions'],
             'ctr'           => $metrics['ctr'],
             'position'      => $metrics['impressions'] ? $metrics['position'] : null,
-            'then_position' => $compared && $then_metrics && $then_metrics['impressions'] ? $then_metrics['position'] : null,
+            'then_position' => $then_position,
             'then_clicks'   => $then_clicks,
             'page'          => $meant_page,
             'shown'         => $shown_id ? self::page($shown_id, $text, $pages[$shown_id], $metrics['impressions']) : null,
             'pages'         => count($pages),
             'updated'       => wp_date('c', (int) $target['updated']),
         );
+    }
+
+    /**
+     * The page search shows most for the query: most impressions, then
+     * clicks, then the lowest path id; 0 for none.
+     *
+     * @param array<int,array{c:int,i:int,p:int}> $pages The query's sums by page.
+     * @return int Path id.
+     */
+    private static function shown_page(array $pages) {
+        $shown_id = 0;
+        foreach ($pages as $path_id => $page) {
+            if (!$shown_id || array($page['i'], $page['c'], -$path_id) > array($pages[$shown_id]['i'], $pages[$shown_id]['c'], -$shown_id)) {
+                $shown_id = (int) $path_id;
+            }
+        }
+        return $shown_id;
+    }
+
+    /**
+     * A target's state: not shown, no page chosen, another page shown, or
+     * ranking with the page meant.
+     *
+     * @param int $impressions The query's impressions.
+     * @param int $meant       The path id meant, 0 for none.
+     * @param int $shown_id    shown_page().
+     * @return string One of STATES.
+     */
+    private static function target_state($impressions, $meant, $shown_id) {
+        if (!$impressions) {
+            return 'not_shown';
+        }
+        if (!$meant) {
+            return 'no_page';
+        }
+        // Without pages for the query (search can leave them out), no other page is known to rank.
+        return $shown_id && $shown_id !== $meant ? 'wrong_page' : 'ranking';
+    }
+
+    /**
+     * The query's position and clicks in the comparison period: null
+     * without one; no position, and 0 clicks, when it was not shown.
+     *
+     * @param array{c:int,i:int,p:int}|null $then     The query's sums in the comparison period.
+     * @param bool                          $compared Whether there is a comparison period.
+     * @return array{0:float|null,1:int|null}
+     */
+    private static function then_figures($then, $compared) {
+        if (!$compared) {
+            return array(null, null);
+        }
+        $metrics = $then ? SEOProStats_Search::metrics($then['c'], $then['i'], $then['p']) : null;
+        if (!$metrics) {
+            return array(null, 0);
+        }
+        return array($metrics['impressions'] ? $metrics['position'] : null, $metrics['clicks']);
     }
 
     /**
@@ -444,30 +537,54 @@ final class SEOProStats_Targets {
         }
         $lines = preg_split('/\r\n|\r|\n/', $text);
         $lines = is_array($lines) ? $lines : array();
-        foreach ($lines as $line) {
-            if (preg_match('/^[A-Za-z_][\w.-]*\[\d+[|\t,]?\]\{.*\}:\s*$/', $line)) {
-                $rows = self::parse_toon($lines);
-                return is_wp_error($rows) ? $rows : array('format' => 'toon', 'rows' => $rows);
-            }
+        if (self::has_toon($lines)) {
+            $rows = self::parse_toon($lines);
+            return is_wp_error($rows) ? $rows : array('format' => 'toon', 'rows' => $rows);
         }
         if ($trim[0] === '[' || $trim[0] === '{') {
-            $data = json_decode($trim, true);
-            if (!is_array($data)) {
-                return self::error('seoprostats_targets_json', __('The list looks like JSON but cannot be read.', 'seoprostats'));
-            }
-            if (isset($data['targets']) && is_array($data['targets'])) {
-                $data = $data['targets'];
-            }
-            $rows = array();
-            foreach (array_values($data) as $item) {
-                if (!is_array($item)) {
-                    $item = array('query' => is_scalar($item) ? (string) $item : '');
-                }
-                $rows[] = $item;
-            }
-            return array('format' => 'json', 'rows' => $rows);
+            return self::parse_json($trim);
         }
         return array('format' => 'csv', 'rows' => self::parse_csv($lines));
+    }
+
+    /**
+     * Whether any line is a TOON table header.
+     *
+     * @param string[] $lines Lines.
+     * @return bool
+     */
+    private static function has_toon(array $lines) {
+        foreach ($lines as $line) {
+            if (preg_match('/^[A-Za-z_][\w.-]*\[\d+[|\t,]?\]\{.*\}:\s*$/', $line)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Rows of a JSON list, or of an object's targets; a text alone is a
+     * row with that query.
+     *
+     * @param string $json JSON, trimmed.
+     * @return array{format:string,rows:array<int,array<string,mixed>>}|WP_Error
+     */
+    private static function parse_json($json) {
+        $data = json_decode($json, true);
+        if (!is_array($data)) {
+            return self::error('seoprostats_targets_json', __('The list looks like JSON but cannot be read.', 'seoprostats'));
+        }
+        if (isset($data['targets']) && is_array($data['targets'])) {
+            $data = $data['targets'];
+        }
+        $rows = array();
+        foreach (array_values($data) as $item) {
+            if (!is_array($item)) {
+                $item = array('query' => is_scalar($item) ? (string) $item : '');
+            }
+            $rows[] = $item;
+        }
+        return array('format' => 'json', 'rows' => $rows);
     }
 
     /**
@@ -477,35 +594,60 @@ final class SEOProStats_Targets {
      * @return array<int,array<string,string>>|WP_Error
      */
     private static function parse_toon(array $lines) {
-        $count = count($lines);
         foreach ($lines as $index => $line) {
-            if (!preg_match('/^([A-Za-z_][\w.-]*)\[(\d+)([|\t,]?)\]\{(.*)\}:\s*$/', $line, $m)) {
+            $header = self::toon_header($line);
+            if ($header === null || !array_intersect($header[1], self::COLUMNS['query'])) {
                 continue;
             }
-            $delim  = $m[3] !== '' ? $m[3] : ',';
-            $fields = $m[4] !== '' ? array_map(array(__CLASS__, 'toon_token'), explode($delim, $m[4])) : array();
-            if (!array_intersect($fields, self::COLUMNS['query'])) {
-                continue;
-            }
-            $rows = array();
-            for ($at = $index + 1; $at < $count && strpos($lines[$at], '  ') === 0; $at++) {
-                $cells = self::toon_cells(substr($lines[$at], 2), $delim);
-                if ($cells === null || count($cells) !== count($fields)) {
-                    /* translators: %d: row number */
-                    return self::error('seoprostats_targets_toon', sprintf(__('Row %d of the targets table cannot be read.', 'seoprostats'), count($rows) + 1));
-                }
-                $row = array();
-                foreach ($fields as $column => $field) {
-                    $row[$field] = $cells[$column];
-                }
-                $rows[] = $row;
-                if (count($rows) > self::MAX_ROWS) {
-                    break;
-                }
-            }
-            return $rows;
+            return self::toon_rows($lines, $index + 1, $header[1], $header[0]);
         }
         return self::error('seoprostats_targets_toon', __('The TOON document has no table with a phrase or query column.', 'seoprostats'));
+    }
+
+    /**
+     * A TOON table header's delimiter and fields; null for another line.
+     *
+     * @param string $line Line.
+     * @return array{0:string,1:string[]}|null
+     */
+    private static function toon_header($line) {
+        if (!preg_match('/^([A-Za-z_][\w.-]*)\[(\d+)([|\t,]?)\]\{(.*)\}:\s*$/', $line, $m)) {
+            return null;
+        }
+        $delim  = $m[3] !== '' ? $m[3] : ',';
+        $fields = $m[4] !== '' ? array_map(array(__CLASS__, 'toon_token'), explode($delim, $m[4])) : array();
+        return array($delim, $fields);
+    }
+
+    /**
+     * A TOON table's rows: the indented lines after its header, one over
+     * MAX_ROWS at most.
+     *
+     * @param string[] $lines  Lines.
+     * @param int      $from   The first row's line.
+     * @param string[] $fields Fields.
+     * @param string   $delim  Delimiter.
+     * @return array<int,array<string,string>>|WP_Error
+     */
+    private static function toon_rows(array $lines, $from, array $fields, $delim) {
+        $count = count($lines);
+        $rows  = array();
+        for ($at = $from; $at < $count && strpos($lines[$at], '  ') === 0; $at++) {
+            $cells = self::toon_cells(substr($lines[$at], 2), $delim);
+            if ($cells === null || count($cells) !== count($fields)) {
+                /* translators: %d: row number */
+                return self::error('seoprostats_targets_toon', sprintf(__('Row %d of the targets table cannot be read.', 'seoprostats'), count($rows) + 1));
+            }
+            $row = array();
+            foreach ($fields as $column => $field) {
+                $row[$field] = $cells[$column];
+            }
+            $rows[] = $row;
+            if (count($rows) > self::MAX_ROWS) {
+                break;
+            }
+        }
+        return $rows;
     }
 
     /**
@@ -596,7 +738,6 @@ final class SEOProStats_Targets {
      * @return array<string,mixed>|WP_Error added, updated, removed, skipped (row, query, reason, message), total.
      */
     public static function import(array $rows, $source = 'list', $replace = false) {
-        global $wpdb;
         self::load();
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
@@ -607,6 +748,39 @@ final class SEOProStats_Targets {
             /* translators: %d: most rows */
             return self::error('seoprostats_targets_rows', sprintf(__('An import has at most %d rows.', 'seoprostats'), self::MAX_ROWS));
         }
+        list($valid, $skipped) = self::check_rows($rows);
+        $now      = time();
+        $existing = self::stored();
+        $removed  = 0;
+        if ($replace && $existing) {
+            list($removed, $existing) = self::remove_others($existing, $valid);
+        }
+        $saved = self::save_valid($valid, $existing, $code, $now, $skipped);
+        if (is_wp_error($saved)) {
+            return $saved;
+        }
+        list($added, $updated) = $saved;
+        self::touch();
+        usort($skipped, static function ($a, $b) {
+            return $a['row'] <=> $b['row'];
+        });
+        return array(
+            'added'   => $added,
+            'updated' => $updated,
+            'removed' => $removed,
+            'skipped' => $skipped,
+            'total'   => count(self::stored()),
+        );
+    }
+
+    /**
+     * Rows checked: the valid ones by query (with their row number), and
+     * the skipped ones (the first of a query's rows counts).
+     *
+     * @param array<int,mixed> $rows Rows.
+     * @return array{0:array<string,array<string,mixed>>,1:array<int,array<string,mixed>>} Valid, skipped.
+     */
+    private static function check_rows(array $rows) {
         $valid   = array();
         $skipped = array();
         foreach (array_values($rows) as $n => $row) {
@@ -621,26 +795,39 @@ final class SEOProStats_Targets {
             }
             $valid[$checked['query']] = $checked + array('row' => $n + 1);
         }
-        $now      = time();
-        $table    = SEOProStats_Schema::table('targets');
-        $existing = self::stored();
-        $removed  = 0;
-        if ($replace && $existing) {
-            $keep    = $valid ? SEOProStats_Dict::find(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
-            $gone    = array_values(array_diff(array_keys($existing), array_map('intval', $keep)));
-            $removed = self::delete_ids($gone);
-            $existing = array_diff_key($existing, array_flip($gone));
-        }
-        $queries = $valid ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
-        $paths   = array_filter(array_column($valid, 'page'));
-        $path_id = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_values($paths)) : array();
+        return array($valid, $skipped);
+    }
+
+    /**
+     * Delete the targets not in an import.
+     *
+     * @param array<int,array<string,mixed>>    $existing Stored targets by query id.
+     * @param array<string,array<string,mixed>> $valid    check_rows()'s valid rows.
+     * @return array{0:int,1:array<int,array<string,mixed>>} Targets deleted, and the targets kept.
+     */
+    private static function remove_others(array $existing, array $valid) {
+        $keep = $valid ? SEOProStats_Dict::find(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
+        $gone = array_values(array_diff(array_keys($existing), array_map('intval', $keep)));
+        return array(self::delete_ids($gone), array_diff_key($existing, array_flip($gone)));
+    }
+
+    /**
+     * Save valid rows, added or updated by query, while there is room.
+     *
+     * @param array<string,array<string,mixed>> $valid    check_rows()'s valid rows.
+     * @param array<int,array<string,mixed>>    $existing Stored targets by query id.
+     * @param int                               $code     Source code (SOURCES).
+     * @param int                               $now      Unix time.
+     * @param array<int,array<string,mixed>>    $skipped  Skipped rows; added to.
+     * @return array{0:int,1:int}|WP_Error Added, updated.
+     */
+    private static function save_valid(array $valid, array $existing, $code, $now, array &$skipped) {
+        list($queries, $path_id) = self::valid_ids($valid);
         $room    = self::MAX_TARGETS - count($existing);
         $added   = 0;
         $updated = 0;
-        $user    = get_current_user_id();
-        $statuses = array_flip(self::STATUSES);
         foreach ($valid as $query => $target) {
-            $query_id = isset($queries[SEOProStats_Dict::clean($query)]) ? (int) $queries[SEOProStats_Dict::clean($query)] : 0;
+            $query_id = self::dict_id($queries, $query);
             if (!$query_id) {
                 $skipped[] = self::skip($target['row'], $query, 'query');
                 continue;
@@ -650,21 +837,8 @@ final class SEOProStats_Targets {
                 $skipped[] = self::skip($target['row'], $query, 'limit');
                 continue;
             }
-            $page = $target['page'] !== '' && isset($path_id[SEOProStats_Dict::clean($target['page'])]) ? (int) $path_id[SEOProStats_Dict::clean($target['page'])] : 0;
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key.
-            $saved = $wpdb->query($wpdb->prepare(
-                'INSERT INTO %i (query_id, path_id, priority, status, source, created, updated, user_id) VALUES (%d, %d, %d, %d, %d, %d, %d, %d) ON DUPLICATE KEY UPDATE path_id = VALUES(path_id), priority = VALUES(priority), status = VALUES(status), source = VALUES(source), updated = VALUES(updated), user_id = VALUES(user_id)',
-                $table,
-                $query_id,
-                $page,
-                (int) $target['priority'],
-                (int) $statuses[$target['status']],
-                $code,
-                $now,
-                $now,
-                $user
-            ));
-            if ($saved === false || !self::save_measurements($query_id, $target['measurements'])) {
+            $page = $target['page'] !== '' ? self::dict_id($path_id, $target['page']) : 0;
+            if (!self::upsert($query_id, $page, $target, $code, $now)) {
                 self::touch();
                 return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
             }
@@ -675,17 +849,62 @@ final class SEOProStats_Targets {
                 --$room;
             }
         }
-        self::touch();
-        usort($skipped, static function ($a, $b) {
-            return $a['row'] <=> $b['row'];
-        });
-        return array(
-            'added'   => $added,
-            'updated' => $updated,
-            'removed' => $removed,
-            'skipped' => $skipped,
-            'total'   => count(self::stored()),
-        );
+        return array($added, $updated);
+    }
+
+    /**
+     * Dictionary ids of the valid rows' queries and of their pages (made
+     * when new).
+     *
+     * @param array<string,array<string,mixed>> $valid check_rows()'s valid rows.
+     * @return array{0:array<string,int>,1:array<string,int>} Query ids and path ids by text.
+     */
+    private static function valid_ids(array $valid) {
+        $queries = $valid ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
+        $paths   = array_filter(array_column($valid, 'page'));
+        $path_id = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_values($paths)) : array();
+        return array($queries, $path_id);
+    }
+
+    /**
+     * A text's id from SEOProStats_Dict::ids(), or 0.
+     *
+     * @param array<string,int> $ids  Text => id.
+     * @param string            $text Text.
+     * @return int
+     */
+    private static function dict_id(array $ids, $text) {
+        $text = SEOProStats_Dict::clean($text);
+        return isset($ids[$text]) ? (int) $ids[$text] : 0;
+    }
+
+    /**
+     * Add or update one target by its query, with its measurements.
+     *
+     * @param int                 $query_id Query id.
+     * @param int                 $page     Path id, 0 for none.
+     * @param array<string,mixed> $target   check()'s row.
+     * @param int                 $code     Source code (SOURCES).
+     * @param int                 $now      Unix time.
+     * @return bool Saved.
+     */
+    private static function upsert($query_id, $page, array $target, $code, $now) {
+        global $wpdb;
+        $statuses = array_flip(self::STATUSES);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key.
+        $saved = $wpdb->query($wpdb->prepare(
+            'INSERT INTO %i (query_id, path_id, priority, status, source, created, updated, user_id) VALUES (%d, %d, %d, %d, %d, %d, %d, %d) ON DUPLICATE KEY UPDATE path_id = VALUES(path_id), priority = VALUES(priority), status = VALUES(status), source = VALUES(source), updated = VALUES(updated), user_id = VALUES(user_id)',
+            SEOProStats_Schema::table('targets'),
+            $query_id,
+            $page,
+            (int) $target['priority'],
+            (int) $statuses[$target['status']],
+            $code,
+            $now,
+            $now,
+            get_current_user_id()
+        ));
+        return $saved !== false && self::save_measurements($query_id, $target['measurements']);
     }
 
     /**
@@ -736,21 +955,60 @@ final class SEOProStats_Targets {
             if (!array_key_exists($field, $row)) {
                 continue;
             }
-            $value = $row[$field];
-            if ($value === '') {
-                continue; // An empty CSV cell is unknown, not a zero or a deletion.
-            }
-            if ($value !== null && (is_bool($value) || !is_scalar($value) || !preg_match('/^\d{1,10}$/', (string) $value) || (float) $value > 4294967295)) {
+            $measured = self::measured_field($row, $field);
+            if ($measured === null) {
                 return null;
             }
-            $date = isset($row[$field . '_measured']) && $row[$field . '_measured'] !== '' ? $row[$field . '_measured'] : wp_date('Y-m-d');
-            if (!is_string($date) || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]) || $date > wp_date('Y-m-d')) {
-                return null;
-            }
-            $out[$field] = $value === null ? null : (int) $value;
-            $out[$field . '_measured'] = $value === null ? '' : $date;
+            $out += $measured;
         }
         return $out;
+    }
+
+    /**
+     * One supplied fact with its date (today when not given); empty for
+     * an empty cell, which is unknown, not a zero or a deletion; null
+     * when invalid. A null count clears the fact.
+     *
+     * @param array<string,mixed> $row   Input, with the field.
+     * @param string              $field allintitle or volume.
+     * @return array<string,mixed>|null
+     */
+    private static function measured_field(array $row, $field) {
+        $value = $row[$field];
+        if ($value === '') {
+            return array();
+        }
+        if ($value !== null && !self::is_count($value)) {
+            return null;
+        }
+        $date = isset($row[$field . '_measured']) && $row[$field . '_measured'] !== '' ? $row[$field . '_measured'] : wp_date('Y-m-d');
+        if (!self::is_measured_date($date)) {
+            return null;
+        }
+        return array(
+            $field               => $value === null ? null : (int) $value,
+            $field . '_measured' => $value === null ? '' : $date,
+        );
+    }
+
+    /**
+     * Whether a value is a whole count from 0 to 4294967295.
+     *
+     * @param mixed $value Value.
+     * @return bool
+     */
+    private static function is_count($value) {
+        return !is_bool($value) && is_scalar($value) && preg_match('/^\d{1,10}$/', (string) $value) && (float) $value <= 4294967295;
+    }
+
+    /**
+     * Whether a measurement date is a real Y-m-d day, not after today.
+     *
+     * @param mixed $date Date.
+     * @return bool
+     */
+    private static function is_measured_date($date) {
+        return is_string($date) && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]) && $date <= wp_date('Y-m-d');
     }
 
     /**

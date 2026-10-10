@@ -1670,10 +1670,17 @@ ordered by clicks, with dead clicks, dead-click rate, link clicks, forms
 sent and visits on each page; it uses the existing `ts` / `path_ts` keys.
 Choosing a page row narrows only Clicks; choosing it again clears the page.
 An exact page (not a `*` pattern) carries `page_info` with its local address
-and `url_to_postid()` identity. Only the returned page rows are resolved,
-inside the report cache. Editor addresses are added after the shared cache
-on every request, only with `current_user_can('edit_post', post_id)`, so
-cached administrator answers never leak links to another viewer. Future
+and post identity (`SEOProStats_Clicks::page_info()`): `url_to_postid()`,
+else a published post of any viewable post type with the path's last part
+as its slug (`post_name` index) whose own permalink has the path, which
+finds custom post types whose permalinks have no base. A path that is no
+post may be a term archive: a term of a viewable taxonomy with that slug
+(`slug` index) whose term link has the path adds `term_id` and `taxonomy`.
+Only the returned page rows are resolved, inside the report cache. Editor
+addresses are added after the shared cache on every request, only with
+`current_user_can('edit_post', post_id)` (or `edit_term` for a term
+archive), so cached administrator answers never leak links to another
+viewer. Future
 shared read-only views must omit `edit_url`. All lookups run in reporting
 requests, never on visitor pages. Unknown demo paths have no editor link.
 
@@ -1798,8 +1805,8 @@ people write; keep the two in step. The words come from the post
 (`post_content` with shortcode tags left out, unrendered, so no filters
 or shortcodes run; filter `seoprostats_coverage_text` adds a page
 builder's text) or, for demo data, `SEOProStats_Demo::PAGE_TEXT`. A path
-finds its post in the `pages` table (by its primary key), else with
-`url_to_postid()`. SEO titles, descriptions and focus keywords come from
+finds its post in the `pages` table (by its primary key), else as page
+rows do (`SEOProStats_Clicks::page_info()`). SEO titles, descriptions and focus keywords come from
 Rank Math, Yoast SEO, SEOPress and All in One SEO (its `aioseo_posts`
 table, by `post_id`) when present, and titles and descriptions from The
 SEO Framework (the same meta as the change log's `SEO_META`)

@@ -329,6 +329,9 @@ export interface ClickPageInfo {
 	url: string;
 	/** Zero when the path is not a post on this site. */
 	post_id: number;
+	/** Present only when the path is a term archive (and no post). */
+	term_id?: number;
+	taxonomy?: string;
 	/** Omitted by shared read-only interfaces; null without edit permission. */
 	edit_url?: string | null;
 }
@@ -355,6 +358,9 @@ export interface ClickRow {
 	path?: string;
 	url?: string;
 	post_id?: number;
+	/** Present only when the page is a term archive (and no post). */
+	term_id?: number;
+	taxonomy?: string;
 	edit_url?: string | null;
 	links?: number;
 	forms?: number;
@@ -497,6 +503,9 @@ export interface SearchRow extends SearchMetrics {
 	path?: string;
 	url?: string;
 	post_id?: number;
+	/** Present only when the page is a term archive (and no post). */
+	term_id?: number;
+	taxonomy?: string;
 	edit_url?: string | null;
 	compare?: SearchMetrics & { change: SearchChange };
 }
@@ -545,6 +554,9 @@ export interface OpportunityPage {
 	path: string;
 	url: string;
 	post_id: number;
+	/** Present only when the page is a term archive (and no post). */
+	term_id?: number;
+	taxonomy?: string;
 	edit_url: string | null;
 }
 
