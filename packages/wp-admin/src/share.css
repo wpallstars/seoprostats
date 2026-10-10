@@ -47,8 +47,25 @@
 	--spst-border: #646970;
 	--spst-hover: #2c3338;
 	--spst-background: #1d2327;
+	--spst-divider: #2c3338;
+	--spst-field-border: #8c8f94;
 	--spst-good: #68de7c;
 	--spst-bad: #ff8085;
+	--spst-grid: rgb(255 255 255 / 10%);
+
+	/* Chart tooltips: a raised panel with an edge, not a box the colour of the page. */
+	--spst-tip-bg: #2c3338;
+	--spst-tip-text: #f0f0f1;
+	--spst-tip-muted: #c3c4c7;
+	--spst-tip-ring: 0 0 0 1px #50575e, 0 4px 12px rgb(0 0 0 / 45%);
+
+	/* Change log groups, lighter so the markers stand out (DESIGN.md → Markers). */
+	--spst-mark-content: #7b90ff;
+	--spst-mark-seo: #b48ef0;
+	--spst-mark-product: #4ab866;
+	--spst-mark-site: #dba617;
+	--spst-mark-search: #f086ae;
+	--spst-mark-note: #dcdcde;
 }
 
 /* The head: logo and title on the left, light or dark and print on the right. */

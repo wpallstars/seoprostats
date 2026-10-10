@@ -514,7 +514,7 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 								onMarker={changes.onMarker}
 							/>
 						) : (
-							<div className="spst-chart-placeholder" />
+							<div className={`spst-chart-placeholder${answer || search.isError ? '' : ' spst-skeleton spst-skeleton--chart'}`} aria-busy={!answer && !search.isError} />
 						)}
 					</div>
 				)}

@@ -350,6 +350,8 @@ Go to **SEO Pro Stats → Settings** for the settings. The screen has two groups
 
 At the top right of the screen, **Source code** opens the plugin’s [GitHub repository](https://github.com/wpallstars/seoprostats) in a new tab, and **Support** opens its [GitHub issues](https://github.com/wpallstars/seoprostats/issues) in a new tab. Say what you did, what you expected and what happened, with the versions of WordPress, PHP and SEO Pro Stats. Leave out passwords, licence keys and personal data, since issues are public. For questions, ask [aidevops](https://aidevops.sh) (Built with AI below). **Buy me a coffee**, next to it, opens the maker’s [Buy Me a Coffee](https://buymeacoffee.com/marcusquinn) page in a new tab.
 
+**Colour mode**, the sun or moon button after it, sets how the Statistics and Settings screens look for you: **Light** (WordPress’s own colours, the default), **Dark**, or **System**, which follows your computer’s light or dark setting as it changes. Each person chooses for themselves, and the choice follows them to any browser. Primary buttons keep your admin colour scheme’s colour; links and highlights use a lighter shade of it so they stay readable. The rest of wp-admin, the Dashboard widget and the post editor keep WordPress’s colours. Shared reports have their own light and dark switch (Shared reports above).
+
 ### Connecting Google Search Console and Bing
 
 **Google Search Console** (off until you connect it under Settings → Connections): clicks, impressions and average position for each page and search query, by day, kept with the visits so search and traffic can sit on one timeline.
@@ -516,7 +518,7 @@ Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submis
 
 ## Uninstall
 
-Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
+Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
 

@@ -68,7 +68,7 @@ export function Overview({ state, update }: Readonly<ViewProps>) {
 							onMarker={changes.onMarker}
 						/>
 					) : (
-						<div className="spst-chart-placeholder" />
+						<div className={`spst-chart-placeholder${series.isError ? '' : ' spst-skeleton spst-skeleton--chart'}`} aria-busy={!series.isError} />
 					)}
 				</div>
 			</Card>

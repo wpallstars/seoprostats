@@ -9,7 +9,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import {
 	createMarkersLane,
@@ -68,10 +68,41 @@ function pointDays(series: ChartData, indexes: number[]): { from: string; to: st
 	return { from, to };
 }
 
-/** The admin colour scheme's accent, read from WordPress's variable. */
-function themeColor(el: HTMLElement | null): string {
-	const value = el ? getComputedStyle(el).getPropertyValue('--wp-admin-theme-color').trim() : '';
-	return value || '#2271b1';
+/**
+ * A CSS colour as #rrggbb, which the chart can fade for its area. Plain hex
+ * passes through; anything else (color-mix() in dark mode, a named colour)
+ * is resolved by the browser on a hidden probe inside the element.
+ */
+function hexColor(el: HTMLElement, value: string, fallback: string): string {
+	if (/^#[0-9a-f]{6}$/i.test(value)) {
+		return value;
+	}
+	const probe = document.createElement('span');
+	probe.style.color = value;
+	if (!value || !probe.style.color) {
+		return fallback;
+	}
+	probe.style.display = 'none';
+	el.appendChild(probe);
+	const computed = getComputedStyle(probe).color;
+	probe.remove();
+	const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(computed);
+	const srgb = rgb ? null : /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(computed);
+	const channels = rgb ? rgb.slice(1, 4).map(Number) : srgb?.slice(1, 4).map((v) => Number(v) * 255);
+	if (!channels || channels.some((v) => Number.isNaN(v))) {
+		return fallback;
+	}
+	return `#${channels.map((v) => Math.round(Math.min(255, Math.max(0, v))).toString(16).padStart(2, '0')).join('')}`;
+}
+
+/**
+ * The accent: the screen's (lighter in dark mode, a report's own on a
+ * shared report), else the admin colour scheme's.
+ */
+function themeColor(el: HTMLElement): string {
+	const styles = getComputedStyle(el);
+	const value = styles.getPropertyValue('--spst-accent').trim() || styles.getPropertyValue('--wp-admin-theme-color').trim();
+	return hexColor(el, value, '#2271b1');
 }
 
 /**
@@ -152,35 +183,43 @@ export function MainChart<K extends string>({ series, metric, label, format, hei
 		};
 	}, [series, metric, label, height, format, partial]);
 
+	// The palette changes without the data: a shared report's light/dark
+	// switch, or wp-admin's colour mode (admin/js/seoprostats-theme.js).
+	const [palette, setPalette] = useState(0);
+	useEffect(() => {
+		const repaint = () => setPalette((n) => n + 1);
+		const report = holder.current?.closest('.spst-report');
+		const observer = report ? new MutationObserver(repaint) : null;
+		if (report) {
+			observer?.observe(report, { attributes: true, attributeFilter: ['class'] });
+		}
+		document.addEventListener('spst-themechange', repaint);
+		return () => {
+			observer?.disconnect();
+			document.removeEventListener('spst-themechange', repaint);
+		};
+	}, []);
+
 	useEffect(() => {
 		const el = holder.current;
 		if (!el) {
 			return;
 		}
-		const update = () => {
-			const accent = themeColor(el);
-			const styles = getComputedStyle(el);
-			const full: TimeseriesConfig = {
-				...config,
-				series: config.series.map((s, i) => ({ ...s, color: i === 0 ? accent : '#8c8f94' })),
-				axisColor: styles.getPropertyValue('--spst-muted').trim() || '#50575e',
-				gridColor: styles.getPropertyValue('--spst-grid').trim() || 'rgba(0, 0, 0, 0.06)',
-				onDraw: layoutLane,
-			};
-			if (chart.current) {
-				chart.current.update(full);
-			} else {
-				chart.current = createTimeseries(el, full);
-			}
+		const styles = getComputedStyle(el);
+		const full: TimeseriesConfig = {
+			...config,
+			series: config.series.map((s, i) => ({ ...s, color: i === 0 ? themeColor(el) : hexColor(el, styles.getPropertyValue('--spst-compare').trim(), '#8c8f94') })),
+			axisColor: styles.getPropertyValue('--spst-muted').trim() || '#50575e',
+			gridColor: styles.getPropertyValue('--spst-grid').trim() || 'rgba(0, 0, 0, 0.06)',
+			onDraw: layoutLane,
 		};
-		update();
-		// The standalone report changes its palette without changing data.
-		const report = el.closest('.spst-report');
-		const observer = report ? new MutationObserver(update) : null;
-		observer?.observe(report!, { attributes: true, attributeFilter: ['class'] });
-		return () => observer?.disconnect();
+		if (chart.current) {
+			chart.current.update(full);
+		} else {
+			chart.current = createTimeseries(el, full);
+		}
 		// layoutLane reads refs only.
-	}, [config]);
+	}, [config, palette]);
 
 	useEffect(() => {
 		const el = laneHolder.current;
@@ -214,7 +253,7 @@ export function MainChart<K extends string>({ series, metric, label, format, hei
 			lane.current = createMarkersLane(el, laneConfig);
 		}
 		layoutLane();
-	}, [byPoint, series, markers]);
+	}, [byPoint, series, markers, palette]);
 
 	useEffect(() => {
 		const el = holder.current;
