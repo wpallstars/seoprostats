@@ -872,43 +872,8 @@ final class SEOProStats_Demo {
      * is at it.
      */
     public static function refresh() {
-        // Demo data made before goals existed gets the examples once.
         if (self::ready()) {
-            require_once __DIR__ . self::GOALS_FILE;
-            $none = self::run(static function () {
-                return get_option(SEOProStats_Schema::option(SEOProStats_Goals::GOALS_OPTION)) === false;
-            });
-            if ($none) {
-                self::examples();
-            }
-            // Demo data made before A/B tests gets them once, from now on.
-            if (!isset(self::state()['ab'])) {
-                self::run(static function () {
-                    self::ab_tests();
-                });
-            }
-            // Demo data made before the change log gets its changes once.
-            $state = self::state();
-            $wrote = empty($state['changes']);
-            if ($wrote) {
-                $state['changes'] = 1;
-                update_option(self::OPTION, $state, false);
-                self::changes(isset($state['from']) ? (int) $state['from'] : time());
-            }
-            // Demo search days of an older version are made again (from
-            // today, as the changes behind them), next time it catches up.
-            $state   = self::state();
-            $version = isset($state['search_v']) ? (int) $state['search_v'] : 1;
-            if ($version < self::SEARCH_VERSION) {
-                $state['search_v'] = self::SEARCH_VERSION;
-                $state['search']   = '';
-                $state['bing']     = '';
-                update_option(self::OPTION, $state, false);
-                // SEARCH_CHANGES came with version 2.
-                if (!$wrote && $version < 2) {
-                    self::changes(isset($state['from']) ? (int) $state['from'] : time(), true);
-                }
-            }
+            self::upgrade();
         }
         $state = self::state();
         if (!self::ready() || (isset($state['upto']) && (int) $state['upto'] > time() - self::FRESH) || !self::lock()) {
@@ -922,6 +887,60 @@ final class SEOProStats_Demo {
         } finally {
             self::unlock();
         }
+    }
+
+    /**
+     * Bring demo data made by an older version up to date, once each:
+     * example goals, A/B tests, changes and search days.
+     */
+    private static function upgrade() {
+        // Demo data made before goals existed gets the examples once.
+        require_once __DIR__ . self::GOALS_FILE;
+        $none = self::run(static function () {
+            return get_option(SEOProStats_Schema::option(SEOProStats_Goals::GOALS_OPTION)) === false;
+        });
+        if ($none) {
+            self::examples();
+        }
+        // Demo data made before A/B tests gets them once, from now on.
+        if (!isset(self::state()['ab'])) {
+            self::run(static function () {
+                self::ab_tests();
+            });
+        }
+        // Demo data made before the change log gets its changes once.
+        $state = self::state();
+        $wrote = empty($state['changes']);
+        if ($wrote) {
+            $state['changes'] = 1;
+            update_option(self::OPTION, $state, false);
+            self::changes(self::from($state));
+        }
+        // Demo search days of an older version are made again (from
+        // today, as the changes behind them), next time it catches up.
+        $state   = self::state();
+        $version = isset($state['search_v']) ? (int) $state['search_v'] : 1;
+        if ($version >= self::SEARCH_VERSION) {
+            return;
+        }
+        $state['search_v'] = self::SEARCH_VERSION;
+        $state['search']   = '';
+        $state['bing']     = '';
+        update_option(self::OPTION, $state, false);
+        // SEARCH_CHANGES came with version 2.
+        if (!$wrote && $version < 2) {
+            self::changes(self::from($state), true);
+        }
+    }
+
+    /**
+     * Start of the demo period, or now when none is stored.
+     *
+     * @param array<string,mixed> $state Progress.
+     * @return int Unix time.
+     */
+    private static function from(array $state) {
+        return isset($state['from']) ? (int) $state['from'] : time();
     }
 
     /**
@@ -991,53 +1010,111 @@ final class SEOProStats_Demo {
      */
     private static function change_rows($from, $to, $search = false) {
         $today = new DateTimeImmutable('today', wp_timezone());
-        $rows  = array();
-        $add   = static function ($days, $hour, $kind, $path, $type, $old, $new, array $meta) use (&$rows, $today, $from, $to) { // NOSONAR: one change's columns, as CHANGES lists them.
-            $ts = self::add_days($today, -(int) $days)->setTime((int) $hour, ($kind * 7) % 60)->getTimestamp();
-            // Updates are logged by WordPress, notes by people, search updates by the import; the rest by the plugin.
-            $source = 1;
-            if (in_array((int) $kind, array(41, 47), true)) {
-                $source = 4;
-            } elseif ((int) $kind === SEOProStats_Changes::NOTE) {
-                $source = 6;
-            } elseif ((int) $kind === SEOProStats_Changes::SEARCH_UPDATE) {
-                $source = 5;
+        $list  = $search ? self::SEARCH_CHANGES : array_merge(self::CHANGES, self::SEARCH_CHANGES);
+        if (!$search) {
+            $span = (int) ceil(max(0, $to - $from) / DAY_IN_SECONDS);
+            $list = array_merge($list, self::plugin_updates($span), self::core_updates($span), self::post_edits($span), self::search_updates($span, $today));
+        }
+        $rows = array();
+        foreach ($list as $change) {
+            $row = self::change_row($today, $change);
+            if ($row['ts'] >= $from && $row['ts'] <= $to) {
+                $rows[] = $row;
             }
-            if ($ts >= $from && $ts <= $to) {
-                $rows[] = array(
-                    'ts'          => $ts,
-                    'kind'        => (int) $kind,
-                    'path'        => (string) $path,
-                    'object_type' => (string) $type,
-                    'object_id'   => $path !== '' && self::page($path) ? self::page($path)['post_id'] : 0,
-                    'old'         => (string) $old,
-                    'new'         => (string) $new,
-                    'meta'        => $meta,
-                    'source'      => $source,
-                    'user_id'     => 0,
-                );
-            }
-        };
-        foreach ($search ? self::SEARCH_CHANGES : array_merge(self::CHANGES, self::SEARCH_CHANGES) as $change) {
-            $add($change[0], $change[1], $change[2], $change[3], $change[4], $change[5], $change[6], $change[7]);
         }
         if ($search) {
             return $rows;
         }
-        $span = (int) ceil(max(0, $to - $from) / DAY_IN_SECONDS);
+        usort($rows, static function ($x, $y) {
+            return $x['ts'] - $y['ts'];
+        });
+        return $rows;
+    }
+
+    /**
+     * One demo change as a row for SEOProStats_Changes::write().
+     *
+     * @param DateTimeImmutable  $today  Today (site time zone).
+     * @param array<int,mixed>   $change Days ago, hour, kind, path, object type, old, new, meta (as CHANGES lists them).
+     * @return array<string,mixed>
+     */
+    private static function change_row(DateTimeImmutable $today, array $change) {
+        list($days, $hour, $kind, $path, $type, $old, $new, $meta) = $change;
+        $page = $path !== '' ? self::page($path) : null;
+        return array(
+            'ts'          => self::add_days($today, -(int) $days)->setTime((int) $hour, ($kind * 7) % 60)->getTimestamp(),
+            'kind'        => (int) $kind,
+            'path'        => (string) $path,
+            'object_type' => (string) $type,
+            'object_id'   => $page ? $page['post_id'] : 0,
+            'old'         => (string) $old,
+            'new'         => (string) $new,
+            'meta'        => $meta,
+            'source'      => self::change_source((int) $kind),
+            'user_id'     => 0,
+        );
+    }
+
+    /**
+     * Who logs a demo change: updates WordPress (4), notes people (6),
+     * search updates the import (5); the rest the plugin (1).
+     *
+     * @param int $kind Change kind.
+     * @return int Source.
+     */
+    private static function change_source($kind) {
+        if (in_array($kind, array(41, 47), true)) {
+            return 4;
+        }
+        if ($kind === SEOProStats_Changes::NOTE) {
+            return 6;
+        }
+        return $kind === SEOProStats_Changes::SEARCH_UPDATE ? 5 : 1;
+    }
+
+    /**
+     * A demo plugin updated every 16 days, the newest first.
+     *
+     * @param int $span Days of the period.
+     * @return array<int,array<int,mixed>> Changes, as CHANGES lists them.
+     */
+    private static function plugin_updates($span) {
+        $list = array();
         $n    = 0;
         for ($days = $span; $days >= 1; $days -= 16, $n++) {
             list($name, $file, $first) = self::DEMO_PLUGINS[$n % count(self::DEMO_PLUGINS)];
-            $minor = $first[1] + intdiv($n, count(self::DEMO_PLUGINS));
-            $add($days, 3, 41, '', 'plugin', $first[0] . '.' . $minor . '.0', $first[0] . '.' . ($minor + 1) . '.0', array('name' => $name, 'file' => $file));
+            $minor  = $first[1] + intdiv($n, count(self::DEMO_PLUGINS));
+            $list[] = array($days, 3, 41, '', 'plugin', $first[0] . '.' . $minor . '.0', $first[0] . '.' . ($minor + 1) . '.0', array('name' => $name, 'file' => $file));
         }
-        $n = 0;
+        return $list;
+    }
+
+    /**
+     * A WordPress update every 63 days.
+     *
+     * @param int $span Days of the period.
+     * @return array<int,array<int,mixed>> Changes, as CHANGES lists them.
+     */
+    private static function core_updates($span) {
+        $list = array();
+        $n    = 0;
         for ($days = $span - 20; $days >= 1; $days -= 63, $n++) {
-            $add($days, 4, 47, '', 'core', '6.' . (5 + $n), '6.' . (6 + $n), array('name' => 'WordPress'));
+            $list[] = array($days, 4, 47, '', 'core', '6.' . (5 + $n), '6.' . (6 + $n), array('name' => 'WordPress'));
         }
+        return $list;
+    }
+
+    /**
+     * A blog post edited every 13 days, in turn.
+     *
+     * @param int $span Days of the period.
+     * @return array<int,array<int,mixed>> Changes, as CHANGES lists them.
+     */
+    private static function post_edits($span) {
         $posts = array_values(array_filter(array_keys(self::CONTENT), static function ($path) {
             return strpos($path, self::BLOG) === 0;
         }));
+        $list  = array();
         $n     = 0;
         for ($days = $span - 5; $days >= 1; $days -= 13, $n++) {
             $path   = $posts[$n % count($posts)];
@@ -1045,15 +1122,27 @@ final class SEOProStats_Demo {
             $added  = 40 + ($n * 53) % 260;
             $gone   = 10 + ($n * 29) % 90;
             $name   = ucfirst(str_replace(array('blog/', '-'), array('', ' '), trim($path, '/')));
-            $add($days, 11, 5, $path, 'post', (string) $before, (string) ($before + $added - $gone), array('name' => $name, 'before' => $before, 'after' => $before + $added - $gone, 'added' => $added, 'removed' => $gone));
+            $list[] = array($days, 11, 5, $path, 'post', (string) $before, (string) ($before + $added - $gone), array('name' => $name, 'before' => $before, 'after' => $before + $added - $gone, 'added' => $added, 'removed' => $gone));
         }
-        // Made-up search engine updates: a core update every 95 days rolling out over 13, a spam update every 70 over 2.
+        return $list;
+    }
+
+    /**
+     * Made-up search engine updates: a core update every 95 days rolling
+     * out over 13, a spam update every 70 over 2.
+     *
+     * @param int               $span  Days of the period.
+     * @param DateTimeImmutable $today Today (site time zone).
+     * @return array<int,array<int,mixed>> Changes, as CHANGES lists them.
+     */
+    private static function search_updates($span, DateTimeImmutable $today) {
+        $list = array();
         foreach (array(array('core', 95, 30, 13), array('spam', 70, 12, 2)) as $update) {
             list($type, $every, $first, $length) = $update;
             $n = 0;
             for ($days = $span - $first; $days >= 1; $days -= $every, $n++) {
-                $ended = $days - $length;
-                $add($days, 16, SEOProStats_Changes::SEARCH_UPDATE, '', 'google', $type, 'demo-' . $type . '-' . $n, array(
+                $ended  = $days - $length;
+                $list[] = array($days, 16, SEOProStats_Changes::SEARCH_UPDATE, '', 'google', $type, 'demo-' . $type . '-' . $n, array(
                     /* translators: %d: a made-up update's number, for the demo data */
                     'name'   => sprintf($type === 'core' ? __('Demo core update %d', 'seoprostats') : __('Demo spam update %d', 'seoprostats'), $n + 1),
                     'engine' => 'Google',
@@ -1062,10 +1151,7 @@ final class SEOProStats_Demo {
                 ));
             }
         }
-        usort($rows, static function ($x, $y) {
-            return $x['ts'] - $y['ts'];
-        });
-        return $rows;
+        return $list;
     }
 
     /**
@@ -1092,10 +1178,37 @@ final class SEOProStats_Demo {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
         self::$host = (string) wp_parse_url(home_url(), PHP_URL_HOST);
 
-        $state     = self::state();
-        $upto      = isset($state['upto']) ? (int) $state['upto'] : time();
-        $now       = time();
-        self::$ab  = isset($state['ab']) && is_array($state['ab']) ? array_map('intval', $state['ab']) : array();
+        $state    = self::state();
+        $upto     = isset($state['upto']) ? (int) $state['upto'] : time();
+        $now      = time();
+        self::$ab = isset($state['ab']) && is_array($state['ab']) ? array_map('intval', $state['ab']) : array();
+        $done     = self::visits_until($now, $upto, $start, $budget, $state)
+            && self::search_days($start, $budget, $state)
+            && self::summaries($start, $budget);
+        if ($done && $state['status'] !== 'ready') {
+            $state['status'] = 'ready';
+            $state['made']   = time();
+            update_option(self::OPTION, $state, false);
+        }
+        // New data: cached answers for the demo data go.
+        update_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array('last' => time()), false);
+        if ($done) {
+            self::extras($state);
+        }
+    }
+
+    /**
+     * Make visits in windows of up to a day, from where they were made up
+     * to now, within the time budget.
+     *
+     * @param int                 $now    Unix time now.
+     * @param int                 $upto   Where visits were made up to.
+     * @param float               $start  microtime(true) when the work began.
+     * @param int                 $budget Seconds.
+     * @param array<string,mixed> $state  Progress (upto); updated.
+     * @return bool Whether visits are made up to now.
+     */
+    private static function visits_until($now, $upto, $start, $budget, array &$state) {
         while ($upto < $now && SEOProStats_Feature::more_time($start, $budget)) {
             $to = min($now, $upto + DAY_IN_SECONDS);
             SEOProStats_Processor::ingest(self::lines($upto, $to));
@@ -1103,70 +1216,80 @@ final class SEOProStats_Demo {
             $state['upto'] = $upto;
             update_option(self::OPTION, $state, false);
         }
-        $more = $upto < $now;
-        if (!$more && !self::search_days($start, $budget, $state)) {
-            $more = true;
-        }
+        return $upto >= $now;
+    }
+
+    /**
+     * Summarise finished days within the time budget.
+     *
+     * @param float $start  microtime(true) when the work began.
+     * @param int   $budget Seconds.
+     * @return bool Whether every summary is made.
+     */
+    private static function summaries($start, $budget) {
         // The summaries' own budget is longer: end it with this one.
         $rollup_start = $start - max(0, SEOProStats_Rollup::BUDGET - $budget);
-        while (!$more && SEOProStats_Rollup::due() !== null) {
+        while (SEOProStats_Rollup::due() !== null) {
             if (!SEOProStats_Feature::more_time($start, $budget) || !SEOProStats_Rollup::catch_up($rollup_start)) {
-                $more = true;
+                return false;
             }
         }
         // Demo data made before search landings were summarised gets them here.
-        if (!$more && SEOProStats_Feature::more_time($start, $budget) && !SEOProStats_Rollup::refill($rollup_start)) {
-            $more = true;
-        }
-        if (!$more && $state['status'] !== 'ready') {
-            $state['status'] = 'ready';
-            $state['made']   = time();
-            update_option(self::OPTION, $state, false);
-        }
-        // New data: cached answers for the demo data go.
-        update_option(SEOProStats_Schema::option(SEOProStats_Collection::PROCESS_OPTION), array('last' => time()), false);
+        return !SEOProStats_Feature::more_time($start, $budget) || SEOProStats_Rollup::refill($rollup_start);
+    }
+
+    /**
+     * With every visit, search day and summary made: the experiments
+     * (once), the audit, targets, backlinks and inspections (again when
+     * their version changes), then the decision queue (once).
+     *
+     * @param array<string,mixed> $state Progress.
+     */
+    private static function extras(array $state) {
         // With every search day made, the experiments can be measured and decided (once).
-        if (!$more && empty($state['experiments'])) {
+        if (empty($state['experiments'])) {
             $state['experiments'] = 1;
             update_option(self::OPTION, $state, false);
             self::experiments();
         }
-        // The content audit's facts of the demo pages (again when they change).
-        $state = self::state();
-        if (!$more && (empty($state['audit']) || (int) $state['audit'] < self::AUDIT_VERSION)) {
-            $state['audit'] = self::AUDIT_VERSION;
-            update_option(self::OPTION, $state, false);
+        // The content audit's facts of the demo pages.
+        self::again('audit', self::AUDIT_VERSION, static function () {
             self::audit();
-        }
-        // The search targets (again when they change).
-        $state = self::state();
-        if (!$more && (empty($state['targets']) || (int) $state['targets'] < self::TARGETS_VERSION)) {
-            $state['targets'] = self::TARGETS_VERSION;
-            update_option(self::OPTION, $state, false);
+        });
+        self::again('targets', self::TARGETS_VERSION, static function () {
             self::targets();
-        }
-        // The backlinks (again when they change).
-        $state = self::state();
-        if (!$more && (empty($state['backlinks']) || (int) $state['backlinks'] < self::BACKLINKS_VERSION)) {
-            $state['backlinks'] = self::BACKLINKS_VERSION;
-            update_option(self::OPTION, $state, false);
+        });
+        self::again('backlinks', self::BACKLINKS_VERSION, static function () {
             self::backlinks();
-        }
-        // Google's URL Inspection and Search Console's sitemaps (again when they change).
-        $state = self::state();
-        if (!$more && (empty($state['inspections']) || (int) $state['inspections'] < self::INSPECTIONS_VERSION)) {
-            $state['inspections'] = self::INSPECTIONS_VERSION;
-            update_option(self::OPTION, $state, false);
+        });
+        // Google's URL Inspection and Search Console's sitemaps.
+        self::again('inspections', self::INSPECTIONS_VERSION, static function () {
             self::inspections();
-        }
+        });
         // Then the decision queue: one item accepted, one done (once).
         $state = self::state();
-        if (!$more && empty($state['queue'])) {
-            $state          = self::state();
+        if (empty($state['queue'])) {
             $state['queue'] = 1;
             update_option(self::OPTION, $state, false);
             self::queue();
         }
+    }
+
+    /**
+     * Make a part of the demo data again when its stored version is older.
+     *
+     * @param string   $key     Progress key.
+     * @param int      $version Current version.
+     * @param callable $make    Makes it.
+     */
+    private static function again($key, $version, callable $make) {
+        $state = self::state();
+        if (!empty($state[$key]) && (int) $state[$key] >= $version) {
+            return;
+        }
+        $state[$key] = $version;
+        update_option(self::OPTION, $state, false);
+        $make();
     }
 
     /**
@@ -1245,7 +1368,14 @@ final class SEOProStats_Demo {
             );
         }
         SEOProStats_Backlinks::write_links($links);
-        // Their changes on the timeline, as the daily check writes them: one per referring site and day.
+        self::backlink_changes();
+    }
+
+    /**
+     * The demo backlinks' changes on the timeline, as the daily check
+     * writes them: one per referring site and day.
+     */
+    private static function backlink_changes() {
         require_once __DIR__ . self::CHANGES_FILE;
         $by = array();
         foreach (self::BACKLINKS as $link) {
@@ -1287,46 +1417,9 @@ final class SEOProStats_Demo {
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return;
         }
-        $now  = time();
-        $home = static function ($path) {
-            return $path !== '' ? home_url($path) : '';
-        };
+        $now = time();
         foreach (self::INSPECTIONS as $path => $one) {
-            list($verdict, $coverage, $robots, $indexing, $google, $user, $rich_type, $issues, $checked, $crawled) = $one;
-            $index = array(
-                'verdict'        => $verdict,
-                'coverageState'  => $coverage,
-                'robotsTxtState' => $robots,
-                'indexingState'  => $indexing,
-                'pageFetchState' => self::fetch_state($robots, $crawled),
-                'crawledAs'      => 'MOBILE',
-                'sitemap'        => array(home_url(strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0 ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml')),
-                'referringUrls'  => $path === '/' ? array() : array(home_url('/')),
-            );
-            if ($crawled) {
-                $index['lastCrawlTime'] = gmdate('Y-m-d\TH:i:s\Z', $now - $crawled * DAY_IN_SECONDS);
-            }
-            if ($google !== '') {
-                $index['googleCanonical'] = $home($google);
-            }
-            if ($user !== '') {
-                $index['userCanonical'] = $home($user);
-            }
-            $result = array(
-                'inspectionResultLink' => 'https://search.google.com/search-console/inspect?resource_id=' . rawurlencode(home_url('/')) . '&id=' . rawurlencode(md5($path)), // NOSONAR nosemgrep: a made-up ID in demo data, not security.
-                'indexStatusResult'    => $index,
-            );
-            if ($rich_type !== '') {
-                $items = array();
-                foreach ($issues as $message => $severity) {
-                    $items[] = array('issueMessage' => $message, 'severity' => $severity);
-                }
-                $result['richResultsResult'] = array(
-                    'verdict'       => in_array('ERROR', $issues, true) ? 'FAIL' : 'PASS',
-                    'detectedItems' => array(array('richResultType' => $rich_type, 'items' => array(array('name' => 'Unnamed item', 'issues' => $items)))),
-                );
-            }
-            SEOProStats_Inspections::store(0, $path, $result, $now - $checked * DAY_IN_SECONDS);
+            SEOProStats_Inspections::store(0, $path, self::inspection($path, $one, $now), $now - $one[8] * DAY_IN_SECONDS);
         }
         // The duplicate shop page was indexed until Google chose the pricing page as canonical.
         $today = new DateTimeImmutable('today', wp_timezone());
@@ -1358,6 +1451,52 @@ final class SEOProStats_Demo {
         }
         SEOProStats_Inspections::write_sitemaps($sitemaps, $now - HOUR_IN_SECONDS);
         SEOProStats_Inspections::touch();
+    }
+
+    /**
+     * One demo URL inspection (INSPECTIONS) in Google's own format.
+     *
+     * @param string           $path Page path.
+     * @param array<int,mixed> $one  Its INSPECTIONS entry.
+     * @param int              $now  Unix time now.
+     * @return array<string,mixed>
+     */
+    private static function inspection($path, array $one, $now) {
+        list($verdict, $coverage, $robots, $indexing, $google, $user, $rich_type, $issues, , $crawled) = $one;
+        $index = array(
+            'verdict'        => $verdict,
+            'coverageState'  => $coverage,
+            'robotsTxtState' => $robots,
+            'indexingState'  => $indexing,
+            'pageFetchState' => self::fetch_state($robots, $crawled),
+            'crawledAs'      => 'MOBILE',
+            'sitemap'        => array(home_url(strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0 ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml')),
+            'referringUrls'  => $path === '/' ? array() : array(home_url('/')),
+        );
+        if ($crawled) {
+            $index['lastCrawlTime'] = gmdate('Y-m-d\TH:i:s\Z', $now - $crawled * DAY_IN_SECONDS);
+        }
+        if ($google !== '') {
+            $index['googleCanonical'] = home_url($google);
+        }
+        if ($user !== '') {
+            $index['userCanonical'] = home_url($user);
+        }
+        $result = array(
+            'inspectionResultLink' => 'https://search.google.com/search-console/inspect?resource_id=' . rawurlencode(home_url('/')) . '&id=' . rawurlencode(md5($path)), // NOSONAR nosemgrep: a made-up ID in demo data, not security.
+            'indexStatusResult'    => $index,
+        );
+        if ($rich_type !== '') {
+            $items = array();
+            foreach ($issues as $message => $severity) {
+                $items[] = array('issueMessage' => $message, 'severity' => $severity);
+            }
+            $result['richResultsResult'] = array(
+                'verdict'       => in_array('ERROR', $issues, true) ? 'FAIL' : 'PASS',
+                'detectedItems' => array(array('richResultType' => $rich_type, 'items' => array(array('name' => 'Unnamed item', 'issues' => $items)))),
+            );
+        }
+        return $result;
     }
 
     /**
@@ -1442,25 +1581,16 @@ final class SEOProStats_Demo {
      */
     private static function search_days($start, $budget, array &$state) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
-        $tz    = wp_timezone();
-        $today = new DateTimeImmutable('today', $tz);
-        $final = self::add_days($today, -self::SEARCH_LAG)->format('Y-m-d');
-        $first = (new DateTimeImmutable('@' . (isset($state['from']) ? (int) $state['from'] : time())))->setTimezone($tz)->format('Y-m-d');
-        $day   = self::resume_day(isset($state['search']) ? (string) $state['search'] : '', $first, $tz);
-        $ids   = null;
-        while ($day->format('Y-m-d') <= $final) {
-            if (!SEOProStats_Feature::more_time($start, $budget)) {
-                return false;
-            }
-            if ($ids === null) {
-                $ids = self::search_ids();
-            }
-            if (!self::search_day($day, $today, $ids)) {
-                return false;
-            }
-            $state['search'] = $day->format('Y-m-d');
-            update_option(self::OPTION, $state, false);
-            $day = self::add_days($day, 1);
+        $tz     = wp_timezone();
+        $today  = new DateTimeImmutable('today', $tz);
+        $final  = self::add_days($today, -self::SEARCH_LAG)->format('Y-m-d');
+        $first  = (new DateTimeImmutable('@' . self::from($state)))->setTimezone($tz)->format('Y-m-d');
+        $ids    = null;
+        $google = self::make_days('search', $final, $first, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
+            return self::search_day($day, $today, $ids);
+        });
+        if (!$google) {
+            return false;
         }
 
         // Bing's days, through the end of its newest week given (it comes
@@ -1468,7 +1598,27 @@ final class SEOProStats_Demo {
         // Bing gets them here too.
         $final = self::add_days($today, -(self::SEARCH_LAG + 6));
         $final = self::add_days($final, -((((int) $final->format('N') - self::BING_WEEK_END + 7) % 7)))->format('Y-m-d');
-        $day   = self::resume_day(isset($state['bing']) ? (string) $state['bing'] : '', $first, $tz);
+        return self::make_days('bing', $final, $first, $start, $budget, $state, $ids, static function (DateTimeImmutable $day, array $ids) use ($today) {
+            return self::bing_day($day, $today, $ids);
+        });
+    }
+
+    /**
+     * Make one engine's search days, from the day after the last one made
+     * to the final day, within the time budget.
+     *
+     * @param string                                                        $key    Progress key (the last day made).
+     * @param string                                                        $final  The last day to make (Y-m-d).
+     * @param string                                                        $first  The period's first day (Y-m-d).
+     * @param float                                                         $start  microtime(true) when the work began.
+     * @param int                                                           $budget Seconds.
+     * @param array<string,mixed>                                           $state  Progress; updated.
+     * @param array{paths:array<string,int>,queries:array<string,int>}|null $ids    Dictionary IDs, looked up once when needed.
+     * @param callable(DateTimeImmutable, array{paths:array<string,int>,queries:array<string,int>}): bool $make Writes a day; false when it could not.
+     * @return bool Whether every day is made.
+     */
+    private static function make_days($key, $final, $first, $start, $budget, array &$state, &$ids, callable $make) {
+        $day = self::resume_day(isset($state[$key]) ? (string) $state[$key] : '', $first, wp_timezone());
         while ($day->format('Y-m-d') <= $final) {
             if (!SEOProStats_Feature::more_time($start, $budget)) {
                 return false;
@@ -1476,10 +1626,10 @@ final class SEOProStats_Demo {
             if ($ids === null) {
                 $ids = self::search_ids();
             }
-            if (!self::bing_day($day, $today, $ids)) {
+            if (!$make($day, $ids)) {
                 return false;
             }
-            $state['bing'] = $day->format('Y-m-d');
+            $state[$key] = $day->format('Y-m-d');
             update_option(self::OPTION, $state, false);
             $day = self::add_days($day, 1);
         }
@@ -1541,17 +1691,6 @@ final class SEOProStats_Demo {
      * @return bool Whether it was written.
      */
     private static function bing_day(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
-        global $wpdb;
-        $date = $day->format('Y-m-d');
-        // One row's keys and figures at Bing's size: clicks, impressions, pos_impr (+0.4 places).
-        $bing = static function (array $row, $n) {
-            $impr = (int) round($row[$n + 1] * 0.12);
-            if ($impr < 1) {
-                return null;
-            }
-            $position = $row[$n + 1] ? $row[$n + 2] / $row[$n + 1] : 0;
-            return array_merge(array_slice($row, 0, $n), array(min($impr, (int) round($row[$n] * 0.11)), $impr, (int) round(($position + 40) * $impr)));
-        };
         $out  = array('totals' => array());
         $site = array(0, '', 0, 0, 0);
         foreach (self::search_rows($day, $today, $ids)['totals'] as $row) {
@@ -1559,43 +1698,99 @@ final class SEOProStats_Demo {
             $site[3] += $row[3];
             $site[4] += $row[4];
         }
-        $row = $bing($site, 2);
+        $row = self::bing_row($site, 2);
         if ($row !== null) {
             $out['totals']["0\t"] = $row;
         }
         if ((int) $day->format('N') === self::BING_WEEK_END) {
-            $week = array('pages' => array(), 'queries' => array(), 'pairs' => array());
-            for ($n = 0; $n < 7; $n++) {
-                $rows = self::search_rows($day->modify("-$n days"), $today, $ids);
-                foreach ($week as $kind => $sums) {
-                    foreach ($rows[$kind] as $id => $r) {
-                        $keys = $kind === 'pairs' ? 2 : 1;
-                        if (!isset($week[$kind][$id])) {
-                            $week[$kind][$id] = array_merge(array_slice($r, 0, $keys), array(0, 0, 0));
-                        }
-                        for ($k = 0; $k < 3; $k++) {
-                            $week[$kind][$id][$keys + $k] += $r[$keys + $k];
-                        }
-                    }
-                }
-            }
+            $out = array_merge($out, self::bing_week($day, $today, $ids));
+        }
+        return self::replace_day(SEOProStats_Schema::ENGINE_BING, $day->format('Y-m-d'), $out);
+    }
+
+    /**
+     * One row's keys and figures at Bing's size: clicks, impressions,
+     * pos_impr (+0.4 places); null when under one impression.
+     *
+     * @param array<int,mixed> $row Keys, then clicks, impressions, pos_impr.
+     * @param int              $n   How many keys.
+     * @return array<int,mixed>|null
+     */
+    private static function bing_row(array $row, $n) {
+        $impr = (int) round($row[$n + 1] * 0.12);
+        if ($impr < 1) {
+            return null;
+        }
+        $position = $row[$n + 1] ? $row[$n + 2] / $row[$n + 1] : 0;
+        return array_merge(array_slice($row, 0, $n), array(min($impr, (int) round($row[$n] * 0.11)), $impr, (int) round(($position + 40) * $impr)));
+    }
+
+    /**
+     * A Bing week's pages, queries and pages with their queries: the
+     * Google rows of the week to the day, summed, at Bing's size.
+     *
+     * @param DateTimeImmutable                                       $day   The week's last day.
+     * @param DateTimeImmutable                                       $today Today.
+     * @param array{paths:array<string,int>,queries:array<string,int>} $ids   Dictionary IDs.
+     * @return array<string,array<string,array<int,int|string>>> Kind => key => row.
+     */
+    private static function bing_week(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
+        $week = array('pages' => array(), 'queries' => array(), 'pairs' => array());
+        for ($n = 0; $n < 7; $n++) {
+            $rows = self::search_rows($day->modify("-$n days"), $today, $ids);
             foreach ($week as $kind => $sums) {
-                $out[$kind] = array();
-                foreach ($sums as $id => $r) {
-                    $scaled = $bing($r, $kind === 'pairs' ? 2 : 1);
-                    if ($scaled !== null) {
-                        $out[$kind][$id] = $scaled;
-                    }
+                $week[$kind] = self::add_sums($sums, $rows[$kind], $kind === 'pairs' ? 2 : 1);
+            }
+        }
+        $out = array();
+        foreach ($week as $kind => $sums) {
+            $out[$kind] = array();
+            foreach ($sums as $id => $r) {
+                $scaled = self::bing_row($r, $kind === 'pairs' ? 2 : 1);
+                if ($scaled !== null) {
+                    $out[$kind][$id] = $scaled;
                 }
             }
         }
+        return $out;
+    }
 
+    /**
+     * Add rows' clicks, impressions and pos_impr to sums by key.
+     *
+     * @param array<string,array<int,mixed>> $sums Key => keys, then clicks, impressions, pos_impr.
+     * @param array<string,array<int,mixed>> $rows The same, to add.
+     * @param int                            $keys How many keys a row starts with.
+     * @return array<string,array<int,mixed>>
+     */
+    private static function add_sums(array $sums, array $rows, $keys) {
+        foreach ($rows as $id => $r) {
+            if (!isset($sums[$id])) {
+                $sums[$id] = array_merge(array_slice($r, 0, $keys), array(0, 0, 0));
+            }
+            for ($k = 0; $k < 3; $k++) {
+                $sums[$id][$keys + $k] += $r[$keys + $k];
+            }
+        }
+        return $sums;
+    }
+
+    /**
+     * Replace one engine's day in the search tables, every kind together.
+     *
+     * @param int                                                $engine Engine.
+     * @param string                                             $date   Day (Y-m-d).
+     * @param array<string,array<string,array<int,int|string>>> $out    Kind (SEOProStats_Search_Import::TABLES) => rows.
+     * @return bool Whether it was written.
+     */
+    private static function replace_day($engine, $date, array $out) {
+        global $wpdb;
         $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
         foreach ($out as $kind => $rows) {
             $table = SEOProStats_Schema::table(SEOProStats_Search_Import::TABLES[$kind]);
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
-            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_BING, $date));
-            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_BING, $date, 0, $rows) === false) {
+            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, $engine, $date));
+            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, $engine, $date, 0, $rows) === false) {
                 $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
                 return false;
             }
@@ -1617,7 +1812,6 @@ final class SEOProStats_Demo {
      * @return bool Whether it was written.
      */
     private static function search_day(DateTimeImmutable $day, DateTimeImmutable $today, array $ids) {
-        global $wpdb;
         $date = $day->format('Y-m-d');
         $rows = self::search_rows($day, $today, $ids);
         $total = array(0, 0, 0);
@@ -1641,18 +1835,12 @@ final class SEOProStats_Demo {
             $position = max(100.0, $site_position + 100 * $shape[2]);
             $rows['appearance'][$value] = array($appearance_ids[SEOProStats_Dict::clean($value)], $clicks, $impressions, (int) round($position * $impressions));
         }
-        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one demo day's rows replaced together.
-        foreach (SEOProStats_Search_Import::TABLES as $kind => $name) {
-            $table = SEOProStats_Schema::table($name);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own demo table, one day by its primary key.
-            $deleted = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day = %s', $table, SEOProStats_Schema::ENGINE_GOOGLE, $date));
-            if ($deleted === false || SEOProStats_Search_Import::insert($table, $kind, SEOProStats_Schema::ENGINE_GOOGLE, $date, 0, $rows[$kind]) === false) {
-                $wpdb->query('ROLLBACK'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
-                return false;
-            }
+        // Every table, in its order (search_rows() has one list per table).
+        $out = array();
+        foreach (array_keys(SEOProStats_Search_Import::TABLES) as $kind) {
+            $out[$kind] = $rows[$kind];
         }
-        $wpdb->query('COMMIT'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- ends the transaction above.
-        return true;
+        return self::replace_day(SEOProStats_Schema::ENGINE_GOOGLE, $date, $out);
     }
 
     /**
@@ -1669,50 +1857,20 @@ final class SEOProStats_Demo {
         $scale = exp(-$ago / 420) * ((int) $day->format('N') >= 6 ? 0.7 : 1.0) * (1 + 0.08 * sin(2 * M_PI * ((int) $day->format('z') - 80) / 365));
         $rows  = array_fill_keys(array_keys(SEOProStats_Search_Import::TABLES), array());
         $sum   = array(0, 0, 0);
-
-        $add = static function ($kind, array $keys, $clicks, $impressions, $pos_impr) use (&$rows) {
-            $id = implode("\t", $keys);
-            if (!isset($rows[$kind][$id])) {
-                $rows[$kind][$id] = array_merge($keys, array(0, 0, 0));
-            }
-            $n                        = count($keys);
-            $rows[$kind][$id][$n]     += $clicks;
-            $rows[$kind][$id][$n + 1] += $impressions;
-            $rows[$kind][$id][$n + 2] += $pos_impr;
-        };
-
         foreach (self::SEARCH_QUERIES as $query => $info) {
             $query_id = isset($ids['queries'][SEOProStats_Dict::clean($query)]) ? (int) $ids['queries'][SEOProStats_Dict::clean($query)] : 0;
             if (!$query_id) {
                 continue;
             }
-            $pages = array(array($info[0], 1.0, 0.0));
-            if (!empty($info[4])) {
-                $pages[] = array($info[4], 0.2, 2.0);
-                if (!empty($info[5]) && $ago < (int) $info[5]) {
-                    // The second page has taken over: it leads, the first follows lower.
-                    $pages = array(array($info[0], 0.3, 2.0), array($info[4], 1.0, 0.0));
-                }
-            }
-            foreach ($pages as $page) {
-                list($path, $share, $lower) = $page;
-                $path_id = isset($ids['paths'][SEOProStats_Dict::clean($path)]) ? (int) $ids['paths'][SEOProStats_Dict::clean($path)] : 0;
-                $noise   = self::noise($date . $query . $path);
-                // A recent event on the page (SEARCH_EVENTS), eased in over four days.
-                $event   = isset(self::SEARCH_EVENTS[$path]) ? self::SEARCH_EVENTS[$path] : array(0, 0.0, 1.0, 1.0);
-                $ease    = max(0.0, min(1.0, ($event[0] - $ago) / 4));
-                $impr    = (int) round($info[1] * $share * $scale * (0.75 + 0.5 * $noise) * (1 + ($event[2] - 1) * $ease));
-                if (!$path_id || $impr < 1) {
+            foreach (self::query_pages($info, $ago) as $page) {
+                $figures = self::page_figures($query, $info, $page, $ids, $date, $ago, $scale);
+                if ($figures === null) {
                     continue;
                 }
-                $position = max(1.0, $info[2] + $lower + $info[3] * min(1.0, $ago / 365) + 1.6 * (self::noise($query . $date) - 0.5) + $event[1] * $ease);
-                $weak     = $path === $info[0] && isset(self::SEARCH_LOW_CTR[$query]) ? self::SEARCH_LOW_CTR[$query] : 1.0;
-                $ctr      = min(0.6, 0.32 / pow($position, 1.15)) * (0.85 + 0.3 * self::noise($date . $path . $query)) * (1 + ($event[3] - 1) * $ease) * $weak;
-                $clicks   = (int) round($impr * $ctr);
-                $pos_impr = (int) round($position * $impr * 100);
-                $add('pairs', array($path_id, $query_id), $clicks, $impr, $pos_impr);
-                $add('queries', array($query_id), $clicks, $impr, $pos_impr);
-                $add('pages', array($path_id), $clicks, $impr, $pos_impr);
+                list($path_id, $clicks, $impr, $pos_impr) = $figures;
+                self::add_row($rows, 'pairs', array($path_id, $query_id), array($clicks, $impr, $pos_impr));
+                self::add_row($rows, 'queries', array($query_id), array($clicks, $impr, $pos_impr));
+                self::add_row($rows, 'pages', array($path_id), array($clicks, $impr, $pos_impr));
                 $sum[0] += $clicks;
                 $sum[1] += $impr;
                 $sum[2] += $pos_impr;
@@ -1726,9 +1884,88 @@ final class SEOProStats_Demo {
             $row[3] = (int) round($row[3] * 1.18 * 1.08);
         }
         unset($row);
+        self::site_rows($rows, $sum, $date);
+        return $rows;
+    }
 
-        // The site by device and country, from the listed searches and a
-        // quarter more unlisted, a little further down the results.
+    /**
+     * Add one search row's figures to a table's rows by its keys.
+     *
+     * @param array<string,array<string,array<int,mixed>>> $rows    Kind => key => [keys…, clicks, impressions, pos_impr]; added to.
+     * @param string                                        $kind    Table kind.
+     * @param array<int,int|string>                         $keys    The row's keys.
+     * @param array{0:int,1:int,2:int}                      $figures Clicks, impressions, pos_impr.
+     */
+    private static function add_row(array &$rows, $kind, array $keys, array $figures) {
+        $id = implode("\t", $keys);
+        if (!isset($rows[$kind][$id])) {
+            $rows[$kind][$id] = array_merge($keys, array(0, 0, 0));
+        }
+        $n                        = count($keys);
+        $rows[$kind][$id][$n]     += $figures[0];
+        $rows[$kind][$id][$n + 1] += $figures[1];
+        $rows[$kind][$id][$n + 2] += $figures[2];
+    }
+
+    /**
+     * The pages a demo search query shows: its page, and a second one
+     * lower down (or leading, once it has taken over).
+     *
+     * @param array<int,mixed> $info The query's SEARCH_QUERIES entry.
+     * @param int              $ago  Days before today.
+     * @return array<int,array{0:string,1:float,2:float}> Path, share of impressions, places lower.
+     */
+    private static function query_pages(array $info, $ago) {
+        if (empty($info[4])) {
+            return array(array($info[0], 1.0, 0.0));
+        }
+        if (!empty($info[5]) && $ago < (int) $info[5]) {
+            // The second page has taken over: it leads, the first follows lower.
+            return array(array($info[0], 0.3, 2.0), array($info[4], 1.0, 0.0));
+        }
+        return array(array($info[0], 1.0, 0.0), array($info[4], 0.2, 2.0));
+    }
+
+    /**
+     * One query's figures on one page for a day: impressions grow with
+     * the site, the position climbs over the year, clicks follow the
+     * position; null when the page is unknown or has no impressions.
+     *
+     * @param string                                                  $query Query.
+     * @param array<int,mixed>                                        $info  Its SEARCH_QUERIES entry.
+     * @param array{0:string,1:float,2:float}                         $page  From query_pages().
+     * @param array{paths:array<string,int>,queries:array<string,int>} $ids   Dictionary IDs.
+     * @param string                                                  $date  Day (Y-m-d).
+     * @param int                                                     $ago   Days before today.
+     * @param float                                                   $scale The day's size.
+     * @return array{0:int,1:int,2:int,3:int}|null Path ID, clicks, impressions, pos_impr.
+     */
+    private static function page_figures($query, array $info, array $page, array $ids, $date, $ago, $scale) {
+        list($path, $share, $lower) = $page;
+        $path_id = isset($ids['paths'][SEOProStats_Dict::clean($path)]) ? (int) $ids['paths'][SEOProStats_Dict::clean($path)] : 0;
+        $noise   = self::noise($date . $query . $path);
+        // A recent event on the page (SEARCH_EVENTS), eased in over four days.
+        $event   = isset(self::SEARCH_EVENTS[$path]) ? self::SEARCH_EVENTS[$path] : array(0, 0.0, 1.0, 1.0);
+        $ease    = max(0.0, min(1.0, ($event[0] - $ago) / 4));
+        $impr    = (int) round($info[1] * $share * $scale * (0.75 + 0.5 * $noise) * (1 + ($event[2] - 1) * $ease));
+        if (!$path_id || $impr < 1) {
+            return null;
+        }
+        $position = max(1.0, $info[2] + $lower + $info[3] * min(1.0, $ago / 365) + 1.6 * (self::noise($query . $date) - 0.5) + $event[1] * $ease);
+        $weak     = $path === $info[0] && isset(self::SEARCH_LOW_CTR[$query]) ? self::SEARCH_LOW_CTR[$query] : 1.0;
+        $ctr      = min(0.6, 0.32 / pow($position, 1.15)) * (0.85 + 0.3 * self::noise($date . $path . $query)) * (1 + ($event[3] - 1) * $ease) * $weak;
+        return array($path_id, (int) round($impr * $ctr), $impr, (int) round($position * $impr * 100));
+    }
+
+    /**
+     * The site by device and country, from the listed searches and a
+     * quarter more unlisted, a little further down the results.
+     *
+     * @param array<string,array<string,array<int,mixed>>> $rows Kind => key => row; totals added.
+     * @param array{0:int,1:int,2:int}                      $sum  The listed searches' clicks, impressions, pos_impr.
+     * @param string                                        $date Day (Y-m-d).
+     */
+    private static function site_rows(array &$rows, array $sum, $date) {
         $weights = array_sum(self::SEARCH_COUNTRIES) * array_sum(self::SEARCH_DEVICES);
         // Average position × 100, as pos_impr holds it.
         $average = $sum[1] ? $sum[2] / $sum[1] : 0;
@@ -1744,10 +1981,9 @@ final class SEOProStats_Demo {
                 $local    = self::noise($country);
                 $position = $average * 1.08 * ($device === 1 ? 0.95 : 1.04) * (0.85 + 0.3 * $local);
                 $clicks   = (int) round($sum[0] * 1.2 * $share * ($device === 2 ? 0.9 : 1.08) * (1.15 - 0.3 * $local));
-                $add('totals', array($device, $country), min($clicks, $impr), $impr, (int) round($position * $impr));
+                self::add_row($rows, 'totals', array($device, $country), array(min($clicks, $impr), $impr, (int) round($position * $impr)));
             }
         }
-        return $rows;
     }
 
     /**
@@ -1847,23 +2083,39 @@ final class SEOProStats_Demo {
         for ($hour = (int) (floor($from / HOUR_IN_SECONDS) * HOUR_IN_SECONDS); $hour < $to; $hour += HOUR_IN_SECONDS) {
             $a    = max($from, $hour);
             $b    = min($to, $hour + HOUR_IN_SECONDS);
-            $time = (new DateTimeImmutable('@' . $a))->setTimezone($tz);
-            $day  = self::day_shape($time, $now);
-            $rate = $day['visits'] * self::HOURS[(int) $time->format('G')] / array_sum(self::HOURS);
-            $want = $rate * ($b - $a) / HOUR_IN_SECONDS;
-            $n    = (int) floor($want) + (self::chance($want - floor($want)) ? 1 : 0);
-            for ($i = 0; $i < $n; $i++) {
-                $source = $day['spike'] !== '' && self::chance($day['share']) ? $day['spike'] : self::pick_key(self::SOURCES);
-                foreach (self::visit(random_int($a, max($a, $b - 1)), $source, $time) as $line) {
-                    if ($line['ts'] <= $now) {
-                        $lines[] = $line;
-                    }
-                }
-            }
+            $time  = (new DateTimeImmutable('@' . $a))->setTimezone($tz);
+            $lines = array_merge($lines, self::hour_lines($a, $b, $time, $now));
         }
         usort($lines, static function ($x, $y) {
             return $x['ts'] - $y['ts'];
         });
+        return $lines;
+    }
+
+    /**
+     * The lines of the visits that start in [a, b), within one hour: as
+     * many as the day's shape and the hour give; hits after now left out.
+     *
+     * @param int               $a    Unix time.
+     * @param int               $b    Unix time, at most an hour on.
+     * @param DateTimeImmutable $time $a, site-local.
+     * @param int               $now  Unix time now.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function hour_lines($a, $b, DateTimeImmutable $time, $now) {
+        $day   = self::day_shape($time, $now);
+        $rate  = $day['visits'] * self::HOURS[(int) $time->format('G')] / array_sum(self::HOURS);
+        $want  = $rate * ($b - $a) / HOUR_IN_SECONDS;
+        $n     = (int) floor($want) + (self::chance($want - floor($want)) ? 1 : 0);
+        $lines = array();
+        for ($i = 0; $i < $n; $i++) {
+            $source = $day['spike'] !== '' && self::chance($day['share']) ? $day['spike'] : self::pick_key(self::SOURCES);
+            foreach (self::visit(random_int($a, max($a, $b - 1)), $source, $time) as $line) {
+                if ($line['ts'] <= $now) {
+                    $lines[] = $line;
+                }
+            }
+        }
         return $lines;
     }
 
@@ -1913,31 +2165,93 @@ final class SEOProStats_Demo {
      */
     private static function visit($started, $source, DateTimeImmutable $time) {
         list(, $referrer, $query, $landing) = self::SOURCES[$source];
-        $who = self::visitor($started);
+        $who     = self::visitor($started);
+        $paths   = self::visit_paths($landing);
+        $context = self::visit_context($paths, $landing);
+        $shown   = self::ab_shown($paths, $context, $started);
 
+        $lines  = array();
+        $ts     = $started;
+        $id     = bin2hex(random_bytes(6));
+        $clicks = $started >= time() - self::CLICK_DAYS * DAY_IN_SECONDS;
+        foreach ($paths as $seq => $path) {
+            $pkey  = bin2hex(random_bytes(8));
+            $tests = isset($shown[$seq]) ? $shown[$seq] : array();
+            $hit   = self::page_hit($path, $pkey, $who, $context[$seq], $tests);
+            if ($seq === 0) {
+                $hit['u'] .= strtr($query, array('{c}' => strtolower($time->format('F')) . '-update', '{id}' => $id));
+                $hit['r']  = $referrer;
+            } else {
+                $hit['r'] = home_url($paths[$seq - 1]);
+            }
+            $lines[] = self::line($ts, $who, $hit);
+
+            list($visible, $scrolled) = self::engagement(count($paths) === 1);
+            $lines[] = self::line($ts + $visible, $who, array('t' => 'eng', 'p' => $pkey, 's' => $visible * 1000, 'sc' => $scrolled));
+            foreach (self::page_events($path, $pkey, $who, $clicks, $tests) as $event) {
+                $lines[] = self::line($ts + (int) ($visible / 2), $who, $event);
+            }
+            $ts += $visible + random_int(2, 20);
+        }
+        $who['ended']    = $ts;
+        self::$recent[] = $who;
+        if (count(self::$recent) > 200) {
+            array_shift(self::$recent);
+        }
+        return $lines;
+    }
+
+    /**
+     * A visit's pages: a landing page of its kind, then pages at random,
+     * or on to the checkout from the pricing and shop pages.
+     *
+     * @param string $landing Key of LANDINGS.
+     * @return string[] Paths, in order.
+     */
+    private static function visit_paths($landing) {
         $paths = array(self::pick_key(self::LANDINGS[$landing]));
         $pages = self::chance(0.46) ? 1 : 2 + min(6, (int) floor(-log(max(1e-6, self::unit())) * 1.6));
         // Until the visit has $pages pages ($paths is a list).
         while (!isset($paths[$pages - 1])) {
             $last = end($paths);
             if (($last === '/pricing/' || $last === '/shop/pro-licence/') && self::chance(0.12)) {
-                $paths[] = '/cart/';
-                if (self::chance(0.7)) {
-                    $paths[] = '/checkout/';
-                    if (self::chance(0.6)) {
-                        $paths[] = '/checkout/order-received/';
-                    }
-                }
-                break;
+                return self::checkout($paths);
             }
             $next = self::pick_key(self::PAGES);
             if ($next !== $last) {
                 $paths[] = $next;
             }
         }
+        return $paths;
+    }
 
-        // What WordPress would say about the pages: some landings are not
-        // found, some visits search the site, a few are logged in.
+    /**
+     * A visit's pages on to the cart, and some on to the checkout and the
+     * order received page.
+     *
+     * @param string[] $paths Paths so far.
+     * @return string[]
+     */
+    private static function checkout(array $paths) {
+        $paths[] = '/cart/';
+        if (self::chance(0.7)) {
+            $paths[] = '/checkout/';
+            if (self::chance(0.6)) {
+                $paths[] = '/checkout/order-received/';
+            }
+        }
+        return $paths;
+    }
+
+    /**
+     * What WordPress would say about a visit's pages: some landings are
+     * not found, some visits search the site, a few are logged in.
+     *
+     * @param string[] $paths   The visit's pages; a not found landing or a site search is put in.
+     * @param string   $landing Key of LANDINGS.
+     * @return array<int,array<string,mixed>> Context per page, in the same order.
+     */
+    private static function visit_context(array &$paths, $landing) {
         $context = array_fill(0, count($paths), array());
         if (($landing === 'content' || $landing === 'search') && self::chance(0.03)) {
             $paths[0]   = self::pick_key(self::NOT_FOUND);
@@ -1953,70 +2267,96 @@ final class SEOProStats_Demo {
                 $context[$i]['l'] = 1;
             }
         }
-        $shown = self::ab_shown($paths, $context, $started);
+        return $context;
+    }
 
-        $lines  = array();
-        $ts     = $started;
-        $id     = bin2hex(random_bytes(6));
-        $clicks = $started >= time() - self::CLICK_DAYS * DAY_IN_SECONDS;
-        foreach ($paths as $seq => $path) {
-            $pkey = bin2hex(random_bytes(8));
-            $hit  = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
-            if ($context[$seq]) {
-                $hit['x'] = $context[$seq];
-            }
-            $tests = isset($shown[$seq]) ? $shown[$seq] : array();
-            if ($tests) {
-                $hit['ab'] = array();
-                foreach ($tests as $test => $variant) {
-                    $hit['ab'][] = $test . ':' . $variant[1];
-                }
-            }
-            if ($seq === 0) {
-                $hit['u'] .= strtr($query, array('{c}' => strtolower($time->format('F')) . '-update', '{id}' => $id));
-                $hit['r']  = $referrer;
-            } else {
-                $hit['r'] = home_url($paths[$seq - 1]);
-            }
-            $lines[] = self::line($ts, $who, $hit);
-
-            $quick   = count($paths) === 1 && self::chance(0.4);
-            $visible = $quick ? random_int(2, 10) : random_int(15, 170);
-            $lines[] = self::line($ts + $visible, $who, array('t' => 'eng', 'p' => $pkey, 's' => $visible * 1000, 'sc' => $quick ? random_int(0, 30) : random_int(25, 100)));
-
-            $events = self::events($path, $who);
-            if ($clicks) {
-                $events = array_merge($events, self::clicks($path, $events));
-            }
-            // A click inside a test shows its variant's label, and says which.
+    /**
+     * A page's pageview hit, without its referrer.
+     *
+     * @param string                                          $path    Page.
+     * @param string                                          $pkey    Page load ID.
+     * @param array<string,mixed>                             $who     From visitor().
+     * @param array<string,mixed>                             $context From visit_context().
+     * @param array<string,array{0:int,1:string,2:string,3:float}> $tests   Test id => variant shown.
+     * @return array<string,mixed>
+     */
+    private static function page_hit($path, $pkey, array $who, array $context, array $tests) {
+        $hit = array('t' => 'pv', 'p' => $pkey, 'u' => $path, 'w' => $who['screen'], 'tz' => $who['tz'], 'l' => $who['lang']);
+        if ($context) {
+            $hit['x'] = $context;
+        }
+        if ($tests) {
+            $hit['ab'] = array();
             foreach ($tests as $test => $variant) {
-                foreach (self::AB_TESTS as $def) {
-                    if ($def[0] !== $test || $def[6] === '') {
-                        continue;
-                    }
-                    foreach ($events as $e => $event) {
-                        if ($event['t'] === 'c' && $event['l'] === $def[6]) {
-                            $events[$e]['l']  = $variant[2];
-                            $events[$e]['ab'] = $test . ':' . $variant[1];
-                        }
-                    }
+                $hit['ab'][] = $test . ':' . $variant[1];
+            }
+        }
+        return $hit;
+    }
+
+    /**
+     * How long a page was seen and how far it was scrolled; a lone page
+     * is now and then left at once.
+     *
+     * @param bool $single Whether it is the visit's only page.
+     * @return array{0:int,1:int} Seconds visible, percent scrolled.
+     */
+    private static function engagement($single) {
+        $quick   = $single && self::chance(0.4);
+        $visible = $quick ? random_int(2, 10) : random_int(15, 170);
+        return array($visible, $quick ? random_int(0, 30) : random_int(25, 100));
+    }
+
+    /**
+     * A page's events, and its clicks when they are kept, with the page
+     * load ID; a click inside a test shows its variant's label, and says
+     * which.
+     *
+     * @param string                                          $path   Page.
+     * @param string                                          $pkey   Page load ID.
+     * @param array<string,mixed>                             $who    From visitor().
+     * @param bool                                            $clicks Whether clicks are made.
+     * @param array<string,array{0:int,1:string,2:string,3:float}> $tests  Test id => variant shown.
+     * @return array<int,array<string,mixed>> Hits.
+     */
+    private static function page_events($path, $pkey, array $who, $clicks, array $tests) {
+        $events = self::events($path, $who);
+        if ($clicks) {
+            $events = array_merge($events, self::clicks($path, $events));
+        }
+        foreach ($tests as $test => $variant) {
+            $events = self::ab_labels($events, $test, $variant);
+        }
+        foreach ($events as $e => $event) {
+            $events[$e]['p'] = $pkey;
+            if ($event['t'] === 'e') {
+                $events[$e]['u'] = $path;
+            }
+        }
+        return $events;
+    }
+
+    /**
+     * Clicks on a test's element show the variant's label, and say which.
+     *
+     * @param array<int,array<string,mixed>>     $events  Hits.
+     * @param string                             $test    Test id.
+     * @param array{0:int,1:string,2:string,3:float} $variant The variant shown.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function ab_labels(array $events, $test, array $variant) {
+        foreach (self::AB_TESTS as $def) {
+            if ($def[0] !== $test || $def[6] === '') {
+                continue;
+            }
+            foreach ($events as $e => $event) {
+                if ($event['t'] === 'c' && $event['l'] === $def[6]) {
+                    $events[$e]['l']  = $variant[2];
+                    $events[$e]['ab'] = $test . ':' . $variant[1];
                 }
             }
-            foreach ($events as $event) {
-                $event['p'] = $pkey;
-                if ($event['t'] === 'e') {
-                    $event['u'] = $path;
-                }
-                $lines[] = self::line($ts + (int) ($visible / 2), $who, $event);
-            }
-            $ts += $visible + random_int(2, 20);
         }
-        $who['ended']    = $ts;
-        self::$recent[] = $who;
-        if (count(self::$recent) > 200) {
-            array_shift(self::$recent);
-        }
-        return $lines;
+        return $events;
     }
 
     /**
@@ -2069,16 +2409,26 @@ final class SEOProStats_Demo {
             $out[] = array('t' => 'e', 'n' => 'Contact form');
         }
         if ($path === '/checkout/order-received/') {
-            $plan     = self::PLANS[self::pick_index(self::PLANS)];
-            $currency = 'USD';
-            if ($who['cc'] === 'GB') {
-                $currency = 'GBP';
-            } elseif (in_array($who['cc'], array('DE', 'FR', 'NL', 'ES'), true)) {
-                $currency = 'EUR';
-            }
-            $out[]    = array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
+            $out[] = self::purchase($who['cc']);
         }
         return $out;
+    }
+
+    /**
+     * A purchase event: a plan at random, in the visitor's currency.
+     *
+     * @param string $country Visitor's country code.
+     * @return array<string,mixed> Event hit.
+     */
+    private static function purchase($country) {
+        $plan     = self::PLANS[self::pick_index(self::PLANS)];
+        $currency = 'USD';
+        if ($country === 'GB') {
+            $currency = 'GBP';
+        } elseif (in_array($country, array('DE', 'FR', 'NL', 'ES'), true)) {
+            $currency = 'EUR';
+        }
+        return array('t' => 'e', 'n' => 'Purchase', 'd' => array('plan' => $plan[1]), 'rv' => array('a' => $plan[2][$currency], 'c' => $currency));
     }
 
     /**
@@ -2093,14 +2443,9 @@ final class SEOProStats_Demo {
     private static function clicks($path, array $events) {
         $out = array();
         foreach ($events as $event) {
-            if ($event['n'] === 'Outbound link') {
-                $out[] = array('t' => 'c', 's' => 'a', 'l' => $event['d']['url'] === 'https://wordpress.org/plugins/' ? 'WordPress plugins' : 'Developer resources', 'h' => rtrim($event['d']['url'], '/') . '/', 'f' => 2);
-            } elseif ($event['n'] === 'Download') {
-                $out[] = array('t' => 'c', 's' => 'a.wp-block-file__button', 'l' => 'Download', 'h' => '/wp-content/uploads/' . $event['d']['file'], 'f' => 8);
-            } elseif ($event['n'] === 'Newsletter signup') {
-                $out[] = array('t' => 'f', 's' => 'form.newsletter-form', 'l' => 'newsletter', 'h' => '/', 'n' => 1);
-            } elseif ($event['n'] === 'Contact form') {
-                $out[] = array('t' => 'f', 's' => 'form.wpcf7-form', 'l' => 'contact', 'h' => '/contact/', 'n' => 4);
+            $click = self::event_click($event);
+            if ($click !== null) {
+                $out[] = $click;
             }
         }
         foreach (self::CLICKS as $prefix => $items) {
@@ -2118,6 +2463,28 @@ final class SEOProStats_Demo {
             }
         }
         return $out;
+    }
+
+    /**
+     * The click or form submit behind an event, as autocapture sends it;
+     * null for events without one.
+     *
+     * @param array<string,mixed> $event Event hit, from events().
+     * @return array<string,mixed>|null Click or form hit.
+     */
+    private static function event_click(array $event) {
+        switch ($event['n']) {
+            case 'Outbound link':
+                return array('t' => 'c', 's' => 'a', 'l' => $event['d']['url'] === 'https://wordpress.org/plugins/' ? 'WordPress plugins' : 'Developer resources', 'h' => rtrim($event['d']['url'], '/') . '/', 'f' => 2);
+            case 'Download':
+                return array('t' => 'c', 's' => 'a.wp-block-file__button', 'l' => 'Download', 'h' => '/wp-content/uploads/' . $event['d']['file'], 'f' => 8);
+            case 'Newsletter signup':
+                return array('t' => 'f', 's' => 'form.newsletter-form', 'l' => 'newsletter', 'h' => '/', 'n' => 1);
+            case 'Contact form':
+                return array('t' => 'f', 's' => 'form.wpcf7-form', 'l' => 'contact', 'h' => '/contact/', 'n' => 4);
+            default:
+                return null;
+        }
     }
 
     /**
