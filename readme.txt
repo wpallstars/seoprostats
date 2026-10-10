@@ -40,8 +40,8 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Opportunities**: striking-distance queries, low CTR, pages losing clicks with the likely cause, queries missing from the page and overlapping pages.
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
 * **Backlinks**: links from visits and CSV exports (Settings → Import → Links), with source filtering, scores and dates per provider.
-* **IndexNow**: opt-in changed-page notifications, with submission receipts; received does not mean indexed.
-* **Targets and research**: operator-search links on four engines; dated allintitle counts and monthly volumes, with sortable/filterable Keyword Golden Ratio bands (a heuristic, not a ranking promise).
+* **Targets**: the queries you aim for, with research links on four search engines and Keyword Golden Ratio bands.
+* **IndexNow**: tell search engines when pages change (opt-in).
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
 * **A/B tests**: test blocks in the block editor, with results and a winner, without cookies.
@@ -63,15 +63,15 @@ No cookies or browser storage, no stored IP addresses and no visitor identity ac
 
 Off by default, except the first:
 
-* **IndexNow** (api.indexnow.org), when enabled under Settings → Data: changed page addresses, this site's host, public key and its location, batched in cron. Participating engines share notifications; Google does not participate. No visitor data. Turning it off stops submissions and hides the key. [Protocol and terms](https://indexnow.org/terms).
-* **Pages that sent visitors** (Settings → Data → Check pages that send visitors for links, on): once a day, for up to 20 seconds, WP-Cron opens public pages that sent visits, to find their links to this site. The user agent names the plugin and the site; nothing about visitors is sent. Each site's own terms apply.
-* **Google Search Status Dashboard** (status.search.google.com), when Show search engine updates is on: once a day, Google's public list of ranking updates and incidents. Nothing about the site is sent. Other feeds you add are read the same way. Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
-* **SEO Pro Stats sign-in relay** (gsc-oauth.wpallstars.com, run by the plugin's maker), only if you choose Sign in with Google: your browser goes through it to Google's sign-in, and it passes Google's answer (the access tokens) back to the site's wp-admin address. While imports run, the site sends it the stored refresh token about once an hour for a new access token. It stores and logs nothing. [Privacy policy](https://www.wpallstars.com/privacy/).
-* **Google Search Console API and sign-in** (searchconsole.googleapis.com, oauth2.googleapis.com), after you connect with Sign in with Google or your own service account key (disconnecting revokes a sign-in's token there): search data by day, page, query, device and country, sitemaps once a day, and URL Inspection of your own pages (200 a day by default, Settings → Data). Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
+* **Pages that sent visitors** (Settings → Data, on): once a day, for up to 20 seconds, WP-Cron opens public pages that sent visits, to find their links to this site. The user agent names the plugin and the site; nothing about visitors is sent.
+* **Google Search Status Dashboard** (status.search.google.com), when Show search engine updates is on: once a day, Google's public list of ranking updates. Nothing about the site is sent. Other feeds you add are read the same way. Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
+* **IndexNow** (api.indexnow.org), when on (Settings → Data): changed page addresses and the site's public key, from cron. Google does not take part. No visitor data. [Terms](https://indexnow.org/terms).
+* **SEO Pro Stats sign-in relay** (gsc-oauth.wpallstars.com, run by the plugin's maker), only if you choose Sign in with Google: it passes Google's sign-in answer back to the site's wp-admin, and while imports run the site sends it the stored refresh token about once an hour for a new access token. It stores and logs nothing. [Privacy policy](https://www.wpallstars.com/privacy/).
+* **Google Search Console API and sign-in** (searchconsole.googleapis.com, oauth2.googleapis.com), after you connect (disconnecting revokes a sign-in's token): search data by day, page, query, device and country, sitemaps, and URL Inspection of your own pages (200 a day by default). Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
 * **Bing Webmaster API** (ssl.bing.com), after you connect with your own API key: the site's search data by day and week. Microsoft [terms](https://www.microsoft.com/servicesagreement) and [privacy statement](https://privacy.microsoft.com/privacystatement).
 * **WordPress.com** (public-api.wordpress.com), only while you import Jetpack Stats, through Jetpack's own connection: the site's daily statistics.
 
-Search requests run in WP-Cron, WP-CLI or when you choose Import now, never on visitor pages, and send nothing about visitors. Disconnecting stops them.
+Search requests run in WP-Cron, WP-CLI or Import now, never on visitor pages, and send nothing about visitors.
 
 = Built with AI =
 
@@ -93,11 +93,11 @@ It sets no cookies and stores nothing in the browser, so it adds nothing a banne
 
 = Can I bring my old statistics across? =
 
-Yes. Settings → Import lists the supported plugins whose data is on the site, shows what would be imported, then imports in the background; days are never counted twice, and Undo removes exactly what was added. Remove leftover data deletes the old plugin's tables and settings once it is inactive, after you confirm; back up first.
+Yes. Settings → Import shows what each supported plugin's data would add, imports it in the background without counting a day twice, and Undo removes exactly what was added. Remove leftover data deletes the old plugin's tables and settings once it is inactive; back up first.
 
 = Can AI agents use it? =
 
-Yes, with an Application Password: the REST API, `wp seoprostats` and the abilities give every report, and the loop (`wp seoprostats loop`) gives an agent one cycle of search work: the plan, experiments due and their results. The plugin proposes and measures; it never changes a page by itself.
+Yes, with an Application Password: the REST API, `wp seoprostats` and the abilities give every report, and `wp seoprostats loop` gives an agent one cycle of search work. The plugin proposes and measures; it never changes a page by itself.
 
 = Where do updates come from? =
 
@@ -113,14 +113,14 @@ Use **Support** on the settings screen, or ask aidevops.
 2. Search → Rankings: Google Search Console and Bing Webmaster Tools clicks, impressions, CTR and position by query and page.
 3. Search → Plan: search work from every report in one list, best first, with its score.
 4. Changes: what changed on the site, when and on which page.
-5. Goals: conversions, conversion rate and revenue per currency, against the previous period, with what the figures say and how to improve them.
-6. A shared report: the sections you chose, read-only for a client or colleague, without wp-admin, ready to print or save as PDF.
+5. Goals: conversions, conversion rate and revenue per currency, against the previous period.
+6. A shared report: the sections you chose, read-only without wp-admin, ready to print or save as PDF.
 
 == Changelog ==
 
 = 1.1.0 =
 * New: Sign in with Google for Search Console, with no Google Cloud setup; backlink CSV imports from Search Console and backlink tools.
 * Changed: Search tables sort by any figure's header, most impressions first by default.
-* Fixed: disconnecting a search source during an import, report filters ending in a backslash, screen reader row labels, and PHP warnings in edge cases.
+* Fixed: disconnecting a search source during an import, report filters ending in a backslash, screen reader row labels, Read Me lines whose formatting cannot be read, and PHP warnings in edge cases.
 
 Every change: changelog.txt.
