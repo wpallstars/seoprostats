@@ -32,7 +32,7 @@ import {
 	type TargetState,
 	type TargetStatus,
 } from '@seoprostats/core';
-import { deleteTargets, errorMessage, importTargets, useTargets } from './api';
+import { deleteTargets, errorMessage, importTargets, scopeKey, useTargets } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import { longLabel } from './dates';
@@ -46,6 +46,18 @@ const PER_PAGE = 50;
 
 const number = (value: number) => formatNumber(value, locale, false);
 const decimal = (value: number) => formatDecimal(value, locale);
+/** A share (0–1) as a whole percentage, e.g. "80%". */
+const percentText = (share: number) => `${number(Math.round(share * 100))}%`;
+
+/** With no rows: none imported yet (who can import), or none in the status picked. */
+function emptyText(empty: boolean): string {
+	if (!empty) {
+		return __('No target in this status.', 'seoprostats');
+	}
+	return boot.canManage
+		? __('No search targets yet. Import a list of searches with the page meant for each: CSV, tab-separated text, JSON, or the aidevops search targets table.', 'seoprostats')
+		: __('No search targets yet. An administrator can import them.', 'seoprostats');
+}
 
 /** A target status's name. */
 export function targetStatusName(status: TargetStatus): string {
@@ -99,7 +111,7 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 	const status: TargetFilter = state.targets ?? 'all';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, engine or status change.
-	const scope = JSON.stringify([apiArgs({ ...state, filters: [] }), engine, status]);
+	const scope = scopeKey(apiArgs({ ...state, filters: [] }), engine, status);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -129,7 +141,7 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 				<CardHeader className="spst-card__header">
 					<div>
 						<h2 className="spst-card__title">{__('Search targets', 'seoprostats')}</h2>
-						{answer && answer.through && answer.days > 0 && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+						{answer?.through && answer.days > 0 && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
@@ -173,13 +185,7 @@ export function Targets({ state, update, open, onEngines }: Readonly<TargetsProp
 					)}
 					{answer && !rows.length && (
 						<div className="spst-empty">
-							<p>
-								{empty
-									? boot.canManage
-										? __('No search targets yet. Import a list of searches with the page meant for each: CSV, tab-separated text, JSON, or the aidevops search targets table.', 'seoprostats')
-										: __('No search targets yet. An administrator can import them.', 'seoprostats')
-									: __('No target in this status.', 'seoprostats')}
-							</p>
+							<p>{emptyText(empty)}</p>
 						</div>
 					)}
 					{rows.length > 0 && <RowsTable rows={rows} compared={!!answer?.compare} open={open} refreshing={query.isFetching} onError={setError} />}
@@ -339,7 +345,7 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 										<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: row.shown?.path ?? '', query: row.query })}>
 											{row.shown.path}
 										</button>
-										{row.shown.share !== null && ` · ${sprintf(/* translators: %s: share of the impressions, e.g. 80%. */ __('%s of impressions', 'seoprostats'), `${number(Math.round(row.shown.share * 100))}%`)}`}
+										{row.shown.share !== null && ` · ${sprintf(/* translators: %s: share of the impressions, e.g. 80%. */ __('%s of impressions', 'seoprostats'), percentText(row.shown.share))}`}
 									</span>
 								)}
 							</td>

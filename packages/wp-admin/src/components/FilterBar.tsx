@@ -26,7 +26,7 @@ export function FilterBar({ filters, update }: Readonly<Props>) {
 		return null;
 	}
 	return (
-		<div className="spst-filters" role="group" aria-label={__('Filters', 'seoprostats')}>
+		<div className="spst-filters" role="group" aria-label={__('Filters', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 			<span className="spst-filters__title">{__('Showing visits where', 'seoprostats')}</span>
 			<ul className="spst-filters__list">
 				{filters.map((filter, i) => {

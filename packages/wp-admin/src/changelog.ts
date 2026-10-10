@@ -69,7 +69,7 @@ export function groupColors(el: Element | null): Record<ChangeGroup, string> {
 export function filteredPage(filters: Filter[]): string {
 	const pages = filters.filter((f) => f.dimension === 'page');
 	const only = pages.length === 1 ? pages[0] : undefined;
-	if (!only || only.values.length !== 1) {
+	if (only?.values.length !== 1) {
 		return '';
 	}
 	const value = only.values[0] ?? '';

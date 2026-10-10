@@ -28,7 +28,7 @@ import {
 	singleEngine,
 	type SearchEngine,
 } from '@seoprostats/core';
-import { errorMessage, useLinks } from './api';
+import { errorMessage, scopeKey, useLinks } from './api';
 import { locale } from './boot';
 import { PageCell } from './Opportunities';
 import type { SearchPick, SearchReportProps } from './components/SearchSetup';
@@ -62,7 +62,7 @@ export function Links({ state, update, open }: Readonly<LinksProps>) {
 	const goal = state.goal ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, filters, engine, list or goal change.
-	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, kind, goal]);
+	const scope = scopeKey(apiArgs({ ...state, compare: 'none' }), engine, kind, goal);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -169,8 +169,7 @@ function empty(kind: LinksKind, answer: LinksAnswer): string {
 /** Notes under the list: what was read, and the rules. */
 function Notes({ answer }: Readonly<{ answer: LinksAnswer }>) {
 	const r = answer.rules;
-	const notes: string[] = [];
-	notes.push(
+	const notes: string[] = [
 		answer.read.complete
 			? sprintf(
 					/* translators: %s: number of pages. */
@@ -182,17 +181,15 @@ function Notes({ answer }: Readonly<{ answer: LinksAnswer }>) {
 					__('Links read on %1$s of %2$s published pages so far; the rest are read in the daily batch.', 'seoprostats'),
 					number(answer.read.read),
 					number(answer.read.pages)
-				)
-	);
-	notes.push(
+				),
 		sprintf(
 			/* translators: 1: number of pages, 2: number of conversions, 3: impressions. */
 			__('Only links in a page’s own text count, not menus or widgets, so the front page is never listed. Few links in is %1$s or fewer pages; converting is %2$s or more conversions. A missing link needs %3$s or more impressions on the search.', 'seoprostats'),
 			number(r.few_links),
 			number(r.min_conversions),
 			number(r.min_impressions)
-		)
-	);
+		),
+	];
 	if (answer.goal) {
 		/* translators: %s: goal name. */
 		notes.push(sprintf(__('Conversions of %s, from visits from search that started on the page.', 'seoprostats'), answer.goal.name));

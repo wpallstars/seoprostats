@@ -54,7 +54,7 @@ import {
 	type SearchRow,
 	type ViewState,
 } from '@seoprostats/core';
-import { errorMessage, useMarkers, useSearch } from './api';
+import { errorMessage, scopeKey, useMarkers, useSearch } from './api';
 import { locale } from './boot';
 import { usePrintAll } from './printAll';
 import { longLabel } from './dates';
@@ -93,9 +93,28 @@ function metricName(metric: SearchMetricKey): string {
 	return names[metric];
 }
 
+/** The text for the engine picked: every engine added up, Bing, or Google. */
+export function byEngine(engine: SearchEngineChoice, all: string, bing: string, google: string): string {
+	if (engine === 'all') {
+		return all;
+	}
+	return engine === 'bing' ? bing : google;
+}
+
+/** The days pager's buttons: Older and Newer by day (in the order shown), Previous and Next when sorted by a figure. */
+function pagerLabels(byDay: boolean, ascending: boolean): { back: string; forward: string } {
+	if (!byDay) {
+		return { back: __('Previous', 'seoprostats'), forward: __('Next', 'seoprostats') };
+	}
+	return ascending ? { back: __('Older', 'seoprostats'), forward: __('Newer', 'seoprostats') } : { back: __('Newer', 'seoprostats'), forward: __('Older', 'seoprostats') };
+}
+
+/** Report tabs: the arrow keys step one tab. */
+const ARROW_STEPS: Partial<Record<string, number>> = { ArrowRight: 1, ArrowLeft: -1 };
+
 function metricFoot(metric: SearchMetricKey, engine: SearchEngineChoice): string {
 	const feet: Record<SearchMetricKey, string> = {
-		clicks: engine === 'all' ? __('Visits from search engines', 'seoprostats') : engine === 'bing' ? __('Visits from Bing', 'seoprostats') : __('Visits from Google Search', 'seoprostats'),
+		clicks: byEngine(engine, __('Visits from search engines', 'seoprostats'), __('Visits from Bing', 'seoprostats'), __('Visits from Google Search', 'seoprostats')),
 		impressions: __('Times shown in results', 'seoprostats'),
 		ctr: __('Clicks per impression', 'seoprostats'),
 		position: __('Lower is better', 'seoprostats'),
@@ -120,7 +139,10 @@ const PER_PAGE = 50;
 
 /** A days row's first column: Day, Week or Month, as the chart's grain. */
 function daysHeading(grain: SearchAnswer['grain'] | undefined): string {
-	return grain === 'week' ? __('Week', 'seoprostats') : grain === 'month' ? __('Month', 'seoprostats') : __('Day', 'seoprostats');
+	if (grain === 'week') {
+		return __('Week', 'seoprostats');
+	}
+	return grain === 'month' ? __('Month', 'seoprostats') : __('Day', 'seoprostats');
 }
 
 /** A table's first column heading. */
@@ -146,7 +168,7 @@ function value(metric: SearchMetricKey, row: { impressions: number } & Record<Se
 
 /** The title: the site, a page, a query, or both, on an engine. */
 function title(page: string, query: string, engine: SearchEngineChoice): string {
-	const name = engine === 'all' ? __('All search engines', 'seoprostats') : engine === 'bing' ? __('Bing Search', 'seoprostats') : __('Google Search', 'seoprostats');
+	const name = byEngine(engine, __('All search engines', 'seoprostats'), __('Bing Search', 'seoprostats'), __('Google Search', 'seoprostats'));
 	if (page && query) {
 		/* translators: 1: a search engine, e.g. "Google Search", 2: a search query, 3: a page path. */
 		return sprintf(__('%1$s: “%2$s” showing %3$s', 'seoprostats'), name, query, page);
@@ -206,11 +228,11 @@ export function Search(props: Readonly<ViewProps & { shared?: boolean }>) {
 	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, order: undefined, goal: undefined, status: undefined, targets: undefined, backlinks: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-		const at = reports.indexOf(report);
-		const next = event.key === 'ArrowRight' ? at + 1 : event.key === 'ArrowLeft' ? at - 1 : null;
-		if (next === null) {
+		const by = ARROW_STEPS[event.key];
+		if (by === undefined) {
 			return;
 		}
+		const next = reports.indexOf(report) + by;
 		event.preventDefault();
 		const target = reports[(next + reports.length) % reports.length] ?? 'rankings';
 		show(target);
@@ -301,7 +323,7 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 	const by = tableSort(searchSorts(shown), state.sort, state.order);
 	const onSort = (sort: SearchDaySort, order: TableSortProps<SearchDaySort>['order']) => update({ sort, order });
 	// Days page through the chart's points; back to the first page when the period, filters, engine, page, query or order change.
-	const scope = JSON.stringify({ ...apiArgs(state), engine, page, query, shown, by });
+	const scope = scopeKey(apiArgs(state), engine, page, query, shown, by);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = shown === 'days' && at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -338,11 +360,11 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 	};
 
 	const onTabKey = (event: KeyboardEvent<HTMLButtonElement>) => {
-		const at = kinds.indexOf(shown);
-		const next = event.key === 'ArrowRight' ? at + 1 : event.key === 'ArrowLeft' ? at - 1 : null;
-		if (next === null) {
+		const by = ARROW_STEPS[event.key];
+		if (by === undefined) {
 			return;
 		}
+		const next = kinds.indexOf(shown) + by;
 		event.preventDefault();
 		const target = kinds[(next + kinds.length) % kinds.length] ?? 'queries';
 		setKind(target);
@@ -454,7 +476,7 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 					</form>
 				</div>
 
-				<div className="spst-tiles" role="group" aria-label={__('Chart', 'seoprostats')}>
+				<div className="spst-tiles" role="group" aria-label={__('Chart', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 					{METRIC_ORDER.map((key) => (
 						<button
 							key={key}
@@ -555,10 +577,10 @@ function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 								</span>
 								{/* Newer and Older while the rows go by day; Previous and Next when sorted by a figure. */}
 								<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
-									{by.sort !== 'day' ? __('Previous', 'seoprostats') : by.order === 'asc' ? __('Older', 'seoprostats') : __('Newer', 'seoprostats')}
+									{pagerLabels(by.sort === 'day', by.order === 'asc').back}
 								</Button>
 								<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
-									{by.sort !== 'day' ? __('Next', 'seoprostats') : by.order === 'asc' ? __('Newer', 'seoprostats') : __('Older', 'seoprostats')}
+									{pagerLabels(by.sort === 'day', by.order === 'asc').forward}
 								</Button>
 							</nav>
 						)}
@@ -677,7 +699,7 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose, mark
 	return (
 		<>
 			{!answer && !failed && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-			{answer && answer.kind === kind && !rows.length && (
+			{answer?.kind === kind && !rows.length && (
 				<div className="spst-empty">
 					<p>{answer.through ? __('No searches of this kind in this period.', 'seoprostats') : __('No search data yet.', 'seoprostats')}</p>
 				</div>
@@ -742,7 +764,13 @@ interface RowProps {
 function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: Readonly<RowProps>) {
 	const before = row.compare;
 	const when = kind === 'days' ? longLabel(row.from ?? row.value, grain) : '';
-	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? when : row.label}</span>;
+	let label = row.label;
+	if (kind === 'appearance') {
+		label = appearanceLabel(row.value);
+	} else if (kind === 'days') {
+		label = when;
+	}
+	let name = <span>{label}</span>;
 	if (kind === 'queries') {
 		name = (
 			<Button variant="link" aria-pressed={query === row.value} onClick={() => choose({ query: query === row.value ? '' : row.value })}>

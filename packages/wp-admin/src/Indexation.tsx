@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { formatNumber, INDEXATION_KINDS, serializeFilter, singleEngine, type IndexationAnswer, type IndexationKind, type IndexationRow, type SearchEngine, type SitemapSource } from '@seoprostats/core';
-import { errorMessage, useIndexation } from './api';
+import { errorMessage, scopeKey, useIndexation } from './api';
 import { locale } from './boot';
 import { GoogleCell } from './Inspections';
 import { longLabel } from './dates';
@@ -57,7 +57,7 @@ export function Indexation({ state, update, open }: Readonly<IndexationProps>) {
 	const kind: IndexationKind = state.index ?? 'pages';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the filters, engine or list change.
-	const scope = JSON.stringify([state.filters.map(serializeFilter), engine, kind]);
+	const scope = scopeKey(state.filters.map(serializeFilter), engine, kind);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -228,6 +228,16 @@ function Notes({ answer }: Readonly<{ answer: IndexationAnswer }>) {
 	);
 }
 
+/** When search last showed the page, or that it never did. */
+function shownText(row: IndexationRow): string {
+	if (row.state === 'never') {
+		return __('Never shown', 'seoprostats');
+	}
+	const last = row.last_impression ? longLabel(row.last_impression, 'day') : '–';
+	/* translators: %s: the last day search showed the page. */
+	return sprintf(__('Last shown %s', 'seoprostats'), last);
+}
+
 function RowsTable({ rows, kind, open, refreshing, google }: Readonly<{ rows: IndexationRow[]; kind: IndexationKind; open: IndexationProps['open']; refreshing: boolean; google: boolean }>) {
 	return (
 		<TableScroll label={indexationName(kind)}>
@@ -260,15 +270,7 @@ function RowsTable({ rows, kind, open, refreshing, google }: Readonly<{ rows: In
 								<td>
 									<PageCell row={row} query="" open={open} />
 								</td>
-								<td>
-									{row.state === 'never'
-										? __('Never shown', 'seoprostats')
-										: sprintf(
-												/* translators: %s: the last day search showed the page. */
-												__('Last shown %s', 'seoprostats'),
-												row.last_impression ? longLabel(row.last_impression, 'day') : '–'
-											)}
-								</td>
+								<td>{shownText(row)}</td>
 								{google && (
 									<td>
 										<GoogleCell google={row.google} />

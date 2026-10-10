@@ -223,7 +223,7 @@ export function Clicks({ state, update }: Readonly<ViewProps>) {
 					</form>
 				</CardHeader>
 
-				<div className="spst-tiles" role="group" aria-label={__('Show', 'seoprostats')}>
+				<div className="spst-tiles" role="group" aria-label={__('Show', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 					{all.map((t) => (
 						<button
 							key={t.kind}
@@ -294,15 +294,7 @@ function ClickRows({ answer, kind, label, failed, fetching, page, update }: Read
 				<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
 					<thead>
 						<tr>
-							<th scope="col">
-								{kind === 'pages'
-									? __('Page', 'seoprostats')
-									: kind === 'links' || kind === 'downloads'
-										? __('Destination', 'seoprostats')
-										: kind === 'forms'
-											? __('Form', 'seoprostats')
-											: __('Element', 'seoprostats')}
-							</th>
+							<th scope="col">{firstColumn(kind)}</th>
 							{kind === 'forms' && <th scope="col">{__('Sent to', 'seoprostats')}</th>}
 							{kind === 'forms' && (
 								<th scope="col" className="num">
@@ -340,34 +332,7 @@ function ClickRows({ answer, kind, label, failed, fetching, page, update }: Read
 							<tr key={row.path ?? `${row.selector}|${row.label}|${row.target}`} className={kind === 'pages' && page === row.path ? 'is-selected' : ''}>
 								<td className="spst-table__bar-cell">
 									<span className="spst-table__bar" style={{ width: `${(row.count / top) * 100}%` }} aria-hidden="true" />
-									{kind === 'pages' ? (
-										<>
-											<Button
-												variant="link"
-												aria-pressed={page === row.path}
-												onClick={() => {
-													update({ page: page === row.path ? '' : (row.path ?? '') });
-												}}
-											>
-												{row.path}
-											</Button>
-											<PageLinks
-												info={{
-													path: row.path ?? '',
-													url: row.url ?? '',
-													edit_url: row.edit_url,
-												}}
-											/>
-										</>
-									) : kind === 'links' || kind === 'downloads' ? (
-										<>
-											<span>{row.target}</span>
-											{row.label && <span className="spst-meta">{row.label}</span>}
-											<Flags row={row} />
-										</>
-									) : (
-										<Element row={row} />
-									)}
+									<RowName row={row} kind={kind} page={page} update={update} />
 								</td>
 								{kind === 'forms' && <td>{row.target ? <code>{row.target}</code> : <span className="spst-muted">–</span>}</td>}
 								{kind === 'forms' && <td className="num">{formatNumber(row.fields, locale)}</td>}
@@ -392,17 +357,68 @@ function ClickRows({ answer, kind, label, failed, fetching, page, update }: Read
 			</TableScroll>
 		)}
 		{answer && (
-			<p className="spst-note">
-				{kind === 'dead'
-					? __(
-							'A dead click is one on something that looks clickable, after which nothing on the page changed for a second. Many on one element usually mean people expect it to do something.',
-							'seoprostats',
-						)
-					: kind === 'forms'
-						? __('Forms are counted by name, destination and number of fields. What people type or choose is never collected.', 'seoprostats')
-						: __('Labels hide email addresses and long numbers. Add data-sps-mask to an element to leave out its text.', 'seoprostats')}
-			</p>
+			<p className="spst-note">{footNote(kind)}</p>
 		)}
 		</>
 	);
+}
+
+/** The first column's heading for a kind. */
+function firstColumn(kind: ClickKind): string {
+	if (kind === 'pages') {
+		return __('Page', 'seoprostats');
+	}
+	if (kind === 'links' || kind === 'downloads') {
+		return __('Destination', 'seoprostats');
+	}
+	return kind === 'forms' ? __('Form', 'seoprostats') : __('Element', 'seoprostats');
+}
+
+/** What the table counts, under it. */
+function footNote(kind: ClickKind): string {
+	if (kind === 'dead') {
+		return __(
+			'A dead click is one on something that looks clickable, after which nothing on the page changed for a second. Many on one element usually mean people expect it to do something.',
+			'seoprostats',
+		);
+	}
+	return kind === 'forms'
+		? __('Forms are counted by name, destination and number of fields. What people type or choose is never collected.', 'seoprostats')
+		: __('Labels hide email addresses and long numbers. Add data-sps-mask to an element to leave out its text.', 'seoprostats');
+}
+
+/** A row's first cell: a page (picks it), a destination, or an element. */
+function RowName({ row, kind, page, update }: Readonly<Pick<ClickRowsProps, 'kind' | 'page' | 'update'> & { row: ClickRow }>) {
+	if (kind === 'pages') {
+		return (
+			<>
+				<Button
+					variant="link"
+					aria-pressed={page === row.path}
+					onClick={() => {
+						update({ page: page === row.path ? '' : (row.path ?? '') });
+					}}
+				>
+					{row.path}
+				</Button>
+				<PageLinks
+					info={{
+						path: row.path ?? '',
+						url: row.url ?? '',
+						edit_url: row.edit_url,
+					}}
+				/>
+			</>
+		);
+	}
+	if (kind === 'links' || kind === 'downloads') {
+		return (
+			<>
+				<span>{row.target}</span>
+				{row.label && <span className="spst-meta">{row.label}</span>}
+				<Flags row={row} />
+			</>
+		);
+	}
+	return <Element row={row} />;
 }

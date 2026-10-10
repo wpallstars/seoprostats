@@ -15,7 +15,7 @@ import { locale } from './boot';
 function wallClock(iso: string): Date {
 	const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso);
 	if (!m) {
-		return new Date(NaN);
+		return new Date(Number.NaN);
 	}
 	return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0)));
 }

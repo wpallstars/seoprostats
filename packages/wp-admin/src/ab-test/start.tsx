@@ -23,7 +23,7 @@ import {
 	newId,
 } from './model';
 import { VariantSwitcher } from './switcher';
-import { blockActions, blockEditor, editor, notice, wp, type BlockEditorSelectors, type BlockInstance, type EditProps } from './wp';
+import { blockActions, blockEditor, editor, notice, postTitle, wp, type BlockEditorSelectors, type BlockInstance, type EditProps } from './wp';
 
 /** The A/B test icon: two panes, A and B. */
 export const abIcon = (
@@ -92,6 +92,15 @@ function blocked(be: BlockEditorSelectors, type: string | null, ids: string[]): 
 }
 
 /** Wrap the selection in a new test: Variant A the blocks, Variant B a copy. */
+/** The test takes the widest alignment of the blocks it wraps. */
+function widestAlign(blocks: BlockInstance[]): 'full' | 'wide' | undefined {
+	const aligns: ReadonlySet<unknown> = new Set(blocks.map((b) => b.attributes.align));
+	if (aligns.has('full')) {
+		return 'full';
+	}
+	return aligns.has('wide') ? 'wide' : undefined;
+}
+
 function start(ids: string[]): void {
 	const be = blockEditor();
 	const why = blocked(be, editor()?.getCurrentPostType() ?? null, ids);
@@ -106,9 +115,8 @@ function start(ids: string[]): void {
 	}
 	const blocks = be.getBlocksByClientId(wrap).filter((b): b is BlockInstance => !!b);
 	const copy = () => blocks.map((b) => wp.blocks.cloneBlock(b));
-	const aligns = blocks.map((b) => b.attributes.align);
-	const align = aligns.includes('full') ? 'full' : aligns.includes('wide') ? 'wide' : undefined;
-	const title = String(editor()?.getEditedPostAttribute('title') ?? '').trim();
+	const align = widestAlign(blocks);
+	const title = postTitle().trim();
 	const variant = (i: number) => {
 		const slug = i === 0 ? 'variant-a' : 'variant-b';
 		return wp.blocks.createBlock(VARIANT, { slug, label: defaultLabel(slug, i), weight: WEIGHT }, copy());

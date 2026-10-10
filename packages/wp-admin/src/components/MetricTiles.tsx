@@ -20,9 +20,17 @@ interface Props {
 	loading: boolean;
 }
 
+/** A tile's figure: the value, a placeholder while loading, or a dash. */
+function TileValue({ value, format, loading }: Readonly<{ value: number | undefined; format: (typeof METRICS)[MetricKey]['format']; loading: boolean }>) {
+	if (value !== undefined) {
+		return <>{formatMetric(value, format, locale)}</>;
+	}
+	return loading ? <span className="spst-skeleton" /> : <>—</>;
+}
+
 export function MetricTiles({ stats, series, selected, onSelect, loading }: Readonly<Props>) {
 	return (
-		<div className="spst-tiles" role="group" aria-label={__('Chart a metric', 'seoprostats')}>
+		<div className="spst-tiles" role="group" aria-label={__('Chart a metric', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 			{CHART_METRICS.map((key) => {
 				const spec = METRICS[key];
 				const value = stats?.metrics[key];
@@ -39,7 +47,7 @@ export function MetricTiles({ stats, series, selected, onSelect, loading }: Read
 					>
 						<span className="spst-tile__label">{metricLabel(key)}</span>
 						<span className="spst-tile__value">
-							{value === undefined ? (loading ? <span className="spst-skeleton" /> : '—') : formatMetric(value, spec.format, locale)}
+							<TileValue value={value} format={spec.format} loading={loading} />
 						</span>
 						<span className="spst-tile__foot">
 							{stats?.compare && (

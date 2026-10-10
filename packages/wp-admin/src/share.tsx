@@ -41,8 +41,8 @@ type Opened = SharedReport & { unlock: string; home: string; site_name: string; 
 
 /** #rgb or #rrggbb as red, green and blue (0–255); null for anything else. */
 function channels(hex: string): number[] | null {
-    const long = /^#[0-9a-f]{3}$/i.test(hex) ? `#${[...hex.slice(1)].map((c) => c + c).join('')}` : hex;
-    return /^#[0-9a-f]{6}$/i.test(long) ? [1, 3, 5].map((offset) => parseInt(long.slice(offset, offset + 2), 16)) : null;
+    const long = /^#[0-9a-f]{3}$/i.test(hex) ? `#${Array.from(hex.slice(1), (c) => c + c).join('')}` : hex;
+    return /^#[0-9a-f]{6}$/i.test(long) ? [1, 3, 5].map((offset) => Number.parseInt(long.slice(offset, offset + 2), 16)) : null;
 }
 
 function contrast(a: number[], b: number[]): number {
@@ -208,7 +208,9 @@ function Report({ share }: Readonly<{ share: Opened }>) {
     // The printed sections: the one on screen as it is; the others as saved, for the period on screen.
     const printed = (paper ?? []).map((i) => (i === index ? state : { ...share.views[i]!, range: state.range, from: state.from, to: state.to, compare: state.compare }));
     // The head names the section shown, when the report has several (on paper, when one is printed).
-    const named = share.views.length < 2 ? null : paper ? (printed.length === 1 ? printed[0]! : null) : section;
+    const single = printed.length === 1 ? printed[0]! : null;
+    const shown = paper ? single : section;
+    const named = share.views.length < 2 ? null : shown;
     return <div className={`spst-app spst-report ${dark ? 'is-dark' : 'is-light'}`} style={{ '--spst-share-accent': accent } as React.CSSProperties}>
         <header className="spst-share-head">
             <a className="spst-share-head__brand" href={share.home} rel="noopener">
@@ -230,7 +232,7 @@ function Report({ share }: Readonly<{ share: Opened }>) {
         {share.note && <p className="spst-share-note">{share.note}</p>}
         {paper ? (
             <>
-                <div className="spst-share-preparing" role="status">
+                <div className="spst-share-preparing" role="status">{/* NOSONAR: a live notice with a Cancel button, not a calculation's result, so not <output>. */}
                     <Notice status="info" isDismissible={false}>
                         <span>{fetching ? __('Getting every tab of the chosen sections ready to print…', 'seoprostats') : __('Opening the print dialog…', 'seoprostats')}</span>{' '}
                         <Button variant="link" onClick={() => setPaper(null)}>{__('Cancel', 'seoprostats')}</Button>
@@ -255,7 +257,7 @@ function Report({ share }: Readonly<{ share: Opened }>) {
                 {share.views.length > 1 && (
                     <nav aria-label={__('Report sections', 'seoprostats')} className="spst-share-nav">
                         {share.views.map((view, i) => (
-                            <Button key={i} variant={i === index ? 'primary' : 'secondary'} aria-current={i === index ? 'page' : undefined} onClick={() => open(i)}>{sectionLabel(view)}</Button>
+                            <Button key={i} /* NOSONAR: a section's place is its identity (saved views have no id; the list never changes order). */ variant={i === index ? 'primary' : 'secondary'} aria-current={i === index ? 'page' : undefined} onClick={() => open(i)}>{sectionLabel(view)}</Button>
                         ))}
                     </nav>
                 )}
@@ -287,7 +289,7 @@ function Report({ share }: Readonly<{ share: Opened }>) {
                         <legend>{__('Sections to print', 'seoprostats')}</legend>
                         {share.views.map((view, i) => (
                             <CheckboxControl
-                                key={i}
+                                key={i} // NOSONAR: a section's place is its identity (saved views have no id; the list never changes order).
                                 __nextHasNoMarginBottom
                                 label={sectionLabel(view)}
                                 checked={ticked.includes(i)}

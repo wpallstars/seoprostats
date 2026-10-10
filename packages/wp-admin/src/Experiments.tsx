@@ -110,10 +110,10 @@ function effectText(metric: ExperimentMetric, effect: number | null | undefined)
 
 /** The effect's tone: good when it went the way expected. */
 function tone(m: ExperimentMeasured): string {
-	if (m.improvement === null || !m.enough.ok || m.beyond_noise === false) {
+	if (m.improvement === null || m.improvement === 0 || !m.enough.ok || m.beyond_noise === false) {
 		return 'is-flat';
 	}
-	return m.improvement > 0 ? 'is-good' : m.improvement < 0 ? 'is-bad' : 'is-flat';
+	return m.improvement > 0 ? 'is-good' : 'is-bad';
 }
 
 function dayText(day: string): string {
@@ -133,7 +133,7 @@ function statusText(item: Experiment): string {
 		return __('Due for review', 'seoprostats');
 	}
 	const m = item.measurement;
-	if (m && m.state === 'running') {
+	if (m?.state === 'running') {
 		/* translators: 1: days of data so far, 2: days needed. */
 		return sprintf(__('Running: %1$s of %2$s days', 'seoprostats'), formatNumber(m.so_far, locale, false), formatNumber(m.days, locale, false));
 	}
@@ -198,7 +198,7 @@ export function Experiments({ state, update }: Readonly<SearchReportProps>) {
 								</thead>
 								<tbody>
 									{list.map((item) => {
-										const m = item.measurement && item.measurement.state === 'ready' ? item.measurement : null;
+										const m = item.measurement?.state === 'ready' ? item.measurement : null;
 										return (
 											<tr key={item.id} className={open === item.id ? 'is-selected' : ''}>
 												<td>
@@ -262,8 +262,8 @@ function figure(metric: ExperimentMetric, figures: ExperimentFigures): string {
 
 function Detail({ item, onError, onDeleted }: Readonly<{ item: Experiment; onError: (message: string) => void; onDeleted: () => void }>) {
 	const data = useDataSet();
-	const m = item.measurement && item.measurement.state === 'ready' ? item.measurement : null;
-	const running = item.measurement && item.measurement.state === 'running' ? item.measurement : null;
+	const m = item.measurement?.state === 'ready' ? item.measurement : null;
+	const running = item.measurement?.state === 'running' ? item.measurement : null;
 	const [result, setResult] = useState<ExperimentResult>(item.result ?? m?.suggested ?? 'inconclusive');
 	const [note, setNote] = useState(item.note);
 	const [busy, setBusy] = useState(false);

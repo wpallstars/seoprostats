@@ -31,7 +31,7 @@ import {
 	type ContentSort,
 	type SearchEngineChoice,
 } from '@seoprostats/core';
-import { errorMessage, useContent } from './api';
+import { errorMessage, scopeKey, useContent } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
 import { PageCell } from './Opportunities';
@@ -57,7 +57,7 @@ export function Content({ state, update, open, onEngines }: Readonly<ContentProp
 	const goal = state.goal ?? '';
 	const engine: SearchEngineChoice = state.engine ?? 'google';
 	// Back to the first rows when the period, filters, engine, order or goal change.
-	const scope = JSON.stringify([apiArgs(state), engine, by, goal]);
+	const scope = scopeKey(apiArgs(state), engine, by, goal);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -82,7 +82,7 @@ export function Content({ state, update, open, onEngines }: Readonly<ContentProp
 					{__('Search data has no visits, so only page filters apply here; the other filters are left out.', 'seoprostats')}
 				</Notice>
 			)}
-			{answer && answer.through && answer.partial && (
+			{answer?.through && answer.partial && (
 				<Notice status="info" isDismissible={false} className="spst-notice">
 					{answer.landings_from
 						? sprintf(
@@ -140,24 +140,9 @@ export function Content({ state, update, open, onEngines }: Readonly<ContentProp
 						// The order the answer has (a goal's column falls back to the default without goals).
 						<PageTable answer={answer} {...tableSort(CONTENT_SORTS, answer.sort, answer.order)} onSort={(sort, order) => update({ sort, order })} open={open} refreshing={query.isFetching} />
 					)}
-					{answer && answer.through && (
+					{answer?.through && (
 						<div className="spst-note">
-							<p>
-								{answered === 'all'
-									? __(
-											'Clicks and position are every search engine’s added up, Bing’s from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
-											'seoprostats'
-										)
-									: answered === 'bing'
-									? __(
-											'Clicks and position are Bing’s, from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
-											'seoprostats'
-										)
-									: __(
-											'Clicks and position are Google’s; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
-											'seoprostats'
-										)}
-							</p>
+							<p>{figuresNote(answered)}</p>
 							{answer.goals.length === 0 && (
 								<p>
 									{__('Add a goal to count conversions:', 'seoprostats')} <a href="#/goals">{__('Goals', 'seoprostats')}</a>
@@ -190,6 +175,33 @@ export function Content({ state, update, open, onEngines }: Readonly<ContentProp
 	);
 }
 
+/** Under the clicks tile: where the clicks came from. */
+function clicksFoot(engine: SearchEngineChoice): string {
+	if (engine === 'all') {
+		return __('From search engines', 'seoprostats');
+	}
+	return engine === 'bing' ? __('From Bing', 'seoprostats') : __('From Google Search', 'seoprostats');
+}
+
+/** The note under the pages: what the figures are, by engine. */
+function figuresNote(engine: SearchEngineChoice): string {
+	if (engine === 'all') {
+		return __(
+			'Clicks and position are every search engine’s added up, Bing’s from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+			'seoprostats'
+		);
+	}
+	return engine === 'bing'
+		? __(
+				'Clicks and position are Bing’s, from its pages by week; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+				'seoprostats'
+			)
+		: __(
+				'Clicks and position are Google’s; visits from search are those from any search engine that started on the page, so the two differ. Conversions are those visits that reached the goal.',
+				'seoprostats'
+			);
+}
+
 /** The totals: search clicks, visits from search, their bounce rate, conversions. */
 function Tiles({ answer, engine }: Readonly<{ answer: ContentAnswer | undefined; engine: SearchEngineChoice }>) {
 	const totals = answer?.totals;
@@ -206,10 +218,10 @@ function Tiles({ answer, engine }: Readonly<{ answer: ContentAnswer | undefined;
 		</div>
 	);
 	return (
-		<div className="spst-tiles" role="group" aria-label={__('Totals', 'seoprostats')}>
+		<div className="spst-tiles" role="group" aria-label={__('Totals', 'seoprostats')}>{/* NOSONAR: a group of figures; a fieldset is for form controls and brings its own border, padding and min-width. */}
 			{tile(
 				__('Clicks', 'seoprostats'),
-				engine === 'all' ? __('From search engines', 'seoprostats') : engine === 'bing' ? __('From Bing', 'seoprostats') : __('From Google Search', 'seoprostats'),
+				clicksFoot(engine),
 				totals ? number(totals.clicks) : '',
 				change && <Change change={change.clicks} better={SEARCH_METRICS.clicks.better} previous={then ? number(then.clicks) : undefined} />
 			)}

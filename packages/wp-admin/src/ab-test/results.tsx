@@ -202,7 +202,7 @@ function ResultsBody({ testId }: Readonly<{ testId: string }>) {
 							<th scope="row">{v.label}</th>
 							<td>{formatNumber(v.visits, locale)}</td>
 							<td>{formatPercent(v.primary.rate, locale)}</td>
-							<td>{v.control ? __('Control', 'seoprostats') : v.primary.probability === null ? '—' : chance(v.primary.probability)}</td>
+							<td>{chanceCell(v.control, v.primary.probability)}</td>
 						</tr>
 					))}
 				</tbody>
@@ -222,6 +222,14 @@ function ResultsBody({ testId }: Readonly<{ testId: string }>) {
 			</p>
 		</div>
 	);
+}
+
+/** The Chance column: the control has none; a dash until there is one. */
+function chanceCell(control: boolean, probability: number | null): string {
+	if (control) {
+		return __('Control', 'seoprostats');
+	}
+	return probability === null ? '—' : chance(probability);
 }
 
 /** The results panel; reads when opened. Only for people who may read the statistics. */
@@ -263,7 +271,7 @@ function testIdsInPost(): Set<string> {
 async function sendWinners(): Promise<void> {
 	const be = blockEditor();
 	const inPost = testIdsInPost();
-	for (const [testId, { slug, blocks }] of [...pending]) {
+	for (const [testId, { slug, blocks }] of [...pending]) { // NOSONAR: a snapshot; entries are deleted here and may be added while a request waits.
 		// Undone before saving: the test is back, and its block counts.
 		if (inPost.has(testId)) {
 			continue;
@@ -274,7 +282,7 @@ async function sendWinners(): Promise<void> {
 			continue;
 		}
 		try {
-			await apiFetch({ path: `${NAMESPACE}/ab-tests/${testId}/winner`, method: 'POST', data: { variant: slug } });
+			await apiFetch({ path: `${NAMESPACE}/ab-tests/${testId}/winner`, method: 'POST', data: { variant: slug } }); // NOSONAR: one at a time on purpose; each winner gets its own notice and error.
 			remember(testId, undefined);
 			notice(__('The A/B test ended with its winner. Its results stay in A/B tests.', 'seoprostats'), [], 'success');
 		} catch (e) {
