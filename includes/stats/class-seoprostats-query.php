@@ -204,6 +204,26 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
      * @return WP_Error|null
      */
     private static function request_invalid(array $req) {
+        $error = self::choice_invalid($req);
+        if ($error) {
+            return $error;
+        }
+        if ($req['dimension'] !== '' && !isset(self::DIMENSIONS[$req['dimension']])) {
+            return new WP_Error('seoprostats_dimension', sprintf(/* translators: %s: list of dimensions */ __('Dimension must be one of: %s.', 'seoprostats'), implode(', ', array_keys(self::DIMENSIONS))), array('status' => 400));
+        }
+        if ($req['range'] === 'custom' && !self::custom_dates_valid($req['from'], $req['to'])) {
+            return new WP_Error('seoprostats_custom', __('A custom range needs from and to dates (YYYY-MM-DD), from not after to.', 'seoprostats'), array('status' => 400));
+        }
+        return null;
+    }
+
+    /**
+     * The first error in the fixed-choice options (range, comparison, grain), or null.
+     *
+     * @param array{range:string,from:string,to:string,compare:string,grain:string,dimension:string} $req Options.
+     * @return WP_Error|null
+     */
+    private static function choice_invalid(array $req) {
         if (!in_array($req['range'], self::RANGES, true)) {
             return new WP_Error('seoprostats_range', sprintf(/* translators: %s: list of ranges */ __('Range must be one of: %s.', 'seoprostats'), implode(', ', self::RANGES)), array('status' => 400));
         }
@@ -212,12 +232,6 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
         }
         if (!in_array($req['grain'], self::GRAINS, true)) {
             return new WP_Error('seoprostats_grain', sprintf(/* translators: %s: list of grains */ __('Grain must be one of: %s.', 'seoprostats'), implode(', ', self::GRAINS)), array('status' => 400));
-        }
-        if ($req['dimension'] !== '' && !isset(self::DIMENSIONS[$req['dimension']])) {
-            return new WP_Error('seoprostats_dimension', sprintf(/* translators: %s: list of dimensions */ __('Dimension must be one of: %s.', 'seoprostats'), implode(', ', array_keys(self::DIMENSIONS))), array('status' => 400));
-        }
-        if ($req['range'] === 'custom' && !self::custom_dates_valid($req['from'], $req['to'])) {
-            return new WP_Error('seoprostats_custom', __('A custom range needs from and to dates (YYYY-MM-DD), from not after to.', 'seoprostats'), array('status' => 400));
         }
         return null;
     }
