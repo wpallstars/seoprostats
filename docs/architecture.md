@@ -1869,8 +1869,16 @@ with the previous period or the same period last year (custom comparison
 later). The previous period has as many whole days, just before; 7d, 28d,
 91d, 182d and 364d are whole weeks, so each day meets the same weekday.
 A range that ends in the future meets the same length of the other period.
-The dashboard opens on 91d against the previous period
-(`DEFAULT_STATE` in `packages/core/src/state.ts`).
+The dashboard opens on each person's last named period and comparison, or
+91d against the previous period when they have not chosen one (`DEFAULT_STATE`
+in `packages/core/src/state.ts`). A period or comparison in the address wins.
+The dashboard alone receives `seoprostats_period` user meta and an admin-ajax
+nonce at boot; picker changes save it with the screen's capability check.
+Custom dates and realtime are not remembered. Written dashboard addresses
+keep period and comparison explicit so bookmarks do not depend on a later
+preference. Public shared reports and the editor keep their own periods;
+the REST contract and visitor collection are unchanged. Uninstall removes
+the user meta.
 
 ### Interfaces
 

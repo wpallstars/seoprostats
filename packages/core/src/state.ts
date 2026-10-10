@@ -330,7 +330,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 }
 
 /** Read a hash such as `#/overview?range=7d`; anything unknown takes the default. */
-export function parseHash(hash: string): ViewState {
+export function parseHash(hash: string, defaults: Pick<ViewState, 'range' | 'compare'> = DEFAULT_STATE): ViewState {
 	const clean = hash.replace(/^#\/?/, '');
 	const q = clean.indexOf('?');
 	const path = q < 0 ? clean : clean.slice(0, q);
@@ -338,8 +338,8 @@ export function parseHash(hash: string): ViewState {
 
 	const state: ViewState = {
 		view: oneOf(VIEWS, path || null, DEFAULT_STATE.view),
-		range: oneOf(RANGE_KEYS, params.get('range'), DEFAULT_STATE.range),
-		compare: oneOf(COMPARE_KEYS, params.get('compare'), DEFAULT_STATE.compare),
+		range: oneOf(RANGE_KEYS, params.get('range'), defaults.range),
+		compare: oneOf(COMPARE_KEYS, params.get('compare'), defaults.compare),
 		metric: oneOf(CHART_METRICS, params.get('metric'), DEFAULT_STATE.metric),
 		filters: params
 			.getAll('f')
@@ -353,24 +353,24 @@ export function parseHash(hash: string): ViewState {
 			state.from = from;
 			state.to = to;
 		} else {
-			state.range = DEFAULT_STATE.range;
+			state.range = defaults.range;
 		}
 	}
 	sectionParams(state, params);
 	return state;
 }
 
-/** Write the state as a hash, leaving out defaults. */
-export function buildHash(state: ViewState): string {
+/** Write the state as a hash; explicit periods keep bookmarks independent of personal defaults. */
+export function buildHash(state: ViewState, explicitPeriod = false): string {
 	const params = new URLSearchParams();
-	if (state.range !== DEFAULT_STATE.range) {
+	if (explicitPeriod || state.range !== DEFAULT_STATE.range) {
 		params.set('range', state.range);
 	}
 	if (state.range === 'custom' && state.from && state.to) {
 		params.set('from', state.from);
 		params.set('to', state.to);
 	}
-	if (state.compare !== DEFAULT_STATE.compare) {
+	if (explicitPeriod || state.compare !== DEFAULT_STATE.compare) {
 		params.set('compare', state.compare);
 	}
 	if (state.metric !== DEFAULT_STATE.metric) {

@@ -301,7 +301,7 @@ final class SEOProStats_Dashboard {
      */
     private static function boot($name) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-demo.php';
-        return array(
+        $boot = array(
             'locale'       => get_user_locale(),
             'timezone'     => wp_timezone_string(),
             'dashboardUrl' => self::url(),
@@ -320,6 +320,10 @@ final class SEOProStats_Dashboard {
                 }, array_keys(SEOProStats_Share_Settings::palette()), SEOProStats_Share_Settings::palette())
                 : array(),
         );
+        if ($name === 'dashboard') {
+            $boot['period'] = SEOProStats_Admin_Period::boot();
+        }
+        return $boot;
     }
 
     /**
