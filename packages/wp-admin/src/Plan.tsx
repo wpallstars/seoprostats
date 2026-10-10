@@ -450,7 +450,7 @@ function ItemTable({ answer, items, offset, state, goal, open, refreshing, onErr
 									<StateCell item={item} showExperiments={showExperiments} />
 								</td>
 								{boot.canManage && (
-									<td>
+									<td className="spst-plan__actions-cell">
 										<Actions item={item} state={state} goal={goal} onError={onError} />
 									</td>
 								)}
@@ -568,7 +568,7 @@ function Actions(props: Readonly<ActProps>) {
 		}
 	};
 	return (
-		<div className="spst-plan__actions">
+		<div className="spst-plan__buttons">
 			{item.status === 'new' && (
 				<Button variant="secondary" size="small" disabled={busy} onClick={() => void act('accept')}>
 					{__('Accept', 'seoprostats')}

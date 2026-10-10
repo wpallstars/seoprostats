@@ -87,6 +87,38 @@
 	font-weight: 500;
 }
 
+/*
+ * Research…: the menu of searches after a query (the screen, the editor
+ * panel). A small link on the query's line, not a full-height button. The
+ * gap is a space (ResearchMenu.tsx), widened here, not a margin: a line
+ * break drops a space, so a wrapped menu starts its line flush.
+ */
+.spst-research__gap {
+	word-spacing: 3px;
+}
+
+.spst-research.components-dropdown {
+	display: inline-block;
+	vertical-align: baseline;
+}
+
+.spst-research__toggle.components-button.is-link {
+	height: auto;
+	min-height: 0;
+	padding: 0;
+	color: var(--spst-accent, var(--wp-admin-theme-color, #2271b1));
+	font-size: 12px;
+	font-weight: 500;
+	line-height: inherit;
+	text-decoration: none;
+	vertical-align: baseline;
+}
+
+.spst-research__toggle.components-button.is-link:hover,
+.spst-research__toggle.components-button.is-link[aria-expanded="true"] {
+	text-decoration: underline;
+}
+
 .spst-spark {
 	display: block;
 	flex: none;

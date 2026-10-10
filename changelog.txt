@@ -2,6 +2,10 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Changed: on Search → Plan, each row's Accept, Done, Dismiss and Restore buttons stand in one column, all as wide as the widest, instead of wrapping into a ragged row (GH#226).
+* Changed: the Research menu after a query reads "Research…" and is a small link on the query's line, instead of a full-height button that sat lower than the query (Search tables, Targets and the editor panel) (GH#226).
+
 = 1.4.1 =
 * Changed: the dashboard opens on Last 91 days instead of Last 30 days, so the previous period meets the same weekdays. Links and bookmarks that name a period keep it (GH#220).
 * Changed: on Search, Last 30 days, Last 90 days and Last 12 months keep their length and end on the newest day with search data, as the whole-week periods already did, instead of losing the 3 or 4 days not imported yet: Last 30 days now holds 30 days, compared with the 30 before. This week, month and year are still cut there (GH#220).
