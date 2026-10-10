@@ -60,6 +60,8 @@ import {
 	type TargetFilter,
 	type TargetsAnswer,
 	type TargetsImportAnswer,
+	type TargetsQueriesAnswer,
+	type TargetSuggestionsAnswer,
 	type TimeseriesAnswer,
 	type ViewState,
 } from '@seoprostats/core';
@@ -413,6 +415,52 @@ function refreshTargets(): void {
 /** Import targets from text (CSV, tab-separated, JSON or the aidevops TOON table) (administrators). */
 export async function importTargets(data: DataSet, text: string, replace: boolean): Promise<TargetsImportAnswer> {
 	const done = await send<TargetsImportAnswer>('targets', 'POST', { text, replace, data });
+	refreshTargets();
+	return done;
+}
+
+/**
+ * Every target's search with its page and status, without figures, so
+ * search reports can mark the searches that are targets. Not in shared
+ * reports (their routes have no targets).
+ */
+export function useTargetQueries() {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({}, data);
+	return useQuery({
+		queryKey: ['targets', 'queries', args],
+		queryFn: () => get<TargetsQueriesAnswer>('targets/queries', args),
+		enabled: enabled && !shareAccess.token && !data.section,
+		staleTime: 5 * 60 * 1000,
+	});
+}
+
+/**
+ * Add searches from a search report as candidate targets, each with the
+ * page search shows for it (or none), leaving searches already listed as
+ * they are (administrators).
+ */
+export async function addSearchTargets(data: DataSet, rows: { query: string; page?: string }[]): Promise<TargetsImportAnswer> {
+	const targets = rows.map((row) => ({ query: row.query, page: row.page ?? '', status: 'candidate' }));
+	const done = await send<TargetsImportAnswer>('targets', 'POST', { targets, only_new: true, source: 'search', data });
+	refreshTargets();
+	return done;
+}
+
+/** The SEO plugin's focus keywords as target suggestions (administrators). */
+export function useTargetSuggestions(on: boolean, allKeywords: boolean) {
+	const { data, enabled } = useReportData();
+	const args: Args = withData({ all_keywords: allKeywords ? 1 : 0 }, data);
+	return useQuery({
+		queryKey: ['targets', 'suggestions', args],
+		queryFn: () => get<TargetSuggestionsAnswer>('targets/suggestions', args),
+		enabled: enabled && on,
+	});
+}
+
+/** Import the new focus keyword suggestions, all or those given, as targeted (administrators). */
+export async function importTargetSuggestions(data: DataSet, queries: string[], allKeywords: boolean): Promise<TargetsImportAnswer> {
+	const done = await send<TargetsImportAnswer>('targets/suggestions', 'POST', { queries, all_keywords: allKeywords, data });
 	refreshTargets();
 	return done;
 }

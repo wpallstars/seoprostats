@@ -2241,21 +2241,46 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * address that is not on this site, or with a priority or status that
      * cannot be read are skipped and listed.
      *
+     * Suggest lists the focus keywords the SEO plugin (Rank Math, Yoast
+     * SEO, SEOPress or All in One SEO) keeps for published posts, each with
+     * its page and state: new, clash (the focus keyword of more than one
+     * page, so never imported: choose its page and import it as a list) or
+     * targeted (a target already). Import --from=seo-plugin adds the new
+     * ones (or the searches named) as targeted with their page, priority
+     * 50, and leaves existing targets as they are.
+     *
      * ## OPTIONS
      *
      * [<action>]
-     * : list, import, set or delete.
+     * : list, import, suggest, set or delete.
      * ---
      * default: list
      * options:
      *   - list
      *   - import
+     *   - suggest
      *   - set
      *   - delete
      * ---
      *
      * [<what>...]
-     * : For import: the file (- for standard input). For delete: the searches.
+     * : For import: the file (- for standard input); with --from=seo-plugin (or suggest --import), the suggested searches to import (every new one when left out). For delete: the searches.
+     *
+     * [--from=<from>]
+     * : For import: seo-plugin imports the SEO plugin's focus keywords instead of a file.
+     * ---
+     * options:
+     *   - seo-plugin
+     * ---
+     *
+     * [--all-keywords]
+     * : For suggest and import --from=seo-plugin: every focus keyword of a page, not only its main one.
+     *
+     * [--import]
+     * : For suggest: import the new suggestions (or the searches named), as import --from=seo-plugin does.
+     *
+     * [--only-new]
+     * : For import: add new searches only; searches already listed are skipped and left as they are.
      *
      * [--replace]
      * : For import: delete the targets that are not in the list.
@@ -2327,6 +2352,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *     wp seoprostats targets import targets.csv
      *     wp seoprostats targets set "privacy friendly analytics" --allintitle=40 --volume=200
      *     wp seoprostats targets import - < keywords.toon
+     *     wp seoprostats targets suggest
+     *     wp seoprostats targets import --from=seo-plugin
+     *     wp seoprostats targets import --from=seo-plugin "core web vitals"
      *     wp seoprostats targets delete "privacy friendly analytics"
      *     wp seoprostats targets --data=demo --format=json
      *
@@ -2345,12 +2373,20 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $this->targets_import($what, $assoc);
             return;
         }
+        if ($action === 'suggest' && !empty($assoc['import'])) {
+            $this->targets_import($what, array('from' => 'seo-plugin') + $assoc);
+            return;
+        }
+        if ($action === 'suggest') {
+            $this->targets_suggest($assoc);
+            return;
+        }
         if ($action === 'delete') {
             $this->targets_delete($what, $assoc);
             return;
         }
         if ($action !== 'list') {
-            WP_CLI::error(__('The action is list, import, set or delete.', 'seoprostats'));
+            WP_CLI::error(__('The action is list, import, suggest, set or delete.', 'seoprostats'));
         }
         $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $status = isset($assoc['status']) ? (string) $assoc['status'] : 'all';
@@ -2422,6 +2458,46 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
     }
 
     /**
+     * wp seoprostats targets suggest: the SEO plugin's focus keywords as
+     * target suggestions.
+     *
+     * @param array<string,string> $assoc Options (all-keywords, data, format).
+     */
+    private function targets_suggest(array $assoc) {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-target-sources.php';
+        $all    = !empty($assoc['all-keywords']);
+        $answer = $this->on_data($assoc, static function () use ($all) {
+            return SEOProStats_Target_Sources::suggestions($all);
+        });
+        if ($this->format($assoc) === 'json') {
+            WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return;
+        }
+        /* translators: 1: SEO plugin, 2: pages read */
+        WP_CLI::log(sprintf(__('SEO plugin: %1$s; %2$d pages with focus keywords.', 'seoprostats'), $answer['plugin'] !== '' ? $answer['plugin'] : '–', $answer['pages']));
+        if ($answer['more']) {
+            /* translators: %d: posts read */
+            WP_CLI::warning(sprintf(__('More posts have focus keywords than the %d read.', 'seoprostats'), $answer['max_posts']));
+        }
+        WP_CLI::log(implode(', ', array_map(static function ($name, $n) {
+            return $name . ' ' . $n;
+        }, array_keys($answer['counts']), $answer['counts'])));
+        if (!$answer['rows']) {
+            WP_CLI::line(__('No focus keywords found. Set them in the SEO plugin, or import a list with: wp seoprostats targets import <file>', 'seoprostats'));
+            return;
+        }
+        $rows = array_map(static function ($row) {
+            return array(
+                'query'  => $row['query'],
+                'state'  => $row['state'],
+                'pages'  => implode(' ', array_column($row['pages'], 'path')),
+                'target' => $row['target'] ? $row['target']['status'] . ($row['target']['page'] !== '' ? ' ' . $row['target']['page'] : '') : '–',
+            );
+        }, $answer['rows']);
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, array_keys($rows[0]));
+    }
+
+    /**
      * wp seoprostats targets delete: delete some targets, or all.
      *
      * @param string[]             $what  The searches.
@@ -2470,16 +2546,25 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * @param array<string,string> $assoc Options.
      */
     private function targets_import(array $what, array $assoc) {
-        $text    = self::targets_text(isset($what[0]) ? (string) $what[0] : '');
-        $replace = !empty($assoc['replace']);
-        $done    = $this->on_data($assoc, static function () use ($text, $replace) {
-            $parsed = SEOProStats_Targets::parse($text);
-            if (is_wp_error($parsed)) {
-                return $parsed;
-            }
-            $done = SEOProStats_Targets::import($parsed['rows'], $parsed['format'] === 'toon' ? 'aidevops' : 'list', $replace);
-            return is_wp_error($done) ? $done : array('format' => $parsed['format']) + $done;
-        });
+        $replace  = !empty($assoc['replace']);
+        $only_new = !empty($assoc['only-new']);
+        if (isset($assoc['from']) && (string) $assoc['from'] === 'seo-plugin') {
+            require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-target-sources.php';
+            $all  = !empty($assoc['all-keywords']);
+            $done = $this->on_data($assoc, static function () use ($what, $all) {
+                return SEOProStats_Target_Sources::import(array_map('strval', $what), $all);
+            });
+        } else {
+            $text = self::targets_text(isset($what[0]) ? (string) $what[0] : '');
+            $done = $this->on_data($assoc, static function () use ($text, $replace, $only_new) {
+                $parsed = SEOProStats_Targets::parse($text);
+                if (is_wp_error($parsed)) {
+                    return $parsed;
+                }
+                $done = SEOProStats_Targets::import($parsed['rows'], $parsed['format'] === 'toon' ? 'aidevops' : 'list', $replace, $only_new);
+                return is_wp_error($done) ? $done : array('format' => $parsed['format']) + $done;
+            });
+        }
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
             return;

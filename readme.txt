@@ -40,7 +40,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Opportunities**: striking-distance queries, low CTR, pages losing clicks with the likely cause, queries missing from the page and overlapping pages.
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
 * **Backlinks**: visits and CSV imports, source facts, explained spam review and local Google disavow files. Nothing submitted.
-* **Targets**: the queries you aim for, with research links on four search engines and Keyword Golden Ratio bands.
+* **Targets**: the queries you aim for, from your SEO plugin's focus keywords, the search reports or a keyword list, with research links on four search engines and Keyword Golden Ratio bands.
 * **IndexNow**: tell search engines when pages change (opt-in).
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.

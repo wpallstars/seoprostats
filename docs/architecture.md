@@ -455,9 +455,16 @@ meant for it, or a high-priority one in striking distance in place of its
 striking item, weighted by priority. The targets are imported lists
 (`targets`, read whole by its primary key, at most 1,000); their report
 reads `gsc_queries` and `gsc_pairs` by `query_day` for their queries
-only. `GET/POST/DELETE /targets`, `wp seoprostats targets` and the
-`seoprostats/targets` and `seoprostats/targets-import` abilities serve
-them (writes `manage_options`); the dashboard has them under Search →
+only. Besides a pasted list, they come from the SEO plugin's focus
+keywords (`SEOProStats_Target_Sources`: suggested, then imported as
+targeted with their page; postmeta by its `meta_key` index, at most
+1,000 posts, admin requests only) and Add as target on search report
+rows (candidates; `only_new`, so a target already set never changes).
+`GET/POST/DELETE /targets`, `GET /targets/queries`, `GET/POST
+/targets/suggestions`, `wp seoprostats targets` and the
+`seoprostats/targets`, `seoprostats/targets-suggest` and
+`seoprostats/targets-import` abilities serve them (writes and
+suggestions `manage_options`); the dashboard has them under Search →
 Targets. `GET /queue`, `wp seoprostats
 queue` and the `seoprostats/queue` ability read it (`kind` for one kind);
 `POST /queue/{key}`, the queue
@@ -1956,7 +1963,8 @@ in the API and in links; the menu lists one only while it is chosen.
   `seoprostats/content`, `seoprostats/experiments`,
   `seoprostats/experiment-record`, `seoprostats/ab-tests`, `seoprostats/queue`,
   `seoprostats/queue-update`, `seoprostats/targets`,
-  `seoprostats/targets-import`, `seoprostats/loop`,
+  `seoprostats/targets-suggest`, `seoprostats/targets-import`,
+  `seoprostats/loop`,
   `seoprostats/migrate` (plugins found, dry run and leftovers, read
   only) and `seoprostats/migrate-import`. Removing leftovers is for
   people only: no ability does it.

@@ -2421,6 +2421,15 @@ paths:
                   type: boolean
                   default: false
                   description: Delete the targets that are not in this import.
+                only_new:
+                  type: boolean
+                  default: false
+                  description: Add new searches only. Searches already listed are skipped (reason `exists`) and left as they are; `replace` is ignored.
+                source:
+                  type: string
+                  enum: [list, search]
+                  default: list
+                  description: Where the targets come from, kept as their source. `search` marks rows added from a search report (the dashboard's Add as target). TOON text is always `aidevops`.
       responses:
         '200':
           description: What the import did.
@@ -2470,6 +2479,113 @@ paths:
                     type: integer
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /targets/queries:
+    get:
+      operationId: getTargetQueries
+      summary: Every search target's query with its page, status and priority, without search figures, so reports can mark searches that are targets.
+      description: |
+        Reads the targets by their primary key and their texts by the
+        dictionary's; no search data. By query, A–Z. Not in shared
+        reports.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: The targets' queries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [targets]
+                properties:
+                  targets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TargetListed'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+
+  /targets/suggestions:
+    get:
+      operationId: getTargetSuggestions
+      summary: The SEO plugin's focus keywords as target suggestions, each with its page and whether it is new, a target already, or the focus keyword of more than one page (manage_options).
+      description: |
+        The focus keywords Rank Math, Yoast SEO, SEOPress or All in One
+        SEO keeps for published, viewable posts: the active plugin's (any
+        plugin's when none is active), and any the
+        `seoprostats_focus_keywords` filter adds. One row per search
+        (lower case), in a state: `new` (one page's focus keyword, not a
+        target yet), `clash` (more than one page's: which page is meant is
+        the owner's choice, so it is never imported; add it as a list with
+        its page) or `targeted` (a target already, with its page and
+        status). New first, then clashes, then targets, each A–Z. Each
+        page's main keyword; `all_keywords` adds its other focus keywords.
+        At most `max_posts` posts are read (`more` says there were more).
+        Reads postmeta by its `meta_key` index, one key at a time, on this
+        request only; nothing is stored. The demo data set reads the demo
+        pages' focus keywords.
+      parameters:
+        - $ref: '#/components/parameters/data'
+        - name: all_keywords
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: The suggestions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetSuggestionsAnswer'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NoDemo'
+    post:
+      operationId: importTargetSuggestions
+      summary: Import the new focus keyword suggestions, all or those given, as targeted with their page, priority 50, source seo-plugin (manage_options). Existing targets stay as they are.
+      description: |
+        Suggestions that are targets already are skipped (`exists`), those
+        of more than one page too (`clash`), and searches given that are no
+        page's focus keyword (`unknown`). Rows are numbered in the
+        suggestions' order. The answer's `format` is `seo-plugin`.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                queries:
+                  type: array
+                  items:
+                    type: string
+                  description: The suggested searches to import; left out for every new one.
+                all_keywords:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: What the import did.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TargetsImportAnswer'
         '401':
           $ref: '#/components/responses/Forbidden'
         '403':
@@ -4975,7 +5091,8 @@ components:
           $ref: '#/components/schemas/TargetStatus'
         source:
           type: string
-          enum: [list, aidevops, demo]
+          enum: [list, aidevops, demo, seo-plugin, search]
+          description: Where it came from — a pasted list, the aidevops table, the demo, the SEO plugin's focus keywords, or a search report's row (Add as target).
         state:
           type: string
           enum: [ranking, wrong_page, no_page, not_shown]
@@ -5092,7 +5209,7 @@ components:
       properties:
         format:
           type: string
-          enum: [list, csv, json, toon]
+          enum: [list, csv, json, toon, seo-plugin]
         added:
           type: integer
         updated:
@@ -5113,13 +5230,102 @@ components:
                 type: string
               reason:
                 type: string
-                enum: [query, address, priority, status, duplicate, limit]
+                enum: [query, address, priority, measurements, status, duplicate, limit, exists, clash, unknown]
+                description: exists, a target already (only_new, or a focus keyword suggestion); clash, the focus keyword of more than one page; unknown, no published page's focus keyword.
               message:
                 type: string
                 description: Why, in the site's language.
         total:
           type: integer
           description: Targets now.
+
+    TargetListed:
+      type: object
+      required: [query, page, status, priority]
+      properties:
+        query:
+          type: string
+          description: Lower case, as stored.
+        page:
+          type: string
+          description: Path of the page meant for it; empty when none is chosen.
+        status:
+          $ref: '#/components/schemas/TargetStatus'
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    TargetSuggestionsAnswer:
+      type: object
+      required: [plugin, all_keywords, pages, more, max_posts, counts, rows]
+      properties:
+        plugin:
+          type: string
+          enum: [rank-math, yoast, seopress, aioseo, demo, '']
+          description: The active SEO plugin whose focus keywords are read; empty when none is active (every plugin's are read).
+        all_keywords:
+          type: boolean
+        pages:
+          type: integer
+          description: Pages read with focus keywords.
+        more:
+          type: boolean
+          description: More posts have focus keywords than max_posts.
+        max_posts:
+          type: integer
+        counts:
+          type: object
+          required: [new, clash, targeted]
+          properties:
+            new:
+              type: integer
+            clash:
+              type: integer
+            targeted:
+              type: integer
+        rows:
+          type: array
+          items:
+            type: object
+            required: [query, keyword, state, pages, target]
+            properties:
+              query:
+                type: string
+                description: Lower case, as targets store it.
+              keyword:
+                type: string
+                description: As the SEO plugin keeps it.
+              state:
+                type: string
+                enum: [new, clash, targeted]
+              pages:
+                type: array
+                items:
+                  type: object
+                  required: [path, post_id, title, url, edit_url]
+                  properties:
+                    path:
+                      type: string
+                    post_id:
+                      type: integer
+                      description: 0 in the demo data.
+                    title:
+                      type: string
+                    url:
+                      type: string
+                    edit_url:
+                      type: [string, 'null']
+              target:
+                type: ['object', 'null']
+                description: The target, when the search is one already.
+                properties:
+                  page:
+                    type: string
+                  status:
+                    $ref: '#/components/schemas/TargetStatus'
+                  priority:
+                    type: integer
 
     GoalStep:
       type: object

@@ -168,8 +168,34 @@ are in `export` of `GET /loop`.
 ## Search targets
 
 Search targets (Search → Targets) are the searches the site chose to win
-and the page meant for each. Import them from the aidevops search targets
-table (`phrase`, `target_url`, `priority`, `status`):
+and the page meant for each. They come from three places.
+
+The SEO plugin's focus keywords (Rank Math, Yoast SEO, SEOPress or All in
+One SEO), each with the page it is set on. List them, then import the new
+ones (all, or those named) as targeted:
+
+```sh
+curl -s -u "$AUTH" "$SITE/targets/suggestions"
+curl -s -u "$AUTH" -X POST "$SITE/targets/suggestions" \
+  -H "Content-Type: application/json" --data '{"queries":["core web vitals"]}'
+wp seoprostats targets suggest
+wp seoprostats targets import --from=seo-plugin
+```
+
+A keyword set on more than one page (`clash`) is never imported: choose
+its page and import it as a list. Targets already set stay as they are.
+
+Searches the reports already show, as candidates that leave listed
+targets alone (`only_new`), with the page that ranks when there is one:
+
+```sh
+curl -s -u "$AUTH" -X POST "$SITE/targets" -H "Content-Type: application/json" \
+  --data '{"targets":[{"query":"speed up wordpress","page":"/blog/speed-up-wordpress/","status":"candidate"}],"only_new":true,"source":"search"}'
+```
+
+Keyword research: the aidevops search targets table (`phrase`,
+`target_url`, `priority`, `status`), or any list as CSV, tab-separated
+text or JSON:
 
 ```sh
 jq -Rs '{text: .}' targets.toon | curl -s -u "$AUTH" -X POST "$SITE/targets" \
