@@ -10,7 +10,7 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type MouseEvent } from 'react';
 import { Card, CardBody, CardHeader, Notice } from '@wordpress/components';
 import { __, sprintf } from '@wordpress/i18n';
 import { mapShades, WORLD_HEIGHT, WORLD_SHAPES, WORLD_WIDTH } from '@seoprostats/charts';
@@ -89,7 +89,7 @@ function MapCard({ state, update }: Readonly<Props>) {
 											key={code}
 											d={d}
 											className={`spst-map__country${shade ? ' has-visits' : ''}${active ? ' is-active' : ''}`}
-											style={shade ? { fillOpacity: shade } : undefined}
+											style={shade ? ({ '--spst-shade': shade } as CSSProperties) : undefined}
 											onMouseMove={move(code)}
 											onClick={shade || active ? () => update({ filters: toggleFilterValue(state.filters, 'country', code) }) : undefined}
 										/>

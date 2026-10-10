@@ -541,9 +541,20 @@
 	stroke-linejoin: round;
 }
 
+/* A country's shade (--spst-shade, 0.3 to 1) runs from the grey of a country
+ * with no visits to the accent, so few visits never look like none (on a
+ * dark surface, the accent faded towards the surface would). */
 .spst-map__country.has-visits {
 	fill: var(--spst-accent);
+	fill-opacity: var(--spst-shade, 1);
 	cursor: pointer;
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-map__country.has-visits {
+		fill: color-mix(in srgb, var(--spst-accent) calc(var(--spst-shade, 1) * 100%), var(--spst-border));
+		fill-opacity: 1;
+	}
 }
 
 .spst-map__country.has-visits:hover {
@@ -584,6 +595,12 @@
 	height: 8px;
 	border-radius: 4px;
 	background: linear-gradient(90deg, var(--spst-accent-soft), var(--spst-accent));
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-map__scale {
+		background: linear-gradient(90deg, color-mix(in srgb, var(--spst-accent) 30%, var(--spst-border)), var(--spst-accent));
+	}
 }
 
 .spst-card__header.components-card__header {

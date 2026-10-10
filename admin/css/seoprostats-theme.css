@@ -65,6 +65,10 @@ html.spst-dark body {
 	--wp-components-color-gray-700: var(--spst-ui-subtle);
 	--wp-components-color-gray-800: var(--spst-ui-muted);
 
+	/* ExternalLink: the accent, and the text colour on hover (WordPress darkens it). */
+	--wpds-color-foreground-interactive-brand: var(--spst-ui-accent);
+	--wpds-color-foreground-interactive-brand-active: var(--spst-ui-text);
+
 	color: var(--spst-ui-text);
 	background: var(--spst-ui-canvas);
 }
@@ -159,7 +163,8 @@ html.spst-dark #wpbody-content {
 	color: var(--spst-ui-accent);
 }
 
-:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a:is(:hover, :active) {
+/* WordPress darkens links on hover and focus (#135e96, #043959). */
+:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a:is(:hover, :active, :focus) {
 	color: var(--spst-ui-text);
 }
 
@@ -214,8 +219,18 @@ html.spst-dark .contextual-help-tabs .active {
 	background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%206l5%205%205-5%202%201-7%207-7-7%202-1z%22%20fill%3D%22%23c3c4c7%22%2F%3E%3C%2Fsvg%3E");
 }
 
-:where(html.spst-dark #wpbody) select:hover {
-	color: var(--spst-ui-accent);
+/* WordPress's own select:hover and :focus (.wp-core-ui) paint #1e1e1e text and borders. */
+html.spst-dark .wp-core-ui select:is(:hover, :focus) {
+	color: var(--spst-ui-text);
+}
+
+html.spst-dark .wp-core-ui select:hover {
+	border-color: var(--spst-ui-text);
+}
+
+html.spst-dark .wp-core-ui select:disabled:is(:hover, :focus) {
+	color: var(--spst-ui-subtle);
+	border-color: var(--spst-ui-border);
 }
 
 :where(html.spst-dark #wpbody) :is(input[type="checkbox"], input[type="radio"]) {
@@ -262,6 +277,26 @@ html.spst-dark #wpbody div.error {
 
 html.spst-dark #wpbody .notice-dismiss::before {
 	color: var(--spst-ui-muted);
+}
+
+/* WordPress paints notice text #1e1e1e and links in darker tones of the scheme. */
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) :is(p, .notice-title) {
+	color: inherit;
+}
+
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) a {
+	color: var(--spst-ui-accent);
+}
+
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) a:is(:hover, :active, :focus) {
+	color: var(--spst-ui-text);
+}
+
+/* SEO Pro Stack's notices panel (the admin bar's megaphone), light until it has a dark mode. */
+html.spst-dark #sps-notices-wrap {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-border);
 }
 
 /* Tables, boxes and cards. */
@@ -338,6 +373,29 @@ html.spst-dark .components-button.is-secondary:not(:disabled, [aria-disabled="tr
 html.spst-dark .components-button:is(.is-secondary, .is-tertiary):hover:not(:disabled, [aria-disabled="true"]) {
 	color: var(--spst-ui-text);
 	background: var(--spst-ui-raised);
+}
+
+/* WordPress paints other buttons the scheme's colour on hover and while their menu is open. */
+html.spst-dark .components-button:not(.is-primary, .is-secondary, .is-tertiary, .is-pressed, .is-destructive):is(:hover, [aria-expanded="true"]):not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-accent);
+}
+
+/* A pressed button is filled with the text colour; WordPress's primary hover would make its label white. */
+html.spst-dark .components-button.is-pressed:not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-surface);
+}
+
+/* Destructive buttons in the light red (WordPress's #cc1818, #710d0d on hover). */
+html.spst-dark .components-button.is-destructive:not(.is-primary, :disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-bad);
+}
+
+html.spst-dark .components-button.is-destructive.is-secondary:not(:disabled, [aria-disabled="true"]) {
+	box-shadow: inset 0 0 0 1px var(--spst-ui-bad);
+}
+
+html.spst-dark .components-button.is-destructive:not(.is-primary):hover:not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-text);
 }
 
 /* Plain (icon) buttons take the text colour; any more specific rule wins. */
