@@ -165,21 +165,61 @@ final class SEOProStats_Migrate_Independent_Analytics extends SEOProStats_Migrat
         if (!$site || (int) $site['pageviews'] <= 0) {
             return $rows;
         }
+        // phpcs:enable
         $rows[] = array('', 0, self::metrics($site));
+        $q      = compact('start', 'end', 'sessions', 'views', 'resources', 'uid', 'cols', 'sums', 'range', 'address');
+        return array_merge(
+            $rows,
+            self::page_rows($q),
+            self::edge_rows($q),
+            self::name_rows($q),
+            $this->source_rows($q)
+        );
+    }
 
-        $pages = $wpdb->get_results($wpdb->prepare("SELECT $address AS v, COUNT(DISTINCT s.%i) AS visitors, COUNT(DISTINCT v.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(GREATEST(TIMESTAMPDIFF(SECOND, v.viewed_at, v.next_viewed_at), 0)), 0) * 1000 AS engaged_ms FROM %i s INNER JOIN %i v ON v.session_id = s.session_id INNER JOIN %i r ON r.id = v.resource_id WHERE $range GROUP BY v.resource_id ORDER BY pageviews DESC LIMIT %d", $uid, $sessions, $views, $resources, $start, $end, self::ROWS), ARRAY_A);
-        $rows  = array_merge($rows, self::by_path('page', (array) $pages));
+    /**
+     * Pages: each pageview of the day's visits.
+     *
+     * @param array<string,mixed> $q The day's SQL parts, as day() makes them.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function page_rows(array $q) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by its sessions' created_at index, joined by primary keys and the views' session_id index; the range and address are fixed SQL. Only addresses and counts are read.
+        $pages = $wpdb->get_results($wpdb->prepare("SELECT {$q['address']} AS v, COUNT(DISTINCT s.%i) AS visitors, COUNT(DISTINCT v.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(GREATEST(TIMESTAMPDIFF(SECOND, v.viewed_at, v.next_viewed_at), 0)), 0) * 1000 AS engaged_ms FROM %i s INNER JOIN %i v ON v.session_id = s.session_id INNER JOIN %i r ON r.id = v.resource_id WHERE {$q['range']} GROUP BY v.resource_id ORDER BY pageviews DESC LIMIT %d", $q['uid'], $q['sessions'], $q['views'], $q['resources'], $q['start'], $q['end'], self::ROWS), ARRAY_A);
+        return self::by_path('page', (array) $pages);
+    }
 
+    /**
+     * Entry and, when it keeps the last view, exit pages.
+     *
+     * @param array<string,mixed> $q The day's SQL parts, as day() makes them.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function edge_rows(array $q) {
+        global $wpdb;
+        $rows  = array();
         $edges = array('entry' => 's.initial_view_id');
-        if (in_array('final_view_id', $cols, true)) {
+        if (in_array('final_view_id', $q['cols'], true)) {
             $edges['exit'] = 'COALESCE(s.final_view_id, s.initial_view_id)';
         }
         foreach ($edges as $dimension => $view) {
-            $found = $wpdb->get_results($wpdb->prepare("SELECT $address AS v, $sums FROM %i s INNER JOIN %i v ON v.id = $view INNER JOIN %i r ON r.id = v.resource_id WHERE $range GROUP BY r.id ORDER BY visits DESC LIMIT %d", $uid, $sessions, $views, $resources, $start, $end, self::ROWS), ARRAY_A);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by its sessions' created_at index, joined by primary keys; the sums, range, address and view column are fixed SQL. Only addresses and counts are read.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT {$q['address']} AS v, {$q['sums']} FROM %i s INNER JOIN %i v ON v.id = $view INNER JOIN %i r ON r.id = v.resource_id WHERE {$q['range']} GROUP BY r.id ORDER BY visits DESC LIMIT %d", $q['uid'], $q['sessions'], $q['views'], $q['resources'], $q['start'], $q['end'], self::ROWS), ARRAY_A);
             $rows  = array_merge($rows, self::by_path($dimension, (array) $found));
         }
+        return $rows;
+    }
 
-        // Names in tables of their own.
+    /**
+     * Names in tables of their own: browser, system, device, country.
+     *
+     * @param array<string,mixed> $q The day's SQL parts, as day() makes them.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function name_rows(array $q) {
+        global $wpdb;
+        $rows  = array();
         $names = array(
             'browser' => array('device_browser_id', 'device_browsers', 'device_browser_id', 'device_browser'),
             'os'      => array('device_os_id', 'device_oss', 'device_os_id', 'device_os'),
@@ -187,18 +227,29 @@ final class SEOProStats_Migrate_Independent_Analytics extends SEOProStats_Migrat
             'country' => array('country_id', 'countries', 'country_id', 'country_code'),
         );
         foreach ($names as $dimension => $join) {
-            if (!in_array($join[0], $cols, true) || !in_array($join[3], self::columns(self::table($join[1])), true)) {
+            if (!in_array($join[0], $q['cols'], true) || !in_array($join[3], self::columns(self::table($join[1])), true)) {
                 continue;
             }
-            $found = $wpdb->get_results($wpdb->prepare("SELECT COALESCE(n.%i, '') AS v, $sums FROM %i s LEFT JOIN %i n ON n.%i = s.%i WHERE $range GROUP BY n.%i ORDER BY visits DESC LIMIT %d", $join[3], $uid, $sessions, self::table($join[1]), $join[2], $join[0], $start, $end, $join[3], self::ROWS), ARRAY_A);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by its sessions' created_at index, joined by primary keys; the sums and range are fixed SQL. Only grouped names and counts are read.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT COALESCE(n.%i, '') AS v, {$q['sums']} FROM %i s LEFT JOIN %i n ON n.%i = s.%i WHERE {$q['range']} GROUP BY n.%i ORDER BY visits DESC LIMIT %d", $join[3], $q['uid'], $q['sessions'], self::table($join[1]), $join[2], $join[0], $q['start'], $q['end'], $join[3], self::ROWS), ARRAY_A);
             foreach ((array) $found as $row) {
                 $rows[] = array($dimension, self::value($dimension, (string) $row['v']), self::metrics($row));
             }
         }
+        return $rows;
+    }
 
-        // Referrer with the first page and, with its Pro version, the visit's UTM tags.
+    /**
+     * Referrer with the first page and, with its Pro version, the visit's
+     * UTM tags, for the source, channel, campaign and landing dimensions.
+     *
+     * @param array<string,mixed> $q The day's SQL parts, as day() makes them.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private function source_rows(array $q) {
+        global $wpdb;
         $tags   = $this->campaigns();
-        $select = "COALESCE(f.domain, '') AS r, $address AS e";
+        $select = "COALESCE(f.domain, '') AS r, {$q['address']} AS e";
         $join   = '';
         $group  = 'f.domain, r.id';
         if ($tags) {
@@ -206,30 +257,41 @@ final class SEOProStats_Migrate_Independent_Analytics extends SEOProStats_Migrat
             $join    = $wpdb->prepare(' LEFT JOIN (SELECT k.campaign_id, us.utm_source, um.utm_medium, uc.utm_campaign, k.utm_term, k.utm_content FROM %i k LEFT JOIN %i us ON us.id = k.utm_source_id LEFT JOIN %i um ON um.id = k.utm_medium_id LEFT JOIN %i uc ON uc.id = k.utm_campaign_id) c ON c.campaign_id = s.campaign_id', self::table('campaigns'), self::table('utm_sources'), self::table('utm_mediums'), self::table('utm_campaigns'));
             $group  .= ', s.campaign_id';
         }
-        $mixed = $wpdb->get_results($wpdb->prepare("SELECT $select, $sums FROM %i s LEFT JOIN %i f ON f.id = s.referrer_id LEFT JOIN %i v ON v.id = s.initial_view_id LEFT JOIN %i r ON r.id = v.resource_id$join WHERE $range GROUP BY $group ORDER BY visits DESC LIMIT %d", $uid, $sessions, self::table('referrers'), $views, $resources, $start, $end, self::ROWS * 5), ARRAY_A);
-        // phpcs:enable
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by its sessions' created_at index, joined by primary keys; the select, sums, range and group are fixed SQL and the campaign join is prepared above. Only grouped hosts, tags, addresses and counts are read.
+        $mixed  = $wpdb->get_results($wpdb->prepare("SELECT $select, {$q['sums']} FROM %i s LEFT JOIN %i f ON f.id = s.referrer_id LEFT JOIN %i v ON v.id = s.initial_view_id LEFT JOIN %i r ON r.id = v.resource_id$join WHERE {$q['range']} GROUP BY $group ORDER BY visits DESC LIMIT %d", $q['uid'], $q['sessions'], self::table('referrers'), $q['views'], $q['resources'], $q['start'], $q['end'], self::ROWS * 5), ARRAY_A);
         $groups = array();
         foreach ((array) $mixed as $row) {
-            $referrer = strtolower((string) $row['r']);
-            $click    = '';
-            if (isset(self::ADS[$referrer])) {
-                list($referrer, $click) = self::ADS[$referrer];
-            }
-            $utm = array();
-            foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
-                if (isset($row[$tag]) && (string) $row[$tag] !== '') {
-                    $utm[$tag] = (string) $row[$tag];
-                }
-            }
-            $groups[] = array(
-                'r'       => $referrer,
-                'q'       => http_build_query($utm, '', '&', PHP_QUERY_RFC3986),
-                'e'       => self::path((string) $row['e']),
-                'c'       => $click,
-                'metrics' => self::metrics($row),
-            );
+            $groups[] = self::source_group($row);
         }
-        return array_merge($rows, self::visit_sources($groups));
+        return self::visit_sources($groups);
+    }
+
+    /**
+     * A row of source_rows() as visit_sources() takes it: an ad referrer
+     * becomes its search engine and click ID, tags become the query.
+     *
+     * @param array<string,mixed> $row The row.
+     * @return array{r:string,q:string,e:string,c:string,metrics:array<string,int>}
+     */
+    private static function source_group(array $row) {
+        $referrer = strtolower((string) $row['r']);
+        $click    = '';
+        if (isset(self::ADS[$referrer])) {
+            list($referrer, $click) = self::ADS[$referrer];
+        }
+        $utm = array();
+        foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
+            if (isset($row[$tag]) && (string) $row[$tag] !== '') {
+                $utm[$tag] = (string) $row[$tag];
+            }
+        }
+        return array(
+            'r'       => $referrer,
+            'q'       => http_build_query($utm, '', '&', PHP_QUERY_RFC3986),
+            'e'       => self::path((string) $row['e']),
+            'c'       => $click,
+            'metrics' => self::metrics($row),
+        );
     }
 
     /**
