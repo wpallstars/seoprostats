@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.1.0
+Version: 1.2.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -520,11 +520,13 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ## Changelog
 
-### Unreleased
+### 1.2.0
 
 - New: explained backlink spam review, local domain/URL decisions with user and time, prior-list merge and Google disavow text download through the dashboard, REST, CLI and an ability. Nothing is submitted.
 - New: opt-in IndexNow page-change notifications, a virtual verification key, minute-cron batches with an hourly allowance, receipts on Changes and a status card under Connections; REST status and WP-CLI send/status.
 - New: query Research menus on four engines, and dated target research counts, monthly volumes and sortable/filterable Keyword Golden Ratio bands.
+- Fixed: `readme.txt` lists IndexNow with the services that are off by default, and is back under WordPress.org's 10 KB.
+- Developers: a code-quality pass over the statistics classes, the dashboard, the tracker, `packages/core` and `packages/charts` (SonarCloud and Codacy findings). No screens, queries, requests or stored data changed; the tracker grows by 6 bytes.
 
 ### 1.1.0
 

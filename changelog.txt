@@ -2,7 +2,7 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
-= Unreleased =
+= 1.2.0 =
 * New: Search → Backlinks → Review (GH#147), explained weighted signals and local keep/disavow/undecided decisions by domain or source URL with user/time. Schema v22 adds indexed link_reviews and facts retained from existing page checks. Google-format UTF-8 disavow export, validated prior-list merge, dashboard download, REST review/merge/text routes, CLI review/disavow and seoprostats/backlink-review ability. Bounded indexed reads, isolated demo decisions and uninstall cleanup through the table registry. No automatic submission; guidance covers manual-action risk, replacement uploads, URL-prefix properties and Bing's removed tool.
 * Fixed: readme.txt's External services list IndexNow with the services that are off by default (it read as the one on by default), its 1.1.0 entry names the Read Me fix, and it is back under WordPress.org's 10 KB (GH#194).
 * New: opt-in IndexNow change notifications (GH#150), Settings → Data. A virtual public key file, changed and old page addresses queued from the live change log, one batch in minute cron, at most one attempt per URL per hour. Last 100 receipts retained without autoload, meta.indexnow on submitted changes, timeline display and Connections error/status card. GET /indexnow and wp seoprostats indexnow status|send; uninstall removes key, queue, logs and retry events. Received (200/202) is not proof of indexing; Google does not participate.

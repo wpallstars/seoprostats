@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -118,9 +118,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.1.0 =
-* New: Sign in with Google for Search Console, with no Google Cloud setup; backlink CSV imports from Search Console and backlink tools.
-* Changed: Search tables sort by any figure's header, most impressions first by default.
-* Fixed: disconnecting a search source during an import, report filters ending in a backslash, screen reader row labels, Read Me lines whose formatting cannot be read, and PHP warnings in edge cases.
+= 1.2.0 =
+* New: Search → Backlinks → Review: explained spam signals, local keep or disavow decisions and a Google disavow file to download. Nothing is submitted.
+* New: opt-in IndexNow change notifications; Research menus on four search engines and Keyword Golden Ratio bands for targets.
+* Fixed: readme.txt lists IndexNow with the services that are off by default.
 
 Every change: changelog.txt.

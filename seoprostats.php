@@ -3,7 +3,7 @@
  * Plugin Name:       SEO Pro Stats
  * Plugin URI:        https://github.com/wpallstars/seoprostats
  * Description:       Actionable analytics: connect your content to the data that shows you how to grow. Private stats, search rankings and sales, no cookies.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Marcus Quinn
@@ -39,7 +39,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-define('SEOPROSTATS_VERSION', '1.1.0');
+define('SEOPROSTATS_VERSION', '1.2.0');
 define('SEOPROSTATS_FILE', __FILE__);
 define('SEOPROSTATS_DIR', plugin_dir_path(__FILE__));
 define('SEOPROSTATS_URL', plugin_dir_url(__FILE__));
