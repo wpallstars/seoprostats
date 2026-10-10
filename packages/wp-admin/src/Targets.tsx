@@ -33,6 +33,8 @@ import {
 	type TargetsImportAnswer,
 	type TargetState,
 	type TargetStatus,
+	type TargetSuggestion,
+	type TargetSuggestionsAnswer,
 	type TargetSuggestionState,
 } from '@seoprostats/core';
 import { deleteTargets, errorMessage, importTargets, importTargetSuggestions, scopeKey, useTargets, useTargetSuggestions } from './api';
@@ -562,6 +564,83 @@ function suggestionStateName(state: TargetSuggestionState): string {
 	return names[state];
 }
 
+/** What the suggestions read: the SEO plugin, its pages and each state's count. */
+function SuggestSummary({ answer }: Readonly<{ answer: TargetSuggestionsAnswer }>) {
+	return (
+		<p className="spst-meta">
+			{sprintf(
+				/* translators: 1: an SEO plugin, e.g. "Yoast SEO", 2: pages with focus keywords, 3: new, 4: on more than one page, 5: already targets. */
+				__('%1$s: %2$s pages with focus keywords. New: %3$s. More than one page: %4$s. Already targets: %5$s.', 'seoprostats'),
+				pluginName(answer.plugin),
+				number(answer.pages),
+				number(answer.counts.new),
+				number(answer.counts.clash),
+				number(answer.counts.targeted)
+			)}
+			{answer.more && ` ${sprintf(/* translators: %s: number of posts. */ __('Only the first %s posts with focus keywords are read.', 'seoprostats'), number(answer.max_posts))}`}
+		</p>
+	);
+}
+
+/** No focus keywords to suggest, and what to do about it. */
+function SuggestEmpty({ plugin }: Readonly<{ plugin: string }>) {
+	return (
+		<div className="spst-empty">
+			<p>
+				{plugin === ''
+					? __('No SEO plugin is active, and no page has a focus keyword. With Rank Math, Yoast SEO, SEOPress or All in One SEO, set a focus keyword on each page, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')
+					: __('No published page has a focus keyword yet. Set one on each page in the SEO plugin, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')}
+			</p>
+		</div>
+	);
+}
+
+/** One focus keyword: its tick if new, its pages with Edit, and its state. */
+function SuggestRow({ row, checked, onToggle }: Readonly<{ row: TargetSuggestion; checked: boolean; onToggle: (on: boolean) => void }>) {
+	return (
+		<tr>
+			<td>
+				{row.state === 'new' && (
+					// WordPress's list-table check box: the search beside it names it, so the label is for screen readers.
+					<input
+						type="checkbox"
+						aria-label={sprintf(/* translators: %s: a search query. */ __('Import “%s”', 'seoprostats'), row.query)}
+						checked={checked}
+						onChange={(event) => onToggle(event.target.checked)}
+					/>
+				)}
+			</td>
+			<td>{row.query}</td>
+			<td>
+				{row.pages.map((page) => (
+					<span key={page.path} className="spst-targets__suggest-page">
+						<a href={page.url} target="_blank" rel="noopener noreferrer" title={page.title}>
+							{page.path}
+						</a>
+						{page.edit_url && (
+							<>
+								{' · '}
+								<a href={page.edit_url} target="_blank" rel="noopener noreferrer">
+									{__('Edit', 'seoprostats')}
+								</a>
+							</>
+						)}
+					</span>
+				))}
+			</td>
+			<td>
+				<span className={`spst-badge spst-targets__suggestion is-${row.state}`}>{suggestionStateName(row.state)}</span>
+				{row.target && (
+					<span className="spst-meta">
+						{targetStatusName(row.target.status)}
+						{row.target.page ? ` · ${row.target.page}` : ''}
+					</span>
+				)}
+			</td>
+		</tr>
+	);
+}
+
 /**
  * The SEO plugin's focus keywords as targets: the new ones to tick and
  * import (as targeted, priority 50, with their page), those of more than
@@ -616,29 +695,8 @@ function SuggestForm({ onClose }: Readonly<{ onClose: () => void }>) {
 				onChange={(next) => { setAllKeywords(next); setPicked(null); setDone(null); }}
 			/>
 			{!answer && !query.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-			{answer && (
-				<p className="spst-meta">
-					{sprintf(
-						/* translators: 1: an SEO plugin, e.g. "Yoast SEO", 2: pages with focus keywords, 3: new, 4: on more than one page, 5: already targets. */
-						__('%1$s: %2$s pages with focus keywords. New: %3$s. More than one page: %4$s. Already targets: %5$s.', 'seoprostats'),
-						pluginName(answer.plugin),
-						number(answer.pages),
-						number(answer.counts.new),
-						number(answer.counts.clash),
-						number(answer.counts.targeted)
-					)}
-					{answer.more && ` ${sprintf(/* translators: %s: number of posts. */ __('Only the first %s posts with focus keywords are read.', 'seoprostats'), number(answer.max_posts))}`}
-				</p>
-			)}
-			{answer && !answer.rows.length && (
-				<div className="spst-empty">
-					<p>
-						{answer.plugin === ''
-							? __('No SEO plugin is active, and no page has a focus keyword. With Rank Math, Yoast SEO, SEOPress or All in One SEO, set a focus keyword on each page, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')
-							: __('No published page has a focus keyword yet. Set one on each page in the SEO plugin, then look again; or add targets from the search reports or a keyword list.', 'seoprostats')}
-					</p>
-				</div>
-			)}
+			{answer && <SuggestSummary answer={answer} />}
+			{answer && !answer.rows.length && <SuggestEmpty plugin={answer.plugin} />}
 			{answer && answer.rows.length > 0 && (
 				<TableScroll label={__('Focus keywords', 'seoprostats')}>
 					<table className={`widefat striped spst-table${query.isFetching ? ' is-refreshing' : ''}`}>
@@ -662,46 +720,7 @@ function SuggestForm({ onClose }: Readonly<{ onClose: () => void }>) {
 						</thead>
 						<tbody>
 							{answer.rows.map((row) => (
-								<tr key={row.query}>
-									<td>
-										{row.state === 'new' && (
-											// WordPress's list-table check box: the search beside it names it, so the label is for screen readers.
-											<input
-												type="checkbox"
-												aria-label={sprintf(/* translators: %s: a search query. */ __('Import “%s”', 'seoprostats'), row.query)}
-												checked={chosen.has(row.query)}
-												onChange={(event) => toggle(row.query, event.target.checked)}
-											/>
-										)}
-									</td>
-									<td>{row.query}</td>
-									<td>
-										{row.pages.map((page) => (
-											<span key={page.path} className="spst-targets__suggest-page">
-												<a href={page.url} target="_blank" rel="noopener noreferrer" title={page.title}>
-													{page.path}
-												</a>
-												{page.edit_url && (
-													<>
-														{' · '}
-														<a href={page.edit_url} target="_blank" rel="noopener noreferrer">
-															{__('Edit', 'seoprostats')}
-														</a>
-													</>
-												)}
-											</span>
-										))}
-									</td>
-									<td>
-										<span className={`spst-badge spst-targets__suggestion is-${row.state}`}>{suggestionStateName(row.state)}</span>
-										{row.target && (
-											<span className="spst-meta">
-												{targetStatusName(row.target.status)}
-												{row.target.page ? ` · ${row.target.page}` : ''}
-											</span>
-										)}
-									</td>
-								</tr>
+								<SuggestRow key={row.query} row={row} checked={chosen.has(row.query)} onToggle={(on) => toggle(row.query, on)} />
 							))}
 						</tbody>
 					</table>
