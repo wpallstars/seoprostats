@@ -162,7 +162,7 @@ function StartButton() {
 }
 
 /** Inside a test: its variant switcher, on the selected block's toolbar. */
-function ParentSwitcher({ clientId }: { clientId: string }) {
+function ParentSwitcher({ clientId }: Readonly<{ clientId: string }>) {
 	const test = wp.data.useSelect(
 		(select) => {
 			const be = select('core/block-editor') as BlockEditorSelectors;
@@ -179,7 +179,7 @@ export function addToolbar(): void {
 	const { BlockControls } = wp.blockEditor;
 	const withAbTest = wp.compose.createHigherOrderComponent<EditProps>(
 		(BlockEdit: ComponentType<EditProps>) =>
-			function AbTestControls(props: EditProps) {
+			function AbTestControls(props: Readonly<EditProps>) {
 				if (props.name === TEST) {
 					return <BlockEdit {...props} />;
 				}
@@ -202,7 +202,7 @@ export function addToolbar(): void {
 	wp.hooks.addFilter('editor.BlockEdit', 'seoprostats/ab-test', withAbTest as (value: never) => unknown);
 }
 
-function StartMenuItem({ ids, onClose }: { ids: string[]; onClose(): void }) {
+function StartMenuItem({ ids, onClose }: Readonly<{ ids: string[]; onClose(): void }>) {
 	const why = useBlocked(ids);
 	if (why === null) {
 		return null;

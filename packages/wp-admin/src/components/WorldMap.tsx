@@ -40,11 +40,11 @@ interface Tip {
 }
 
 /** Nothing when a shared report hides countries, so they are never asked for. */
-export function WorldMap(props: Props) {
+export function WorldMap(props: Readonly<Props>) {
 	return shareAccess.hidden.includes('country') ? null : <MapCard {...props} />;
 }
 
-function MapCard({ state, update }: Props) {
+function MapCard({ state, update }: Readonly<Props>) {
 	const query = useBreakdown(state, 'country', COUNTRIES);
 	const [tip, setTip] = useState<Tip | null>(null);
 	const rows = query.data?.rows;

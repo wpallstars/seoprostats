@@ -21,7 +21,7 @@ export function filterText(filter: Filter): string {
 	return `${dimensionLabel(filter.dimension)} ${operatorLabel(filter.op)} ${values}`;
 }
 
-export function FilterBar({ filters, update }: Props) {
+export function FilterBar({ filters, update }: Readonly<Props>) {
 	if (!filters.length) {
 		return null;
 	}

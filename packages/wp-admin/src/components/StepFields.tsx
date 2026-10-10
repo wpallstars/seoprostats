@@ -25,7 +25,7 @@ export function kindLabel(kind: GoalKind): string {
 }
 
 /** The most seen pages or events of the last 90 days, unfiltered. */
-function Suggestions({ id, kind }: { id: string; kind: GoalKind }) {
+function Suggestions({ id, kind }: Readonly<{ id: string; kind: GoalKind }>) {
 	const query = useBreakdown({ range: '90d', filters: [] }, kind === 'page' ? 'page' : 'event', 100);
 	return (
 		<datalist id={id}>
@@ -36,7 +36,7 @@ function Suggestions({ id, kind }: { id: string; kind: GoalKind }) {
 	);
 }
 
-export function StepFields({ step, onChange, nameLabel, nameHelp }: Props) {
+export function StepFields({ step, onChange, nameLabel, nameHelp }: Readonly<Props>) {
 	const list = useId();
 	return (
 		<div className="spst-step-fields">

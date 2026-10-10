@@ -130,7 +130,7 @@ type AuditProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Audit({ state, update, open, onEngines }: AuditProps) {
+export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) {
 	const finding: AuditFinding | '' = state.finding ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, filters, engine or finding change.
@@ -243,7 +243,7 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 }
 
 /** Notes under the list: what was read and when, and the rules. */
-function Notes({ answer }: { answer: AuditAnswer }) {
+function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 	const r = answer.rules;
 	const notes: string[] = [];
 	const plugin = pluginName(answer.plugin);
@@ -309,7 +309,7 @@ function Notes({ answer }: { answer: AuditAnswer }) {
 	);
 }
 
-function AuditTable({ rows, open, refreshing }: { rows: AuditRow[]; open: AuditProps['open']; refreshing: boolean }) {
+function AuditTable({ rows, open, refreshing }: Readonly<{ rows: AuditRow[]; open: AuditProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={__('Content audit', 'seoprostats')}>
 			<table className={`widefat striped spst-table spst-decay spst-audit${refreshing ? ' is-refreshing' : ''}`}>

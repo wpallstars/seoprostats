@@ -21,7 +21,7 @@ export function matchName(match: CoverageMatch): string {
 	return names[match];
 }
 
-export function CoverageBadges({ result }: { result: CoverageResult }) {
+export function CoverageBadges({ result }: Readonly<{ result: CoverageResult }>) {
 	const partial = result.match === 'partial';
 	return (
 		<span className="spst-coverage">

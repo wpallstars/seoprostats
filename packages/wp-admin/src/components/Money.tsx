@@ -10,7 +10,7 @@ import { __ } from '@wordpress/i18n';
 import { formatMoney, type Revenue } from '@seoprostats/core';
 import { locale } from '../boot';
 
-export function Money({ revenue }: { revenue: Revenue[] }) {
+export function Money({ revenue }: Readonly<{ revenue: Revenue[] }>) {
 	if (!revenue.length) {
 		return <span className="spst-muted">—</span>;
 	}

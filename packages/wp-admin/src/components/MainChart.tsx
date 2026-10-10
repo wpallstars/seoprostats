@@ -102,7 +102,7 @@ function pointLabel(t: string, grain: ChartData['grain'], partial: boolean): str
 	return partial ? sprintf(__('%s (so far)', 'seoprostats'), label) : label;
 }
 
-export function MainChart<K extends string>({ series, metric, label, format, height = 260, markers, onMarker }: Props<K>) {
+export function MainChart<K extends string>({ series, metric, label, format, height = 260, markers, onMarker }: Readonly<Props<K>>) {
 	const holder = useRef<HTMLDivElement>(null);
 	const laneHolder = useRef<HTMLDivElement>(null);
 	const chart = useRef<TimeseriesChart | null>(null);
