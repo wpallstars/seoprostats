@@ -149,7 +149,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * ## OPTIONS
      *
      * [--range=<range>]
-     * : realtime, today, yesterday, 24h, 7d, 30d, 90d, week, month, year, 12mo, lastyear, all or custom.
+     * : realtime, today, yesterday, 24h, 7d, 28d, 30d, 90d, 91d, 182d, 364d, week, month, year, 12mo, lastyear, all or custom.
      * ---
      * default: 7d
      * ---

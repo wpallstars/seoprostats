@@ -119,6 +119,7 @@ Use **Support** on the settings screen, or ask aidevops.
 == Changelog ==
 
 = 1.3.0 =
+* New: Last 28, 91, 182 and 364 days periods, in whole weeks.
 * New: Search → Backlinks → Reported pages: every page a link export named, with its check and the links found on it.
 * New: imported pages are checked within the hour instead of over weeks, plus Check now; reported links are not marked new.
 * New: Settings → Import → Links keeps an import history with each file to download again and a link to its results.
