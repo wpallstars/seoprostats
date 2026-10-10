@@ -310,6 +310,13 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'label'       => __('Google URL inspections', 'seoprostats'),
                 'description' => __('While Search Console is connected, the hourly import asks Google how it indexed this many pages a day at most (Google allows 2,000 a day per property): first the pages Search → Audit, Indexation lists, then pages with search traffic, each again after 14 days. Each answer gives Google\'s reason a page is or is not indexed, its last crawl, the canonical Google chose and rich result issues. Only from cron, never on a visitor page. 0: none.', 'seoprostats'),
             ),
+            'indexnow'                => array(
+                'type'        => 'bool',
+                'default'     => false,
+                'tab'         => 'data',
+                'label'       => __('Notify search engines of changed pages (IndexNow)', 'seoprostats'),
+                'description' => __('Send only changed page addresses and a public verification key to api.indexnow.org from cron. Participating search engines, including Bing, share notifications. Google does not participate. Received does not mean crawled or indexed. Submission status is shown under Connections.', 'seoprostats'),
+            ),
             'viewers'                 => array(
                 'type'        => 'bool',
                 'default'     => false,
@@ -343,6 +350,8 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
     public static function write_config() {
         if (is_admin() || wp_doing_cron() || (defined('WP_CLI') && WP_CLI)) {
             SEOProStats_Collection::write_config();
+            require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexnow.php';
+            SEOProStats_IndexNow::settings_saved();
         }
     }
 

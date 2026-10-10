@@ -113,6 +113,8 @@ final class SEOProStats_Setup {
         SEOProStats_Purchases::init();
         // The change log: hooks on saving posts, products, plugins and settings only.
         SEOProStats_Changes::init();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexnow.php';
+        SEOProStats_IndexNow::init();
         // Abilities for AI agents (WordPress 6.9+; hooks only).
         SEOProStats_Abilities::init();
         // A/B test blocks (they render on the site from their attributes

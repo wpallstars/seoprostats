@@ -46,6 +46,12 @@ function measurable(change: Marker): boolean {
 	return !!change.path && change.group !== 'note' && change.group !== 'search';
 }
 
+function indexnowLabel(change: Marker): string {
+	const receipt = change.meta.indexnow;
+	if (!receipt || typeof receipt !== 'object' || !('code' in receipt) || typeof receipt.code !== 'number') return '';
+	return `${__('IndexNow', 'seoprostats')}: ${receipt.code === 200 || receipt.code === 202 ? __('Received, not proof of indexing', 'seoprostats') : __('Not accepted', 'seoprostats')} (HTTP ${receipt.code})`;
+}
+
 export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Readonly<Props>) {
 	const actions = boot.canManage && (!!onDelete || !!onExperiment);
 	// A shared report does not say who made a change.
@@ -77,6 +83,7 @@ export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExp
 								</span>
 								<span className="spst-meta">
 									{groupLabel(change.group)}
+									{indexnowLabel(change) && <> · {indexnowLabel(change)}</>}
 									{sourceUrl(change) && (
 										<>
 											{' · '}

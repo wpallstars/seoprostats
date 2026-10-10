@@ -282,7 +282,9 @@ final class SEOProStats_Changes {
             'path'        => isset($change['path']) ? (string) $change['path'] : '',
             'object_type' => isset($change['object_type']) ? substr((string) $change['object_type'], 0, 20) : '',
             'object_id'   => isset($change['object_id']) ? max(0, (int) $change['object_id']) : 0,
-            'old'         => self::short(isset($change['old']) ? $change['old'] : ''),
+            // Keep a moved page's full address for notification; write() alone
+            // applies the display column's length limit.
+            'old'         => (int) $kind === 3 ? (string) ($change['old'] ?? '') : self::short(isset($change['old']) ? $change['old'] : ''),
             'new'         => self::short(isset($change['new']) ? $change['new'] : ''),
             'meta'        => isset($change['meta']) && is_array($change['meta']) ? $change['meta'] : array(),
             'source'      => isset($change['source']) ? (int) $change['source'] : self::source(),
@@ -309,7 +311,14 @@ final class SEOProStats_Changes {
 
         $before = SEOProStats_Schema::use_set('live');
         try {
-            return self::write($row);
+            $written = self::write($row);
+            if ($written) {
+                global $wpdb;
+                $id = (int) $wpdb->insert_id;
+                require_once __DIR__ . '/class-seoprostats-indexnow.php';
+                SEOProStats_IndexNow::changed($row, $id);
+            }
+            return $written;
         } finally {
             SEOProStats_Schema::use_set($before);
         }
@@ -351,6 +360,31 @@ final class SEOProStats_Changes {
             ),
             array('%d', '%d', '%d', '%s', '%d', '%s', '%s', '%s', '%d', '%d')
         );
+    }
+
+    /**
+     * Attach a notification receipt by the change's primary key, live only.
+     * @param int $id Change ID.
+     * @param array<string,mixed> $receipt Submission result.
+     */
+    public static function indexnow_receipt($id, array $receipt) {
+        global $wpdb;
+        $before = SEOProStats_Schema::use_set('live');
+        try {
+            $table = SEOProStats_Schema::table('changes');
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- primary-key lookup in our table.
+            $raw = $wpdb->get_var($wpdb->prepare('SELECT meta FROM %i WHERE id = %d', $table, $id));
+            if ($raw === null) {
+                return;
+            }
+            $meta = json_decode((string) $raw, true);
+            $meta = is_array($meta) ? $meta : array();
+            $meta['indexnow'] = $receipt;
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- update one change by its primary key.
+            $wpdb->update($table, array('meta' => wp_json_encode($meta)), array('id' => $id), array('%s'), array('%d'));
+        } finally {
+            SEOProStats_Schema::use_set($before);
+        }
     }
 
     /**

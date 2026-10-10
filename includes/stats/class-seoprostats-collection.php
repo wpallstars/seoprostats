@@ -147,6 +147,8 @@ final class SEOProStats_Collection {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-rollup.php';
         SEOProStats_Processor::run();
         SEOProStats_Rollup::run();
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexnow.php';
+        SEOProStats_IndexNow::run();
     }
 
     /**

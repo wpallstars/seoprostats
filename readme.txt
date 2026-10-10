@@ -40,6 +40,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Opportunities**: striking-distance queries, low CTR, pages losing clicks with the likely cause, queries missing from the page and overlapping pages.
 * **Audit**: titles, descriptions, headings, thin content, internal links, pages search engines do not show, and Google's sitemaps and URL Inspection.
 * **Backlinks**: links from visits and CSV exports (Settings → Import → Links), with source filtering, scores and dates per provider.
+* **IndexNow**: opt-in changed-page notifications, with submission receipts; received does not mean indexed.
 * **Targets and research**: operator-search links on four engines; dated allintitle counts and monthly volumes, with sortable/filterable Keyword Golden Ratio bands (a heuristic, not a ranking promise).
 * **Plan**: all of the above in one list, best first. Done starts an experiment.
 * **Experiments**: before and after a change against unchanged pages, with a suggested keep, revise or undo.
@@ -62,6 +63,7 @@ No cookies or browser storage, no stored IP addresses and no visitor identity ac
 
 Off by default, except the first:
 
+* **IndexNow** (api.indexnow.org), when enabled under Settings → Data: changed page addresses, this site's host, public key and its location, batched in cron. Participating engines share notifications; Google does not participate. No visitor data. Turning it off stops submissions and hides the key. [Protocol and terms](https://indexnow.org/terms).
 * **Pages that sent visitors** (Settings → Data → Check pages that send visitors for links, on): once a day, for up to 20 seconds, WP-Cron opens public pages that sent visits, to find their links to this site. The user agent names the plugin and the site; nothing about visitors is sent. Each site's own terms apply.
 * **Google Search Status Dashboard** (status.search.google.com), when Show search engine updates is on: once a day, Google's public list of ranking updates and incidents. Nothing about the site is sent. Other feeds you add are read the same way. Google [terms](https://policies.google.com/terms) and [privacy policy](https://policies.google.com/privacy).
 * **SEO Pro Stats sign-in relay** (gsc-oauth.wpallstars.com, run by the plugin's maker), only if you choose Sign in with Google: your browser goes through it to Google's sign-in, and it passes Google's answer (the access tokens) back to the site's wp-admin address. While imports run, the site sends it the stored refresh token about once an hour for a new access token. It stores and logs nothing. [Privacy policy](https://www.wpallstars.com/privacy/).
