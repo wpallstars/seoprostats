@@ -162,45 +162,10 @@ final class SEOProStats_Migrate {
         try {
             $out = array();
             foreach (self::sources() as $key => $class) {
-                $source = new $class();
-                $data   = $source->detect();
-                $plugin = $source->plugin();
-                $note   = $source->unavailable();
-                $left   = $plugin['state'] === 'active' || $plugin['state'] === 'network' ? null : $source->leftovers();
-                $any    = $left !== null && (bool) array_filter(array_diff_key($left, array('network' => true)));
-                if ($data['from'] === '' && !$any && $note === '') {
-                    continue;
+                $item = self::found_item($key, $class);
+                if ($item !== null) {
+                    $out[$key] = $item;
                 }
-                // The days it has and those still to import, in one pass over its days.
-                $plan = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
-                $days = 0;
-                if (is_array($plan)) {
-                    $days = (int) $plan['days'];
-                } elseif ($data['from'] !== '') {
-                    $days = count($source->day_list($data['from'], $data['to']));
-                }
-                // Unknown (-1) while it cannot hand its history over: the notices wait.
-                $pending = -1;
-                if ($note === '' && $plan === null) {
-                    $pending = 0;
-                } elseif ($note === '' && is_array($plan)) {
-                    $pending = count($plan['import']);
-                }
-                $out[$key] = array(
-                    'key'               => $key,
-                    'name'              => $class::NAME,
-                    'version'           => $data['version'],
-                    'from'              => $data['from'],
-                    'to'                => $data['to'],
-                    'days'              => $days,
-                    'pending'           => $pending,
-                    'pending_from'      => is_array($plan) && $plan['import'] ? (string) min($plan['import']) : '',
-                    'pending_to'        => is_array($plan) && $plan['import'] ? (string) max($plan['import']) : '',
-                    'plugin'            => $plugin,
-                    'leftovers'         => $any,
-                    'uninstall_setting' => $source->uninstall_setting(),
-                    'unavailable'       => $note,
-                );
             }
             set_transient(self::CACHE, $out, self::CACHE_TIME);
             self::save_notices($out);
@@ -208,6 +173,92 @@ final class SEOProStats_Migrate {
         } finally {
             SEOProStats_Schema::use_set($before);
         }
+    }
+
+    /**
+     * One plugin for found(), or null when it has neither statistics nor
+     * leftovers and nothing keeps it from being imported.
+     *
+     * @param string                                   $key   Adapter key.
+     * @param class-string<SEOProStats_Migrate_Source> $class Adapter class.
+     * @return array<string,mixed>|null
+     */
+    private static function found_item($key, $class) {
+        $source = new $class();
+        $data   = $source->detect();
+        $plugin = $source->plugin();
+        $note   = $source->unavailable();
+        $any    = self::any_leftovers($source, $plugin);
+        if ($data['from'] === '' && !$any && $note === '') {
+            return null;
+        }
+        // The days it has and those still to import, in one pass over its days.
+        $plan = $data['from'] !== '' && $note === '' ? self::make_plan($key, array(), false) : null;
+        $days = self::found_days($source, $data, $plan);
+        $todo = is_array($plan) ? $plan['import'] : array();
+        return array(
+            'key'               => $key,
+            'name'              => $class::NAME,
+            'version'           => $data['version'],
+            'from'              => $data['from'],
+            'to'                => $data['to'],
+            'days'              => $days,
+            'pending'           => self::pending_days($note, $plan),
+            'pending_from'      => $todo ? (string) min($todo) : '',
+            'pending_to'        => $todo ? (string) max($todo) : '',
+            'plugin'            => $plugin,
+            'leftovers'         => $any,
+            'uninstall_setting' => $source->uninstall_setting(),
+            'unavailable'       => $note,
+        );
+    }
+
+    /**
+     * Whether a plugin that is not running left anything behind (a network
+     * list alone does not count). A running plugin's are not looked for.
+     *
+     * @param SEOProStats_Migrate_Source $source Adapter.
+     * @param array<string,string>       $plugin From its plugin().
+     * @return bool
+     */
+    private static function any_leftovers(SEOProStats_Migrate_Source $source, array $plugin) {
+        if ($plugin['state'] === 'active' || $plugin['state'] === 'network') {
+            return false;
+        }
+        return (bool) array_filter(array_diff_key($source->leftovers(), array('network' => true)));
+    }
+
+    /**
+     * The days a plugin has statistics for: from its plan, or its day list.
+     *
+     * @param SEOProStats_Migrate_Source             $source Adapter.
+     * @param array<string,string>                   $data   From its detect().
+     * @param array<string,mixed>|WP_Error|null      $plan   From make_plan(), or null.
+     * @return int
+     */
+    private static function found_days(SEOProStats_Migrate_Source $source, array $data, $plan) {
+        if (is_array($plan)) {
+            return (int) $plan['days'];
+        }
+        return $data['from'] !== '' ? count($source->day_list($data['from'], $data['to'])) : 0;
+    }
+
+    /**
+     * Days still to import: unknown (-1) while it cannot hand its history
+     * over, so the notices wait.
+     *
+     * @param string                            $note Why it cannot be imported now ('' for nothing).
+     * @param array<string,mixed>|WP_Error|null $plan From make_plan(), or null.
+     * @return int
+     */
+    private static function pending_days($note, $plan) {
+        if ($note !== '') {
+            return -1;
+        }
+        if ($plan === null) {
+            return 0;
+        }
+        return is_array($plan) ? count($plan['import']) : -1;
     }
 
     /**
@@ -352,6 +403,39 @@ final class SEOProStats_Migrate {
      */
     private static function make_plan($key, array $args, $full) {
         $source = self::source($key);
+        $data   = self::plan_source($source, $args);
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        $from = !empty($args['from']) ? max((string) $args['from'], $data['from']) : $data['from'];
+        $to   = !empty($args['to']) ? min((string) $args['to'], $data['to']) : $data['to'];
+        $own  = self::own_from();
+        $days = $source->day_list($from, $to);
+
+        list($import, $skipped) = self::sort_days($days, $own);
+        $plan = array(
+            'source'   => $key,
+            'name'     => $source::NAME,
+            'version'  => $data['version'],
+            'from'     => $from,
+            'to'       => $to,
+            'own_from' => $own,
+            'days'     => count($days),
+            'import'   => $import,
+            'skipped'  => $skipped,
+        );
+        return $full ? self::dry_run($plan, $source, $args) : $plan;
+    }
+
+    /**
+     * What a plan starts from: the adapter's span, once it can be imported
+     * and the days asked for are written as days.
+     *
+     * @param SEOProStats_Migrate_Source|null $source Adapter.
+     * @param array<string,mixed>             $args   from, to.
+     * @return array<string,string>|WP_Error From its detect().
+     */
+    private static function plan_source($source, array $args) {
         if (!$source) {
             return new WP_Error('seoprostats_migrate_unknown', __('SEO Pro Stats cannot import from that plugin.', 'seoprostats'), array('status' => 404));
         }
@@ -372,11 +456,19 @@ final class SEOProStats_Migrate {
                 return new WP_Error('seoprostats_migrate_day', __('Days are written as YYYY-MM-DD.', 'seoprostats'), array('status' => 400));
             }
         }
-        $from = !empty($args['from']) ? max((string) $args['from'], $data['from']) : $data['from'];
-        $to   = !empty($args['to']) ? min((string) $args['to'], $data['to']) : $data['to'];
-        $own  = self::own_from();
-        $days = $source->day_list($from, $to);
+        return $data;
+    }
 
+    /**
+     * A plugin's days: those to import, and those skipped because SEO Pro
+     * Stats counted them itself (or from its own first day) or an import
+     * filled them, by its plugin.
+     *
+     * @param string[] $days Its days.
+     * @param string   $own  SEO Pro Stats's own first day.
+     * @return array{0:string[],1:array{own:int,imported:array<string,int>}} Days to import, skipped.
+     */
+    private static function sort_days(array $days, $own) {
         $filled  = self::filled($days);
         $owners  = self::owners(array_values(array_filter(array_unique($filled))));
         $import  = array();
@@ -391,25 +483,52 @@ final class SEOProStats_Migrate {
                 $import[] = $day;
             }
         }
-        $plan = array(
-            'source'   => $key,
-            'name'     => $source::NAME,
-            'version'  => $data['version'],
-            'from'     => $from,
-            'to'       => $to,
-            'own_from' => $own,
-            'days'     => count($days),
-            'import'   => $import,
-            'skipped'  => $skipped,
-        );
-        if (!$full) {
-            return $plan;
-        }
+        return array($import, $skipped);
+    }
 
+    /**
+     * The dry run's additions to a plan: the plugins sharing its days, the
+     * one preferred, rows, settings and counts.
+     *
+     * @param array<string,mixed>        $plan   From make_plan().
+     * @param SEOProStats_Migrate_Source $source Adapter.
+     * @param array<string,mixed>        $args   prefer.
+     * @return array<string,mixed>
+     */
+    private static function dry_run(array $plan, SEOProStats_Migrate_Source $source, array $args) {
+        $key    = $plan['source'];
+        $import = $plan['import'];
         // Plugins not imported yet with statistics on the same days.
         $estimated       = false;
-        $plan['overlap'] = array();
+        $plan['overlap'] = self::overlaps($source, $key, $import, $estimated);
         $prefer          = isset($args['prefer']) ? (string) $args['prefer'] : '';
+        $choices         = array_merge(array($key), wp_list_pluck($plan['overlap'], 'source'));
+        $plan['prefer']  = in_array($prefer, $choices, true) ? $prefer : $key;
+        $plan['rows']    = self::estimate($source, $import);
+        $plan['settings'] = self::settings_plan($source);
+        $plan['totals']    = self::range_totals($source, $import, $estimated);
+        $plan['estimated'] = $estimated;
+        $plan['plugin']    = $source->plugin();
+        $plan['import']   = array(
+            'days' => count($import),
+            'from' => $import ? min($import) : '',
+            'to'   => $import ? max($import) : '',
+        );
+        return $plan;
+    }
+
+    /**
+     * The other plugins with statistics on days a plan would import, with
+     * their page views and ours on those days.
+     *
+     * @param SEOProStats_Migrate_Source $source    Adapter.
+     * @param string                     $key       Its key.
+     * @param string[]                   $import    Days it would import.
+     * @param bool                       $estimated Set to true when a count is estimated.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function overlaps(SEOProStats_Migrate_Source $source, $key, array $import, &$estimated) {
+        $out = array();
         foreach (self::sources() as $other_key => $class) {
             if ($other_key === $key || !$import) {
                 continue;
@@ -423,9 +542,9 @@ final class SEOProStats_Migrate {
             if (!$shared) {
                 continue;
             }
-            $ours              = self::range_totals($source, $shared, $estimated);
-            $theirs            = self::range_totals($other, $shared, $estimated);
-            $plan['overlap'][] = array(
+            $ours   = self::range_totals($source, $shared, $estimated);
+            $theirs = self::range_totals($other, $shared, $estimated);
+            $out[]  = array(
                 'source'    => $other_key,
                 'name'      => $class::NAME,
                 'from'      => min($shared),
@@ -435,19 +554,7 @@ final class SEOProStats_Migrate {
                 'suggested' => $theirs['pageviews'] > $ours['pageviews'] ? $other_key : $key,
             );
         }
-        $choices        = array_merge(array($key), wp_list_pluck($plan['overlap'], 'source'));
-        $plan['prefer'] = in_array($prefer, $choices, true) ? $prefer : $key;
-        $plan['rows']   = self::estimate($source, $import);
-        $plan['settings'] = self::settings_plan($source);
-        $plan['totals']    = self::range_totals($source, $import, $estimated);
-        $plan['estimated'] = $estimated;
-        $plan['plugin']    = $source->plugin();
-        $plan['import']   = array(
-            'days' => count($import),
-            'from' => $import ? min($import) : '',
-            'to'   => $import ? max($import) : '',
-        );
-        return $plan;
+        return $out;
     }
 
     /**
@@ -772,45 +879,79 @@ final class SEOProStats_Migrate {
             return $item;
         }
         if (empty($item['id'])) {
-            $plan = self::make_plan((string) $item['key'], array_filter(array('from' => self::state()['from'], 'to' => self::state()['to'])), false);
-            if (is_wp_error($plan)) {
-                $item['days']  = array();
-                $item['id']    = -1;
-                $item['error'] = $plan->get_error_message();
-                return $item;
-            }
-            $item['days']    = $plan['import'];
-            $item['total']   = count($plan['import']);
-            $item['skipped'] = $plan['skipped'];
-            $item['version'] = $plan['version'];
-            $item['first']   = '';
-            $item['last']    = '';
-            $item['ours']    = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
-            $item['theirs']  = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
-            $item['imported'] = 0;
-            $item['id']       = self::insert_import((string) $item['key'], $plan);
-            if ($item['id'] <= 0) {
-                $item['id']    = -1;
-                $item['days']  = array();
-                $item['error'] = __('The import could not be recorded.', 'seoprostats');
-            }
-            return $item;
+            return self::start_item($item);
         }
         $day = (string) array_shift($item['days']);
         $item['done']++;
         $filled = self::filled(array($day));
         if ($day >= $own || isset($filled[$day])) {
             // Filled meanwhile (by our own count or another import).
-            $reason = ($day >= $own || $filled[$day] === 0) ? 'own' : 'imported';
-            if ($reason === 'own') {
-                $item['skipped']['own']++;
-            } else {
-                $owner                               = self::owners(array($filled[$day]));
-                $by                                  = isset($owner[$filled[$day]]) ? $owner[$filled[$day]] : 'unknown';
-                $item['skipped']['imported'][$by] = (isset($item['skipped']['imported'][$by]) ? $item['skipped']['imported'][$by] : 0) + 1;
-            }
+            return self::skip_filled($item, $day >= $own ? 0 : $filled[$day]);
+        }
+        return self::import_day($item, $source, $day);
+    }
+
+    /**
+     * A queue item's start: its plan's days and its imports row.
+     *
+     * @param array<string,mixed> $item Queue item.
+     * @return array<string,mixed> The item.
+     */
+    private static function start_item(array $item) {
+        $plan = self::make_plan((string) $item['key'], array_filter(array('from' => self::state()['from'], 'to' => self::state()['to'])), false);
+        if (is_wp_error($plan)) {
+            $item['days']  = array();
+            $item['id']    = -1;
+            $item['error'] = $plan->get_error_message();
             return $item;
         }
+        $item['days']    = $plan['import'];
+        $item['total']   = count($plan['import']);
+        $item['skipped'] = $plan['skipped'];
+        $item['version'] = $plan['version'];
+        $item['first']   = '';
+        $item['last']    = '';
+        $item['ours']    = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
+        $item['theirs']  = array_fill_keys(array('pageviews', 'visits', 'visitors'), 0);
+        $item['imported'] = 0;
+        $item['id']       = self::insert_import((string) $item['key'], $plan);
+        if ($item['id'] <= 0) {
+            $item['id']    = -1;
+            $item['days']  = array();
+            $item['error'] = __('The import could not be recorded.', 'seoprostats');
+        }
+        return $item;
+    }
+
+    /**
+     * Count a day that was filled meanwhile as skipped: SEO Pro Stats's own
+     * (holder 0), or by the plugin of the import that filled it.
+     *
+     * @param array<string,mixed> $item   Queue item.
+     * @param int                 $holder 0 for our own, else the imports row's id.
+     * @return array<string,mixed> The item.
+     */
+    private static function skip_filled(array $item, $holder) {
+        if ($holder === 0) {
+            $item['skipped']['own']++;
+            return $item;
+        }
+        $owner                            = self::owners(array($holder));
+        $by                               = isset($owner[$holder]) ? $owner[$holder] : 'unknown';
+        $item['skipped']['imported'][$by] = (isset($item['skipped']['imported'][$by]) ? $item['skipped']['imported'][$by] : 0) + 1;
+        return $item;
+    }
+
+    /**
+     * Read one day from the adapter and write it, then add its counts and
+     * the plugin's own to the check.
+     *
+     * @param array<string,mixed>        $item   Queue item.
+     * @param SEOProStats_Migrate_Source $source Adapter.
+     * @param string                     $day    Y-m-d.
+     * @return array<string,mixed> The item.
+     */
+    private static function import_day(array $item, SEOProStats_Migrate_Source $source, $day) {
         $read = $source->days($day, $day);
         if (is_wp_error($read)) {
             return self::retry_item($item, $day, $read);
@@ -831,18 +972,30 @@ final class SEOProStats_Migrate {
         $item['imported']++;
         $item['first'] = $item['first'] === '' ? $day : min($item['first'], $day);
         $item['last']  = max($item['last'], $day);
-        foreach ($rows as $row) {
-            if ($row[0] === 0) {
-                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
-                    $item['ours'][$metric] += $row[2][$metric];
-                }
-                break;
-            }
-        }
+        $item['ours']  = self::add_site_counts($item['ours'], $rows);
         foreach ($source->totals($day, $day) as $metric => $count) {
             $item['theirs'][$metric] += (int) $count;
         }
         return $item;
+    }
+
+    /**
+     * Add a written day's site totals (its first site row) to the check.
+     *
+     * @param array<string,int>                                 $ours Page views, visits and visitors so far.
+     * @param array<int,array{0:int,1:int,2:array<string,int>}> $rows From encode().
+     * @return array<string,int>
+     */
+    private static function add_site_counts(array $ours, array $rows) {
+        foreach ($rows as $row) {
+            if ($row[0] === 0) {
+                foreach (array('pageviews', 'visits', 'visitors') as $metric) {
+                    $ours[$metric] += $row[2][$metric];
+                }
+                break;
+            }
+        }
+        return $ours;
     }
 
     /**
@@ -914,46 +1067,15 @@ final class SEOProStats_Migrate {
             'browser'      => SEOProStats_Schema::DICT_BROWSER,
             'os'           => SEOProStats_Schema::DICT_OS,
         );
-        $texts = array();
-        foreach ($rows as $row) {
-            if (isset($kinds[$row[0]])) {
-                $texts[$kinds[$row[0]]][] = (string) $row[1];
-            }
-        }
-        $dict = array();
-        foreach ($texts as $kind => $values) {
-            if ($ids) {
-                $dict[$kind] = SEOProStats_Dict::ids($kind, $values);
-            } else {
-                $dict[$kind] = array('' => 0);
-                foreach (array_values(array_unique(array_map(array('SEOProStats_Dict', 'clean'), $values))) as $i => $value) {
-                    $dict[$kind][$value] = $value === '' ? 0 : $i + 1;
-                }
-            }
-        }
-        $out = array();
+        $dict = self::encode_dict($rows, $kinds, $ids);
+        $out  = array();
         foreach ($rows as $row) {
             list($name, $value, $metrics) = $row;
-            if ($name === '') {
-                $dim = 0;
-                $val = 0;
-            } elseif ($name === 'landing') {
-                $dim = SEOProStats_Rollup::SEARCH_LANDING;
-            } elseif (isset(SEOProStats_Rollup::DIMS[$name])) {
-                $dim = SEOProStats_Rollup::DIMS[$name];
-            } else {
+            $dim = self::daily_dim($name);
+            if ($dim === null) {
                 continue;
             }
-            if ($name === '') {
-                $val = 0;
-            } elseif (isset($kinds[$name])) {
-                $clean = SEOProStats_Dict::clean((string) $value);
-                $val   = isset($dict[$kinds[$name]][$clean]) ? (int) $dict[$kinds[$name]][$clean] : 0;
-            } elseif ($name === 'country') {
-                $val = SEOProStats_Rollup::country_value((string) $value);
-            } else {
-                $val = (int) $value;
-            }
+            $val = self::daily_val($name, $value, $kinds, $dict);
             if ($val < 0) {
                 continue;
             }
@@ -966,6 +1088,83 @@ final class SEOProStats_Migrate {
             }
         }
         return array_values($out);
+    }
+
+    /**
+     * The dictionary ids of the texts in adapter rows, by dictionary kind.
+     *
+     * @param array<int,array{0:string,1:int|string,2:array<string,int>}> $rows  Adapter rows.
+     * @param array<string,int>                                            $kinds Dimension name => dictionary kind.
+     * @param bool                                                         $ids   Add new texts to the dictionary (false: the dry run's stand-in ids).
+     * @return array<int,array<string,int>> Kind => text => id.
+     */
+    private static function encode_dict(array $rows, array $kinds, $ids) {
+        $texts = array();
+        foreach ($rows as $row) {
+            if (isset($kinds[$row[0]])) {
+                $texts[$kinds[$row[0]]][] = (string) $row[1];
+            }
+        }
+        $dict = array();
+        foreach ($texts as $kind => $values) {
+            $dict[$kind] = $ids ? SEOProStats_Dict::ids($kind, $values) : self::dry_dict($values);
+        }
+        return $dict;
+    }
+
+    /**
+     * The dry run's stand-in ids: texts count as one value each, the empty
+     * text as none.
+     *
+     * @param string[] $values Texts.
+     * @return array<string,int> Text => id.
+     */
+    private static function dry_dict(array $values) {
+        $dict = array('' => 0);
+        foreach (array_values(array_unique(array_map(array('SEOProStats_Dict', 'clean'), $values))) as $i => $value) {
+            $dict[$value] = $value === '' ? 0 : $i + 1;
+        }
+        return $dict;
+    }
+
+    /**
+     * The daily table's dimension code of an adapter row's name.
+     *
+     * @param string $name '' for the site totals, or a dimension name.
+     * @return int|null Null for a dimension the daily table does not keep.
+     */
+    private static function daily_dim($name) {
+        if ($name === '') {
+            return 0;
+        }
+        if ($name === 'landing') {
+            return SEOProStats_Rollup::SEARCH_LANDING;
+        }
+        return isset(SEOProStats_Rollup::DIMS[$name]) ? SEOProStats_Rollup::DIMS[$name] : null;
+    }
+
+    /**
+     * The daily table's value of an adapter row: 0 for the site totals, a
+     * dictionary id for a text, a country's code, or the number itself.
+     *
+     * @param string                       $name  '' or a dimension name.
+     * @param int|string                   $value The adapter's value.
+     * @param array<string,int>            $kinds Dimension name => dictionary kind.
+     * @param array<int,array<string,int>> $dict  From encode_dict().
+     * @return int Below 0: a value the daily table does not keep.
+     */
+    private static function daily_val($name, $value, array $kinds, array $dict) {
+        if ($name === '') {
+            return 0;
+        }
+        if (isset($kinds[$name])) {
+            $clean = SEOProStats_Dict::clean((string) $value);
+            return isset($dict[$kinds[$name]][$clean]) ? (int) $dict[$kinds[$name]][$clean] : 0;
+        }
+        if ($name === 'country') {
+            return SEOProStats_Rollup::country_value((string) $value);
+        }
+        return (int) $value;
     }
 
     /**
@@ -1118,12 +1317,27 @@ final class SEOProStats_Migrate {
                 continue;
             }
             $changed[$setting['key']] = array($setting['now'], $setting['to']);
-            foreach ($setting['also'] as $key => $value) {
-                if (isset($schema[$key]) && self::same(SEOProStats_Settings::get($key), $defaults[$key]) && !self::same($defaults[$key], $value)) {
-                    $before = self::words(SEOProStats_Settings::get($key), $schema[$key]);
-                    if (!is_wp_error(SEOProStats_Settings::set($key, $value))) {
-                        $changed[$key] = array($before, self::words($value, $schema[$key]));
-                    }
+            $changed = self::apply_also($setting['also'], $schema, $defaults, $changed);
+        }
+        return $changed;
+    }
+
+    /**
+     * Carry over the settings that follow a carried-over one, each only
+     * while still at our default and when it would change.
+     *
+     * @param array<string,mixed>                    $also     Key => value.
+     * @param array<string,array<string,mixed>>      $schema   Settings schema.
+     * @param array<string,mixed>                    $defaults Settings defaults.
+     * @param array<string,array{0:string,1:string}> $changed  Changed so far.
+     * @return array<string,array{0:string,1:string}> With these added.
+     */
+    private static function apply_also(array $also, array $schema, array $defaults, array $changed) {
+        foreach ($also as $key => $value) {
+            if (isset($schema[$key]) && self::same(SEOProStats_Settings::get($key), $defaults[$key]) && !self::same($defaults[$key], $value)) {
+                $before = self::words(SEOProStats_Settings::get($key), $schema[$key]);
+                if (!is_wp_error(SEOProStats_Settings::set($key, $value))) {
+                    $changed[$key] = array($before, self::words($value, $schema[$key]));
                 }
             }
         }
@@ -1205,30 +1419,41 @@ final class SEOProStats_Migrate {
         $in   = implode(', ', array_fill(0, count($keys), '%s'));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own small table; $in holds only placeholders.
         $rows     = $wpdb->get_results($wpdb->prepare("SELECT * FROM %i WHERE source IN ($in) ORDER BY id DESC LIMIT %d", array_merge(array(SEOProStats_Schema::table('imports')), $keys, array((int) $limit))), ARRAY_A);
-        $statuses = array(self::RUNNING => 'running', self::DONE => 'done', self::FAILED => 'failed', self::UNDONE => 'undone');
-        $out      = array();
+        $out = array();
         foreach ((array) $rows as $row) {
-            $meta  = json_decode((string) $row['meta'], true);
-            $meta  = is_array($meta) ? $meta : array();
-            $out[] = array(
-                'id'       => (int) $row['id'],
-                'source'   => (string) $row['source'],
-                'name'     => isset($names[$row['source']]) ? $names[$row['source']] : (string) $row['source'],
-                'status'   => isset($statuses[(int) $row['status']]) ? $statuses[(int) $row['status']] : 'unknown',
-                'started'  => (int) $row['started'],
-                'finished' => (int) $row['finished'],
-                'from'     => (string) $row['day_from'],
-                'to'       => (string) $row['day_to'],
-                'days'     => isset($meta['days']) ? (int) $meta['days'] : 0,
-                'rows'     => (int) $row['rows_added'],
-                'version'  => isset($meta['version']) ? (string) $meta['version'] : '',
-                'skipped'  => isset($meta['skipped']) ? $meta['skipped'] : array(),
-                'check'    => isset($meta['check']) ? $meta['check'] : array(),
-                'settings' => isset($meta['settings']) ? $meta['settings'] : array(),
-                'error'    => isset($meta['error']) ? (string) $meta['error'] : '',
-            );
+            $out[] = self::import_row($row, $names);
         }
         return $out;
+    }
+
+    /**
+     * An imports row as imports() lists it.
+     *
+     * @param array<string,string> $row   The imports row.
+     * @param array<string,string> $names Adapter key => plugin name.
+     * @return array<string,mixed>
+     */
+    private static function import_row(array $row, array $names) {
+        $statuses = array(self::RUNNING => 'running', self::DONE => 'done', self::FAILED => 'failed', self::UNDONE => 'undone');
+        $meta     = json_decode((string) $row['meta'], true);
+        $meta     = is_array($meta) ? $meta : array();
+        return array(
+            'id'       => (int) $row['id'],
+            'source'   => (string) $row['source'],
+            'name'     => isset($names[$row['source']]) ? $names[$row['source']] : (string) $row['source'],
+            'status'   => isset($statuses[(int) $row['status']]) ? $statuses[(int) $row['status']] : 'unknown',
+            'started'  => (int) $row['started'],
+            'finished' => (int) $row['finished'],
+            'from'     => (string) $row['day_from'],
+            'to'       => (string) $row['day_to'],
+            'days'     => isset($meta['days']) ? (int) $meta['days'] : 0,
+            'rows'     => (int) $row['rows_added'],
+            'version'  => isset($meta['version']) ? (string) $meta['version'] : '',
+            'skipped'  => isset($meta['skipped']) ? $meta['skipped'] : array(),
+            'check'    => isset($meta['check']) ? $meta['check'] : array(),
+            'settings' => isset($meta['settings']) ? $meta['settings'] : array(),
+            'error'    => isset($meta['error']) ? (string) $meta['error'] : '',
+        );
     }
 
     /**
@@ -1368,48 +1593,117 @@ final class SEOProStats_Migrate {
      * @return array<string,int> Kind => items removed.
      */
     private static function remove(array $list) {
-        global $wpdb;
         $done = array_fill_keys(array('tables', 'options', 'transients', 'cron', 'user_meta', 'post_meta', 'roles', 'files'), 0);
-        foreach ((array) $list['tables'] as $table) {
+        $done['tables'] = self::drop_tables((array) $list['tables']);
+        foreach (array('options', 'transients') as $kind) {
+            $done[$kind] = self::delete_options((array) $list[$kind]);
+        }
+        $done['cron']      = self::unschedule_hooks((array) $list['cron']);
+        $done['user_meta'] = self::delete_meta_keys('user', (array) $list['user_meta']);
+        $done['post_meta'] = self::delete_meta_keys('post', isset($list['post_meta']) ? (array) $list['post_meta'] : array());
+        $done['roles']     = self::remove_roles(isset($list['roles']) ? (array) $list['roles'] : array());
+        $done['files']     = self::remove_files((array) $list['files']);
+        return $done;
+    }
+
+    /**
+     * Drop listed tables of this site (its prefix), one name at a time.
+     *
+     * @param string[] $tables Table names.
+     * @return int Dropped.
+     */
+    private static function drop_tables(array $tables) {
+        global $wpdb;
+        $done = 0;
+        foreach ($tables as $table) {
             // Only this site's tables (its prefix), one listed name at a time.
             if (strpos((string) $table, $wpdb->prefix) !== 0) {
                 continue;
             }
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.DirectDatabaseQuery.SchemaChange -- removing another plugin's leftover table: confirmed by the owner, while it is inactive (AGENTS.md).
             if ($wpdb->query($wpdb->prepare('DROP TABLE IF EXISTS %i', (string) $table)) !== false) {
-                $done['tables']++;
+                $done++;
             }
         }
-        foreach (array('options', 'transients') as $kind) {
-            foreach ((array) $list[$kind] as $name) {
-                if (delete_option((string) $name)) {
-                    $done[$kind]++;
-                }
+        return $done;
+    }
+
+    /**
+     * Delete listed options (transients by their option names).
+     *
+     * @param string[] $names Option names.
+     * @return int Deleted.
+     */
+    private static function delete_options(array $names) {
+        $done = 0;
+        foreach ($names as $name) {
+            if (delete_option((string) $name)) {
+                $done++;
             }
         }
-        foreach ((array) $list['cron'] as $hook) {
+        return $done;
+    }
+
+    /**
+     * Unschedule listed cron hooks.
+     *
+     * @param string[] $hooks Hooks.
+     * @return int Unscheduled.
+     */
+    private static function unschedule_hooks(array $hooks) {
+        $done = 0;
+        foreach ($hooks as $hook) {
             if (wp_unschedule_hook((string) $hook) !== false) {
-                $done['cron']++;
+                $done++;
             }
         }
-        foreach ((array) $list['user_meta'] as $meta_key) {
-            if (delete_metadata('user', 0, (string) $meta_key, '', true)) {
-                $done['user_meta']++;
+        return $done;
+    }
+
+    /**
+     * Delete listed meta keys from every user or post.
+     *
+     * @param string   $type user or post.
+     * @param string[] $keys Meta keys.
+     * @return int Keys deleted.
+     */
+    private static function delete_meta_keys($type, array $keys) {
+        $done = 0;
+        foreach ($keys as $meta_key) {
+            if (delete_metadata($type, 0, (string) $meta_key, '', true)) {
+                $done++;
             }
         }
-        foreach (isset($list['post_meta']) ? (array) $list['post_meta'] : array() as $meta_key) {
-            if (delete_metadata('post', 0, (string) $meta_key, '', true)) {
-                $done['post_meta']++;
-            }
-        }
-        foreach (isset($list['roles']) ? (array) $list['roles'] : array() as $role) {
+        return $done;
+    }
+
+    /**
+     * Remove listed user roles that exist.
+     *
+     * @param string[] $roles Role names.
+     * @return int Removed.
+     */
+    private static function remove_roles(array $roles) {
+        $done = 0;
+        foreach ($roles as $role) {
             if (get_role((string) $role)) {
                 remove_role((string) $role);
-                $done['roles']++;
+                $done++;
             }
         }
+        return $done;
+    }
+
+    /**
+     * Delete listed files and folders in wp-content, never outside it.
+     *
+     * @param string[] $files Paths relative to wp-content.
+     * @return int Gone afterwards.
+     */
+    private static function remove_files(array $files) {
         $base = wp_normalize_path(trailingslashit(WP_CONTENT_DIR));
-        foreach ((array) $list['files'] as $relative) {
+        $done = 0;
+        foreach ($files as $relative) {
             $relative = ltrim(wp_normalize_path((string) $relative), '/');
             if ($relative === '' || strpos($relative, '..') !== false) {
                 continue;
@@ -1422,7 +1716,7 @@ final class SEOProStats_Migrate {
             }
             clearstatcache();
             if (!file_exists($path)) {
-                $done['files']++;
+                $done++;
             }
         }
         return $done;
