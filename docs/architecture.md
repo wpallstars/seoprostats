@@ -1378,6 +1378,22 @@ the next, for engagement that arrived late. The first run rolls every day
 since the first visit. The hourly job rotates the salt; import jobs run
 when due. Heavy work uses `SEOProStats_Feature::more_time()` budgets.
 
+All of this needs something to run WordPress's scheduled jobs: page loads
+(WP-Cron), or a server cron job when `DISABLE_WP_CRON` is set. A plugin
+cannot add a server cron job, so it watches for a missing one:
+`SEOProStats_Collection::jobs_late()` is how long the minute job has waited
+past its time, read from the autoloaded schedule (no query). With
+`DISABLE_WP_CRON` set and the job over 15 minutes late (an hour: missed;
+Site Health's thresholds), `SEOProStats_Schedule_Notice` shows the commands
+for this site on the plugin's screens (`php …/wp-cron.php`, `wp cron event
+run --due-now`, the `wp-cron.php` address) until the jobs run again; the
+`seoprostats_schedule_notice` filter hides it for a plugin that shows the
+same advice site-wide. With WP-Cron on, lateness only means no recent page
+loads and the screen's own load starts the jobs, so nothing is shown. `wp
+seoprostats doctor` reports the same (WP-Cron), and calls waiting hits
+stale only when the minute job is over 10 minutes late, not when the last
+run that found hits was long ago on a quiet site.
+
 ## Storage
 
 Tables use the `{$wpdb->prefix}seoprostats_` prefix, InnoDB, and are made

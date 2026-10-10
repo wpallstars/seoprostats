@@ -5179,8 +5179,21 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
 
         foreach (array(SEOProStats_Collection::CRON_HOOK, SEOProStats_Collection::PROCESS_HOOK) as $hook) {
             $next = wp_next_scheduled($hook);
-            $add('cron ' . $hook, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
+            $add('cron ' . $hook, (bool) $next, self::next_run($next));
         }
+    }
+
+    /**
+     * When a scheduled job runs next, or how long it has waited past its time.
+     *
+     * @param int|false $next wp_next_scheduled().
+     * @return string
+     */
+    private static function next_run($next) {
+        if (!$next) {
+            return 'not scheduled (an admin page schedules it)';
+        }
+        return $next >= time() ? 'next in ' . human_time_diff($next) : 'due ' . human_time_diff($next) . ' ago (WP-Cron below)';
     }
 
     /**
@@ -5192,7 +5205,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         $updates = SEOProStats_Search_Updates::state();
         $next    = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
-        $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
+        $add('cron ' . SEOProStats_Collection::DAILY_HOOK, (bool) $next, self::next_run($next));
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         $backlinks = SEOProStats_Backlinks::state();
         if (!SEOProStats_Statistics::backlinks()) {
