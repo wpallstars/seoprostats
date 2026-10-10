@@ -6,7 +6,12 @@
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
-export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
+/**
+ * Ranges, in the order the period menu lists them. 7d, 28d, 91d, 182d
+ * and 364d are whole weeks, so the previous period starts on the same
+ * weekday and each day meets the same weekday.
+ */
+export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '28d', '30d', '90d', '91d', '182d', '364d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];
 
 export const COMPARE_KEYS = ['none', 'prev', 'year'] as const;

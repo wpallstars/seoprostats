@@ -1794,10 +1794,12 @@ the change. Search figures are the chosen engine's (`engine`), visits
 any engine's, so the two differ.
 
 Ranges resolve in the site time zone: realtime (last 30 minutes), today,
-yesterday, 24h, 7d, 30d, 90d, this week, this month, this year, last 12
-months, last year, all time, custom; comparison with the previous period
-or the same period last year (custom comparison later). A range that ends
-in the future meets the same length of the other period.
+yesterday, 24h, 7d, 28d, 30d, 90d, 91d, 182d, 364d, this week, this
+month, this year, last 12 months, last year, all time, custom; comparison
+with the previous period or the same period last year (custom comparison
+later). The previous period has as many whole days, just before; 7d, 28d,
+91d, 182d and 364d are whole weeks, so each day meets the same weekday.
+A range that ends in the future meets the same length of the other period.
 
 ### Interfaces
 

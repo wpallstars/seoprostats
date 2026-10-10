@@ -39,8 +39,11 @@ if (!defined('ABSPATH')) {
  */
 final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, abilities and the dashboard; private helpers decompose its queries.
 
-    /** Named ranges. */
-    const RANGES = array('realtime', 'today', 'yesterday', '24h', '7d', '30d', '90d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom');
+    /** Named ranges. 7d, 28d, 91d, 182d and 364d are whole weeks, so the previous period starts on the same weekday. */
+    const RANGES = array('realtime', 'today', 'yesterday', '24h', '7d', '28d', '30d', '90d', '91d', '182d', '364d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom');
+
+    /** Ranges of whole days counted back from today: the number is the days. */
+    const DAY_RANGES = array('7d', '28d', '30d', '90d', '91d', '182d', '364d');
 
     /** Comparisons. */
     const COMPARE = array('none', 'prev', 'year');
@@ -505,7 +508,7 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
 
         if ($key === 'realtime' || $key === '24h') {
             list($start, $end) = self::clock_range($key, $now);
-        } elseif (in_array($key, array('today', 'yesterday', '7d', '30d', '90d', '12mo'), true)) {
+        } elseif (in_array($key, array_merge(array('today', 'yesterday', '12mo'), self::DAY_RANGES), true)) {
             list($start, $end) = self::day_range($key, $today);
         } elseif (in_array($key, array('week', 'month', 'year', 'lastyear', 'all'), true)) {
             list($start, $end) = self::calendar_range($key, $now, $today);
@@ -542,7 +545,7 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
     /**
      * Ranges of whole days counted back from today.
      *
-     * @param string            $key   today, yesterday, 7d, 30d, 90d or 12mo.
+     * @param string            $key   today, yesterday, 12mo or one of DAY_RANGES.
      * @param DateTimeImmutable $today Today's midnight, site time.
      * @return array{0:DateTimeImmutable,1:DateTimeImmutable} Start, end.
      */
@@ -556,7 +559,7 @@ final class SEOProStats_Query { // NOSONAR: one report engine for REST, WP-CLI, 
             case '12mo':
                 return array($today->modify(self::YEAR_BEFORE)->modify(self::NEXT_DAY), $next);
             default:
-                // 7d, 30d, 90d.
+                // DAY_RANGES: 7d, 28d, 30d, 90d, 91d, 182d, 364d.
                 return array($next->modify('-' . (int) $key . ' days'), $next);
         }
     }

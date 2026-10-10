@@ -3093,14 +3093,15 @@ components:
       in: query
       description: |
         Period in the site time zone. realtime: the last 30 minutes. 24h:
-        the last 24 whole hours and the current one. 7d, 30d, 90d: that many
-        days including today. week (from the site's first day of the week),
-        month, year: so far. 12mo: a year back from tomorrow. lastyear: the
-        previous calendar year. all: since the first visit. custom: from and
-        to.
+        the last 24 whole hours and the current one. 7d, 28d, 30d, 90d, 91d,
+        182d, 364d: that many days including today; 7d, 28d, 91d, 182d and
+        364d are whole weeks, so the previous period starts on the same
+        weekday. week (from the site's first day of the week), month, year:
+        so far. 12mo: a year back from tomorrow. lastyear: the previous
+        calendar year. all: since the first visit. custom: from and to.
       schema:
         type: string
-        enum: [realtime, today, yesterday, 24h, 7d, 30d, 90d, week, month, year, 12mo, lastyear, all, custom]
+        enum: [realtime, today, yesterday, 24h, 7d, 28d, 30d, 90d, 91d, 182d, 364d, week, month, year, 12mo, lastyear, all, custom]
         default: 7d
     from:
       name: from
