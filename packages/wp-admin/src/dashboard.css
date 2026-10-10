@@ -534,8 +534,9 @@
 	height: auto;
 }
 
+/* --spst-map-empty: a country with no visits (dark mode sets it nearer the surface). */
 .spst-map__country {
-	fill: var(--spst-border);
+	fill: var(--spst-map-empty, var(--spst-border));
 	stroke: var(--spst-background, #fff);
 	stroke-width: 0.5;
 	stroke-linejoin: round;
@@ -552,7 +553,7 @@
 
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
 	.spst-map__country.has-visits {
-		fill: color-mix(in srgb, var(--spst-accent) calc(var(--spst-shade, 1) * 100%), var(--spst-border));
+		fill: color-mix(in srgb, var(--spst-accent) calc(var(--spst-shade, 1) * 100%), var(--spst-map-empty, var(--spst-border)));
 		fill-opacity: 1;
 	}
 }
@@ -599,7 +600,7 @@
 
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
 	.spst-map__scale {
-		background: linear-gradient(90deg, color-mix(in srgb, var(--spst-accent) 30%, var(--spst-border)), var(--spst-accent));
+		background: linear-gradient(90deg, color-mix(in srgb, var(--spst-accent) 30%, var(--spst-map-empty, var(--spst-border))), var(--spst-accent));
 	}
 }
 
@@ -896,6 +897,7 @@
 .spst-meta code,
 code.spst-meta {
 	padding: 0 3px;
+	color: var(--spst-muted); /* The subtle grey is under 4.5:1 on WordPress's code background. */
 	font-size: 12px;
 }
 

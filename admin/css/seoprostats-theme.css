@@ -79,9 +79,29 @@ html.spst-dark body {
 	}
 }
 
+/*
+ * Primary buttons: the scheme's fill, darkened only where light text on it
+ * would fall below 4.5:1 (lighter fills, such as Sunrise's). Older browsers
+ * keep the scheme's own fill, as WordPress does.
+ */
 @supports (color: oklch(from red max(l, 0.75) min(c, 0.15) h)) {
 	html.spst-dark body {
 		--spst-ui-accent: oklch(from var(--spst-ui-accent-fill) max(l, 0.75) min(c, 0.15) h);
+		--spst-ui-primary: oklch(from var(--spst-ui-accent-fill) min(l, 0.53) c h);
+		--spst-ui-primary-hover: oklch(from var(--spst-ui-primary) calc(l - 0.06) c h);
+		--wp-components-color-accent: var(--spst-ui-primary);
+		--wp-components-color-accent-darker-10: var(--spst-ui-primary-hover);
+		--wp-components-color-accent-darker-20: oklch(from var(--spst-ui-primary) calc(l - 0.12) c h);
+	}
+
+	html.spst-dark .wp-core-ui .button-primary:not(:disabled, .disabled) {
+		background: var(--spst-ui-primary);
+		border-color: var(--spst-ui-primary);
+	}
+
+	html.spst-dark .wp-core-ui .button-primary:is(:hover, :focus):not(:disabled, .disabled) {
+		background: var(--spst-ui-primary-hover);
+		border-color: var(--spst-ui-primary-hover);
 	}
 }
 
@@ -117,6 +137,7 @@ html.spst-dark .spst-modal {
 	--spst-bad: var(--spst-ui-bad);
 	--spst-grid: rgb(255 255 255 / 10%);
 	--spst-compare: #8c8f94;
+	--spst-map-empty: var(--spst-ui-raised);
 
 	/* Chart tooltips: a raised panel with an edge, not a light box. */
 	--spst-tip-bg: var(--spst-ui-raised);

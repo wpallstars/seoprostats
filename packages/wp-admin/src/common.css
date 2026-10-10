@@ -87,6 +87,13 @@
 	font-weight: 500;
 }
 
+/* A fifth of the text colour keeps the accent above 4.5:1 on its own tint, light or dark. */
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-coverage__question {
+		color: color-mix(in srgb, var(--spst-accent, #2271b1) 80%, var(--spst-text, #1d2327));
+	}
+}
+
 .spst-spark {
 	display: block;
 	flex: none;

@@ -52,6 +52,7 @@
 	--spst-good: #68de7c;
 	--spst-bad: #ff8085;
 	--spst-grid: rgb(255 255 255 / 10%);
+	--spst-map-empty: #2c3338;
 
 	/* Chart tooltips: a raised panel with an edge, not a box the colour of the page. */
 	--spst-tip-bg: #2c3338;
