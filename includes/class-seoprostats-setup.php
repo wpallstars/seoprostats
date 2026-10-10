@@ -203,6 +203,9 @@ final class SEOProStats_Setup {
         // Settings → Shared reports: the accent colour picker (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-share-settings.php';
         SEOProStats_Share_Settings::init();
+        // Light, dark or system colours on the plugin's screens, per person (hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-admin-theme.php';
+        SEOProStats_Admin_Theme::init();
         self::page_cache();
     }
 

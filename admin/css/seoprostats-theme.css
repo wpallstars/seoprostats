@@ -1,0 +1,600 @@
+/**
+ * SEO Pro Stats colour mode: dark mode for the plugin's own screens
+ * (Statistics and Settings), chosen per person as Light, Dark or System
+ * with the button in the header (SEOProStats_Admin_Theme,
+ * admin/js/seoprostats-theme.js).
+ *
+ * Everything here waits for the `spst-dark` class on <html>, which a small
+ * script in the screen's <head> sets before anything is drawn (Dark, or
+ * System while the computer is dark), so light mode is WordPress's own and
+ * nothing flashes. Only the plugin's screens load this file; the rest of
+ * wp-admin keeps the admin colour scheme.
+ *
+ * The dark palette is WordPress's admin greys, in one place (--spst-ui-*).
+ * The plugin's own tokens (--spst-*) and WordPress components' theme
+ * variables (--wp-components-color-*) take their dark values from it;
+ * WordPress's classic admin styles, which paint fixed light colours, get
+ * the same values below. The admin colour scheme's accent stays the fill
+ * of primary buttons; text and lines in the accent use a lighter mix of
+ * it, so they read at 4.5:1 on the dark surfaces.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Marcus Quinn
+ * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
+ */
+
+/* Palette ------------------------------------------------------------ */
+
+html.spst-dark {
+	--spst-ui-canvas: #101517;
+	--spst-ui-surface: #1d2327;
+	--spst-ui-raised: #2c3338;
+	--spst-ui-border: #3c434a;
+	--spst-ui-field-border: #8c8f94;
+	--spst-ui-divider: #2c3338;
+	--spst-ui-text: #f0f0f1;
+	--spst-ui-muted: #c3c4c7;
+	--spst-ui-subtle: #a7aaad;
+	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
+	--spst-ui-accent: #72aee6;
+	--spst-ui-good: #68de7c;
+	--spst-ui-bad: #ff8085;
+	--spst-ui-warning: #f0c33c;
+
+	color-scheme: dark;
+	background: var(--spst-ui-canvas);
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	html.spst-dark {
+		--spst-ui-accent: color-mix(in srgb, var(--spst-ui-accent-fill) 55%, #fff);
+	}
+}
+
+/* The plugin's tokens: the header and settings (.spst-wrap) ... */
+html.spst-dark .spst-wrap {
+	--spst-accent: var(--spst-ui-accent);
+	--spst-accent-dark: var(--spst-ui-text);
+	--spst-text: var(--spst-ui-text);
+	--spst-muted: var(--spst-ui-muted);
+	--spst-border: var(--spst-ui-border);
+	--spst-surface: var(--spst-ui-surface);
+	--spst-subtle: var(--spst-ui-raised);
+	--spst-divider: var(--spst-ui-divider);
+	--spst-hover: var(--spst-ui-raised);
+	--spst-success: var(--spst-ui-good);
+	--spst-error: var(--spst-ui-bad);
+	--spst-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+}
+
+/* ... and the statistics app and its dialogs. */
+html.spst-dark .spst-app,
+html.spst-dark .spst-modal {
+	--spst-accent: var(--spst-ui-accent);
+	--spst-text: var(--spst-ui-text);
+	--spst-muted: var(--spst-ui-muted);
+	--spst-subtle: var(--spst-ui-subtle);
+	--spst-border: var(--spst-ui-border);
+	--spst-hover: var(--spst-ui-raised);
+	--spst-divider: var(--spst-ui-divider);
+	--spst-background: var(--spst-ui-surface);
+	--spst-field-border: var(--spst-ui-field-border);
+	--spst-good: var(--spst-ui-good);
+	--spst-bad: var(--spst-ui-bad);
+	--spst-grid: rgb(255 255 255 / 10%);
+	--spst-compare: #8c8f94;
+
+	/* Chart tooltips: a raised panel with an edge, not a light box. */
+	--spst-tip-bg: var(--spst-ui-raised);
+	--spst-tip-text: var(--spst-ui-text);
+	--spst-tip-muted: var(--spst-ui-muted);
+	--spst-tip-ring: 0 0 0 1px #50575e, 0 4px 12px rgb(0 0 0 / 45%);
+
+	/* Change log groups, lighter so the markers stand out (DESIGN.md → Markers). */
+	--spst-mark-content: #7b90ff;
+	--spst-mark-seo: #b48ef0;
+	--spst-mark-product: #4ab866;
+	--spst-mark-site: #dba617;
+	--spst-mark-search: #f086ae;
+	--spst-mark-note: #dcdcde;
+
+	color: var(--spst-ui-text);
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	html.spst-dark .spst-app,
+	html.spst-dark .spst-modal {
+		--spst-accent-soft: color-mix(in srgb, var(--spst-ui-accent) 16%, transparent);
+	}
+}
+
+/* WordPress components (also in dialogs and popovers, outside the app). */
+html.spst-dark body {
+	--wp-components-color-background: var(--spst-ui-surface);
+	--wp-components-color-foreground: var(--spst-ui-text);
+	--wp-components-color-foreground-inverted: var(--spst-ui-surface);
+	--wp-components-color-gray-100: var(--spst-ui-raised);
+	--wp-components-color-gray-200: var(--spst-ui-border);
+	--wp-components-color-gray-300: var(--spst-ui-border);
+	--wp-components-color-gray-400: #646970;
+	--wp-components-color-gray-600: var(--spst-ui-field-border);
+	--wp-components-color-gray-700: var(--spst-ui-subtle);
+	--wp-components-color-gray-800: var(--spst-ui-muted);
+
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
+}
+
+/* WordPress's admin page --------------------------------------------- */
+
+html.spst-dark #wpwrap,
+html.spst-dark #wpcontent,
+html.spst-dark #wpbody-content {
+	background: var(--spst-ui-canvas);
+}
+
+/*
+ * Broad element rules sit in :where(), so they weigh no more than
+ * WordPress's own (a, h1, input[type="text"]) and any rule with a class,
+ * from WordPress or the plugin, still wins.
+ */
+:where(html.spst-dark :is(#wpbody, .components-modal__frame)) :is(h1, h2, h3, h4, h5, h6) {
+	color: var(--spst-ui-text);
+}
+
+:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a {
+	color: var(--spst-ui-accent);
+}
+
+:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a:is(:hover, :active) {
+	color: var(--spst-ui-text);
+}
+
+/* As specific as WordPress's own p.description, so it wins by order. */
+html.spst-dark #wpfooter,
+:where(html.spst-dark #wpbody) :is(p, span, div).description {
+	color: var(--spst-ui-muted);
+}
+
+:where(html.spst-dark #wpbody) :is(code, kbd) {
+	color: var(--spst-ui-text);
+	background: rgb(255 255 255 / 10%);
+}
+
+:where(html.spst-dark #wpbody) :is(.form-table th, label) {
+	color: inherit;
+}
+
+/* Screen Options and Help. */
+html.spst-dark #screen-meta,
+html.spst-dark #screen-meta-links .show-settings {
+	color: var(--spst-ui-muted);
+	background: var(--spst-ui-surface);
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark #contextual-help-back,
+html.spst-dark .contextual-help-tabs .active {
+	background: var(--spst-ui-raised);
+	border-color: var(--spst-ui-border);
+}
+
+/* Fields; WordPress's :focus rules still win, so the focus ring stays. */
+:where(html.spst-dark :is(#wpbody, .components-modal__frame)) :is(input:not([type="checkbox"], [type="radio"], [type="submit"], [type="button"], [type="reset"], [type="file"], [type="color"], [type="range"]), textarea, select) {
+	color: var(--spst-ui-text);
+	background-color: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-field-border);
+}
+
+:where(html.spst-dark #wpbody) :is(input, textarea)::placeholder {
+	color: var(--spst-ui-subtle);
+}
+
+:where(html.spst-dark #wpbody) :is(input:disabled, textarea:disabled, select:disabled, input[readonly], textarea[readonly]) {
+	color: var(--spst-ui-subtle);
+	background-color: var(--spst-ui-raised);
+	border-color: var(--spst-ui-border);
+}
+
+/* The select arrow, drawn light (WordPress draws it dark grey). */
+:where(html.spst-dark #wpbody) select:not([multiple], .components-select-control__input) {
+	background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%206l5%205%205-5%202%201-7%207-7-7%202-1z%22%20fill%3D%22%23c3c4c7%22%2F%3E%3C%2Fsvg%3E");
+}
+
+:where(html.spst-dark #wpbody) select:hover {
+	color: var(--spst-ui-accent);
+}
+
+:where(html.spst-dark #wpbody) :is(input[type="checkbox"], input[type="radio"]) {
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-field-border);
+}
+
+/* Buttons: secondary ones outlined in the light accent; primary ones keep the scheme's fill. */
+html.spst-dark .wp-core-ui .button:not(.button-primary),
+html.spst-dark .wp-core-ui .button-secondary {
+	color: var(--spst-ui-accent);
+	background: var(--spst-ui-surface);
+	border-color: var(--spst-ui-accent);
+}
+
+html.spst-dark .wp-core-ui .button:not(.button-primary):hover,
+html.spst-dark .wp-core-ui .button-secondary:hover,
+html.spst-dark .wp-core-ui .button:not(.button-primary):focus {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-raised);
+	border-color: var(--spst-ui-text);
+}
+
+html.spst-dark .wp-core-ui .button:disabled,
+html.spst-dark .wp-core-ui .button.disabled,
+html.spst-dark .wp-core-ui .button-secondary:disabled {
+	color: var(--spst-ui-subtle) !important;
+	background: var(--spst-ui-raised) !important;
+	border-color: var(--spst-ui-border) !important;
+}
+
+html.spst-dark .wp-core-ui .button-link {
+	color: var(--spst-ui-accent);
+}
+
+/* Notices. */
+html.spst-dark #wpbody .notice,
+html.spst-dark #wpbody div.updated,
+html.spst-dark #wpbody div.error {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-surface);
+	box-shadow: none;
+}
+
+html.spst-dark #wpbody .notice-dismiss::before {
+	color: var(--spst-ui-muted);
+}
+
+/* Tables, boxes and cards. */
+html.spst-dark #wpbody :is(.widefat, .postbox, .card, .stuffbox) {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-surface);
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark #wpbody .widefat :is(td, th, thead td, thead th, tfoot td, tfoot th),
+html.spst-dark .components-modal__frame .widefat :is(td, th) {
+	color: var(--spst-ui-text);
+	border-color: var(--spst-ui-border);
+}
+
+/* WordPress paints lists and paragraphs in tables dark grey. */
+html.spst-dark :is(#wpbody, .components-modal__frame) .widefat :is(ol, ul, p) {
+	color: inherit;
+}
+
+html.spst-dark #wpbody .widefat :is(thead th, thead td, tfoot th, tfoot td) {
+	color: var(--spst-ui-muted);
+}
+
+html.spst-dark :is(#wpbody, .components-modal__frame) .widefat {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-surface);
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark :is(#wpbody, .components-modal__frame) .striped > tbody > :nth-child(odd),
+html.spst-dark :is(#wpbody, .components-modal__frame) ul.striped > :nth-child(odd),
+html.spst-dark :is(#wpbody, .components-modal__frame) .alternate {
+	background-color: rgb(255 255 255 / 4%);
+}
+
+/* WordPress components ------------------------------------------------ */
+
+html.spst-dark :is(.components-card, .components-modal__frame, .components-modal__header, .components-popover__content, .components-dropdown-menu__menu, .components-panel, .components-panel__body) {
+	color: var(--spst-ui-text);
+	background-color: var(--spst-ui-surface);
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark .components-card {
+	box-shadow: 0 0 0 1px var(--spst-ui-border);
+}
+
+html.spst-dark .components-card__header,
+html.spst-dark .components-card__footer,
+html.spst-dark .components-card__divider,
+html.spst-dark .components-modal__header {
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark .components-popover__content {
+	box-shadow: 0 0 0 1px var(--spst-ui-border), 0 6px 18px rgb(0 0 0 / 45%);
+}
+
+html.spst-dark .components-modal__screen-overlay {
+	background-color: rgb(0 0 0 / 60%);
+}
+
+/* Secondary, tertiary and link buttons in the light accent. */
+html.spst-dark .components-button:is(.is-secondary, .is-tertiary, .is-link):not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-accent);
+}
+
+html.spst-dark .components-button.is-secondary:not(:disabled, [aria-disabled="true"]) {
+	background: transparent;
+	box-shadow: inset 0 0 0 1px var(--spst-ui-accent);
+}
+
+html.spst-dark .components-button:is(.is-secondary, .is-tertiary):hover:not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-raised);
+}
+
+/* Plain (icon) buttons take the text colour; any more specific rule wins. */
+:where(html.spst-dark) .components-button {
+	color: inherit;
+}
+
+html.spst-dark .components-button:is(:disabled, [aria-disabled="true"]):not(.is-primary) {
+	color: var(--spst-ui-subtle);
+}
+
+/* Fields. */
+html.spst-dark :is(.components-input-control__container, .components-text-control__input, .components-textarea-control__input, .components-select-control__input, .components-form-token-field__input-container) {
+	color: var(--spst-ui-text);
+	background-color: var(--spst-ui-canvas);
+}
+
+html.spst-dark .components-input-control__container :is(input, select),
+html.spst-dark .components-form-token-field__input {
+	color: var(--spst-ui-text);
+	background: transparent;
+}
+
+html.spst-dark .components-input-control__backdrop {
+	border-color: var(--spst-ui-field-border) !important;
+}
+
+html.spst-dark :is(.components-text-control__input, .components-textarea-control__input) {
+	border-color: var(--spst-ui-field-border);
+}
+
+html.spst-dark :is(.components-input-control__suffix, .components-select-control__arrow-wrapper, .components-input-control__prefix) {
+	color: var(--spst-ui-muted);
+}
+
+html.spst-dark :is(.components-base-control__help, .components-checkbox-control__help, .components-form-token-field__help) {
+	color: var(--spst-ui-muted);
+}
+
+html.spst-dark .components-checkbox-control__input[type="checkbox"]:not(:checked, :indeterminate) {
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-field-border);
+}
+
+html.spst-dark .components-form-toggle:not(.is-checked) .components-form-toggle__track {
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-field-border);
+}
+
+html.spst-dark .components-form-toggle:not(.is-checked) .components-form-toggle__thumb {
+	background: var(--spst-ui-muted);
+	border-color: var(--spst-ui-muted);
+}
+
+html.spst-dark .components-form-token-field__token-text,
+html.spst-dark .components-form-token-field__remove-token.components-button {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-raised);
+}
+
+/* Segmented controls and tabs. */
+html.spst-dark .components-toggle-group-control {
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-field-border);
+}
+
+html.spst-dark .components-tab-panel__tabs-item,
+html.spst-dark .components-tab-panel__tabs .components-button {
+	color: var(--spst-ui-muted);
+}
+
+html.spst-dark .components-tab-panel__tabs-item.is-active,
+html.spst-dark .components-tab-panel__tabs-item:hover {
+	color: var(--spst-ui-text);
+}
+
+/* Menus. */
+html.spst-dark .components-menu-item__button,
+html.spst-dark .components-menu-group__label {
+	color: var(--spst-ui-text);
+}
+
+html.spst-dark .components-menu-item__button:hover:not(:disabled) {
+	color: var(--spst-ui-accent);
+	background: var(--spst-ui-raised);
+}
+
+html.spst-dark .components-menu-group + .components-menu-group {
+	border-color: var(--spst-ui-border);
+}
+
+/* Notices. */
+html.spst-dark .components-notice {
+	color: var(--spst-ui-text);
+	background-color: var(--spst-ui-raised);
+}
+
+html.spst-dark .components-notice.is-success {
+	background-color: rgb(0 163 42 / 16%);
+}
+
+html.spst-dark .components-notice.is-warning {
+	background-color: rgb(219 166 23 / 14%);
+}
+
+html.spst-dark .components-notice.is-error {
+	background-color: rgb(214 54 56 / 18%);
+}
+
+html.spst-dark .components-notice__dismiss {
+	color: var(--spst-ui-muted);
+}
+
+html.spst-dark .components-spinner {
+	background: var(--spst-ui-field-border);
+}
+
+/* The plugin's screens -------------------------------------------------- */
+
+/* The header's logo keeps the scheme's fill behind its white star. */
+html.spst-dark .spst-header__logo {
+	background: var(--spst-ui-accent-fill);
+}
+
+html.spst-dark .spst-badge--success {
+	color: var(--spst-ui-good);
+	background: rgb(0 163 42 / 16%);
+	border-color: rgb(104 222 124 / 35%);
+}
+
+/* Settings cards and fields (admin/css/seoprostats-admin.css). */
+html.spst-dark .spst-setting.has-panel .spst-setting__header:hover {
+	background: var(--spst-ui-raised);
+}
+
+html.spst-dark .spst-setting__panel,
+html.spst-dark .spst-code {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
+}
+
+html.spst-dark .spst-replaces__active {
+	color: var(--spst-ui-warning);
+}
+
+html.spst-dark :is(.spst-panel-note, .spst-field + .spst-field, .spst-field + .spst-troubleshooting),
+html.spst-dark .spst-wrap .spst-readme h3 {
+	border-color: var(--spst-ui-divider);
+}
+
+html.spst-dark .spst-panel-note--warning {
+	color: var(--spst-ui-text);
+}
+
+html.spst-dark .spst-checkboxes.is-long {
+	border-color: var(--spst-ui-border);
+}
+
+html.spst-dark .spst-media__preview {
+	background: repeating-conic-gradient(var(--spst-ui-raised) 0% 25%, var(--spst-ui-surface) 0% 50%) 0 0 / 16px 16px;
+}
+
+html.spst-dark .spst-switch__track {
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-muted);
+}
+
+html.spst-dark .spst-switch__track::after {
+	background: var(--spst-ui-muted);
+}
+
+html.spst-dark .spst-switch__input:checked + .spst-switch__track {
+	background: var(--spst-ui-accent-fill);
+	border-color: var(--spst-ui-accent-fill);
+}
+
+html.spst-dark .spst-switch__input:checked + .spst-switch__track::after {
+	background: #fff;
+}
+
+/* The colour mode button and its menu ------------------------------------ */
+
+.spst-theme {
+	position: relative;
+	display: inline-flex;
+}
+
+.spst-wrap .spst-theme__toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 32px;
+	padding-inline: 6px;
+}
+
+.spst-theme__toggle svg,
+.spst-theme__item svg {
+	width: 18px;
+	height: 18px;
+	fill: currentcolor;
+	flex: none;
+}
+
+.spst-theme__menu {
+	position: absolute;
+	z-index: 1000;
+	inset-block-start: calc(100% + 4px);
+	inset-inline-end: 0;
+	display: grid;
+	min-width: 168px;
+	padding: 4px;
+	color: var(--spst-text, #1d2327);
+	background: var(--spst-surface, #fff);
+	border: 1px solid var(--spst-border, #dcdcde);
+	border-radius: 4px;
+	box-shadow: 0 4px 12px rgb(0 0 0 / 15%);
+}
+
+html.spst-dark .spst-theme__menu {
+	box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+}
+
+.spst-theme__menu[hidden] {
+	display: none;
+}
+
+.spst-wrap .spst-theme__item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	min-height: 36px;
+	margin: 0;
+	padding: 0 10px;
+	font: inherit;
+	font-size: 13px;
+	color: inherit;
+	text-align: start;
+	cursor: pointer;
+	background: none;
+	border: 0;
+	border-radius: 2px;
+}
+
+.spst-wrap .spst-theme__item:hover,
+.spst-wrap .spst-theme__item:focus {
+	color: var(--spst-accent, #2271b1);
+	background: var(--spst-subtle, #f6f7f7);
+	outline: none;
+}
+
+.spst-wrap .spst-theme__item:focus-visible {
+	box-shadow: inset 0 0 0 2px var(--spst-accent, #2271b1);
+}
+
+.spst-theme__check {
+	margin-inline-start: auto;
+	visibility: hidden;
+}
+
+.spst-theme__item[aria-checked="true"] {
+	font-weight: 600;
+}
+
+.spst-theme__item[aria-checked="true"] .spst-theme__check {
+	visibility: visible;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	html.spst-theme-ready body,
+	html.spst-theme-ready :is(.spst-header, .spst-nav, .spst-card, .components-card) {
+		transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+	}
+}

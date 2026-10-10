@@ -164,6 +164,26 @@ Open (new window).
 - **Error (`#b32d2e`)**: a change for the worse, destructive actions (`--spst-bad`).
 - **Outline (`#dcdcde`)**: borders and dividers (`--spst-border`).
 
+### Colour mode
+
+The Statistics and Settings screens have a per-person colour mode: **Light** (default, WordPress's own colours), **Dark** or **System** (follows `prefers-color-scheme` live). An icon button right of **Buy me a coffee** (sun, moon, or a half-filled circle for System) opens a three-item `menuitemradio` menu with a tick on the chosen mode; arrows, Home, End and Escape work, and the change is announced. The choice is user meta (`seoprostats_admin_theme`), like the admin colour scheme. A `<head>` script sets `spst-theme-{mode}` and, when dark, `spst-dark` on `<html>` before first paint; every dark rule waits for `html.spst-dark` (`admin/css/seoprostats-theme.css`), so Light is untouched WordPress. Only the plugin's screens load it.
+
+Dark palette (WordPress admin greys, `--spst-ui-*`, defined once):
+
+- **Canvas (`#101517`)**: the page behind cards; also field backgrounds and inset panels.
+- **Surface (`#1d2327`)**: cards, header, tab bar, dialogs, popovers.
+- **Raised (`#2c3338`)**: hover, tooltips, notices; also dividers.
+- **Border (`#3c434a`)**; field borders `#8c8f94` (3:1 on surface).
+- **Text (`#f0f0f1`)**, muted `#c3c4c7`, subtle `#a7aaad`.
+- **Accent**: primary buttons, switches and the logo keep the admin colour scheme's colour as a fill; accent text, links, tabs and the chart line use `color-mix(accent 55%, #fff)` (fallback `#72aee6`) for 4.5:1.
+- **Good `#68de7c`**, **bad `#ff8085`**, warning `#f0c33c`; markers lighten to content `#7b90ff`, SEO `#b48ef0`, products `#4ab866`, site `#dba617`, search engines `#f086ae`, notes `#dcdcde`. Shared reports in dark use the same marker and tooltip colours.
+
+The plugin's tokens (`--spst-*`) and WordPress components' theme variables (`--wp-components-color-*`) take these values; classic wp-admin elements on those screens (fields, buttons, notices, tables) get them through low-specificity `:where()` rules, so WordPress's focus styles and any class rule still win. Charts read the tokens and redraw on the `spst-themechange` event. Colours ease for 0.2 s between modes, never on load, and not with reduced motion.
+
+### Loading
+
+Placeholders (`.spst-skeleton`) are mixes of `currentColor` (9% base, 18% sweep; grey alpha without `color-mix()`), so they read on any surface in either mode. A loading table (`--table`) is one block masked into a header line and rows of a label and a right-hand figure; the main chart (`--chart`) masks faint grid lines and a soft area at the chart's 260 px height, so nothing moves when data arrives. One slow sweep crosses each; with reduced motion they are still.
+
 ### Header
 
 The statistics screen and the settings screen share one header, full width on the white surface with a border under it: the star logo on the accent, **SEO Pro Stats** and the version, the feature search (for administrators) and the Source code, Support and Buy me a coffee buttons (the starter's `render_header()`, `admin/css/seoprostats-header.css`). Under it, both screens have the same tab bar, full width on the white surface: muted labels, the one shown in the text colour with an accent underline (`.spst-nav`, in the same stylesheet). On the statistics screen the bar's right holds the Live/Demo switch, the period and comparison, then Share (on every tab, for administrators; with demo data it shows but cannot be pressed, so screenshots show every control); on a phone they go on a row under the tabs. Settings tabs in one group switch at once, without a page load. The live count (visitors in the last 30 minutes, a green pulsing dot when there are any) belongs to the Overview only: it ends the period row at the top of the summary card, wrapping under the period on a phone, so the tab bar keeps its room for the tabs and controls. Shared reports show it there too unless hidden or filters are locked; printed reports never do.

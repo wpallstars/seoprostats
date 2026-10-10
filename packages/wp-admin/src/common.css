@@ -106,30 +106,87 @@
 	stroke: none;
 }
 
+/*
+ * Loading placeholders. Drawn from the text colour rather than fixed greys,
+ * so they read on any surface: wp-admin light or dark, and a shared report
+ * in either mode. A soft band of the same colour sweeps across.
+ */
 .spst-skeleton {
+	--spst-skeleton-base: rgb(127 127 127 / 14%);
+	--spst-skeleton-shine: rgb(127 127 127 / 26%);
+
 	display: inline-block;
 	width: 60%;
 	min-width: 3em;
 	height: 0.9em;
-	border-radius: 2px;
-	background: linear-gradient(90deg, #f0f0f1 25%, #e5e5e7 50%, #f0f0f1 75%);
-	background-size: 200% 100%;
-	animation: spst-shimmer 1.4s ease-in-out infinite;
+	border-radius: 4px;
+	background: linear-gradient(90deg, var(--spst-skeleton-base) 0 35%, var(--spst-skeleton-shine) 50%, var(--spst-skeleton-base) 65% 100%);
+	background-size: 300% 100%;
+	animation: spst-shimmer 1.6s ease-in-out infinite;
 	vertical-align: middle;
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-skeleton {
+		--spst-skeleton-base: color-mix(in srgb, currentcolor 9%, transparent);
+		--spst-skeleton-shine: color-mix(in srgb, currentcolor 18%, transparent);
+	}
+}
+
+/*
+ * A table still loading: a header line and rows of a label and a figure,
+ * cut out of one block (the mask), so a single sweep crosses every bar.
+ */
+.spst-skeleton--table,
+.spst-skeleton--chart {
+	display: block;
+	width: auto;
+	min-width: 0;
+	border-radius: 0;
+	mask: var(--spst-skeleton-mask);
+}
+
+.spst-skeleton--table {
+	--spst-skeleton-bar: linear-gradient(#000 0 0);
+	--spst-skeleton-mask:
+		var(--spst-skeleton-bar) 0 8px / 22% 10px no-repeat,
+		var(--spst-skeleton-bar) 100% 8px / 10% 10px no-repeat,
+		var(--spst-skeleton-bar) 0 30px / 100% 1px no-repeat,
+		var(--spst-skeleton-bar) 0 44px / 58% 12px no-repeat,
+		var(--spst-skeleton-bar) 100% 44px / 8% 12px no-repeat,
+		var(--spst-skeleton-bar) 0 76px / 44% 12px no-repeat,
+		var(--spst-skeleton-bar) 100% 76px / 11% 12px no-repeat,
+		var(--spst-skeleton-bar) 0 108px / 64% 12px no-repeat,
+		var(--spst-skeleton-bar) 100% 108px / 7% 12px no-repeat,
+		var(--spst-skeleton-bar) 0 140px / 36% 12px no-repeat,
+		var(--spst-skeleton-bar) 100% 140px / 9% 12px no-repeat;
+
+	height: 176px;
+}
+
+/*
+ * A chart still loading: faint grid lines and a soft hill of an area, the
+ * size of the chart to come, so nothing moves when it draws.
+ */
+.spst-skeleton--chart {
+	--spst-skeleton-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M0 0h100v.6H0zM0 33h100v.6H0zM0 66h100v.6H0zM0 99.4h100v.6H0z'/%3E%3Cpath fill-opacity='.55' d='M0 74C10 66 18 70 28 58S44 52 54 56 70 38 80 42 94 30 100 34V100H0z'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+
+	height: 260px;
 }
 
 @keyframes spst-shimmer {
 	from {
-		background-position: 200% 0;
+		background-position: 100% 0;
 	}
 
 	to {
-		background-position: -200% 0;
+		background-position: 0 0;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.spst-skeleton {
+		background: var(--spst-skeleton-base);
 		animation: none;
 	}
 }

@@ -94,6 +94,9 @@ delete_metadata('user', 0, 'seoprostats_migrate_notices_hidden', '', true);
 // Who chose to see the demo data.
 delete_metadata('user', 0, 'seoprostats_data', '', true);
 
+// Each person's colour mode (Light, Dark or System) for the plugin's screens.
+delete_metadata('user', 0, 'seoprostats_admin_theme', '', true);
+
 // Latest GitHub releases (the shared GitHub updater). Only a cache: another
 // plugin's copy asks again.
 delete_site_transient('wpallstars_github_releases');
