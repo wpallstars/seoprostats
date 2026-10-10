@@ -227,14 +227,47 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
         if (!$site || (int) $site['pageviews'] <= 0) {
             return array();
         }
+        // phpcs:enable
         $sums = array();
         self::add($sums, '', 0, self::metrics($site));
+        $this->add_pages($sums, $time, $action, $start, $end);
+        self::add_visit_rows($sums, $visits, $args, $vsums, $action);
+        return array_merge(array_values($sums), self::source_rows($visits, $args, $vsums, $action));
+    }
 
+    /**
+     * Add the day's pages to the sums.
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums   Rows; added to.
+     * @param string                                                         $time   A page's time SQL.
+     * @param string                                                         $action Its log_action table.
+     * @param int                                                            $start  Unix time (included).
+     * @param int                                                            $end    Unix time (excluded).
+     * @return void
+     */
+    private function add_pages(array &$sums, $time, $action, $start, $end) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- another plugin's tables, one day by their time index, joined by primary keys; $time is fixed SQL. Only addresses and counts are read.
         $pages = $wpdb->get_results($wpdb->prepare("SELECT MAX(p.name) AS v, COUNT(*) AS pageviews, COUNT(DISTINCT a.idvisit) AS visits, COUNT(DISTINCT a.idvisit) AS visitors, COALESCE(SUM($time), 0) * 1000 AS engaged_ms FROM %i v INNER JOIN %i a ON a.idvisit = v.idvisit INNER JOIN %i p ON p.idaction = a.idaction_url WHERE v.idsite = %d AND v.visit_last_action_time >= %s AND v.visit_last_action_time < %s AND p.type = %d GROUP BY a.idaction_url ORDER BY pageviews DESC LIMIT %d", $this->table('log_visit'), $this->table('log_link_visit_action'), $action, $this->site_id(), gmdate(self::DATETIME_FORMAT, $start), gmdate(self::DATETIME_FORMAT, $end), self::PAGE, self::ROWS), ARRAY_A);
         foreach ((array) $pages as $row) {
             self::add($sums, 'page', self::path((string) $row['v']), self::metrics($row));
         }
+    }
 
+    /**
+     * Add the visits' entry and exit pages, browsers, systems, devices and
+     * countries to the sums.
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums   Rows; added to.
+     * @param string                                                         $visits visits()'s derived table.
+     * @param array<int,int|string>                                          $args   Its placeholders' values.
+     * @param string                                                         $vsums  The visit sums' SQL.
+     * @param string                                                         $action Its log_action table.
+     * @return void
+     */
+    private static function add_visit_rows(array &$sums, $visits, array $args, $vsums, $action) {
+        global $wpdb;
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by their time index, joined by primary keys; $visits, $vsums and the columns are fixed SQL with their placeholders in $args. Only grouped names, codes and counts are read.
         foreach (array('entry' => 'f', 'exit' => 'l') as $dimension => $column) {
             $found = $wpdb->get_results($wpdb->prepare("SELECT MAX(e.name) AS v, $vsums FROM $visits LEFT JOIN %i e ON e.idaction = x.$column WHERE x.n > 0 GROUP BY x.$column ORDER BY visits DESC LIMIT %d", array_merge($args, array($action, self::ROWS))), ARRAY_A);
             foreach ((array) $found as $row) {
@@ -247,40 +280,64 @@ final class SEOProStats_Migrate_Matomo extends SEOProStats_Migrate_Source {
                 self::add($sums, $dimension, self::value($dimension, (string) $row['v']), self::metrics($row));
             }
         }
-
-        // Referrer with the first page (its query and the landing).
-        $mixed = $wpdb->get_results($wpdb->prepare("SELECT x.rt, COALESCE(x.rn, '') AS rn, COALESCE(x.rk, '') AS rk, COALESCE(x.ru, '') AS ru, MAX(e.name) AS e, $vsums FROM $visits LEFT JOIN %i e ON e.idaction = x.f WHERE x.n > 0 GROUP BY x.rt, x.rn, x.rk, x.ru, x.f ORDER BY visits DESC LIMIT %d", array_merge($args, array($action, self::ROWS * 5))), ARRAY_A);
         // phpcs:enable
+    }
+
+    /**
+     * Referrer with the first page (its query and the landing), for the
+     * source, channel, campaign and search landing dimensions.
+     *
+     * @param string                $visits visits()'s derived table.
+     * @param array<int,int|string> $args   Its placeholders' values.
+     * @param string                $vsums  The visit sums' SQL.
+     * @param string                $action Its log_action table.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function source_rows($visits, array $args, $vsums, $action) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare -- another plugin's tables, one day by their time index, joined by primary keys; $visits and $vsums are fixed SQL with their placeholders in $args. Only grouped referrers, addresses and counts are read.
+        $mixed  = $wpdb->get_results($wpdb->prepare("SELECT x.rt, COALESCE(x.rn, '') AS rn, COALESCE(x.rk, '') AS rk, COALESCE(x.ru, '') AS ru, MAX(e.name) AS e, $vsums FROM $visits LEFT JOIN %i e ON e.idaction = x.f WHERE x.n > 0 GROUP BY x.rt, x.rn, x.rk, x.ru, x.f ORDER BY visits DESC LIMIT %d", array_merge($args, array($action, self::ROWS * 5))), ARRAY_A);
         $own    = self::host(home_url());
         $groups = array();
         foreach ((array) $mixed as $row) {
-            $entry = self::address((string) $row['e']);
-            $query = (string) wp_parse_url($entry, PHP_URL_QUERY);
-            $type  = (int) $row['rt'];
-            $from  = '';
-            if ($type === self::CAMPAIGN) {
-                // Its campaign name and keyword, as the tags it took out of the address.
-                $query = http_build_query(array_filter(array('utm_campaign' => (string) $row['rn'], 'utm_term' => (string) $row['rk']), function ($tag) {
-                    return $tag !== '';
-                }));
-                $from  = (string) $row['ru'];
-            } elseif ($type !== self::DIRECT) {
-                // The address it came from, else a name that is a host (websites).
-                if ((string) $row['ru'] !== '') {
-                    $from = (string) $row['ru'];
-                } elseif (strpos((string) $row['rn'], '.') !== false) {
-                    $from = (string) $row['rn'];
-                }
-            }
-            $groups[] = array(
-                // Its own pages as the referrer: no source.
-                'r'       => self::host($from) === $own ? '' : $from,
-                'q'       => $query,
-                'e'       => self::path((string) $row['e']),
-                'metrics' => self::metrics($row),
-            );
+            $groups[] = self::source_group($row, $own);
         }
-        return array_merge(array_values($sums), self::visit_sources($groups));
+        return self::visit_sources($groups);
+    }
+
+    /**
+     * A row of source_rows() as visit_sources() takes it.
+     *
+     * @param array<string,mixed> $row The row.
+     * @param string              $own This site's host.
+     * @return array{r:string,q:string,e:string,metrics:array<string,int>}
+     */
+    private static function source_group(array $row, $own) {
+        $entry = self::address((string) $row['e']);
+        $query = (string) wp_parse_url($entry, PHP_URL_QUERY);
+        $type  = (int) $row['rt'];
+        $from  = '';
+        if ($type === self::CAMPAIGN) {
+            // Its campaign name and keyword, as the tags it took out of the address.
+            $query = http_build_query(array_filter(array('utm_campaign' => (string) $row['rn'], 'utm_term' => (string) $row['rk']), function ($tag) {
+                return $tag !== '';
+            }));
+            $from  = (string) $row['ru'];
+        } elseif ($type !== self::DIRECT) {
+            // The address it came from, else a name that is a host (websites).
+            if ((string) $row['ru'] !== '') {
+                $from = (string) $row['ru'];
+            } elseif (strpos((string) $row['rn'], '.') !== false) {
+                $from = (string) $row['rn'];
+            }
+        }
+        return array(
+            // Its own pages as the referrer: no source.
+            'r'       => self::host($from) === $own ? '' : $from,
+            'q'       => $query,
+            'e'       => self::path((string) $row['e']),
+            'metrics' => self::metrics($row),
+        );
     }
 
     /**
