@@ -467,7 +467,7 @@ final class SEOProStats_Source_Bing {
      * Weekly rows (pages, queries, or a page's queries) by the last day of
      * their week: keys (the page or query), clicks, impressions, position.
      *
-     * @param array<int,mixed> $rows Bing's rows.
+     * @param array<int|string,mixed> $rows Bing's rows; response keys are not used.
      * @return array<string,array<int,array<string,mixed>>>
      */
     private static function weekly(array $rows) {
