@@ -3,6 +3,8 @@
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
+* New: when WP-Cron is turned off (DISABLE_WP_CRON) and no server cron job runs WordPress's scheduled jobs, so new visits wait uncounted, the Statistics and Settings screens say so once the jobs are 15 minutes late (an error past an hour), with the commands for a cron job in the hosting control panel: php …/wp-cron.php, wp cron event run --due-now, or the wp-cron.php address. It goes away when the jobs run. A plugin cannot add the server's cron job itself. The seoprostats_schedule_notice filter hides it (GH#235).
+* Fixed: wp seoprostats doctor no longer warns about WP-Cron on every site with DISABLE_WP_CRON, only when its jobs are late; calls waiting hits stale only when the minute job is late, not when a quiet site's last run that found hits was long ago; and says an overdue job is "due 1 hour ago" instead of "next in 1 hour" (GH#235).
 * Changed: on Search → Plan, each row's Accept, Done, Dismiss and Restore buttons stand in one column, all as wide as the widest, instead of wrapping into a ragged row (GH#226).
 * Changed: the Research menu after a query reads "Research…" and is a small link on the query's line, instead of a full-height button that sat lower than the query (Search tables, Targets and the editor panel) (GH#226).
 * Developers: the Search Console and Bing import's row encoding splits its last long function into named private helpers: the dictionary lookups of paths, queries and search appearances, and adding up one kind's rows by key. Imports from canned Search Console and Bing answers gave the same rows, stored data and WP-CLI output before and after (GH#160, GH#207).

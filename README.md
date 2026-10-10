@@ -492,6 +492,7 @@ Filters:
 - `seoprostats_can_change_settings`: return false to stop the current user changing SEO Pro Stats’s settings (on top of `manage_options`).
 - `seoprostats_replaced_plugin_extras`: what a replaced plugin does on this site that SEO Pro Stats does not (plain names, plugin folder). The Plugins screen names them instead of saying the plugin can go.
 - `seoprostats_stored_active_plugins` and `seoprostats_plugins_skipped`: for code that skips plugins on some requests, the active plugin files as stored and whether some are skipped on this request, so features still count those plugins as active.
+- `seoprostats_schedule_notice` (bool, and how late in seconds): return false to hide the notice on the plugin's screens that WP-Cron is off (`DISABLE_WP_CRON`) and no server cron job has run the scheduled jobs for over 15 minutes, for a plugin that shows the same advice for the whole site.
 - `wpallstars_github_plugins` (GitHub builds, shared updater): change which plugins update from GitHub releases (plugin file => `repo` as owner/repo, `asset_only`, `version`, `name`).
 - `wpallstars_github_token` (GitHub builds, shared updater): GitHub token for a repository (token, owner/repo), for private repositories; defaults to the `WPALLSTARS_GITHUB_TOKEN` constant.
 - `wpallstars_github_updater_enabled` and `wpallstars_github_updater_early` (GitHub builds, shared updater): whether it runs (false while Git Updater is active) and whether plugins also on WordPress.org take GitHub releases first.
@@ -515,6 +516,10 @@ The key is generated on first use and served at `/<key>.txt` under the site's ho
 **Settings → Connections → IndexNow** shows the queued count, last answer and key, validation or rate-limit errors. **Changes** shows each submitted change's receipt. HTTP 200 means received; 202 means received with key validation pending. Neither proves a page was crawled or indexed. Turning the setting off discards pending notifications and makes the key address return 404; the last 100 receipts remain until uninstall.
 
 Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submission). WP-CLI: `wp seoprostats indexnow status`, or `wp seoprostats indexnow send <url>... --user=<administrator>` to queue and send this site's addresses now, with the same opt-in and hourly allowance. Status is JSON; `log` contains time, count, HTTP code and `sent` (received), and matching change rows carry `meta.indexnow`. Ordinary visitor pages run no rewrite flush, database write or remote call.
+
+### Scheduled jobs
+
+Hits are counted, and search data, summaries and checks run, by WordPress's scheduled jobs: on page loads (WP-Cron), or from a cron job on the server when `DISABLE_WP_CRON` is set in `wp-config.php`. A plugin cannot add that server cron job. When `DISABLE_WP_CRON` is set and the jobs are more than 15 minutes late, the Statistics and Settings screens say so and give the commands for this site (`php …/wp-cron.php`, `wp cron event run --due-now`, or the `wp-cron.php` address) to add in the hosting control panel every 5 minutes or less; visits are kept until then. `wp seoprostats doctor` reports the same under WP-Cron.
 
 ## Uninstall
 

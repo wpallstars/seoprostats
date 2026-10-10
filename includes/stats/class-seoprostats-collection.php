@@ -73,6 +73,10 @@ final class SEOProStats_Collection {
     /** REST namespace. */
     const REST_NAMESPACE = 'seoprostats/v1';
 
+    /** Scheduled jobs are late, and then missed, this long after their time (Site Health's thresholds). */
+    const JOBS_LATE   = 15 * MINUTE_IN_SECONDS;
+    const JOBS_MISSED = HOUR_IN_SECONDS;
+
     /**
      * Register hooks.
      */
@@ -121,6 +125,30 @@ final class SEOProStats_Collection {
             $state = self::state();
             update_option(self::ENDPOINT_OPTION, empty($state['fast']) ? 'rest' : 'fast', true);
         }
+    }
+
+    /**
+     * How long the minute job (processing hits) has waited past its time,
+     * in seconds: 0 when on time, null when it is not scheduled. WordPress
+     * runs scheduled jobs when pages load (WP-Cron) or from a server cron
+     * job (with DISABLE_WP_CRON); this grows while neither does. Reads the
+     * autoloaded schedule only, so it costs no query.
+     *
+     * @return int|null
+     */
+    public static function jobs_late() {
+        $next = wp_next_scheduled(self::PROCESS_HOOK);
+        return $next ? max(0, time() - (int) $next) : null;
+    }
+
+    /**
+     * Whether WordPress's own scheduler is turned off (DISABLE_WP_CRON), so
+     * a server cron job must run the scheduled jobs.
+     *
+     * @return bool
+     */
+    public static function wp_cron_off() {
+        return defined('DISABLE_WP_CRON') && DISABLE_WP_CRON;
     }
 
     /**
