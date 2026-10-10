@@ -78,7 +78,7 @@ final class SEOProStats_Shares {
         if (is_wp_error($filters)) {
             return $filters;
         }
-        $req = SEOProStats_Query::request(array_merge($view, array('range' => $view['range'] ?? '30d', 'compare' => $view['compare'] ?? 'prev', 'filters' => $filters)));
+        $req = SEOProStats_Query::request(array_merge($view, array('range' => $view['range'] ?? '91d', 'compare' => $view['compare'] ?? 'prev', 'filters' => $filters)));
         if (is_wp_error($req)) {
             return $req;
         }

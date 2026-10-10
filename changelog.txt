@@ -2,6 +2,10 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Changed: the dashboard opens on Last 91 days instead of Last 30 days, so the previous period meets the same weekdays. Links and bookmarks that name a period keep it (GH#220).
+* Changed: on Search, Last 30 days, Last 90 days and Last 12 months keep their length and end on the newest day with search data, as the whole-week periods already did, instead of losing the 3 or 4 days not imported yet: Last 30 days now holds 30 days, compared with the 30 before. This week, month and year are still cut there (GH#220).
+
 = 1.3.0 =
 * New: the period menu has Last 28 days, Last 91 days, Last 182 days and Last 364 days, in whole weeks, so the previous period starts on the same weekday and weekends meet weekends. On Search, a period in whole weeks (including Last 7 days) keeps its length and ends on the newest day with search data, as Search Console's own periods do, instead of losing the days not imported yet. The REST API, WP-CLI and abilities take them as `28d`, `91d`, `182d` and `364d` (GH#215).
 * New: Search → Backlinks → Reported pages lists every referring page a link export named, with its check (not checked yet, links to this site, none seen, could not be opened, gone), the live links found on it, the export's date and the last check, filterable by source. Search Console exports name the linking page but not the page it links to, so an import of hundreds of them showed nothing until the daily 20-second check had opened each page, which took weeks (GH#213).

@@ -169,7 +169,8 @@ const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'order', 'goal', 'st
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
-	range: '30d',
+	// Whole weeks, so the previous period meets the same weekdays.
+	range: '91d',
 	compare: 'prev',
 	metric: 'visitors',
 	filters: [],

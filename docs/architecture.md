@@ -1689,9 +1689,11 @@ lined up with the newest week), and it has no devices or countries. The range's 
 are cut at the newest day with search data (`through`, about three days
 ago, as only final days are imported), and the comparison takes the same
 number of days, so days not imported yet never look like a drop. Ranges
-in whole weeks (7d, 28d, 91d, 182d, 364d, `SEOProStats_Query::WEEK_RANGES`)
-keep their length instead, ending at `through`, as Search Console's own
-periods do, so the comparison starts on the same weekday.
+counted back from today (7d, 28d, 30d, 90d, 91d, 182d, 364d and 12mo,
+`SEOProStats_Query::TRAILING_RANGES`) keep their length instead, ending at
+`through`, as Search Console's own periods do, so the last 30 days hold 30
+days and whole weeks are compared with the same weekdays. Calendar ranges
+(this week, month and year) and today and yesterday are cut.
 Rankings, Opportunities and Content also take `engine=all`, **Combined**
 (`SEOProStats_Search::ALL`, not a stored engine code): every engine with
 data (`with_data()`), read with `engine IN (…)` (`engine_where()`; each
@@ -1844,6 +1846,8 @@ with the previous period or the same period last year (custom comparison
 later). The previous period has as many whole days, just before; 7d, 28d,
 91d, 182d and 364d are whole weeks, so each day meets the same weekday.
 A range that ends in the future meets the same length of the other period.
+The dashboard opens on 91d against the previous period
+(`DEFAULT_STATE` in `packages/core/src/state.ts`).
 
 ### Interfaces
 
