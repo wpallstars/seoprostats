@@ -361,18 +361,14 @@ export function parseHash(hash: string, defaults: Pick<ViewState, 'range' | 'com
 }
 
 /** Write the state as a hash; explicit periods keep bookmarks independent of personal defaults. */
-export function buildHash(state: ViewState, explicitPeriod = false): string {
+export function buildHash(state: ViewState): string {
 	const params = new URLSearchParams();
-	if (explicitPeriod || state.range !== DEFAULT_STATE.range) {
-		params.set('range', state.range);
-	}
+	params.set('range', state.range);
 	if (state.range === 'custom' && state.from && state.to) {
 		params.set('from', state.from);
 		params.set('to', state.to);
 	}
-	if (explicitPeriod || state.compare !== DEFAULT_STATE.compare) {
-		params.set('compare', state.compare);
-	}
+	params.set('compare', state.compare);
 	if (state.metric !== DEFAULT_STATE.metric) {
 		params.set('metric', state.metric);
 	}
