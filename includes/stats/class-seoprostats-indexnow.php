@@ -68,6 +68,19 @@ final class SEOProStats_IndexNow {
 
     /** Prepare on a settings save, never on a visitor request. */
     public static function settings_saved() {
+        $enabled = self::enabled();
+        if ($enabled || get_option(self::STATE, false) !== false) {
+            self::mutate(static function ($state) use ($enabled) {
+                if (($state['accepting'] ?? true) !== $enabled) {
+                    $state['generation'] = ($state['generation'] ?? 0) + 1;
+                }
+                $state['accepting'] = $enabled;
+                if (!$enabled) {
+                    $state['queue'] = array();
+                }
+                return $state;
+            });
+        }
         if (self::enabled()) {
             self::key();
             self::rewrite();
@@ -76,9 +89,6 @@ final class SEOProStats_IndexNow {
                 flush_rewrite_rules(false);
             }
         } else {
-            if (get_option(self::STATE, false) !== false) {
-                self::mutate(static function ($state) { $state['queue'] = array(); return $state; });
-            }
             wp_clear_scheduled_hook(self::RETRY);
         }
     }
@@ -181,12 +191,15 @@ final class SEOProStats_IndexNow {
             return false;
         }
         $urls = array_values(array_unique(array_filter(array_map(array(__CLASS__, 'url'), $urls))));
-        $saved = self::mutate(static function ($state) use ($urls, $id) {
+        $generation = self::state()['generation'] ?? 0;
+        $token = $id ? (int) $id : wp_generate_uuid4();
+        $saved = self::mutate(static function ($state) use ($urls, $token, $generation) {
+            if (empty($state['accepting']) || ($state['generation'] ?? 0) !== $generation) {
+                return $state;
+            }
             foreach ($urls as $url) {
                 $ids = $state['queue'][$url] ?? array();
-                if ($id) {
-                    $ids[] = (int) $id;
-                }
+                $ids[] = $token;
                 $state['queue'][$url] = array_values(array_unique($ids));
             }
             return $state;
@@ -207,16 +220,18 @@ final class SEOProStats_IndexNow {
         }
         // Atomic owner lock; the request times out well before this stale cutoff.
         global $wpdb;
+        $owner = time() . ' ' . wp_generate_uuid4();
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- remove only an expired lock owned by this feature.
         $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name = %s AND CAST(option_value AS UNSIGNED) < %d", self::LOCK, time() - 300));
-        wp_cache_delete(self::LOCK, 'options');
-        if (!add_option(self::LOCK, time(), '', false)) {
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- insert-only lock, unlike add_option's duplicate-key update.
+        if (!$wpdb->query($wpdb->prepare("INSERT IGNORE INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, 'no')", self::LOCK, $owner))) {
             return;
         }
         try {
             self::submit();
         } finally {
-            delete_option(self::LOCK);
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- release only this sender's lease.
+            $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s", self::LOCK, $owner));
         }
     }
 
@@ -281,7 +296,9 @@ final class SEOProStats_IndexNow {
         require_once __DIR__ . '/class-seoprostats-changes.php';
         foreach ($batch as $ids) {
             foreach ($ids as $id) {
-                SEOProStats_Changes::indexnow_receipt((int) $id, $receipt);
+                if (is_int($id) && $id > 0) {
+                    SEOProStats_Changes::indexnow_receipt($id, $receipt);
+                }
             }
         }
     }

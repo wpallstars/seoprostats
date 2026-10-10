@@ -282,7 +282,9 @@ final class SEOProStats_Changes {
             'path'        => isset($change['path']) ? (string) $change['path'] : '',
             'object_type' => isset($change['object_type']) ? substr((string) $change['object_type'], 0, 20) : '',
             'object_id'   => isset($change['object_id']) ? max(0, (int) $change['object_id']) : 0,
-            'old'         => self::short(isset($change['old']) ? $change['old'] : ''),
+            // Keep a moved page's full address for notification; write() alone
+            // applies the display column's length limit.
+            'old'         => (int) $kind === 3 ? (string) ($change['old'] ?? '') : self::short(isset($change['old']) ? $change['old'] : ''),
             'new'         => self::short(isset($change['new']) ? $change['new'] : ''),
             'meta'        => isset($change['meta']) && is_array($change['meta']) ? $change['meta'] : array(),
             'source'      => isset($change['source']) ? (int) $change['source'] : self::source(),
