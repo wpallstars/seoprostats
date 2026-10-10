@@ -167,13 +167,15 @@ async function google(env, params) {
 			...params,
 		}).toString(),
 	});
-	let body = {};
+	let body = null;
 	try {
 		body = await response.json();
 	} catch {
-		body = {};
+		body = null;
 	}
-	return { ok: response.ok && typeof body === 'object' && body !== null, status: response.status, body: body || {} };
+	// JSON can be null or a bare value; only an object is an answer.
+	const valid = body instanceof Object;
+	return { ok: response.ok && valid, status: response.status, body: valid ? body : {} };
 }
 
 /** The site's return address, or null: https, or http for a local test site. */
@@ -208,7 +210,7 @@ const SUBMIT_JS = SUBMIT_TAG.slice('<script>'.length, -'</script>'.length);
 /** A page that posts the fields to the site at once (a button without JavaScript). */
 async function postBack(site, fields) {
 	const digest = await crypto.subtle.digest('SHA-256', encoder.encode(SUBMIT_JS));
-	const hash = btoa(String.fromCharCode(...new Uint8Array(digest)));
+	const hash = btoa(String.fromCodePoint(...new Uint8Array(digest)));
 	const inputs = Object.entries(fields).map(([name, value]) => html`<input type="hidden" name="${name}" value="${value}">`);
 	const form = html`<form id="f" method="post" action="${site.href}">${inputs}<p>Returning you to ${site.host}…</p><noscript><button type="submit">Continue</button></noscript></form>`;
 	const csp = ["default-src 'none'", "style-src 'unsafe-inline'", "script-src 'sha256-" + hash + "'", 'form-action ' + site.origin, "base-uri 'none'", "frame-ancestors 'none'"].join('; ');
@@ -255,14 +257,18 @@ async function hmac(env, payload) {
 function b64url(bytes) {
 	let text = '';
 	for (const byte of bytes) {
-		text += String.fromCharCode(byte);
+		text += String.fromCodePoint(byte);
 	}
-	return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+	let out = btoa(text).replaceAll('+', '-').replaceAll('/', '_');
+	while (out.endsWith('=')) {
+		out = out.slice(0, -1);
+	}
+	return out;
 }
 
 function unb64url(text) {
-	const plain = atob(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4));
-	return Uint8Array.from(plain, (c) => c.charCodeAt(0));
+	const plain = atob(text.replaceAll('-', '+').replaceAll('_', '/') + '==='.slice((text.length + 3) % 4));
+	return Uint8Array.from(plain, (c) => c.codePointAt(0));
 }
 
 function esc(value) {

@@ -26,6 +26,9 @@ final class SEOProStats_Connections_Tab {
     /** The tab's script. */
     const JS_FILE = 'admin/js/seoprostats-connections.js';
 
+    /** The connections class's file, loaded only where needed. */
+    const CONNECTIONS_FILE = 'includes/stats/class-seoprostats-connections.php';
+
     /**
      * The pages for the setup steps, as Google's and Microsoft's own
      * documentation links them (the Search Console API's page is its API
@@ -79,7 +82,7 @@ final class SEOProStats_Connections_Tab {
      * then send them to the relay.
      */
     public static function start_signin() {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
         if (!SEOProStats_Settings::can_change()) {
             wp_die(esc_html__('Sorry, you are not allowed to change these settings.', 'seoprostats'), 403);
         }
@@ -95,7 +98,7 @@ final class SEOProStats_Connections_Tab {
      * send the browser back to the tab, which finishes connecting.
      */
     public static function receive_signin() {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
         SEOProStats_Connections::source_class('search-console'); // Loads its class.
         $fields = array();
         foreach (array('nonce', 'refresh_token', 'access_token', 'expires_in', 'error') as $name) {
@@ -158,7 +161,7 @@ final class SEOProStats_Connections_Tab {
      * Draw the tab.
      */
     public static function render() {
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_FILE;
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
         // Puts back the hourly job if it went missing (a cron reset).
         SEOProStats_Search_Import::schedule();
