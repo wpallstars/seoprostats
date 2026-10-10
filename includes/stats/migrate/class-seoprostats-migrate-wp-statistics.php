@@ -413,7 +413,7 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
      * Roles it leaves out: exclude_ and the role's name, lower case.
      *
      * @param array<string,mixed> $wps Its settings.
-     * @return array<string,mixed>|null The setting; null when it has none of them.
+     * @return array{key:string,label:string,from:string,value:mixed}|null The setting; null when it has none of them.
      */
     private static function roles_setting(array $wps) {
         $roles = array();
@@ -444,7 +444,7 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
      * its default is carried over.
      *
      * @param array<string,mixed> $wps Its settings.
-     * @return array<string,mixed>|null The setting; null for its default.
+     * @return array{key:string,label:string,from:string,value:mixed}|null The setting; null for its default.
      */
     private static function retention_setting(array $wps) {
         if (!isset($wps['schedule_dbmaint_days']) || (string) $wps['schedule_dbmaint_days'] === '' || (int) $wps['schedule_dbmaint_days'] === self::PURGE_DEFAULT) {

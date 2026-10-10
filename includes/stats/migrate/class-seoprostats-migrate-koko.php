@@ -198,7 +198,7 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
      * Referrer rows summed by host as sources and by channel.
      *
      * @param array<int,array<string,mixed>> $found Rows: v (the referrer), visitors, pageviews.
-     * @return array<string,array{0:string,1:string,2:array<string,int>}> Dimension and value => row.
+     * @return array<string,array{0:string,1:int|string,2:array<string,int>}> Dimension and value => row (hosts, and channels as their codes).
      */
     private static function referrer_sums(array $found) {
         $sums = array();
@@ -218,10 +218,10 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
     /**
      * Add metrics to one dimension value's row of referrer_sums().
      *
-     * @param array<string,array{0:string,1:string,2:array<string,int>}> $sums      Dimension and value => row; added to.
-     * @param string                                                     $dimension source or channel.
-     * @param string                                                     $value     Host or channel.
-     * @param array<string,int>                                          $metrics   visitors and pageviews.
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums      Dimension and value => row; added to.
+     * @param string                                                         $dimension source or channel.
+     * @param int|string                                                     $value     Host, or channel code.
+     * @param array<string,int>                                              $metrics   visitors and pageviews.
      * @return void
      */
     private static function add_referrer(array &$sums, $dimension, $value, array $metrics) {
@@ -237,8 +237,8 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
     /**
      * The top hosts, and every channel.
      *
-     * @param array<string,array{0:string,1:string,2:array<string,int>}> $sums referrer_sums().
-     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums referrer_sums().
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
      */
     private static function top_sources(array $sums) {
         $sources  = array_values(array_filter($sums, function ($row) {

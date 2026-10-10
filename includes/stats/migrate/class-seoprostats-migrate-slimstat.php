@@ -307,7 +307,7 @@ final class SEOProStats_Migrate_Slimstat extends SEOProStats_Migrate_Source {
      * roles its capabilities list matches.
      *
      * @param array<string,mixed> $opts Its settings.
-     * @return array<string,mixed>|null The setting; null when neither is set.
+     * @return array{key:string,label:string,from:string,value:mixed}|null The setting; null when neither is set.
      */
     private static function roles_setting(array $opts) {
         if (isset($opts['ignore_wp_users']) && $opts['ignore_wp_users'] === 'on') {

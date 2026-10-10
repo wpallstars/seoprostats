@@ -284,7 +284,7 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      *
      * @param array<string,mixed> $referrers Its answer.
      * @param string              $day       Y-m-d.
-     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}> Hosts, and channels as their codes.
      */
     private static function source_rows(array $referrers, $day) {
         $own   = self::host(home_url());
@@ -507,8 +507,8 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * The series to look from: a complete one refreshes the days since the
      * last one known.
      *
-     * @param array<string,mixed> $series series().
-     * @return array<string,mixed>
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series series().
+     * @return array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int}
      */
     private static function lookup_start(array $series) {
         if (!empty($series['complete'])) {
@@ -524,11 +524,11 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * The series after one stats/visits answer: its days with views kept,
      * then the next window's date, or complete.
      *
-     * @param array<string,mixed>              $series The series.
-     * @param array<string,array{0:int,1:int}> $rows   visits_rows() of the answer.
-     * @param string                           $today  Y-m-d.
-     * @param DateTimeZone                     $tz     The site's time zone.
-     * @return array<string,mixed>
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series The series.
+     * @param array<string,array{0:int,1:int}> $rows  visits_rows() of the answer.
+     * @param string                           $today Y-m-d.
+     * @param DateTimeZone                     $tz    The site's time zone.
+     * @return array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int}
      */
     private static function lookup_step(array $series, array $rows, $today, DateTimeZone $tz) {
         $found           = self::add_days($series, $rows, $today);
@@ -558,9 +558,9 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
     /**
      * Keep an answer's days with views or visitors, up to today.
      *
-     * @param array<string,mixed>              $series The series; its days added to.
-     * @param array<string,array{0:int,1:int}> $rows   visits_rows() of the answer.
-     * @param string                           $today  Y-m-d.
+     * @param array{blog:int,days:array<string,array{0:int,1:int}>,next:string,until:string,empty:int,complete:bool,at:int,wait:int} $series The series; its days added to.
+     * @param array<string,array{0:int,1:int}> $rows  visits_rows() of the answer.
+     * @param string                           $today Y-m-d.
      * @return bool Whether any was kept.
      */
     private static function add_days(array &$series, array $rows, $today) {

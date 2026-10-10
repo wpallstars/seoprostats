@@ -403,7 +403,10 @@ final class SEOProStats_Migrate {
      */
     private static function make_plan($key, array $args, $full) {
         $source = self::source($key);
-        $data   = self::plan_source($source, $args);
+        if (!$source) {
+            return new WP_Error('seoprostats_migrate_unknown', __('SEO Pro Stats cannot import from that plugin.', 'seoprostats'), array('status' => 404));
+        }
+        $data = self::plan_source($source, $args);
         if (is_wp_error($data)) {
             return $data;
         }
@@ -431,14 +434,11 @@ final class SEOProStats_Migrate {
      * What a plan starts from: the adapter's span, once it can be imported
      * and the days asked for are written as days.
      *
-     * @param SEOProStats_Migrate_Source|null $source Adapter.
-     * @param array<string,mixed>             $args   from, to.
+     * @param SEOProStats_Migrate_Source $source Adapter.
+     * @param array<string,mixed>        $args   from, to.
      * @return array<string,string>|WP_Error From its detect().
      */
-    private static function plan_source($source, array $args) {
-        if (!$source) {
-            return new WP_Error('seoprostats_migrate_unknown', __('SEO Pro Stats cannot import from that plugin.', 'seoprostats'), array('status' => 404));
-        }
+    private static function plan_source(SEOProStats_Migrate_Source $source, array $args) {
         if (!SEOProStats_Schema::is_current()) {
             return new WP_Error('seoprostats_tables', __('The statistics tables are being updated. Try again after visiting wp-admin.', 'seoprostats'), array('status' => 503));
         }
