@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.3.0
+Version: 1.4.0
 
 <!-- github-only:start -->
 ## Screenshots
@@ -521,6 +521,11 @@ Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submis
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.4.0
+
+- New: dark mode for the Statistics and Settings screens. The sun or moon button next to Buy me a coffee chooses Light (WordPress's own colours, the default), Dark or System, which follows your computer as it changes. Each person chooses for themselves; the rest of wp-admin keeps WordPress's colours, and nothing flashes as a screen loads. Charts redraw in the new colours at once.
+- Changed: loading placeholders are drawn from the text colour, so they show on light and dark screens and in shared reports. A loading table shows a header and rows, and the main chart shows faint grid lines and a soft area until it draws.
 
 ### 1.3.0
 
