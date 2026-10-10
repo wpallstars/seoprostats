@@ -158,17 +158,17 @@ function usePageText(): PageText | null {
 function useCoverage() {
 	return useQuery({
 		queryKey: ['coverage', editorBoot.postId],
-		queryFn: () => get<CoverageAnswer>('coverage', { post: editorBoot.postId, range: '90d' }),
+		queryFn: () => get<CoverageAnswer>('coverage', { post: editorBoot.postId, range: '91d' }),
 		enabled: editorBoot.postId > 0,
 	});
 }
 
-/** The Search section for this page, in the last 90 days. */
+/** The Search section for this page, in the last 13 weeks. */
 function searchUrl(page: string): string {
 	if (!boot.dashboardUrl) {
 		return '';
 	}
-	return (boot.dashboardUrl.split('#')[0] ?? '') + buildHash({ ...DEFAULT_STATE, view: 'search', range: '90d', compare: 'none', page });
+	return (boot.dashboardUrl.split('#')[0] ?? '') + buildHash({ ...DEFAULT_STATE, view: 'search', range: '91d', compare: 'none', page });
 }
 
 /** A row checked against the words in the editor now (as the server checked the saved ones). */
@@ -215,15 +215,15 @@ function Coverage() {
 				</p>
 			)}
 			{answer.through !== '' && !rows.length && (
-				<p className="spst-editor__note">{__('No searches showed this page in the last 90 days of search data.', 'seoprostats')}</p>
+				<p className="spst-editor__note">{__('No searches showed this page in the last 13 weeks of search data.', 'seoprostats')}</p>
 			)}
 			{rows.length > 0 && (
 				<p className="spst-editor__summary">
 					{sprintf(
 						/* translators: 1: number of search queries, 2: share of impressions, e.g. 80%. */
 						_n(
-							'%1$s search query in the last 90 days; %2$s of impressions are on queries the page’s words cover.',
-							'%1$s search queries in the last 90 days; %2$s of impressions are on queries the page’s words cover.',
+							'%1$s search query in the last 13 weeks; %2$s of impressions are on queries the page’s words cover.',
+							'%1$s search queries in the last 13 weeks; %2$s of impressions are on queries the page’s words cover.',
 							rows.length,
 							'seoprostats'
 						),

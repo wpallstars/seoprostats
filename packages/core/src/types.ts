@@ -7,9 +7,10 @@
  */
 
 /**
- * Ranges, in the order the period menu lists them. 7d, 28d, 91d, 182d
- * and 364d are whole weeks, so the previous period starts on the same
- * weekday and each day meets the same weekday.
+ * Ranges the API takes. 7d, 28d, 91d, 182d and 364d are whole weeks (1, 4,
+ * 13, 26 and 52), so the previous period starts on the same weekday and
+ * each day meets the same weekday. The dashboard's period menu groups and
+ * orders them itself (rangeMenu() in packages/wp-admin/src/labels.ts).
  */
 export const RANGE_KEYS = ['realtime', 'today', 'yesterday', '24h', '7d', '28d', '30d', '90d', '91d', '182d', '364d', 'week', 'month', 'year', '12mo', 'lastyear', 'all', 'custom'] as const;
 export type RangeKey = (typeof RANGE_KEYS)[number];

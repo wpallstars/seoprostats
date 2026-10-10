@@ -122,6 +122,7 @@ Use **Support** on the settings screen, or ask aidevops.
 = 1.4.2 =
 * Fixed: page rows show Edit for custom post types whose addresses have no base, and for category, tag and other term archives.
 * New: a notice when WP-Cron is turned off and no server cron job runs the scheduled jobs, with the commands to add one.
+* Fixed: dark mode follows the admin colour scheme; text stays readable on hover and focus.
 * Changed: Search → Plan's buttons line up in one column; the Research menu is a small link on the query's line.
 
 Every change: changelog.txt.
