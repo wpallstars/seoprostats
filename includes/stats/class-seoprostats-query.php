@@ -1385,35 +1385,70 @@ final class SEOProStats_Query {
      */
     private static function label($dimension, $kind, $raw, array $text) {
         if ($kind === 'enum') {
-            $names = array_flip(self::enum_codes($dimension));
-            $name  = isset($names[(int) $raw]) ? $names[(int) $raw] : 'unknown';
-            $label = self::enum_labels($dimension);
-            return array($name, isset($label[$name]) ? $label[$name] : $name);
+            return self::enum_label($dimension, (int) $raw);
         }
         if ($kind === 'text') {
             $code = (string) $raw;
             return array($code, $code === '' ? __('Unknown', 'seoprostats') : $code);
         }
         if ($kind === 'content') {
-            $value = (string) $raw;
-            if ($value === '' || $value === '0') {
-                return array($value, __('(none)', 'seoprostats'));
-            }
-            return array($value, isset($text[$value]) && $text[$value] !== '' ? $text[$value] : $value);
+            return self::content_label((string) $raw, $text);
         }
         if ($kind === 'variant') {
             $value  = (string) $raw;
             $labels = SEOProStats_AB_Report::variant_labels();
             return array($value, isset($labels[$value]) ? $labels[$value] : $value);
         }
-        $value = isset($text[(int) $raw]) ? $text[(int) $raw] : '';
+        return self::dict_label($dimension, isset($text[(int) $raw]) ? $text[(int) $raw] : '');
+    }
+
+    /**
+     * An enum code's name and label.
+     *
+     * @param string $dimension channel, device or login.
+     * @param int    $code      Stored code.
+     * @return array{0:string,1:string}
+     */
+    private static function enum_label($dimension, $code) {
+        $names = array_flip(self::enum_codes($dimension));
+        $name  = isset($names[$code]) ? $names[$code] : 'unknown';
+        $label = self::enum_labels($dimension);
+        return array($name, isset($label[$name]) ? $label[$name] : $name);
+    }
+
+    /**
+     * A content value and its name (none: no author, category or type).
+     *
+     * @param string                   $value ID or post type name.
+     * @param array<int|string,string> $text  Names by value.
+     * @return array{0:string,1:string}
+     */
+    private static function content_label($value, array $text) {
+        if ($value === '' || $value === '0') {
+            return array($value, __('(none)', 'seoprostats'));
+        }
+        return array($value, isset($text[$value]) && $text[$value] !== '' ? $text[$value] : $value);
+    }
+
+    /**
+     * A dictionary text as value and label; no text reads as the
+     * dimension's empty case (no source is Direct).
+     *
+     * @param string $dimension Dimension name.
+     * @param string $value     Dictionary text, or ''.
+     * @return array{0:string,1:string}
+     */
+    private static function dict_label($dimension, $value) {
         if ($value !== '') {
             return array($value, $value);
         }
         if ($dimension === 'search' || $dimension === 'no_results') {
             return array('', __('(words not recorded)', 'seoprostats'));
         }
-        return array('', $dimension === 'source' ? __('Direct', 'seoprostats') : __('(none)', 'seoprostats'));
+        if ($dimension === 'source') {
+            return array('', __('Direct', 'seoprostats'));
+        }
+        return array('', __('(none)', 'seoprostats'));
     }
 
     /**
@@ -1460,37 +1495,81 @@ final class SEOProStats_Query {
         $values = array_values(array_unique(array_filter(array_map('strval', $values), static function ($v) {
             return $v !== '' && $v !== '0';
         })));
-        $out = array();
         if (!$values) {
-            return $out;
+            return array();
         }
         if (SEOProStats_Schema::set() === 'demo' && class_exists('SEOProStats_Demo')) {
-            foreach ($values as $value) {
-                $name = SEOProStats_Demo::name($dimension, $value);
-                if ($name !== '') {
-                    $out[$value] = $name;
-                }
-            }
-            return $out;
+            return self::demo_names($dimension, $values);
         }
         if ($dimension === 'post_type') {
-            foreach ($values as $value) {
-                $object = get_post_type_object($value);
-                if ($object) {
-                    $out[$value] = (string) $object->labels->singular_name;
-                }
+            return self::post_type_names($values);
+        }
+        return $dimension === 'author' ? self::author_names($values) : self::term_names($values);
+    }
+
+    /**
+     * Demo data's names by value.
+     *
+     * @param string   $dimension author, category or post_type.
+     * @param string[] $values    Values.
+     * @return array<int|string,string>
+     */
+    private static function demo_names($dimension, array $values) {
+        $out = array();
+        foreach ($values as $value) {
+            $name = SEOProStats_Demo::name($dimension, $value);
+            if ($name !== '') {
+                $out[$value] = $name;
             }
-        } elseif ($dimension === 'author') {
-            foreach (get_users(array('include' => array_map('intval', $values), 'fields' => array('ID', 'display_name'))) as $user) {
-                $out[(string) $user->ID] = (string) $user->display_name;
+        }
+        return $out;
+    }
+
+    /**
+     * Post types' singular names by name.
+     *
+     * @param string[] $values Post type names.
+     * @return array<int|string,string>
+     */
+    private static function post_type_names(array $values) {
+        $out = array();
+        foreach ($values as $value) {
+            $object = get_post_type_object($value);
+            if ($object) {
+                $out[$value] = (string) $object->labels->singular_name;
             }
-        } else {
-            $terms = get_terms(array('include' => array_map('intval', $values), 'hide_empty' => false, 'fields' => 'id=>name'));
-            if (is_array($terms)) {
-                foreach ($terms as $id => $name) {
-                    $out[(string) $id] = (string) $name;
-                }
-            }
+        }
+        return $out;
+    }
+
+    /**
+     * Authors' display names by ID.
+     *
+     * @param string[] $values User IDs.
+     * @return array<int|string,string>
+     */
+    private static function author_names(array $values) {
+        $out = array();
+        foreach (get_users(array('include' => array_map('intval', $values), 'fields' => array('ID', 'display_name'))) as $user) {
+            $out[(string) $user->ID] = (string) $user->display_name;
+        }
+        return $out;
+    }
+
+    /**
+     * Terms' names by ID.
+     *
+     * @param string[] $values Term IDs.
+     * @return array<int|string,string>
+     */
+    private static function term_names(array $values) {
+        $out   = array();
+        $terms = get_terms(array('include' => array_map('intval', $values), 'hide_empty' => false, 'fields' => 'id=>name'));
+        if (!is_array($terms)) {
+            return $out;
+        }
+        foreach ($terms as $id => $name) {
+            $out[(string) $id] = (string) $name;
         }
         return $out;
     }
@@ -1512,15 +1591,8 @@ final class SEOProStats_Query {
         $names = self::content_names($filter['dimension'], $known);
         $chose = array();
         foreach ($known as $value) {
-            $name = isset($names[$value]) ? $names[$value] : '';
-            foreach ($filter['values'] as $wanted) {
-                $hit = in_array($filter['op'], array('is', 'is_not'), true)
-                    ? ($wanted === $value || ($name !== '' && strtolower($wanted) === strtolower($name)))
-                    : (self::text_matches($filter['op'], strtolower($value), strtolower($wanted)) || ($name !== '' && self::text_matches($filter['op'], strtolower($name), strtolower($wanted))));
-                if ($hit) {
-                    $chose[] = $value;
-                    break;
-                }
+            if (self::content_matches($filter, $value, isset($names[$value]) ? $names[$value] : '')) {
+                $chose[] = $value;
             }
         }
         if (!$chose) {
@@ -1529,6 +1601,41 @@ final class SEOProStats_Query {
         $holders = implode(', ', array_fill(0, count($chose), '%s'));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by the column's index; fixed placeholders.
         return array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT path_id FROM %i WHERE %i IN ($holders) LIMIT %d", array_merge(array($table, $column), $chose, array(self::MAX_IDS)))));
+    }
+
+    /**
+     * Whether any of a filter's values matches a content value or its name.
+     *
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @param string                                            $value  ID or post type name.
+     * @param string                                            $name   Its name, or ''.
+     * @return bool
+     */
+    private static function content_matches(array $filter, $value, $name) {
+        foreach ($filter['values'] as $wanted) {
+            if (self::content_hit($filter['op'], $value, $name, $wanted)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether one wanted value matches: is and is not by value or name in
+     * any case; contains and matches by either in any case.
+     *
+     * @param string $op     Operator.
+     * @param string $value  ID or post type name.
+     * @param string $name   Its name, or ''.
+     * @param string $wanted Filter value.
+     * @return bool
+     */
+    private static function content_hit($op, $value, $name, $wanted) {
+        if (in_array($op, array('is', 'is_not'), true)) {
+            return $wanted === $value || ($name !== '' && strtolower($wanted) === strtolower($name));
+        }
+        $needle = strtolower($wanted);
+        return self::text_matches($op, strtolower($value), $needle) || ($name !== '' && self::text_matches($op, strtolower($name), $needle));
     }
 
     /**
@@ -1617,32 +1724,67 @@ final class SEOProStats_Query {
      */
     private static function variant_pairs(array $filter) {
         $labels = SEOProStats_AB_Report::variant_labels();
+        $exact  = in_array($filter['op'], array('is', 'is_not'), true);
         $wanted = array();
         foreach ($filter['values'] as $value) {
-            $value = trim((string) $value);
-            if (in_array($filter['op'], array('is', 'is_not'), true)) {
-                if (substr($value, -2) === ':*') {
-                    $test = substr($value, 0, -1);
-                    foreach (array_keys($labels) as $key) {
-                        if (strpos($key, $test) === 0) {
-                            $wanted[$key] = true;
-                        }
-                    }
-                } elseif (strpos($value, ':') !== false) {
-                    $wanted[$value] = true;
-                }
-                continue;
-            }
-            foreach ($labels as $key => $label) {
-                $needle = strtolower($value);
-                if (self::text_matches($filter['op'], strtolower($key), $needle) || self::text_matches($filter['op'], strtolower($label), $needle)) {
-                    $wanted[$key] = true;
-                }
+            $value   = trim((string) $value);
+            $matched = $exact ? self::variant_exact_keys($value, $labels) : self::variant_like_keys($filter['op'], $value, $labels);
+            foreach ($matched as $key) {
+                $wanted[$key] = true;
             }
         }
-        if (!$wanted) {
-            return array();
+        return $wanted ? self::variant_ids(array_keys($wanted)) : array();
+    }
+
+    /**
+     * Variant keys an exact value names: itself, or every variant of a
+     * test for "test-id:*".
+     *
+     * @param string               $value  Filter value.
+     * @param array<string,string> $labels Labels by "test-id:variant-slug".
+     * @return string[]
+     */
+    private static function variant_exact_keys($value, array $labels) {
+        if (substr($value, -2) === ':*') {
+            $test = substr($value, 0, -1);
+            $keys = array();
+            foreach (array_keys($labels) as $key) {
+                if (strpos($key, $test) === 0) {
+                    $keys[] = $key;
+                }
+            }
+            return $keys;
         }
+        return strpos($value, ':') !== false ? array($value) : array();
+    }
+
+    /**
+     * Variant keys whose key or label contains or matches a value.
+     *
+     * @param string               $op     contains or matches.
+     * @param string               $value  Filter value.
+     * @param array<string,string> $labels Labels by "test-id:variant-slug".
+     * @return string[]
+     */
+    private static function variant_like_keys($op, $value, array $labels) {
+        $needle = strtolower($value);
+        $keys   = array();
+        foreach ($labels as $key => $label) {
+            if (self::text_matches($op, strtolower($key), $needle) || self::text_matches($op, strtolower($label), $needle)) {
+                $keys[] = $key;
+            }
+        }
+        return $keys;
+    }
+
+    /**
+     * Dictionary id pairs of variant keys in the dictionary (at most 100).
+     *
+     * @param array<int,int|string> $keys "test-id:variant-slug" keys.
+     * @return array<int,array{0:int,1:int}>
+     */
+    private static function variant_ids(array $keys) {
+        $wanted   = array_flip($keys);
         $tests    = array();
         $variants = array();
         foreach (array_keys($wanted) as $key) {
