@@ -7,13 +7,14 @@
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  */
 
-@import "./common.css";
+@import url("./common.css");
 
 .spst-editor {
 	--spst-accent: var(--wp-admin-theme-color, #2271b1);
-	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
+	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1); /* stylelint-disable-line custom-property-pattern -- WordPress names this variable. */
 	--spst-muted: #50575e;
 	--spst-bad: #b32d2e;
+
 	font-size: 13px;
 	line-height: 1.5;
 }

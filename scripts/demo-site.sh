@@ -45,19 +45,22 @@ parse_args() {
 	up | down) ;;
 	*) die "unknown command: $ACTION" ;;
 	esac
+	local opt value
 	while [[ $# -gt 0 ]]; do
 		[[ "$ACTION" = up ]] || die 'down takes no options'
-		case "$1" in
+		opt="$1"
+		case "$opt" in
 		--ref | --post)
-			[[ $# -ge 2 && -n "$2" ]] || die "$1 needs a value"
-			case "$1" in
-			--ref) REF="$2" ;;
-			--post) POST_PATH="$2" ;;
+			value="${2:-}"
+			[[ -n "$value" ]] || die "$opt needs a value"
+			case "$opt" in
+			--ref) REF="$value" ;;
+			*) POST_PATH="$value" ;;
 			esac
 			shift 2
 			;;
 		--live-search) LIVE_SEARCH=1; shift ;;
-		*) die "unknown option: $1" ;;
+		*) die "unknown option: $opt" ;;
 		esac
 	done
 	[[ -z "$POST_PATH" || "$POST_PATH" =~ ^/blog/[a-z0-9]+(-[a-z0-9]+)*/$ ]] || die '--post must be /blog/SLUG/ with a lower-case slug'

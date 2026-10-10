@@ -299,17 +299,17 @@ The shape language is defined by **{Architectural Sharpness | Soft Modernism | P
 
 ### Buttons
 
-**Primary** (`{components.button-primary}`)
+#### Primary (`{components.button-primary}`)
 
 - States: Default → Hover (`{components.button-primary-hover}`) → Active → Focus → Disabled
 - Focus ring: {description}
 - Disabled: {description}
 
-**Secondary** (`{components.button-secondary}`)
+#### Secondary (`{components.button-secondary}`)
 
 - {specs beyond tokens}
 
-**Ghost / Outline**
+#### Ghost / Outline
 
 - Background: transparent
 - Border: {value}

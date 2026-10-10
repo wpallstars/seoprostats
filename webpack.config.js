@@ -7,7 +7,7 @@
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  */
 
-const path = require('path');
+const path = require('node:path');
 const wpConfig = require('@wordpress/scripts/config/webpack.config');
 
 const base = Array.isArray(wpConfig) ? wpConfig[0] : wpConfig;

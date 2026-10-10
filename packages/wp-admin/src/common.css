@@ -11,7 +11,7 @@
 .spst-widget,
 .spst-modal {
 	--spst-accent: var(--wp-admin-theme-color, #2271b1);
-	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1);
+	--spst-accent-soft: rgba(var(--wp-admin-theme-color--rgb, 34, 113, 177), 0.1); /* stylelint-disable-line custom-property-pattern -- WordPress names this variable. */
 	--spst-text: #1d2327;
 	--spst-muted: #50575e;
 	--spst-subtle: #646970;
@@ -19,6 +19,7 @@
 	--spst-hover: #f6f7f7;
 	--spst-good: #007017;
 	--spst-bad: #b32d2e;
+
 	/* Change log groups: markers and the Changes section (DESIGN.md → Markers). */
 	--spst-mark-content: #3858e9;
 	--spst-mark-seo: #8a3fd1;
@@ -26,6 +27,7 @@
 	--spst-mark-site: #996800;
 	--spst-mark-search: #c9356e;
 	--spst-mark-note: #1d2327;
+
 	font-variant-numeric: tabular-nums;
 }
 
