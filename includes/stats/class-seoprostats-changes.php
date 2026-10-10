@@ -798,13 +798,9 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             if ($href === '') {
                 continue;
             }
-            $host = strtolower((string) wp_parse_url(strpos($href, '//') === 0 ? 'https:' . $href : $href, PHP_URL_HOST));
+            $host = self::link_host($href);
             if ($host === '' || in_array($host, $site, true)) {
-                $to = self::path(explode('#', $href, 2)[0]);
-                if (!isset($internal[$to])) {
-                    $internal[$to] = self::short(trim((string) preg_replace('/\s+/u', ' ', wp_strip_all_tags($match[1]))));
-                }
-                $counts[$to] = isset($counts[$to]) ? $counts[$to] + 1 : 1;
+                self::internal_link($internal, $counts, self::path(explode('#', $href, 2)[0]), $match[1]);
             } else {
                 $hosts[strpos($host, 'www.') === 0 ? substr($host, 4) : $host] = true;
             }
@@ -812,6 +808,31 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
         $hosts = array_keys($hosts);
         sort($hosts);
         return array('internal' => $internal, 'counts' => $counts, 'hosts' => array_map('strval', $hosts));
+    }
+
+    /**
+     * A link's host, lower case ('' for a relative link).
+     *
+     * @param string $href Destination.
+     * @return string
+     */
+    private static function link_host($href) {
+        return strtolower((string) wp_parse_url(strpos($href, '//') === 0 ? 'https:' . $href : $href, PHP_URL_HOST));
+    }
+
+    /**
+     * Count an internal link, keeping the first link's anchor text.
+     *
+     * @param array<string,string> $internal Path => anchor text.
+     * @param array<string,int>    $counts   Path => links.
+     * @param string               $to       Path linked to.
+     * @param string               $anchor   Anchor markup.
+     */
+    private static function internal_link(array &$internal, array &$counts, $to, $anchor) {
+        if (!isset($internal[$to])) {
+            $internal[$to] = self::short(trim((string) preg_replace('/\s+/u', ' ', wp_strip_all_tags($anchor))));
+        }
+        $counts[$to] = isset($counts[$to]) ? $counts[$to] + 1 : 1;
     }
 
     /**
@@ -1053,9 +1074,8 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
         }
         $id     = (int) $product->get_id();
         $parent = method_exists($product, 'get_parent_id') ? (int) $product->get_parent_id() : 0;
-        $post   = get_post($parent ? $parent : $id);
-        $status = isset($changes['status']) ? (string) $changes['status'] : (isset($data['status']) ? (string) $data['status'] : '');
-        if (!$post instanceof WP_Post || $post->post_status !== 'publish' || ($status !== '' && $status !== 'publish') || isset(self::$published[(int) $post->ID])) {
+        $post   = self::product_post($parent ? $parent : $id, $changes, $data);
+        if ($post === null) {
             return;
         }
         $name  = method_exists($product, 'get_name') ? (string) $product->get_name() : $post->post_title;
@@ -1069,50 +1089,133 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             'currency' => function_exists('get_woocommerce_currency') ? (string) get_woocommerce_currency() : '',
         ) + ($parent ? array('variation' => $id) : array());
         $ts    = time();
-        $was   = static function ($key) use ($data) {
-            return isset($data[$key]) && is_scalar($data[$key]) ? (string) $data[$key] : '';
-        };
 
         if (isset($changes['stock_status'])) {
-            $old = $was('stock_status');
-            $new = (string) $changes['stock_status'];
-            if ($new === 'outofstock' && $old !== 'outofstock') {
-                self::record(20, $about + array('ts' => $ts, 'old' => $old, 'new' => $new, 'meta' => $meta));
-            } elseif ($old === 'outofstock' && $new !== 'outofstock') {
-                self::record(21, $about + array('ts' => $ts, 'old' => $old, 'new' => $new, 'meta' => $meta));
-            }
+            self::stock_change($about + array('ts' => $ts, 'meta' => $meta), self::was($data, 'stock_status'), (string) $changes['stock_status']);
         }
 
         $prices = false;
         if (isset($changes['regular_price'])) {
-            $prices = self::price_change($about, $meta + array('field' => 'regular'), $was('regular_price'), (string) $changes['regular_price'], $ts);
+            $prices = self::price_change($about, $meta + array('field' => 'regular'), self::was($data, 'regular_price'), (string) $changes['regular_price'], $ts);
         }
         if (isset($changes['sale_price'])) {
-            $old = $was('sale_price');
-            $new = (string) $changes['sale_price'];
-            $sale_meta = $meta + array('field' => 'sale', 'regular' => isset($changes['regular_price']) ? (string) $changes['regular_price'] : $was('regular_price'));
-            if ($old === '' && $new !== '') {
-                $from = isset($changes['date_on_sale_from']) ? $changes['date_on_sale_from'] : (isset($data['date_on_sale_from']) ? $data['date_on_sale_from'] : null);
-                // A sale scheduled for later starts when WooCommerce's cron sets the price.
-                if (!(is_object($from) && method_exists($from, 'getTimestamp') && (int) $from->getTimestamp() > time())) {
-                    $prices = self::record(24, $about + array('ts' => $ts, 'old' => $was('regular_price'), 'new' => $new, 'meta' => $sale_meta)) || $prices;
-                }
-            } elseif ($old !== '' && $new === '') {
-                $prices = self::record(25, $about + array('ts' => $ts, 'old' => $old, 'new' => $sale_meta['regular'], 'meta' => $sale_meta)) || $prices;
-            } else {
-                $prices = self::price_change($about, $sale_meta, $old, $new, $ts) || $prices;
-            }
+            $prices = self::sale_change($about, $meta, $changes, $data, $ts) || $prices;
         }
         // The active price alone: a scheduled sale starting (or another change).
         if (!$prices && isset($changes['price']) && !isset($changes['regular_price']) && !isset($changes['sale_price'])) {
-            $old  = $was('price');
-            $new  = (string) $changes['price'];
-            $sale = $was('sale_price');
-            if ($old !== '' && $new !== '' && $sale !== '' && (float) $new === (float) $sale && (float) $new < (float) $old) {
-                self::record(24, $about + array('ts' => $ts, 'old' => $old, 'new' => $new, 'meta' => $meta + array('field' => 'sale', 'scheduled' => true)));
-            } else {
-                self::price_change($about, $meta + array('field' => 'price'), $old, $new, $ts);
+            self::active_price_change($about, $meta, (string) $changes['price'], $data, $ts);
+        }
+    }
+
+    /**
+     * The published post of a product about to be saved, unless the save
+     * unpublishes it or it was published in this request.
+     *
+     * @param int                 $post_id The product's (or its parent's) post.
+     * @param array<string,mixed> $changes Changes being saved.
+     * @param array<string,mixed> $data    Stored values.
+     * @return WP_Post|null
+     */
+    private static function product_post($post_id, array $changes, array $data) {
+        $post = get_post($post_id);
+        if (isset($changes['status'])) {
+            $status = (string) $changes['status'];
+        } else {
+            $status = isset($data['status']) ? (string) $data['status'] : '';
+        }
+        if (!$post instanceof WP_Post || $post->post_status !== 'publish' || ($status !== '' && $status !== 'publish') || isset(self::$published[(int) $post->ID])) {
+            return null;
+        }
+        return $post;
+    }
+
+    /**
+     * A product's stored value as text ('' for none or a list).
+     *
+     * @param array<string,mixed> $data Stored values.
+     * @param string              $key  Field.
+     * @return string
+     */
+    private static function was(array $data, $key) {
+        return isset($data[$key]) && is_scalar($data[$key]) ? (string) $data[$key] : '';
+    }
+
+    /**
+     * Record a product going out of stock or coming back.
+     *
+     * @param array<string,mixed> $change Path, object, ts and meta.
+     * @param string              $old    Stock status before.
+     * @param string              $new    Stock status now.
+     */
+    private static function stock_change(array $change, $old, $new) {
+        if ($new === 'outofstock' && $old !== 'outofstock') {
+            self::record(20, $change + array('old' => $old, 'new' => $new));
+        } elseif ($old === 'outofstock' && $new !== 'outofstock') {
+            self::record(21, $change + array('old' => $old, 'new' => $new));
+        }
+    }
+
+    /**
+     * Record a sale price set (a sale starting), removed (a sale ending)
+     * or changed.
+     *
+     * @param array<string,mixed> $about   Path and object.
+     * @param array<string,mixed> $meta    Details.
+     * @param array<string,mixed> $changes Changes being saved.
+     * @param array<string,mixed> $data    Stored values.
+     * @param int                 $ts      Time.
+     * @return bool Whether a change was recorded.
+     */
+    private static function sale_change(array $about, array $meta, array $changes, array $data, $ts) {
+        $old       = self::was($data, 'sale_price');
+        $new       = (string) $changes['sale_price'];
+        $sale_meta = $meta + array('field' => 'sale', 'regular' => isset($changes['regular_price']) ? (string) $changes['regular_price'] : self::was($data, 'regular_price'));
+        if ($old === '' && $new !== '') {
+            // A sale scheduled for later starts when WooCommerce's cron sets the price.
+            if (self::sale_scheduled($changes, $data)) {
+                return false;
             }
+            return self::record(24, $about + array('ts' => $ts, 'old' => self::was($data, 'regular_price'), 'new' => $new, 'meta' => $sale_meta));
+        }
+        if ($old !== '' && $new === '') {
+            return self::record(25, $about + array('ts' => $ts, 'old' => $old, 'new' => $sale_meta['regular'], 'meta' => $sale_meta));
+        }
+        return self::price_change($about, $sale_meta, $old, $new, $ts);
+    }
+
+    /**
+     * Whether a product's sale starts later.
+     *
+     * @param array<string,mixed> $changes Changes being saved.
+     * @param array<string,mixed> $data    Stored values.
+     * @return bool
+     */
+    private static function sale_scheduled(array $changes, array $data) {
+        if (isset($changes['date_on_sale_from'])) {
+            $from = $changes['date_on_sale_from'];
+        } else {
+            $from = isset($data['date_on_sale_from']) ? $data['date_on_sale_from'] : null;
+        }
+        return is_object($from) && method_exists($from, 'getTimestamp') && (int) $from->getTimestamp() > time();
+    }
+
+    /**
+     * Record the active price alone changing: a scheduled sale starting
+     * (the sale price taking over), or another price change.
+     *
+     * @param array<string,mixed> $about Path and object.
+     * @param array<string,mixed> $meta  Details.
+     * @param string              $new   Active price now.
+     * @param array<string,mixed> $data  Stored values.
+     * @param int                 $ts    Time.
+     */
+    private static function active_price_change(array $about, array $meta, $new, array $data, $ts) {
+        $old  = self::was($data, 'price');
+        $sale = self::was($data, 'sale_price');
+        if ($old !== '' && $new !== '' && $sale !== '' && (float) $new === (float) $sale && (float) $new < (float) $old) {
+            self::record(24, $about + array('ts' => $ts, 'old' => $old, 'new' => $new, 'meta' => $meta + array('field' => 'sale', 'scheduled' => true)));
+        } else {
+            self::price_change($about, $meta + array('field' => 'price'), $old, $new, $ts);
         }
     }
 
@@ -1143,20 +1246,11 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
         if (!is_object($coupon) || !method_exists($coupon, 'get_changes') || !method_exists($coupon, 'get_data') || !method_exists($coupon, 'get_id') || !(int) $coupon->get_id()) {
             return;
         }
-        $post = get_post((int) $coupon->get_id());
-        if (!$post instanceof WP_Post || $post->post_status !== 'publish' || isset(self::$published[(int) $post->ID])) {
+        $post = self::coupon_post((int) $coupon->get_id());
+        if ($post === null) {
             return;
         }
-        $changes = array_intersect_key((array) $coupon->get_changes(), array_flip(self::COUPON_FIELDS));
-        $data    = (array) $coupon->get_data();
-        $fields  = array();
-        foreach ($changes as $field => $value) {
-            $old = self::scalar(isset($data[$field]) ? $data[$field] : '');
-            $new = self::scalar($value);
-            if ($old !== $new) {
-                $fields[$field] = array($old, $new);
-            }
-        }
+        $fields = self::coupon_fields((array) $coupon->get_changes(), (array) $coupon->get_data());
         if (!$fields) {
             return;
         }
@@ -1168,6 +1262,39 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             'new'         => isset($fields['amount']) ? $fields['amount'][1] : '',
             'meta'        => array('name' => $code, 'fields' => $fields),
         ));
+    }
+
+    /**
+     * A coupon's published post, unless it was published in this request.
+     *
+     * @param int $id Coupon id.
+     * @return WP_Post|null
+     */
+    private static function coupon_post($id) {
+        $post = get_post($id);
+        if (!$post instanceof WP_Post || $post->post_status !== 'publish' || isset(self::$published[(int) $post->ID])) {
+            return null;
+        }
+        return $post;
+    }
+
+    /**
+     * A coupon's terms that change, as field => array(old, new).
+     *
+     * @param array<string,mixed> $changes Changes being saved.
+     * @param array<string,mixed> $data    Stored values.
+     * @return array<string,array{0:string,1:string}>
+     */
+    private static function coupon_fields(array $changes, array $data) {
+        $fields = array();
+        foreach (array_intersect_key($changes, array_flip(self::COUPON_FIELDS)) as $field => $value) {
+            $old = self::scalar(isset($data[$field]) ? $data[$field] : '');
+            $new = self::scalar($value);
+            if ($old !== $new) {
+                $fields[$field] = array($old, $new);
+            }
+        }
+        return $fields;
     }
 
     /**
@@ -1226,20 +1353,11 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
         }
         $type   = (string) $extra['type'];
         $action = (string) $extra['action'];
-        if ($type === 'plugin' && $action === 'install') {
-            $data = is_object($upgrader) && isset($upgrader->new_plugin_data) && is_array($upgrader->new_plugin_data) ? $upgrader->new_plugin_data : array();
-            $file = is_object($upgrader) && method_exists($upgrader, 'plugin_info') ? (string) $upgrader->plugin_info() : '';
-            $name = isset($data['Name']) ? (string) $data['Name'] : ($file !== '' ? self::plugin($file)['name'] : '');
-            if ($name !== '') {
-                $version = isset($data['Version']) ? (string) $data['Version'] : ($file !== '' ? self::plugin($file)['version'] : '');
-                self::record(40, array('object_type' => 'plugin', 'new' => $version, 'meta' => array('name' => $name, 'file' => $file)));
-            }
-            return;
-        }
-        if ($type === 'theme' && $action === 'install') {
-            $data = is_object($upgrader) && isset($upgrader->new_theme_data) && is_array($upgrader->new_theme_data) ? $upgrader->new_theme_data : array();
-            if (isset($data['Name'])) {
-                self::record(40, array('object_type' => 'theme', 'new' => isset($data['Version']) ? (string) $data['Version'] : '', 'meta' => array('name' => (string) $data['Name'])));
+        if ($action === 'install') {
+            if ($type === 'plugin') {
+                self::plugin_installed($upgrader);
+            } elseif ($type === 'theme') {
+                self::theme_installed($upgrader);
             }
             return;
         }
@@ -1247,28 +1365,110 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             return;
         }
         if ($type === 'plugin') {
-            $files = isset($extra['plugins']) ? (array) $extra['plugins'] : (isset($extra['plugin']) ? array($extra['plugin']) : array());
-            foreach ($files as $file) {
-                $file = (string) $file;
-                $now  = self::plugin($file);
-                $was  = isset(self::$installed['plugin:' . $file]) ? self::$installed['plugin:' . $file] : array('name' => '', 'version' => '');
-                if ($now['name'] !== '' && $now['version'] !== $was['version']) {
-                    self::record(41, array('object_type' => 'plugin', 'old' => $was['version'], 'new' => $now['version'], 'meta' => array('name' => $now['name'], 'file' => $file)));
-                }
+            foreach (self::targets($extra, 'plugins', 'plugin') as $file) {
+                self::plugin_updated((string) $file);
             }
         } elseif ($type === 'theme') {
-            $slugs = isset($extra['themes']) ? (array) $extra['themes'] : (isset($extra['theme']) ? array($extra['theme']) : array());
-            foreach ($slugs as $slug) {
-                $slug  = (string) $slug;
-                $theme = wp_get_theme($slug);
-                $theme->cache_delete();
-                $theme = wp_get_theme($slug);
-                $was   = isset(self::$installed['theme:' . $slug]) ? self::$installed['theme:' . $slug] : array('name' => '', 'version' => '');
-                $now   = (string) $theme->get('Version');
-                if ($theme->exists() && $now !== $was['version']) {
-                    self::record(46, array('object_type' => 'theme', 'old' => $was['version'], 'new' => $now, 'meta' => array('name' => (string) $theme->get('Name'), 'slug' => $slug)));
-                }
+            foreach (self::targets($extra, 'themes', 'theme') as $slug) {
+                self::theme_updated((string) $slug);
             }
+        }
+    }
+
+    /**
+     * Record a plugin installed.
+     *
+     * @param object $upgrader Plugin_Upgrader.
+     */
+    private static function plugin_installed($upgrader) {
+        $data = is_object($upgrader) && isset($upgrader->new_plugin_data) && is_array($upgrader->new_plugin_data) ? $upgrader->new_plugin_data : array();
+        $file = is_object($upgrader) && method_exists($upgrader, 'plugin_info') ? (string) $upgrader->plugin_info() : '';
+        $name = self::plugin_field($data, 'Name', $file, 'name');
+        if ($name !== '') {
+            $version = self::plugin_field($data, 'Version', $file, 'version');
+            self::record(40, array('object_type' => 'plugin', 'new' => $version, 'meta' => array('name' => $name, 'file' => $file)));
+        }
+    }
+
+    /**
+     * A new plugin's header field, from the upgrader or else its file.
+     *
+     * @param array<string,mixed> $data   Header data from the upgrader.
+     * @param string              $header Header (Name, Version).
+     * @param string              $file   Plugin file ('' if unknown).
+     * @param string              $key    Key in plugin(): name or version.
+     * @return string
+     */
+    private static function plugin_field(array $data, $header, $file, $key) {
+        if (isset($data[$header])) {
+            return (string) $data[$header];
+        }
+        return $file !== '' ? self::plugin($file)[$key] : '';
+    }
+
+    /**
+     * Record a theme installed.
+     *
+     * @param object $upgrader Theme_Upgrader.
+     */
+    private static function theme_installed($upgrader) {
+        $data = is_object($upgrader) && isset($upgrader->new_theme_data) && is_array($upgrader->new_theme_data) ? $upgrader->new_theme_data : array();
+        if (isset($data['Name'])) {
+            self::record(40, array('object_type' => 'theme', 'new' => isset($data['Version']) ? (string) $data['Version'] : '', 'meta' => array('name' => (string) $data['Name'])));
+        }
+    }
+
+    /**
+     * The plugins or themes an update covers: a bulk list, else one.
+     *
+     * @param array<string,mixed> $extra  Upgrade details.
+     * @param string              $many   Key of the list.
+     * @param string              $single Key of the one.
+     * @return array<int|string,mixed>
+     */
+    private static function targets(array $extra, $many, $single) {
+        if (isset($extra[$many])) {
+            return (array) $extra[$many];
+        }
+        return isset($extra[$single]) ? array($extra[$single]) : array();
+    }
+
+    /**
+     * A plugin or theme's name and version kept before it changed.
+     *
+     * @param string $key plugin:{file} or theme:{slug}.
+     * @return array{name:string,version:string}
+     */
+    private static function installed($key) {
+        return isset(self::$installed[$key]) ? self::$installed[$key] : array('name' => '', 'version' => '');
+    }
+
+    /**
+     * Record a plugin updated to another version.
+     *
+     * @param string $file Plugin file.
+     */
+    private static function plugin_updated($file) {
+        $now = self::plugin($file);
+        $was = self::installed('plugin:' . $file);
+        if ($now['name'] !== '' && $now['version'] !== $was['version']) {
+            self::record(41, array('object_type' => 'plugin', 'old' => $was['version'], 'new' => $now['version'], 'meta' => array('name' => $now['name'], 'file' => $file)));
+        }
+    }
+
+    /**
+     * Record a theme updated to another version.
+     *
+     * @param string $slug Theme folder.
+     */
+    private static function theme_updated($slug) {
+        $theme = wp_get_theme($slug);
+        $theme->cache_delete();
+        $theme = wp_get_theme($slug);
+        $was   = self::installed('theme:' . $slug);
+        $now   = (string) $theme->get('Version');
+        if ($theme->exists() && $now !== $was['version']) {
+            self::record(46, array('object_type' => 'theme', 'old' => $was['version'], 'new' => $now, 'meta' => array('name' => (string) $theme->get('Name'), 'slug' => $slug)));
         }
     }
 
@@ -1531,24 +1731,7 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             return $out;
         }
 
-        $where = 'ts >= %d AND ts < %d';
-        $vals  = array((int) $range['from'], (int) $range['to']);
-        $page  = isset($args['page']) ? trim((string) $args['page']) : '';
-        if ($page !== '') {
-            $ids = array_map('intval', SEOProStats_Query::dict_ids(SEOProStats_Schema::DICT_PATH, array(
-                'dimension' => 'page',
-                'op'        => strpos($page, '*') !== false ? 'matches' : 'is',
-                'values'    => array($page),
-            )));
-            // The page's changes and the site's own (plugins, settings), which affect every page.
-            $ids    = array_values(array_unique(array_merge(array(0), $ids)));
-            $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ')';
-            $vals   = array_merge($vals, $ids);
-        }
-        if ($kinds) {
-            $where .= ' AND kind IN (' . implode(', ', array_fill(0, count($kinds), '%d')) . ')';
-            $vals   = array_merge($vals, $kinds);
-        }
+        list($where, $vals) = self::list_filter($range, isset($args['page']) ? trim((string) $args['page']) : '', $kinds);
         $table = SEOProStats_Schema::table('changes');
         // Our own table, by key ts (or path_ts, kind_ts); $where holds only fixed placeholders.
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber
@@ -1569,6 +1752,36 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
             $out['changes'][] = self::shape($row, $paths);
         }
         return $out;
+    }
+
+    /**
+     * The change log's WHERE clause (fixed placeholders only) and its
+     * values: the range, a page (with the site's own changes, which
+     * affect every page) and kinds.
+     *
+     * @param array<string,mixed> $range From SEOProStats_Query::range().
+     * @param string              $page  Path; * for any text; '' for all.
+     * @param int[]               $kinds Kind codes; empty for all.
+     * @return array{0:string,1:array<int,int>}
+     */
+    private static function list_filter(array $range, $page, array $kinds) {
+        $where = 'ts >= %d AND ts < %d';
+        $vals  = array((int) $range['from'], (int) $range['to']);
+        if ($page !== '') {
+            $ids = array_map('intval', SEOProStats_Query::dict_ids(SEOProStats_Schema::DICT_PATH, array(
+                'dimension' => 'page',
+                'op'        => strpos($page, '*') !== false ? 'matches' : 'is',
+                'values'    => array($page),
+            )));
+            $ids    = array_values(array_unique(array_merge(array(0), $ids)));
+            $where .= ' AND path_id IN (' . implode(', ', array_fill(0, count($ids), '%d')) . ')';
+            $vals   = array_merge($vals, $ids);
+        }
+        if ($kinds) {
+            $where .= ' AND kind IN (' . implode(', ', array_fill(0, count($kinds), '%d')) . ')';
+            $vals   = array_merge($vals, $kinds);
+        }
+        return array($where, $vals);
     }
 
     /**
@@ -1751,21 +1964,10 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
      * @return array<string,mixed>
      */
     private static function shape(array $row, array $paths) {
-        static $users = array();
         $code = (int) $row['kind'];
         $kind = isset(self::KINDS[$code]) ? self::KINDS[$code] : array('unknown', 'site');
-        $meta = $row['meta'] !== '' && $row['meta'] !== null ? json_decode((string) $row['meta'], true) : array();
-        $meta = is_array($meta) ? $meta : array();
-        $user = null;
-        $uid  = (int) $row['user_id'];
-        // WP-CLI already reads the whole database; elsewhere only people who may list users see names.
-        if ($uid && ((defined('WP_CLI') && WP_CLI) || current_user_can('list_users'))) {
-            if (!array_key_exists($uid, $users)) {
-                $data        = get_userdata($uid);
-                $users[$uid] = $data ? (string) $data->display_name : null;
-            }
-            $user = $users[$uid];
-        }
+        $meta   = self::row_meta($row['meta']);
+        $user   = self::user_name((int) $row['user_id']);
         $path   = isset($paths[(int) $row['path_id']]) ? $paths[(int) $row['path_id']] : null;
         $change = array(
             'id'     => (int) $row['id'],
@@ -1787,6 +1989,37 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
     }
 
     /**
+     * A stored change's details as an array.
+     *
+     * @param mixed $json Stored JSON (or '' or null).
+     * @return array<string,mixed>
+     */
+    private static function row_meta($json) {
+        $meta = $json !== '' && $json !== null ? json_decode((string) $json, true) : array();
+        return is_array($meta) ? $meta : array();
+    }
+
+    /**
+     * Who made a change, for those allowed to see it: WP-CLI already
+     * reads the whole database; elsewhere only people who may list users
+     * see names.
+     *
+     * @param int $uid User id (0 for none).
+     * @return string|null
+     */
+    private static function user_name($uid) {
+        static $users = array();
+        if (!$uid || !((defined('WP_CLI') && WP_CLI) || current_user_can('list_users'))) {
+            return null;
+        }
+        if (!array_key_exists($uid, $users)) {
+            $data        = get_userdata($uid);
+            $users[$uid] = $data ? (string) $data->display_name : null;
+        }
+        return $users[$uid];
+    }
+
+    /**
      * One line saying what changed, in the site's language.
      *
      * @param array<string,mixed> $c    The change (kind, title, old, new).
@@ -1794,158 +2027,330 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
      * @return string
      */
     public static function label(array $c, array $meta) {
-        $title = (string) $c['title'];
-        $old   = (string) $c['old'];
-        $new   = (string) $c['new'];
-        $list  = static function ($items) {
-            $text = implode(', ', array_map('strval', is_array($items) ? $items : array()));
-            return $text !== '' ? $text : '–';
-        };
-        $money = static function ($amount) use ($meta) {
-            return trim($amount . ' ' . (isset($meta['currency']) ? (string) $meta['currency'] : ''));
-        };
-        switch ($c['kind']) {
+        $v = array(
+            'title' => (string) $c['title'],
+            'old'   => (string) $c['old'],
+            'new'   => (string) $c['new'],
+        );
+        return self::post_label($c['kind'], $v, $meta)
+            ?? self::seo_label($c['kind'], $v, $meta)
+            ?? self::shop_label($c['kind'], $v, $meta)
+            ?? self::site_label($c['kind'], $v, $meta)
+            ?? self::note_label($c, $v, $meta)
+            ?? $v['title'];
+    }
+
+    /**
+     * Label of a post's change: published, moved, edited, its links.
+     *
+     * @param mixed                $kind Kind name.
+     * @param array<string,string> $v    Title, old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string|null Null for another kind.
+     */
+    private static function post_label($kind, array $v, array $meta) {
+        switch ($kind) {
             case 'published':
                 /* translators: %s: post title */
-                return sprintf(__('Published: %s', 'seoprostats'), $title);
+                return sprintf(__('Published: %s', 'seoprostats'), $v['title']);
             case 'unpublished':
                 /* translators: 1: post title, 2: new status (draft, private, trash, deleted) */
-                return sprintf(__('Unpublished: %1$s (%2$s)', 'seoprostats'), $title, $new);
+                return sprintf(__('Unpublished: %1$s (%2$s)', 'seoprostats'), $v['title'], $v['new']);
             case 'address':
                 /* translators: 1: old path, 2: new path */
-                return sprintf(__('Address changed: %1$s → %2$s', 'seoprostats'), $old, $new);
+                return sprintf(__('Address changed: %1$s → %2$s', 'seoprostats'), $v['old'], $v['new']);
             case 'title':
                 /* translators: 1: old title, 2: new title */
-                return sprintf(__('Title changed: “%1$s” → “%2$s”', 'seoprostats'), $old, $new);
+                return sprintf(__('Title changed: “%1$s” → “%2$s”', 'seoprostats'), $v['old'], $v['new']);
             case 'content':
                 /* translators: 1: post title, 2: words added, 3: words removed, 4: words before, 5: words after */
-                return sprintf(__('Content edited: %1$s (+%2$d −%3$d words; %4$d → %5$d)', 'seoprostats'), $title, isset($meta['added']) ? (int) $meta['added'] : 0, isset($meta['removed']) ? (int) $meta['removed'] : 0, (int) $old, (int) $new);
+                return sprintf(__('Content edited: %1$s (+%2$d −%3$d words; %4$d → %5$d)', 'seoprostats'), $v['title'], self::meta_int($meta, 'added', 0), self::meta_int($meta, 'removed', 0), (int) $v['old'], (int) $v['new']);
             case 'links':
                 /* translators: 1: post title, 2: links added, 3: links removed, 4: links with new text */
-                return sprintf(__('Internal links: %1$s (%2$d added, %3$d removed, %4$d changed)', 'seoprostats'), $title, isset($meta['added']) ? count((array) $meta['added']) : 0, isset($meta['removed']) ? count((array) $meta['removed']) : 0, isset($meta['changed']) ? count((array) $meta['changed']) : 0);
+                return sprintf(__('Internal links: %1$s (%2$d added, %3$d removed, %4$d changed)', 'seoprostats'), $v['title'], self::meta_count($meta, 'added'), self::meta_count($meta, 'removed'), self::meta_count($meta, 'changed'));
             case 'external_links':
                 /* translators: 1: post title, 2: hosts linked to now, 3: hosts no longer linked to */
-                return sprintf(__('External links: %1$s (gained: %2$s; lost: %3$s)', 'seoprostats'), $title, $list(isset($meta['gained']) ? $meta['gained'] : array()), $list(isset($meta['lost']) ? $meta['lost'] : array()));
+                return sprintf(__('External links: %1$s (gained: %2$s; lost: %3$s)', 'seoprostats'), $v['title'], self::list_text(self::meta_value($meta, 'gained')), self::list_text(self::meta_value($meta, 'lost')));
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Label of an SEO change: fields, backlinks, Google's index.
+     *
+     * @param mixed                $kind Kind name.
+     * @param array<string,string> $v    Title, old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string|null Null for another kind.
+     */
+    private static function seo_label($kind, array $v, array $meta) {
+        switch ($kind) {
             case 'seo_title':
                 /* translators: 1: post title, 2: new SEO title */
-                return sprintf(__('SEO title changed: %1$s → “%2$s”', 'seoprostats'), $title, $new);
+                return sprintf(__('SEO title changed: %1$s → “%2$s”', 'seoprostats'), $v['title'], $v['new']);
             case 'meta_description':
                 /* translators: %s: post title */
-                return sprintf(__('Meta description changed: %s', 'seoprostats'), $title);
+                return sprintf(__('Meta description changed: %s', 'seoprostats'), $v['title']);
             case 'robots':
                 /* translators: 1: post title, 2: rule before, 3: rule now */
-                return sprintf(__('Robots: %1$s (%2$s → %3$s)', 'seoprostats'), $title, $old !== '' ? $old : __('default', 'seoprostats'), $new !== '' ? $new : __('default', 'seoprostats'));
+                return sprintf(__('Robots: %1$s (%2$s → %3$s)', 'seoprostats'), $v['title'], self::or_text($v['old'], __('default', 'seoprostats')), self::or_text($v['new'], __('default', 'seoprostats')));
             case 'canonical':
                 /* translators: 1: post title, 2: canonical URL now */
-                return sprintf(__('Canonical changed: %1$s → %2$s', 'seoprostats'), $title, $new !== '' ? $new : __('default', 'seoprostats'));
+                return sprintf(__('Canonical changed: %1$s → %2$s', 'seoprostats'), $v['title'], self::or_text($v['new'], __('default', 'seoprostats')));
             case 'backlink_new':
+                $count = self::meta_int($meta, 'count', 1);
                 /* translators: 1: the linking site, 2: number of links */
-                return sprintf(_n('New backlink: %1$s (%2$d link)', 'New backlinks: %1$s (%2$d links)', isset($meta['count']) ? (int) $meta['count'] : 1, 'seoprostats'), $new, isset($meta['count']) ? (int) $meta['count'] : 1);
+                return sprintf(_n('New backlink: %1$s (%2$d link)', 'New backlinks: %1$s (%2$d links)', $count, 'seoprostats'), $v['new'], $count);
             case 'backlink_lost':
+                $count = self::meta_int($meta, 'count', 1);
                 /* translators: 1: the linking site, 2: number of links */
-                return sprintf(_n('Lost backlink: %1$s (%2$d link)', 'Lost backlinks: %1$s (%2$d links)', isset($meta['count']) ? (int) $meta['count'] : 1, 'seoprostats'), $new, isset($meta['count']) ? (int) $meta['count'] : 1);
+                return sprintf(_n('Lost backlink: %1$s (%2$d link)', 'Lost backlinks: %1$s (%2$d links)', $count, 'seoprostats'), $v['new'], $count);
             case 'index_status':
                 /* translators: 1: page, 2: Google's coverage state before, 3: Google's coverage state now */
-                return sprintf(__('Google index status of %1$s: %2$s → %3$s', 'seoprostats'), $title, $old !== '' ? $old : '–', $new !== '' ? $new : '–');
+                return sprintf(__('Google index status of %1$s: %2$s → %3$s', 'seoprostats'), $v['title'], self::or_text($v['old'], '–'), self::or_text($v['new'], '–'));
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Label of a shop change: stock, prices, sales, coupons.
+     *
+     * @param mixed                $kind Kind name.
+     * @param array<string,string> $v    Title, old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string|null Null for another kind.
+     */
+    private static function shop_label($kind, array $v, array $meta) {
+        switch ($kind) {
             case 'out_of_stock':
                 /* translators: %s: product name */
-                return sprintf(__('Out of stock: %s', 'seoprostats'), $title);
+                return sprintf(__('Out of stock: %s', 'seoprostats'), $v['title']);
             case 'back_in_stock':
                 /* translators: %s: product name */
-                return sprintf(__('Back in stock: %s', 'seoprostats'), $title);
+                return sprintf(__('Back in stock: %s', 'seoprostats'), $v['title']);
             case 'price_up':
                 /* translators: 1: product name, 2: old price, 3: new price */
-                return sprintf(__('Price up: %1$s (%2$s → %3$s)', 'seoprostats'), $title, $old, $money($new));
+                return sprintf(__('Price up: %1$s (%2$s → %3$s)', 'seoprostats'), $v['title'], $v['old'], self::money($v['new'], $meta));
             case 'price_down':
                 /* translators: 1: product name, 2: old price, 3: new price */
-                return sprintf(__('Price down: %1$s (%2$s → %3$s)', 'seoprostats'), $title, $old, $money($new));
+                return sprintf(__('Price down: %1$s (%2$s → %3$s)', 'seoprostats'), $v['title'], $v['old'], self::money($v['new'], $meta));
             case 'sale_started':
                 /* translators: 1: product name, 2: sale price */
-                return sprintf(__('Sale started: %1$s (%2$s)', 'seoprostats'), $title, $money($new));
+                return sprintf(__('Sale started: %1$s (%2$s)', 'seoprostats'), $v['title'], self::money($v['new'], $meta));
             case 'sale_ended':
                 /* translators: 1: product name, 2: price now */
-                return sprintf(__('Sale ended: %1$s (%2$s)', 'seoprostats'), $title, $money($new));
+                return sprintf(__('Sale ended: %1$s (%2$s)', 'seoprostats'), $v['title'], self::money($v['new'], $meta));
             case 'coupon_published':
                 /* translators: %s: coupon code */
-                return sprintf(__('Coupon published: %s', 'seoprostats'), $title);
+                return sprintf(__('Coupon published: %s', 'seoprostats'), $v['title']);
             case 'coupon_changed':
+                $fields = isset($meta['fields']) && is_array($meta['fields']) ? array_keys($meta['fields']) : array();
                 /* translators: 1: coupon code, 2: fields changed */
-                return sprintf(__('Coupon changed: %1$s (%2$s)', 'seoprostats'), $title, $list(isset($meta['fields']) && is_array($meta['fields']) ? array_keys($meta['fields']) : array()));
+                return sprintf(__('Coupon changed: %1$s (%2$s)', 'seoprostats'), $v['title'], self::list_text($fields));
             case 'coupon_removed':
                 /* translators: %s: coupon code */
-                return sprintf(__('Coupon removed: %s', 'seoprostats'), $title);
+                return sprintf(__('Coupon removed: %s', 'seoprostats'), $v['title']);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Label of a site change: A/B tests, plugins, themes, WordPress and
+     * its settings.
+     *
+     * @param mixed                $kind Kind name.
+     * @param array<string,string> $v    Title, old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string|null Null for another kind.
+     */
+    private static function site_label($kind, array $v, array $meta) {
+        switch ($kind) {
             case 'ab_test_started':
-                return $old === 'paused'
+                return $v['old'] === 'paused'
                     /* translators: %s: A/B test name */
-                    ? sprintf(__('A/B test resumed: %s', 'seoprostats'), $title)
+                    ? sprintf(__('A/B test resumed: %s', 'seoprostats'), $v['title'])
                     /* translators: %s: A/B test name */
-                    : sprintf(__('A/B test started: %s', 'seoprostats'), $title);
+                    : sprintf(__('A/B test started: %s', 'seoprostats'), $v['title']);
             case 'ab_test_paused':
                 /* translators: %s: A/B test name */
-                return sprintf(__('A/B test paused: %s', 'seoprostats'), $title);
+                return sprintf(__('A/B test paused: %s', 'seoprostats'), $v['title']);
             case 'ab_test_ended':
                 /* translators: %s: A/B test name */
-                return sprintf(__('A/B test ended: %s', 'seoprostats'), $title);
+                return sprintf(__('A/B test ended: %s', 'seoprostats'), $v['title']);
             case 'ab_test_winner':
                 /* translators: 1: A/B test name, 2: the winning variant's label */
-                return sprintf(__('A/B test winner: %1$s (%2$s)', 'seoprostats'), $title, isset($meta['label']) && $meta['label'] !== '' ? (string) $meta['label'] : $new);
+                return sprintf(__('A/B test winner: %1$s (%2$s)', 'seoprostats'), $v['title'], self::detail_text($meta, 'label', $v['new']));
             case 'plugin_installed':
                 /* translators: 1: plugin or theme name, 2: version */
-                return sprintf(__('Installed: %1$s %2$s', 'seoprostats'), $title, $new);
+                return sprintf(__('Installed: %1$s %2$s', 'seoprostats'), $v['title'], $v['new']);
             case 'plugin_updated':
                 /* translators: 1: plugin name, 2: old version, 3: new version */
-                return sprintf(__('Plugin updated: %1$s %2$s → %3$s', 'seoprostats'), $title, $old, $new);
+                return sprintf(__('Plugin updated: %1$s %2$s → %3$s', 'seoprostats'), $v['title'], $v['old'], $v['new']);
             case 'plugin_activated':
                 /* translators: %s: plugin name */
-                return sprintf(__('Plugin activated: %s', 'seoprostats'), $title);
+                return sprintf(__('Plugin activated: %s', 'seoprostats'), $v['title']);
             case 'plugin_deactivated':
                 /* translators: %s: plugin name */
-                return sprintf(__('Plugin deactivated: %s', 'seoprostats'), $title);
+                return sprintf(__('Plugin deactivated: %s', 'seoprostats'), $v['title']);
             case 'plugin_deleted':
                 /* translators: %s: plugin name */
-                return sprintf(__('Plugin deleted: %s', 'seoprostats'), $title);
+                return sprintf(__('Plugin deleted: %s', 'seoprostats'), $v['title']);
             case 'theme_switched':
                 /* translators: 1: old theme, 2: new theme */
-                return sprintf(__('Theme switched: %1$s → %2$s', 'seoprostats'), $old, $new);
+                return sprintf(__('Theme switched: %1$s → %2$s', 'seoprostats'), $v['old'], $v['new']);
             case 'theme_updated':
                 /* translators: 1: theme name, 2: old version, 3: new version */
-                return sprintf(__('Theme updated: %1$s %2$s → %3$s', 'seoprostats'), $title, $old, $new);
+                return sprintf(__('Theme updated: %1$s %2$s → %3$s', 'seoprostats'), $v['title'], $v['old'], $v['new']);
             case 'core_updated':
                 /* translators: 1: old version, 2: new version */
-                return sprintf(__('WordPress updated: %1$s → %2$s', 'seoprostats'), $old, $new);
+                return sprintf(__('WordPress updated: %1$s → %2$s', 'seoprostats'), $v['old'], $v['new']);
             case 'search_visibility':
-                return $new === '0' ? __('Search engines discouraged from indexing the site', 'seoprostats') : __('Search engines allowed to index the site', 'seoprostats');
+                return $v['new'] === '0' ? __('Search engines discouraged from indexing the site', 'seoprostats') : __('Search engines allowed to index the site', 'seoprostats');
             case 'permalinks':
                 /* translators: 1: old structure, 2: new structure */
-                return sprintf(__('Permalinks changed: %1$s → %2$s', 'seoprostats'), $old !== '' ? $old : __('plain', 'seoprostats'), $new !== '' ? $new : __('plain', 'seoprostats'));
+                return sprintf(__('Permalinks changed: %1$s → %2$s', 'seoprostats'), self::or_text($v['old'], __('plain', 'seoprostats')), self::or_text($v['new'], __('plain', 'seoprostats')));
             case 'site_address':
                 /* translators: 1: old address, 2: new address */
-                return sprintf(__('Site address changed: %1$s → %2$s', 'seoprostats'), $old, $new);
+                return sprintf(__('Site address changed: %1$s → %2$s', 'seoprostats'), $v['old'], $v['new']);
             case 'front_page':
                 /* translators: 1: setting, 2: value before, 3: value now */
-                return sprintf(__('Front page setting changed: %1$s (%2$s → %3$s)', 'seoprostats'), $title, isset($meta['old_title']) && $meta['old_title'] !== '' ? (string) $meta['old_title'] : $old, isset($meta['new_title']) && $meta['new_title'] !== '' ? (string) $meta['new_title'] : $new);
+                return sprintf(__('Front page setting changed: %1$s (%2$s → %3$s)', 'seoprostats'), $v['title'], self::detail_text($meta, 'old_title', $v['old']), self::detail_text($meta, 'new_title', $v['new']));
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Label of a search engine update, a note or an experiment.
+     *
+     * @param array<string,mixed>  $c    The change (kind, t, object).
+     * @param array<string,string> $v    Title, old and new.
+     * @param array<string,mixed>  $meta Details.
+     * @return string|null Null for another kind.
+     */
+    private static function note_label(array $c, array $v, array $meta) {
+        switch ($c['kind']) {
             case 'search_update':
-                $engine = isset($meta['engine']) && $meta['engine'] !== '' ? (string) $meta['engine'] : (isset($c['object']['type']) ? (string) $c['object']['type'] : '');
-                if (!array_key_exists('ended', $meta)) {
-                    /* translators: 1: search engine or feed, 2: what it announced */
-                    return sprintf(__('%1$s: %2$s', 'seoprostats'), $engine, $title);
-                }
-                if ($meta['ended'] === '') {
-                    /* translators: 1: search engine, 2: the update's name */
-                    return sprintf(__('%1$s: %2$s (rolling out)', 'seoprostats'), $engine, $title);
-                }
-                $start = strtotime((string) $c['t']);
-                $end   = strtotime((string) $meta['ended']);
-                /* translators: 1: search engine, 2: the update's name, 3: how long it took, such as "12 days" */
-                return sprintf(__('%1$s: %2$s (%3$s)', 'seoprostats'), $engine, $title, human_time_diff((int) $start, (int) max($start, $end)));
+                return self::update_label($c, $v['title'], $meta);
             case 'note':
-                return $new;
+                return $v['new'];
             case 'experiment':
                 /* translators: %s: the experiment's hypothesis */
-                return sprintf(__('Experiment started: %s', 'seoprostats'), $new);
+                return sprintf(__('Experiment started: %s', 'seoprostats'), $v['new']);
             default:
-                return $title;
+                return null;
         }
+    }
+
+    /**
+     * Label of a search engine update: announced, rolling out, or done
+     * (with how long it took).
+     *
+     * @param array<string,mixed> $c     The change (t, object).
+     * @param string              $title The update's name.
+     * @param array<string,mixed> $meta  Details (engine, ended).
+     * @return string
+     */
+    private static function update_label(array $c, $title, array $meta) {
+        if (isset($meta['engine']) && $meta['engine'] !== '') {
+            $engine = (string) $meta['engine'];
+        } else {
+            $engine = isset($c['object']['type']) ? (string) $c['object']['type'] : '';
+        }
+        if (!array_key_exists('ended', $meta)) {
+            /* translators: 1: search engine or feed, 2: what it announced */
+            return sprintf(__('%1$s: %2$s', 'seoprostats'), $engine, $title);
+        }
+        if ($meta['ended'] === '') {
+            /* translators: 1: search engine, 2: the update's name */
+            return sprintf(__('%1$s: %2$s (rolling out)', 'seoprostats'), $engine, $title);
+        }
+        $start = strtotime((string) $c['t']);
+        $end   = strtotime((string) $meta['ended']);
+        /* translators: 1: search engine, 2: the update's name, 3: how long it took, such as "12 days" */
+        return sprintf(__('%1$s: %2$s (%3$s)', 'seoprostats'), $engine, $title, human_time_diff((int) $start, (int) max($start, $end)));
+    }
+
+    /**
+     * A detail as a whole number, or a default.
+     *
+     * @param array<string,mixed> $meta    Details.
+     * @param string              $key     Detail.
+     * @param int                 $default When it is not there.
+     * @return int
+     */
+    private static function meta_int(array $meta, $key, $default) {
+        return isset($meta[$key]) ? (int) $meta[$key] : $default;
+    }
+
+    /**
+     * How many items a list detail has (0 when it is not there).
+     *
+     * @param array<string,mixed> $meta Details.
+     * @param string              $key  Detail.
+     * @return int
+     */
+    private static function meta_count(array $meta, $key) {
+        return isset($meta[$key]) ? count((array) $meta[$key]) : 0;
+    }
+
+    /**
+     * A detail as it is, or an empty list.
+     *
+     * @param array<string,mixed> $meta Details.
+     * @param string              $key  Detail.
+     * @return mixed
+     */
+    private static function meta_value(array $meta, $key) {
+        return isset($meta[$key]) ? $meta[$key] : array();
+    }
+
+    /**
+     * A detail as text when it is set and not empty, else a fallback.
+     *
+     * @param array<string,mixed> $meta     Details.
+     * @param string              $key      Detail.
+     * @param string              $fallback Otherwise.
+     * @return string
+     */
+    private static function detail_text(array $meta, $key, $fallback) {
+        return isset($meta[$key]) && $meta[$key] !== '' ? (string) $meta[$key] : $fallback;
+    }
+
+    /**
+     * A text, or a fallback when it is empty.
+     *
+     * @param string $text     Text.
+     * @param string $fallback Otherwise.
+     * @return string
+     */
+    private static function or_text($text, $fallback) {
+        return $text !== '' ? $text : $fallback;
+    }
+
+    /**
+     * A list as comma-separated text; a dash for none.
+     *
+     * @param mixed $items Items.
+     * @return string
+     */
+    private static function list_text($items) {
+        $text = implode(', ', array_map('strval', is_array($items) ? $items : array()));
+        return $text !== '' ? $text : '–';
+    }
+
+    /**
+     * An amount with the change's currency.
+     *
+     * @param string              $amount Amount.
+     * @param array<string,mixed> $meta   Details (currency).
+     * @return string
+     */
+    private static function money($amount, array $meta) {
+        return trim($amount . ' ' . (isset($meta['currency']) ? (string) $meta['currency'] : ''));
     }
 
     /**
