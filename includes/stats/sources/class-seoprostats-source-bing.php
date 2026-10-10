@@ -194,6 +194,66 @@ final class SEOProStats_Source_Bing {
     }
 
     /**
+     * Read a site's additional facts. Only read-only methods are allowed.
+     * The caller supplies the connected site's key and controls the request
+     * budget; this method never schedules work or stores an answer.
+     *
+     * Link methods are zero-based, with TotalPages in the answer. GetUrlLinks
+     * takes link (not url). GetFeedDetails takes feedUrl. Quotas are an
+     * object, not a list, and do not describe the API's read-request limit.
+     *
+     * @param string               $method One of the methods below.
+     * @param string               $key    API key.
+     * @param string               $site   Verified site.
+     * @param array<string,string> $args   page, link or feedUrl as appropriate.
+     * @return array<string,mixed>|array<int,mixed>|WP_Error
+     */
+    public static function site_data($method, $key, $site, array $args = array()) {
+        $methods = array(
+            'GetLinkCounts'         => array('page'),
+            'GetUrlLinks'           => array('link', 'page'),
+            'GetCrawlIssues'        => array(),
+            'GetCrawlStats'         => array(),
+            'GetFeeds'              => array(),
+            'GetFeedDetails'        => array('feedUrl'),
+            'GetUrlSubmissionQuota' => array(),
+        );
+        if (!isset($methods[$method]) || $key === '' || $site === '') {
+            return new WP_Error('seoprostats_bing_site_data', __('A connected Bing site and a supported read method are required.', 'seoprostats'));
+        }
+        if (array_diff(array_keys($args), $methods[$method]) || array_diff($methods[$method], array_keys($args))) {
+            return new WP_Error('seoprostats_bing_parameters', __('The Bing read method has missing or unknown parameters.', 'seoprostats'));
+        }
+        if (isset($args['page']) && (!ctype_digit((string) $args['page']) || (int) $args['page'] > 32767)) {
+            return new WP_Error('seoprostats_bing_page', __('Bing pages are numbered from 0 to 32767.', 'seoprostats'));
+        }
+        foreach (array('link', 'feedUrl') as $name) {
+            if (isset($args[$name]) && trim((string) $args[$name]) === '') {
+                return new WP_Error('seoprostats_bing_parameters', __('The Bing read method needs an address.', 'seoprostats'));
+            }
+        }
+        $answer = self::request($method, $key, array('siteUrl' => $site) + $args);
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        if ($method === 'GetLinkCounts' || $method === 'GetUrlLinks') {
+            $rows = $method === 'GetLinkCounts' ? 'Links' : 'Details';
+            if (!isset($answer['TotalPages'], $answer[$rows]) || !is_array($answer[$rows]) || !is_int($answer['TotalPages']) || $answer['TotalPages'] < 0 || $answer['TotalPages'] > 32768) {
+                return new WP_Error('seoprostats_bing_shape', __('Bing returned an incomplete link page; it must not count as a missing-link check.', 'seoprostats'));
+            }
+        } elseif ($method === 'GetUrlSubmissionQuota') {
+            foreach (array('DailyQuota', 'MonthlyQuota') as $name) {
+                if (!isset($answer[$name]) || !is_int($answer[$name]) || $answer[$name] < 0) {
+                    return new WP_Error('seoprostats_bing_shape', __('Bing returned an incomplete URL submission quota.', 'seoprostats'));
+                }
+            }
+        } elseif (array_keys($answer) !== range(0, count($answer) - 1) && $answer !== array()) {
+            return new WP_Error('seoprostats_bing_shape', __('Bing returned an unexpected list of site facts.', 'seoprostats'));
+        }
+        return $answer;
+    }
+
+    /**
      * The last final day: the end of the newest week Bing has given, but
      * not past its newest day. A site with no recent weeks (few searches)
      * waits for a week to be nine days old, by then surely given.
@@ -509,7 +569,7 @@ final class SEOProStats_Source_Bing {
      * @param string               $method The API's method.
      * @param string               $key    API key.
      * @param array<string,string> $args   Parameters.
-     * @return array<int,mixed>|WP_Error
+     * @return array<string,mixed>|array<int,mixed>|WP_Error
      */
     private static function request($method, $key, array $args = array()) {
         $url      = add_query_arg(array_map('rawurlencode', array('apikey' => $key) + $args), self::API . $method);
