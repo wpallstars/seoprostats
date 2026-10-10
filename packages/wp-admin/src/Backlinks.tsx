@@ -522,7 +522,8 @@ function stateLabel(state: BacklinkReportedState, links: number): string {
 			/* translators: %s: links to this site on the page. */
 			return sprintf(_n('%s link to this site', '%s links to this site', links, 'seoprostats'), number(links));
 		case 'none':
-			return __('No link to this site seen', 'seoprostats');
+			// The check saw no link, but links added by scripts or hidden from automated visits can still be there.
+			return __('Visit the link to check for backlinks', 'seoprostats');
 		case 'error':
 			return __('Could not be opened; tried again later', 'seoprostats');
 		case 'gone':

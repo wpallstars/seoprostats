@@ -41,7 +41,10 @@
 		/* translators: 1: rows kept, 2: rows skipped */
 		return sprintf(__('Last import done: %1$s rows kept, %2$s skipped.', 'seoprostats'), number(job.accepted), number(job.skipped));
 	}
+	// Failed status reads in a row: a busy or updating site can answer a poll with an error page, which is not the end of the import.
+	var linksFailures = 0;
 	function showLinks(job) {
+		linksFailures = 0;
 		linksStatus.hidden = false;
 		linksStatus.textContent = linksText(job);
 		linksProgress.hidden = job.status !== 'running';
@@ -50,17 +53,47 @@
 		linksForm.querySelector('button').disabled = job.status === 'running';
 		if (job.status === 'running') {
 			linksWatched = true;
-			window.setTimeout(pollLinks, 5000);
+			// Each status read also moves the import on, so read again soon.
+			window.setTimeout(pollLinks, 1500);
 		} else if (linksWatched || job.history) {
 			speak(linksStatus.textContent);
 			window.setTimeout(function () { window.location.reload(); }, 1500);
 		}
 	}
 	function pollLinks() {
-		wp.apiFetch({ path: base + 'backlinks/import' }).then(showLinks).catch(function (error) {
-			linksStatus.textContent = error.message || __('The links import status could not be read.', 'seoprostats');
-			linksForm.querySelector('button').disabled = false;
+		wp.apiFetch({ path: base + 'backlinks/import' }).then(showLinks).catch(function () {
+			++linksFailures;
+			if (linksFailures > 10) {
+				linksStatus.textContent = __('The progress could not be read for a while. The import carries on in the background; reload this page to see it.', 'seoprostats');
+				return;
+			}
+			var wait = Math.min(30, 5 * linksFailures);
+			/* translators: %s: seconds until the next try */
+			linksStatus.textContent = sprintf(__('Still importing, but the progress could not be read just now. Trying again in %s seconds.', 'seoprostats'), number(wait));
+			window.setTimeout(pollLinks, wait * 1000);
 		});
+	}
+	function uploadFailed(error) {
+		var message = (error && error.message) || __('The links could not be imported.', 'seoprostats');
+		function failed() {
+			linksProgress.hidden = true;
+			linksStatus.textContent = message;
+			linksForm.querySelector('button').disabled = false;
+		}
+		// A refusal from the site (such as another import still running) is its answer. Only a lost
+		// answer (an error page or a dropped connection) may hide a file the site kept: ask then.
+		var code = error && error.code;
+		if (code !== 'invalid_json' && code !== 'fetch_error') {
+			failed();
+			return;
+		}
+		wp.apiFetch({ path: base + 'backlinks/import' }).then(function (job) {
+			if (job.status === 'running') {
+				showLinks(job);
+			} else {
+				failed();
+			}
+		}).catch(failed);
 	}
 	if (linksForm) {
 		linksForm.addEventListener('submit', function (event) {
@@ -71,10 +104,12 @@
 			body.append('file', file);
 			body.append('source', linksForm.querySelector('select').value);
 			linksForm.querySelector('button').disabled = true;
-			wp.apiFetch({ path: base + 'backlinks/import', method: 'POST', body: body }).then(showLinks).catch(function (error) {
-				linksStatus.textContent = error.message || __('The links could not be imported.', 'seoprostats');
-				linksForm.querySelector('button').disabled = false;
-			});
+			linksStatus.hidden = false;
+			linksStatus.textContent = __('Uploading and reading the file…', 'seoprostats');
+			// No value: the bar moves without a measure until the rows are counted.
+			linksProgress.hidden = false;
+			linksProgress.removeAttribute('value');
+			wp.apiFetch({ path: base + 'backlinks/import', method: 'POST', body: body }).then(showLinks).catch(uploadFailed);
 		});
 		if (linksStatus.getAttribute('data-status') === 'running') { pollLinks(); }
 	}

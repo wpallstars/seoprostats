@@ -87,6 +87,7 @@ final class SEOProStats_Collection {
         add_action('seoprostats_backlinks_check', array(__CLASS__, 'backlinks_check'));
         add_action(self::MIGRATE_SCAN_HOOK, array(__CLASS__, 'migrate_scan'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'migrate_scan_due'));
+        add_action(self::CRON_HOOK, array(__CLASS__, 'backlinks_import_due'));
         // Plugins switched on, off or deleted: look for statistics plugins again.
         foreach (array('activated_plugin', 'deactivated_plugin', 'deleted_plugin') as $hook) {
             add_action($hook, array(__CLASS__, 'forget_migrate'));
@@ -198,6 +199,21 @@ final class SEOProStats_Collection {
     public static function backlinks_import() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-import.php';
         SEOProStats_Backlinks_Import::run();
+    }
+
+    /**
+     * Hourly: a links import still running with no run scheduled lost its
+     * cron event (a site busy or replacing the plugin's files when it was
+     * due), so schedule it again rather than leave it waiting for good.
+     */
+    public static function backlinks_import_due() {
+        if (wp_next_scheduled(self::BACKLINK_IMPORT_HOOK)) {
+            return;
+        }
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-import.php';
+        if (SEOProStats_Backlinks_Import::status()['status'] === 'running') {
+            wp_schedule_single_event(time() + 5, self::BACKLINK_IMPORT_HOOK);
+        }
     }
 
     /**
