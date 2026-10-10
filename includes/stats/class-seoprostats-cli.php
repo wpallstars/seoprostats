@@ -5260,9 +5260,33 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             }
             $add(strtolower($source['name']), (bool) $ok, $detail, 'warn');
         }
-        if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
-            $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');
+        self::check_wp_cron($add);
+    }
+
+    /**
+     * Check that something runs the scheduled jobs: with DISABLE_WP_CRON,
+     * a server cron job must, and the minute job shows whether it does
+     * (late past 15 minutes; Site Health's threshold). With WP-Cron on,
+     * page loads start them, so lateness only means no recent pages.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_wp_cron(callable $add) {
+        $late = SEOProStats_Collection::jobs_late();
+        $ago  = null === $late ? 'not scheduled' : ($late > 0 ? human_time_diff(time() - $late) . ' late' : 'on time');
+        if (!SEOProStats_Collection::wp_cron_off()) {
+            $add('WP-Cron', true, 'runs when pages load; minute job ' . $ago);
+            return;
         }
+        $running = null !== $late && $late <= SEOProStats_Collection::JOBS_LATE;
+        $add(
+            'WP-Cron',
+            $running,
+            $running
+                ? 'DISABLE_WP_CRON is set and a server cron job runs the jobs; minute job ' . $ago
+                : 'DISABLE_WP_CRON is set but no server cron job runs the jobs (minute job ' . $ago . '): add one every 5 minutes or less running php ' . ABSPATH . 'wp-cron.php or wp cron event run --due-now',
+            'warn'
+        );
     }
 
     /**
@@ -5278,8 +5302,11 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         $processed = get_option(SEOProStats_Collection::PROCESS_OPTION, array());
         $last      = is_array($processed) && isset($processed['last']) ? (int) $processed['last'] : 0;
-        $stale     = $waiting > 0 && $last > 0 && $last < time() - 10 * MINUTE_IN_SECONDS;
-        $add('processing', !$stale, sprintf('%s waiting; last run %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never'), 'warn');
+        // The last run that found hits can be long ago on a quiet site; what matters is whether
+        // the minute job is running on time to pick up what waits now.
+        $late  = SEOProStats_Collection::jobs_late();
+        $stale = $waiting > 0 && (null === $late || $late > 10 * MINUTE_IN_SECONDS);
+        $add('processing', !$stale, sprintf('%s waiting; last run %s; minute job %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never', null === $late ? 'not scheduled' : ($late > 0 ? human_time_diff(time() - $late) . ' late' : 'on time')), 'warn');
     }
 
     /**

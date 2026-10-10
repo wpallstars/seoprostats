@@ -200,6 +200,9 @@ final class SEOProStats_Setup {
         // The next step in moving from another statistics plugin, on Plugins and our screens (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-migrate-notices.php';
         SEOProStats_Migrate_Notices::init();
+        // WP-Cron off and no server cron job running the jobs: how to add one, on our screens (hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-schedule-notice.php';
+        SEOProStats_Schedule_Notice::init();
         // Settings → Shared reports: the accent colour picker (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-share-settings.php';
         SEOProStats_Share_Settings::init();
