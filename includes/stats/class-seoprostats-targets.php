@@ -723,10 +723,13 @@ final class SEOProStats_Targets {
                 continue;
             }
             $value = $row[$field];
-            if ($value !== null && (!is_scalar($value) || !preg_match('/^\d{1,10}$/', (string) $value) || (float) $value > 4294967295)) {
+            if ($value === '') {
+                continue; // An empty CSV cell is unknown, not a zero or a deletion.
+            }
+            if ($value !== null && (is_bool($value) || !is_scalar($value) || !preg_match('/^\d{1,10}$/', (string) $value) || (float) $value > 4294967295)) {
                 return null;
             }
-            $date = isset($row[$field . '_measured']) ? $row[$field . '_measured'] : wp_date('Y-m-d');
+            $date = isset($row[$field . '_measured']) && $row[$field . '_measured'] !== '' ? $row[$field . '_measured'] : wp_date('Y-m-d');
             if (!is_string($date) || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $date, $parts) || !checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1]) || $date > wp_date('Y-m-d')) {
                 return null;
             }
@@ -748,6 +751,8 @@ final class SEOProStats_Targets {
         if (!$fields) {
             return true;
         }
+        $fields['updated'] = time();
+        $fields['user_id'] = get_current_user_id();
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own bounded targets table, by primary key; wpdb escapes values and handles NULL.
         return $wpdb->update(SEOProStats_Schema::table('targets'), $fields, array('query_id' => $id)) !== false;
     }

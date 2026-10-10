@@ -1474,7 +1474,7 @@ export interface TargetSkipped {
 	/** 1 for the first data row. */
 	row: number;
 	query: string;
-	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit';
+	reason: 'query' | 'address' | 'priority' | 'status' | 'duplicate' | 'limit' | 'measurements';
 	message: string;
 }
 
