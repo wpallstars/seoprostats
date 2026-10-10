@@ -1618,6 +1618,8 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *   - lost
      *   - check
      *   - import
+     *   - review
+     *   - disavow
      * ---
      *
      * [<file>]
@@ -1628,6 +1630,18 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *
      * [--all]
      * : With check: open every referring page now, not only those due.
+     *
+     * [--scope=<scope>]
+     * : With review: domain or url (use --user with an administrator).
+     *
+     * [--target=<target>]
+     * : Domain or source URL to review.
+     *
+     * [--decision=<decision>]
+     * : keep, disavow or undecided. Without it, list review rows as JSON.
+     *
+     * [--merge=<file>]
+     * : With disavow: merge a readable local existing text list into this export.
      *
      * [--range=<range>]
      * : Period for new and lost links, and the sites' visits (30d when left out).
@@ -1665,6 +1679,36 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
     public function backlinks($args, $assoc) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         $kind = isset($args[0]) ? (string) $args[0] : 'links';
+        if ($kind === 'review' || $kind === 'disavow') {
+            require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+            if (!current_user_can('manage_options')) {
+                WP_CLI::error(__('Use --user with an administrator for backlink decisions and exports.', 'seoprostats'));
+            }
+            $merge = '';
+            if (isset($assoc['merge'])) {
+                $file = $assoc['merge'];
+                if (strpos($file, '://') !== false || !is_file($file) || !is_readable($file) || filesize($file) > SEOProStats_Backlink_Review::MAX_BYTES) {
+                    WP_CLI::error(__('Give a readable local text file of at most 2 MB.', 'seoprostats'));
+                }
+                // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- bounded local file supplied by the CLI operator.
+                $merge = file_get_contents($file);
+                if ($merge === false) {
+                    WP_CLI::error(__('The list could not be read.', 'seoprostats'));
+                }
+            }
+            $req = $this->request($assoc + array('range' => '30d', 'limit' => '25'));
+            $answer = $this->on_data($assoc, static function () use ($kind, $assoc, $req, $merge) {
+                if ($kind === 'disavow') {
+                    return SEOProStats_Backlink_Review::export($merge);
+                }
+                return isset($assoc['decision']) ? SEOProStats_Backlink_Review::decide($assoc) : SEOProStats_Backlink_Review::report($req);
+            });
+            if (is_wp_error($answer)) {
+                WP_CLI::error($answer->get_error_message());
+            }
+            WP_CLI::line(is_string($answer) ? rtrim($answer, "\n") : (string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            return;
+        }
         if ($kind === 'import') {
             require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
             if (!isset($args[1]) || !is_readable($args[1])) {

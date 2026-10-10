@@ -275,7 +275,8 @@ final class SEOProStats_Backlinks {
         $url   = isset($texts[(int) $page['source_url_id']]) ? $texts[(int) $page['source_url_id']] : '';
         $host  = isset($texts[(int) $page['source_host_id']]) ? $texts[(int) $page['source_host_id']] : (string) wp_parse_url($url, PHP_URL_HOST);
         $now   = time();
-        $got   = $url !== '' ? self::fetch($url) : new WP_Error('seoprostats_backlinks_url', 'No address.');
+        $redirects = array();
+        $got   = $url !== '' ? self::fetch($url, $redirects) : new WP_Error('seoprostats_backlinks_url', 'No address.');
         if (is_wp_error($got)) {
             // A failed request says nothing about the links.
             self::touch((int) $page['id']);
@@ -289,6 +290,8 @@ final class SEOProStats_Backlinks {
         }
         $gone  = $got === 'gone';
         $links = $gone ? array() : self::parse((string) $got);
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        $facts = $gone ? null : wp_json_encode(SEOProStats_Backlink_Review::page_facts((string) $got) + $redirects);
         $ids   = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links)) : array();
         $anchors = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor')) : array();
         $seen  = array();
@@ -333,6 +336,10 @@ final class SEOProStats_Backlinks {
                 $events['new'][$host][] = array('from' => $url, 'to' => $path, 'anchor' => $link['anchor']);
             }
         }
+        if (!$gone) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, indexed source_url read/write; no new requests.
+            $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', $table, (string) $facts, (int) $page['source_url_id']));
+        }
         // Links not found now: a miss, lost after MISSES in a row or when the page is gone.
         $gone_paths = array();
         foreach ($by as $path_id => $row) {
@@ -375,9 +382,10 @@ final class SEOProStats_Backlinks {
      * HTTP 404 or 410, or an error. Public addresses only, no cookies.
      *
      * @param string $url Address.
+     * @param array<string,int> $facts Observed redirect count, when the HTTP transport provides it.
      * @return string|WP_Error
      */
-    private static function fetch($url) {
+    private static function fetch($url, array &$facts) {
         $response = wp_safe_remote_get($url, array(
             'timeout'             => self::TIMEOUT,
             'redirection'         => 3,
@@ -387,6 +395,9 @@ final class SEOProStats_Backlinks {
         ));
         if (is_wp_error($response)) {
             return $response;
+        }
+        if (isset($response['http_response']) && $response['http_response'] instanceof WP_HTTP_Requests_Response) {
+            $facts['redirects'] = count($response['http_response']->get_response_object()->history);
         }
         $code = (int) wp_remote_retrieve_response_code($response);
         if ($code === 404 || $code === 410) {
@@ -607,9 +618,9 @@ final class SEOProStats_Backlinks {
         $from  = (int) $range['from'];
         $to    = (int) $range['to'];
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its status_first key in its order.
-        $live = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, authority, providers FROM %i FORCE INDEX (`status_first`) WHERE status = %d ORDER BY first_seen DESC LIMIT %d', $table, self::LINK_LIVE, self::MAX_ROWS), ARRAY_A);
+        $live = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, authority, providers, facts FROM %i FORCE INDEX (`status_first`) WHERE status = %d ORDER BY first_seen DESC LIMIT %d', $table, self::LINK_LIVE, self::MAX_ROWS), ARRAY_A);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, a range of its lost key in its order.
-        $lost = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost, providers FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
+        $lost = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost, providers, facts FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
         $live = array_values(array_filter($live, static function ($row) use ($source) {
             return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
         }));
@@ -646,6 +657,7 @@ final class SEOProStats_Backlinks {
                 'new'        => (int) $row['first_seen'] >= $from && (int) $row['first_seen'] < $to,
                 'authority'  => isset($row['authority']) ? (int) $row['authority'] : 0,
                 'providers'  => (object) $providers,
+                'facts'      => (object) (json_decode(isset($row['facts']) ? (string) $row['facts'] : '', true) ?: array()),
             );
         };
         $links = array_map($link, $live);
@@ -894,9 +906,10 @@ final class SEOProStats_Backlinks {
      * Write links straight to the current data set (the demo data):
      * referring pages and their links as a check would have found them.
      *
-     * @param array<int,array{url:string,path:string,anchor:string,rel:int,first_seen:int,last_seen:int,lost:int}> $links Links; lost 0 for live ones.
+     * @param array<int,array{url:string,path:string,anchor:string,rel:int,first_seen:int,last_seen:int,lost:int,facts?:array<string,mixed>}> $links Links; lost 0 for live ones.
      */
     public static function write_links(array $links) {
+        global $wpdb;
         self::load();
         $urls    = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array_column($links, 'url'));
         $paths   = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_column($links, 'path'));
@@ -933,6 +946,10 @@ final class SEOProStats_Backlinks {
                 (int) $link['last_seen'],
                 $lost ? self::MISSES : 0,
             ));
+            if (isset($link['facts'])) {
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- demo data only, indexed source_url read/write.
+                $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', $table, (string) wp_json_encode($link['facts']), $url_id));
+            }
             $page = isset($pages[$url]) ? $pages[$url] : array('host_id' => $host_id, 'url_id' => $url_id, 'first' => (int) $link['first_seen'], 'checked' => 0, 'live' => false);
             $page['first']   = min($page['first'], (int) $link['first_seen']);
             $page['checked'] = max($page['checked'], (int) $link['last_seen']);

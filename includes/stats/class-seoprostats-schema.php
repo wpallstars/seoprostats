@@ -52,8 +52,9 @@ final class SEOProStats_Schema {
      *      SEOProStats_Inspections).
      * v20: links export source bits and per-provider scores and dates.
      * v21: targets research counts and their independent measurement dates.
+     * v22: local backlink reviews and observed referring-page facts.
      */
-    const VERSION = 21;
+    const VERSION = 22;
 
     /** Keys a later version replaced: table => key names (dbDelta() only adds). */
     const OLD_KEYS = array('props' => array('ts', 'key_value'));
@@ -123,7 +124,7 @@ final class SEOProStats_Schema {
      * @return string[]
      */
     public static function names() {
-        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections');
+        return array('dict', 'sessions', 'pageviews', 'events', 'props', 'daily', 'clicks', 'pages', 'changes', 'gsc_pages', 'gsc_queries', 'gsc_pairs', 'gsc_totals', 'gsc_appearance', 'imports', 'experiments', 'queue', 'page_facts', 'page_links', 'sitemap', 'targets', 'ab_tests', 'ab_exposures', 'links', 'inspections', 'link_reviews');
     }
 
     /**
@@ -770,6 +771,7 @@ final class SEOProStats_Schema {
   misses tinyint unsigned NOT NULL DEFAULT 0,
   authority smallint unsigned NOT NULL DEFAULT 0,
   providers text DEFAULT NULL,
+  facts text DEFAULT NULL,
   PRIMARY KEY  (id),
   UNIQUE KEY lkey (lkey),
   KEY path_checked (path_id,checked),
@@ -778,6 +780,22 @@ final class SEOProStats_Schema {
   KEY lost (lost),
   KEY source_host (source_host_id)
 ) $charset;",
+
+            // Local owner decisions, independent of a link's lifecycle.
+            // rkey is SHA-256(scope + target); decision_id covers export reads.
+            'link_reviews' => "CREATE TABLE {$t['link_reviews']} (
+  id int unsigned NOT NULL AUTO_INCREMENT,
+  rkey binary(32) NOT NULL,
+  scope varchar(6) NOT NULL,
+  target text NOT NULL,
+  decision varchar(9) NOT NULL DEFAULT 'undecided',
+  imported tinyint unsigned NOT NULL DEFAULT 0,
+  user_id bigint unsigned NOT NULL DEFAULT 0,
+  reviewed int unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY  (id),
+  UNIQUE KEY rkey (rkey),
+  KEY decision_id (decision,id)
+) ENGINE=InnoDB $charset;",
 
             // Google's URL Inspection (SEOProStats_Inspections): one row per
             // page, the version in Google's index when it was last inspected

@@ -681,6 +681,28 @@ final class SEOProStats_Abilities {
                 ),
             ),
         ));
+        wp_register_ability('seoprostats/backlink-review', array(
+            'label' => __('Backlink review', 'seoprostats'),
+            'description' => __('Review explained spam signals, save local keep/disavow/undecided decisions, merge a prior list or generate Google disavow text. Nothing is submitted; most sites never need disavow. Use a URL-prefix property and remember an upload replaces the old list.', 'seoprostats'),
+            'category' => self::CATEGORY,
+            'input_schema' => array(
+                'type' => 'object', 'default' => array(), 'additionalProperties' => false,
+                'properties' => array(
+                    'action' => array('type' => 'string', 'enum' => array('list', 'decide', 'merge', 'export'), 'default' => 'list'),
+                    'scope' => array('type' => 'string', 'enum' => array('domain', 'url')),
+                    'target' => array('type' => 'string'),
+                    'decision' => array('type' => 'string', 'enum' => array('keep', 'disavow', 'undecided')),
+                    'text' => array('type' => 'string', 'maxLength' => 2097152),
+                    'limit' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25),
+                    'offset' => array('type' => 'integer', 'minimum' => 0, 'default' => 0),
+                    'data' => $data,
+                ),
+            ),
+            'output_schema' => array('type' => 'object'),
+            'execute_callback' => array(__CLASS__, 'backlink_review'),
+            'permission_callback' => array('SEOProStats_API', 'can_change'),
+            'meta' => array('show_in_rest' => true, 'annotations' => array('readonly' => false, 'destructive' => false, 'idempotent' => false)),
+        ));
         wp_register_ability('seoprostats/inspections', array(
             'label'               => __('Google URL Inspection', 'seoprostats'),
             'description'         => __('How Google indexed the site\'s pages, from Search Console\'s URL Inspection (the version in Google\'s index, not a live test), newest first. While Search Console is connected, the hourly import inspects up to the daily setting (200 by default; Google allows 2,000 a day per property): pages search has not shown first, then pages with search impressions, each again after 14 days. Each row: page, verdict (PASS, PARTIAL, FAIL, NEUTRAL), coverage (Google\'s reason in its words, such as "Crawled - currently not indexed"), indexing, robots, page_fetch, crawled_as, last_crawl, google_canonical and user_canonical, rich_verdict and rich (rich result types with their errors, warnings and issues), sitemaps and referring (addresses Google knows it from), link (the report in Search Console) and findings: robots_blocked, not_indexed, google_canonical (Google chose another canonical than the page\'s own), rich_errors. counts gives pages per verdict; progress the daily cap, today\'s use and the last error; sitemaps the property\'s submitted sitemaps with errors, warnings, last downloaded and problems (errors, stale, warnings), and submitted (false when the site\'s own sitemap index is not submitted). A verdict change is also a change on the timeline (index_status, seoprostats/markers).', 'seoprostats'),
@@ -1863,6 +1885,28 @@ final class SEOProStats_Abilities {
         $kind = isset($input['kind']) ? (string) $input['kind'] : 'links';
         return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
             return SEOProStats_Backlinks::report((array) $req, $kind);
+        });
+    }
+
+    /** Local owner review; export text is wrapped for the ability's object contract. @param array<string,mixed>|null $input Input. @return array<string,mixed>|WP_Error */
+    public static function backlink_review($input = null) {
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        $input = is_array($input) ? $input : array();
+        return SEOProStats_API::on_data(isset($input['data']) ? (string) $input['data'] : '', static function () use ($input) {
+            $action = isset($input['action']) ? (string) $input['action'] : 'list';
+            if ($action === 'decide') {
+                return SEOProStats_Backlink_Review::decide($input);
+            }
+            $text = isset($input['text']) ? (string) $input['text'] : '';
+            if ($action === 'merge') {
+                return SEOProStats_Backlink_Review::merge($text);
+            }
+            if ($action === 'export') {
+                $out = SEOProStats_Backlink_Review::export($text);
+                return is_wp_error($out) ? $out : array('text' => $out);
+            }
+            $req = SEOProStats_Query::request($input + array('range' => '30d'));
+            return is_wp_error($req) ? $req : SEOProStats_Backlink_Review::report($req);
         });
     }
 
