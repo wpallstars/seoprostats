@@ -61,12 +61,12 @@ export function rangeLabel(key: RangeKey): string {
 		yesterday: __('Yesterday', 'seoprostats'),
 		'24h': __('Last 24 hours', 'seoprostats'),
 		'7d': __('Last 7 days', 'seoprostats'),
-		'28d': __('Last 28 days', 'seoprostats'),
+		'28d': __('Last 4 weeks', 'seoprostats'),
 		'30d': __('Last 30 days', 'seoprostats'),
 		'90d': __('Last 90 days', 'seoprostats'),
-		'91d': __('Last 91 days', 'seoprostats'),
-		'182d': __('Last 182 days', 'seoprostats'),
-		'364d': __('Last 364 days', 'seoprostats'),
+		'91d': __('Last 13 weeks', 'seoprostats'),
+		'182d': __('Last 26 weeks', 'seoprostats'),
+		'364d': __('Last 52 weeks', 'seoprostats'),
 		week: __('This week', 'seoprostats'),
 		month: __('This month', 'seoprostats'),
 		year: __('This year', 'seoprostats'),
@@ -76,6 +76,26 @@ export function rangeLabel(key: RangeKey): string {
 		custom: __('Custom dates', 'seoprostats'),
 	};
 	return labels[key];
+}
+
+/** A heading in the period menu and the ranges under it; ranges without a heading follow the groups. */
+export interface RangeGroup {
+	label?: string;
+	keys: RangeKey[];
+}
+
+/**
+ * The period menu. Weeks are whole weeks, so the previous period meets the
+ * same weekdays. 30d, 90d and realtime stay valid in links and the API but
+ * are left out; the menu shows one only while it is the chosen period.
+ */
+export function rangeMenu(): RangeGroup[] {
+	return [
+		{ label: __('Days', 'seoprostats'), keys: ['today', 'yesterday', '24h', '7d'] },
+		{ label: __('Weeks', 'seoprostats'), keys: ['28d', '91d', '182d', '364d'] },
+		{ label: __('Calendar', 'seoprostats'), keys: ['week', 'month', 'year', '12mo', 'lastyear'] },
+		{ keys: ['all', 'custom'] },
+	];
 }
 
 export function compareLabel(key: CompareKey): string {
