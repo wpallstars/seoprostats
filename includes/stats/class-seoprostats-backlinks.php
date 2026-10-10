@@ -117,41 +117,95 @@ final class SEOProStats_Backlinks {
      */
     public static function run($budget = self::BUDGET, $force = false, $all = false) {
         $out = array('new_pages' => 0, 'checked' => 0, 'links_new' => 0, 'links_lost' => 0, 'errors' => 0, 'skipped' => 0, 'more' => false);
-        if (SEOProStats_Schema::set() !== 'live' || !SEOProStats_Schema::is_current() || (!$force && !SEOProStats_Statistics::backlinks())) {
+        if (!self::may_run($force)) {
             return self::state() + $out;
         }
         self::load();
         $start = microtime(true);
         $out['new_pages'] = self::collect($start, $budget);
         $events = array('new' => array(), 'lost' => array());
-        $due    = $all ? time() : time() - self::RECHECK;
-        // Batches of due pages until none is left or the time is up (checked before each page).
-        while (true) {
-            $pages = self::due($due);
-            if (!$pages) {
-                break;
-            }
-            foreach ($pages as $page) {
-                if (!SEOProStats_Feature::more_time($start, $budget)) {
-                    $out['more'] = true;
-                    break 2;
-                }
-                // No link at the last check and no visit since: not worth opening yet.
-                if (!$all && ((int) $page['found'] & ~self::FOUND['referrer']) === 0 && (int) $page['checked'] > 0 && (int) $page['status'] === self::PAGE_NONE && (int) $page['last_seen'] <= (int) $page['checked']) {
-                    self::touch((int) $page['id']);
-                    ++$out['skipped'];
-                    continue;
-                }
-                $done = self::check($page, $events);
-                ++$out['checked'];
-                if ($done === 'error') {
-                    ++$out['errors'];
-                }
-            }
-        }
+        self::check_due($all, $start, $budget, $out, $events);
         $out['links_new']  = self::count_events($events['new']);
         $out['links_lost'] = self::count_events($events['lost']);
         self::changes($events);
+        self::save_run($out);
+        return self::state() + $out;
+    }
+
+    /**
+     * Whether the check may run: live data in the current schema, with the
+     * setting on (or $force).
+     *
+     * @param bool $force Run though the setting is off (WP-CLI).
+     * @return bool
+     */
+    private static function may_run($force) {
+        return SEOProStats_Schema::set() === 'live' && SEOProStats_Schema::is_current() && ($force || SEOProStats_Statistics::backlinks());
+    }
+
+    /**
+     * Check the due referring pages, batch by batch, until none is left or
+     * the time is up (checked before each page).
+     *
+     * @param bool                                                    $all    Every referring page now, not only those due.
+     * @param float                                                   $start  microtime(true) when the run began.
+     * @param int                                                     $budget Seconds.
+     * @param array<string,mixed>                                     $out    The run's counts; added to.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events New and lost links by referring host; added to.
+     */
+    private static function check_due($all, $start, $budget, array &$out, array &$events) {
+        $due   = $all ? time() : time() - self::RECHECK;
+        $pages = self::due($due);
+        while ($pages) {
+            foreach ($pages as $page) {
+                if (!SEOProStats_Feature::more_time($start, $budget)) {
+                    $out['more'] = true;
+                    return;
+                }
+                self::check_page($page, $all, $out, $events);
+            }
+            $pages = self::due($due);
+        }
+    }
+
+    /**
+     * Check one due referring page, or skip it when it is not worth
+     * opening yet.
+     *
+     * @param array<string,string>                                    $page   Its row.
+     * @param bool                                                    $all    Every referring page now (no skipping).
+     * @param array<string,mixed>                                     $out    The run's counts; added to.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events New and lost links by referring host; added to.
+     */
+    private static function check_page(array $page, $all, array &$out, array &$events) {
+        if (!$all && self::quiet($page)) {
+            self::touch((int) $page['id']);
+            ++$out['skipped'];
+            return;
+        }
+        $done = self::check($page, $events);
+        ++$out['checked'];
+        if ($done === 'error') {
+            ++$out['errors'];
+        }
+    }
+
+    /**
+     * No link at the last check and no visit since: not worth opening yet.
+     *
+     * @param array<string,string> $page Its row.
+     * @return bool
+     */
+    private static function quiet(array $page) {
+        return ((int) $page['found'] & ~self::FOUND['referrer']) === 0 && (int) $page['checked'] > 0 && (int) $page['status'] === self::PAGE_NONE && (int) $page['last_seen'] <= (int) $page['checked'];
+    }
+
+    /**
+     * Keep the run's progress and counts.
+     *
+     * @param array<string,mixed> $out The run's counts.
+     */
+    private static function save_run(array $out) {
         $state = self::state();
         update_option(SEOProStats_Schema::option(self::OPTION), array(
             'upto'    => $state['upto'],
@@ -160,7 +214,6 @@ final class SEOProStats_Backlinks {
             'errors'  => $out['errors'],
             'version' => time(),
         ), false);
-        return self::state() + $out;
     }
 
     /**
@@ -196,10 +249,36 @@ final class SEOProStats_Backlinks {
      * @return int Pages kept.
      */
     private static function add_referrers(array $rows) {
-        global $wpdb;
         if (!$rows) {
             return 0;
         }
+        $pages = self::referrer_pages($rows);
+        if (!$pages) {
+            return 0;
+        }
+        $urls  = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array_keys($pages));
+        $hosts = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_HOST, array_column($pages, 'host'));
+        $args  = array();
+        foreach ($pages as $url => $page) {
+            $url_id  = self::dict_id($urls, $url);
+            $host_id = isset($hosts[$page['host']]) ? (int) $hosts[$page['host']] : 0;
+            if (!$url_id) {
+                continue;
+            }
+            $args[] = array(self::key($url, 0), $host_id, $url_id, self::FOUND['referrer'], self::PAGE_NONE, $page['first'], $page['last']);
+        }
+        self::insert_referrers($args);
+        return count($args);
+    }
+
+    /**
+     * Visits' referrers as referring pages: address => host and the first
+     * and last visit. Hosts that are not domains are left out.
+     *
+     * @param array<int,array<string,string>> $rows ref_host_id, ref_path_id, first, last.
+     * @return array<string,array{host:string,first:int,last:int}>
+     */
+    private static function referrer_pages(array $rows) {
         // $wpdb gives the ids as strings.
         $texts = SEOProStats_Dict::values(array_map('intval', array_merge(array_column($rows, 'ref_host_id'), array_column($rows, 'ref_path_id'))));
         $pages = array();
@@ -214,27 +293,22 @@ final class SEOProStats_Backlinks {
             $last  = isset($pages[$url]) ? max($pages[$url]['last'], (int) $row['last']) : (int) $row['last'];
             $pages[$url] = array('host' => $host, 'first' => $first, 'last' => $last);
         }
-        if (!$pages) {
-            return 0;
-        }
-        $urls  = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array_keys($pages));
-        $hosts = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_HOST, array_column($pages, 'host'));
-        $args  = array();
-        foreach ($pages as $url => $page) {
-            $url_id  = isset($urls[SEOProStats_Dict::clean($url)]) ? (int) $urls[SEOProStats_Dict::clean($url)] : 0;
-            $host_id = isset($hosts[$page['host']]) ? (int) $hosts[$page['host']] : 0;
-            if (!$url_id) {
-                continue;
-            }
-            $args[] = array(self::key($url, 0), $host_id, $url_id, self::FOUND['referrer'], self::PAGE_NONE, $page['first'], $page['last']);
-        }
+        return $pages;
+    }
+
+    /**
+     * Insert referring pages' rows, or add the newest visit to known ones.
+     *
+     * @param array<int,array<int,int|string>> $args Per page: lkey (hex), source_host_id, source_url_id, found, status, first_seen, last_seen.
+     */
+    private static function insert_referrers(array $args) {
+        global $wpdb;
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; $groups holds only placeholder groups.
         foreach (array_chunk($args, self::CHUNK) as $chunk) {
             $groups = implode(', ', array_fill(0, count($chunk), '(UNHEX(%s), %d, %d, 0, %d, %d, %d, %d)'));
             $wpdb->query($wpdb->prepare("INSERT INTO %i (lkey, source_host_id, source_url_id, path_id, found, status, first_seen, last_seen) VALUES $groups ON DUPLICATE KEY UPDATE last_seen = GREATEST(last_seen, VALUES(last_seen)), found = found | VALUES(found)", array_merge(array(SEOProStats_Schema::table('links')), array_merge(...$chunk))));
         }
         // phpcs:enable
-        return count($args);
     }
 
     /**
@@ -282,65 +356,179 @@ final class SEOProStats_Backlinks {
             self::touch((int) $page['id']);
             return 'error';
         }
+        $by   = self::known_links($table, (int) $page['source_url_id']);
+        $gone = $got === 'gone';
+        $seen = array();
+        if (!$gone) {
+            $seen = self::keep_page($page, $url, $host, (string) $got, $by, $now, $events);
+            self::save_facts((int) $page['source_url_id'], (string) $got, $redirects);
+        }
+        // Links not found now: a miss, lost after MISSES in a row or when the page is gone.
+        $gone_paths = self::miss_links($table, $by, $seen, $gone, $now);
+        if ($gone_paths) {
+            self::lost_events($by, $gone_paths, $url, $host, $events);
+        }
+        $status = $seen ? self::PAGE_LINKS : self::PAGE_NONE;
+        if ($gone) {
+            $status = self::PAGE_GONE;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
+        $wpdb->update($table, array('status' => $status, 'checked' => $now), array('id' => (int) $page['id']), array('%d', '%d'), array('%d'));
+        return $gone ? 'gone' : 'ok';
+    }
+
+    /**
+     * The links of a referring page known before this check, by linked
+     * page.
+     *
+     * @param string $table  The links table.
+     * @param int    $url_id The referring page.
+     * @return array<int,array<string,string>> path_id => id, path_id, anchor_id, status, misses, first_seen.
+     */
+    private static function known_links($table, $url_id) {
+        global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its source_url key.
-        $known = (array) $wpdb->get_results($wpdb->prepare('SELECT id, path_id, anchor_id, status, misses, first_seen FROM %i WHERE source_url_id = %d AND path_id > 0', $table, (int) $page['source_url_id']), ARRAY_A);
+        $known = (array) $wpdb->get_results($wpdb->prepare('SELECT id, path_id, anchor_id, status, misses, first_seen FROM %i WHERE source_url_id = %d AND path_id > 0', $table, $url_id), ARRAY_A);
         $by    = array();
         foreach ($known as $row) {
             $by[(int) $row['path_id']] = $row;
         }
-        $gone  = $got === 'gone';
-        $links = $gone ? array() : self::parse((string) $got);
+        return $by;
+    }
+
+    /**
+     * Keep the links an opened referring page has to the site.
+     *
+     * @param array<string,string>                                    $page   Its row.
+     * @param string                                                  $url    Its address.
+     * @param string                                                  $host   Its host.
+     * @param string                                                  $html   What it answered.
+     * @param array<int,array<string,string>>                         $by     Its links known before, by linked page.
+     * @param int                                                     $now    Unix seconds.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events New and lost links by referring host; added to.
+     * @return array<int,bool> Linked pages found now.
+     */
+    private static function keep_page(array $page, $url, $host, $html, array $by, $now, array &$events) {
+        $links = self::parse($html);
+        return $links ? self::keep_links($page, $url, $host, $links, $by, $now, $events) : array();
+    }
+
+    /**
+     * Save the page facts of an opened referring page on each of its links.
+     *
+     * @param int               $url_id    The referring page.
+     * @param string            $html      What it answered.
+     * @param array<string,int> $redirects Observed redirect count.
+     * @return void
+     */
+    private static function save_facts($url_id, $html, array $redirects) {
+        global $wpdb;
         require_once __DIR__ . '/class-seoprostats-backlink-review.php';
-        $facts = $gone ? null : wp_json_encode(SEOProStats_Backlink_Review::page_facts((string) $got) + $redirects);
-        $ids   = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links)) : array();
-        $anchors = $links ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor')) : array();
-        $seen  = array();
-        $found = self::FOUND['verified'] | ((int) $page['found'] & self::FOUND['referrer']);
-        $providers = json_decode((string) $page['providers'], true);
-        // A source-only export led us to this page; target-specific exports
-        // retain their bits on the exact link, never on every link of its page.
-        if (is_array($providers)) {
-            foreach ($providers as $source => $provider) {
-                if (!empty($provider['candidate']) && isset(self::FOUND[$source])) {
-                    $found |= self::FOUND[$source];
-                }
-            }
-        }
+        $facts = wp_json_encode(SEOProStats_Backlink_Review::page_facts($html) + $redirects);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, indexed source_url read/write; no new requests.
+        $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', SEOProStats_Schema::table('links'), (string) $facts, $url_id));
+    }
+
+    /**
+     * Write the links found on a referring page, live as of now.
+     *
+     * @param array<string,string>                                    $page   Its row.
+     * @param string                                                  $url    Its address.
+     * @param string                                                  $host   Its host.
+     * @param array<string,array{anchor:string,rel:int}>              $links  From parse().
+     * @param array<int,array<string,string>>                         $by     Its links known before, by linked page.
+     * @param int                                                     $now    Unix seconds.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events New and lost links by referring host; added to.
+     * @return array<int,bool> Linked pages found now.
+     */
+    private static function keep_links(array $page, $url, $host, array $links, array $by, $now, array &$events) {
+        $ids     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links));
+        $anchors = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor'));
+        $found   = self::page_found($page);
+        $seen    = array();
         foreach ($links as $path => $link) {
-            $path_id = isset($ids[SEOProStats_Dict::clean($path)]) ? (int) $ids[SEOProStats_Dict::clean($path)] : 0;
+            $path_id = self::dict_id($ids, $path);
             if (!$path_id) {
                 continue;
             }
             $seen[$path_id] = true;
-            $anchor_id      = isset($anchors[SEOProStats_Dict::clean($link['anchor'])]) ? (int) $anchors[SEOProStats_Dict::clean($link['anchor'])] : 0;
             $was            = isset($by[$path_id]) ? $by[$path_id] : null;
-            $is_new         = !$was || (int) $was['status'] !== self::LINK_LIVE;
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its unique key.
-            $wpdb->query($wpdb->prepare(
-                'INSERT INTO %i (lkey, source_host_id, source_url_id, path_id, anchor_id, rel, found, status, first_seen, last_seen, lost, checked, misses) VALUES (UNHEX(%s), %d, %d, %d, %d, %d, %d, %d, %d, %d, 0, %d, 0) ON DUPLICATE KEY UPDATE anchor_id = VALUES(anchor_id), rel = VALUES(rel), found = found | VALUES(found), first_seen = IF(status = %d, first_seen, VALUES(first_seen)), status = VALUES(status), last_seen = VALUES(last_seen), lost = 0, checked = VALUES(checked), misses = 0',
-                $table,
-                self::key($url, $path_id),
-                (int) $page['source_host_id'],
-                (int) $page['source_url_id'],
-                $path_id,
-                $anchor_id,
-                (int) $link['rel'],
-                $found,
-                self::LINK_LIVE,
-                $now,
-                $now,
-                $now,
-                self::LINK_LIVE
-            ));
-            if ($is_new) {
+            self::keep_link($page, $url, $path_id, self::dict_id($anchors, $link['anchor']), (int) $link['rel'], $found, $now);
+            if (!$was || (int) $was['status'] !== self::LINK_LIVE) {
                 $events['new'][$host][] = array('from' => $url, 'to' => $path, 'anchor' => $link['anchor']);
             }
         }
-        if (!$gone) {
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, indexed source_url read/write; no new requests.
-            $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', $table, (string) $facts, (int) $page['source_url_id']));
+        return $seen;
+    }
+
+    /**
+     * The found bits of the links of a checked referring page: verified,
+     * the visits' bit, and the bits of source-only exports that led to it.
+     *
+     * @param array<string,string> $page Its row.
+     * @return int
+     */
+    private static function page_found(array $page) {
+        $found     = self::FOUND['verified'] | ((int) $page['found'] & self::FOUND['referrer']);
+        $providers = json_decode((string) $page['providers'], true);
+        if (!is_array($providers)) {
+            return $found;
         }
-        // Links not found now: a miss, lost after MISSES in a row or when the page is gone.
+        // A source-only export led us to this page; target-specific exports
+        // retain their bits on the exact link, never on every link of its page.
+        foreach ($providers as $source => $provider) {
+            if (!empty($provider['candidate']) && isset(self::FOUND[$source])) {
+                $found |= self::FOUND[$source];
+            }
+        }
+        return $found;
+    }
+
+    /**
+     * Write one link found now: new, back again, or still there.
+     *
+     * @param array<string,string> $page      The referring page's row.
+     * @param string               $url       Its address.
+     * @param int                  $path_id   Linked page.
+     * @param int                  $anchor_id Link text.
+     * @param int                  $rel       REL bits.
+     * @param int                  $found     FOUND bits.
+     * @param int                  $now       Unix seconds.
+     */
+    private static function keep_link(array $page, $url, $path_id, $anchor_id, $rel, $found, $now) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its unique key.
+        $wpdb->query($wpdb->prepare(
+            'INSERT INTO %i (lkey, source_host_id, source_url_id, path_id, anchor_id, rel, found, status, first_seen, last_seen, lost, checked, misses) VALUES (UNHEX(%s), %d, %d, %d, %d, %d, %d, %d, %d, %d, 0, %d, 0) ON DUPLICATE KEY UPDATE anchor_id = VALUES(anchor_id), rel = VALUES(rel), found = found | VALUES(found), first_seen = IF(status = %d, first_seen, VALUES(first_seen)), status = VALUES(status), last_seen = VALUES(last_seen), lost = 0, checked = VALUES(checked), misses = 0',
+            SEOProStats_Schema::table('links'),
+            self::key($url, $path_id),
+            (int) $page['source_host_id'],
+            (int) $page['source_url_id'],
+            $path_id,
+            $anchor_id,
+            $rel,
+            $found,
+            self::LINK_LIVE,
+            $now,
+            $now,
+            $now,
+            self::LINK_LIVE
+        ));
+    }
+
+    /**
+     * Count a miss for each live link not found now; lost after MISSES in
+     * a row, or at once when the page is gone.
+     *
+     * @param string                          $table The links table.
+     * @param array<int,array<string,string>> $by    The page's links known before, by linked page.
+     * @param array<int,bool>                 $seen  Linked pages found now.
+     * @param bool                            $gone  The page is gone.
+     * @param int                             $now   Unix seconds.
+     * @return int[] Linked pages lost now.
+     */
+    private static function miss_links($table, array $by, array $seen, $gone, $now) {
+        global $wpdb;
         $gone_paths = array();
         foreach ($by as $path_id => $row) {
             if (isset($seen[$path_id]) || (int) $row['status'] !== self::LINK_LIVE) {
@@ -354,27 +542,31 @@ final class SEOProStats_Backlinks {
                 $gone_paths[] = $path_id;
             }
         }
-        if ($gone_paths) {
-            // Lost links keep the text they had, for the timeline.
-            $texts = SEOProStats_Dict::values(array_merge($gone_paths, array_map(static function ($path_id) use ($by) {
-                return (int) $by[$path_id]['anchor_id'];
-            }, $gone_paths)));
-            foreach ($gone_paths as $path_id) {
-                $anchor_id = (int) $by[$path_id]['anchor_id'];
-                $events['lost'][$host][] = array(
-                    'from'   => $url,
-                    'to'     => isset($texts[$path_id]) ? $texts[$path_id] : '',
-                    'anchor' => isset($texts[$anchor_id]) ? $texts[$anchor_id] : '',
-                );
-            }
+        return $gone_paths;
+    }
+
+    /**
+     * Add the links lost now to the run's events, with the text they had,
+     * for the timeline.
+     *
+     * @param array<int,array<string,string>>                         $by         The page's links known before, by linked page.
+     * @param int[]                                                   $gone_paths Linked pages lost now.
+     * @param string                                                  $url        The referring page.
+     * @param string                                                  $host       Its host.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events     New and lost links by referring host; added to.
+     */
+    private static function lost_events(array $by, array $gone_paths, $url, $host, array &$events) {
+        $texts = SEOProStats_Dict::values(array_merge($gone_paths, array_map(static function ($path_id) use ($by) {
+            return (int) $by[$path_id]['anchor_id'];
+        }, $gone_paths)));
+        foreach ($gone_paths as $path_id) {
+            $anchor_id = (int) $by[$path_id]['anchor_id'];
+            $events['lost'][$host][] = array(
+                'from'   => $url,
+                'to'     => isset($texts[$path_id]) ? $texts[$path_id] : '',
+                'anchor' => isset($texts[$anchor_id]) ? $texts[$anchor_id] : '',
+            );
         }
-        $status = $seen ? self::PAGE_LINKS : self::PAGE_NONE;
-        if ($gone) {
-            $status = self::PAGE_GONE;
-        }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
-        $wpdb->update($table, array('status' => $status, 'checked' => $now), array('id' => (int) $page['id']), array('%d', '%d'), array('%d'));
-        return $gone ? 'gone' : 'ok';
     }
 
     /**
@@ -445,32 +637,53 @@ final class SEOProStats_Backlinks {
             if (!$tags->next_tag(array('tag_name' => 'a'))) {
                 continue;
             }
-            $href = $tags->get_attribute('href');
-            $href = is_string($href) ? trim(html_entity_decode($href, ENT_QUOTES)) : '';
-            if (strpos($href, '//') === 0) {
-                $href = 'https:' . $href;
-            }
-            $scheme = strtolower((string) wp_parse_url($href, PHP_URL_SCHEME));
-            $host   = strtolower((string) wp_parse_url($href, PHP_URL_HOST));
-            if (!in_array($scheme, array('http', 'https'), true) || $host === '' || !in_array($host, $site, true)) {
-                continue;
-            }
-            $path = SEOProStats_Links::target(SEOProStats_Changes::path(explode('#', $href, 2)[0]));
+            $path = self::site_path($tags->get_attribute('href'), $site);
             if ($path === '' || isset($out[$path])) {
                 continue;
             }
             if (count($out) >= self::MAX_LINKS) {
                 break;
             }
-            $rel  = $tags->get_attribute('rel');
-            $bits = 0;
-            $words = preg_split('/\s+/', strtolower(is_string($rel) ? $rel : ''), -1, PREG_SPLIT_NO_EMPTY);
-            foreach ($words ? $words : array() as $word) {
-                $bits |= isset(self::REL[$word]) ? self::REL[$word] : 0;
-            }
+            $bits       = self::rel_bits($tags->get_attribute('rel'));
             $out[$path] = array('anchor' => self::anchor($match[1]), 'rel' => $bits);
         }
         return $out;
+    }
+
+    /**
+     * The site's page a link goes to: '' unless the link is absolute
+     * (http, https, or //host) to one of the site's hosts and is a page.
+     *
+     * @param string|bool|null $href The href attribute.
+     * @param string[]         $site The site's hosts.
+     * @return string
+     */
+    private static function site_path($href, array $site) {
+        $href = is_string($href) ? trim(html_entity_decode($href, ENT_QUOTES)) : '';
+        if (strpos($href, '//') === 0) {
+            $href = 'https:' . $href;
+        }
+        $scheme = strtolower((string) wp_parse_url($href, PHP_URL_SCHEME));
+        $host   = strtolower((string) wp_parse_url($href, PHP_URL_HOST));
+        if (!in_array($scheme, array('http', 'https'), true) || $host === '' || !in_array($host, $site, true)) {
+            return '';
+        }
+        return SEOProStats_Links::target(SEOProStats_Changes::path(explode('#', $href, 2)[0]));
+    }
+
+    /**
+     * REL bits of a rel attribute's words.
+     *
+     * @param string|bool|null $rel The rel attribute.
+     * @return int
+     */
+    private static function rel_bits($rel) {
+        $bits  = 0;
+        $words = preg_split('/\s+/', strtolower(is_string($rel) ? $rel : ''), -1, PREG_SPLIT_NO_EMPTY);
+        foreach ($words ? $words : array() as $word) {
+            $bits |= isset(self::REL[$word]) ? self::REL[$word] : 0;
+        }
+        return $bits;
     }
 
     /**
@@ -496,60 +709,96 @@ final class SEOProStats_Backlinks {
      * @param array{new:array<string,array>,lost:array<string,array>} $events Links by referring host.
      */
     private static function changes(array $events) {
-        global $wpdb;
         $today = (new DateTimeImmutable('today', wp_timezone()))->getTimestamp();
         $table = SEOProStats_Schema::table('changes');
         foreach (array('new' => SEOProStats_Changes::BACKLINK_NEW, 'lost' => SEOProStats_Changes::BACKLINK_LOST) as $which => $kind) {
-            if (empty($events[$which])) {
-                continue;
-            }
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its kind_ts key.
-            $rows  = (array) $wpdb->get_results($wpdb->prepare('SELECT id, new, meta FROM %i WHERE kind = %d AND ts >= %d', $table, $kind, $today), ARRAY_A);
-            $known = array();
-            foreach ($rows as $row) {
-                $known[(string) $row['new']] = $row;
-            }
-            foreach ($events[$which] as $host => $links) {
-                $host  = (string) $host;
-                $count = count($links);
-                if (isset($known[$host])) {
-                    $meta = json_decode((string) $known[$host]['meta'], true);
-                    $meta = is_array($meta) ? $meta : array();
-                    // The same link again the same day (lost, back, lost) replaces its entry and is not counted twice.
-                    $merged = array();
-                    foreach (isset($meta['links']) && is_array($meta['links']) ? $meta['links'] : array() as $link) {
-                        if (is_array($link) && isset($link['from'], $link['to'])) {
-                            $merged[$link['from'] . ' ' . $link['to']] = $link;
-                        }
-                    }
-                    $count = isset($meta['count']) ? (int) $meta['count'] : count($merged);
-                    foreach ($links as $link) {
-                        $count += isset($merged[$link['from'] . ' ' . $link['to']]) ? 0 : 1;
-                        $merged[$link['from'] . ' ' . $link['to']] = $link;
-                    }
-                    $links = array_values($merged);
-                }
-                $paths = array_values(array_unique(array_column($links, 'to')));
-                $meta  = array('host' => $host, 'count' => $count, 'links' => array_slice($links, 0, SEOProStats_Changes::MAX_LIST));
-                if (isset($known[$host])) {
-                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
-                    $wpdb->update($table, array('meta' => (string) wp_json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)), array('id' => (int) $known[$host]['id']), array('%s'), array('%d'));
-                    continue;
-                }
-                SEOProStats_Changes::write(array(
-                    'ts'          => time(),
-                    'kind'        => $kind,
-                    'path'        => count($paths) === 1 ? (string) $paths[0] : '',
-                    'object_type' => 'backlink',
-                    'object_id'   => 0,
-                    'old'         => '',
-                    'new'         => $host,
-                    'meta'        => $meta,
-                    'source'      => SEOProStats_Changes::source(),
-                    'user_id'     => 0,
-                ));
+            if (!empty($events[$which])) {
+                self::kind_changes($events[$which], $kind, $today, $table);
             }
         }
+    }
+
+    /**
+     * Write one kind of the run's links as changes, one per referring site.
+     *
+     * @param array<string,array> $by_host Links by referring host.
+     * @param int                 $kind    SEOProStats_Changes::BACKLINK_NEW or BACKLINK_LOST.
+     * @param int                 $today   Unix seconds at the start of today.
+     * @param string              $table   The changes table.
+     */
+    private static function kind_changes(array $by_host, $kind, $today, $table) {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its kind_ts key.
+        $rows  = (array) $wpdb->get_results($wpdb->prepare('SELECT id, new, meta FROM %i WHERE kind = %d AND ts >= %d', $table, $kind, $today), ARRAY_A);
+        $known = array();
+        foreach ($rows as $row) {
+            $known[(string) $row['new']] = $row;
+        }
+        foreach ($by_host as $host => $links) {
+            $host = (string) $host;
+            self::host_change($host, $links, isset($known[$host]) ? $known[$host] : null, $kind, $table);
+        }
+    }
+
+    /**
+     * Write a referring site's links as a change, or add them to today's.
+     *
+     * @param string                    $host  Referring host.
+     * @param array<int,array>          $links Its links (from, to, anchor).
+     * @param array<string,string>|null $known Today's change of this kind for the host (id, new, meta), if any.
+     * @param int                       $kind  SEOProStats_Changes::BACKLINK_NEW or BACKLINK_LOST.
+     * @param string                    $table The changes table.
+     */
+    private static function host_change($host, array $links, $known, $kind, $table) {
+        global $wpdb;
+        $count = count($links);
+        if ($known !== null) {
+            list($count, $links) = self::merge_change($known, $links);
+        }
+        $paths = array_values(array_unique(array_column($links, 'to')));
+        $meta  = array('host' => $host, 'count' => $count, 'links' => array_slice($links, 0, SEOProStats_Changes::MAX_LIST));
+        if ($known !== null) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
+            $wpdb->update($table, array('meta' => (string) wp_json_encode($meta, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)), array('id' => (int) $known['id']), array('%s'), array('%d'));
+            return;
+        }
+        SEOProStats_Changes::write(array(
+            'ts'          => time(),
+            'kind'        => $kind,
+            'path'        => count($paths) === 1 ? (string) $paths[0] : '',
+            'object_type' => 'backlink',
+            'object_id'   => 0,
+            'old'         => '',
+            'new'         => $host,
+            'meta'        => $meta,
+            'source'      => SEOProStats_Changes::source(),
+            'user_id'     => 0,
+        ));
+    }
+
+    /**
+     * Add links to today's change: the same link again the same day (lost,
+     * back, lost) replaces its entry and is not counted twice.
+     *
+     * @param array<string,string> $known Today's change (id, new, meta).
+     * @param array<int,array>     $links Links (from, to, anchor).
+     * @return array{0:int,1:array<int,array>} The count and the links.
+     */
+    private static function merge_change(array $known, array $links) {
+        $meta   = json_decode((string) $known['meta'], true);
+        $meta   = is_array($meta) ? $meta : array();
+        $merged = array();
+        foreach (isset($meta['links']) && is_array($meta['links']) ? $meta['links'] : array() as $link) {
+            if (is_array($link) && isset($link['from'], $link['to'])) {
+                $merged[$link['from'] . ' ' . $link['to']] = $link;
+            }
+        }
+        $count = isset($meta['count']) ? (int) $meta['count'] : count($merged);
+        foreach ($links as $link) {
+            $count += isset($merged[$link['from'] . ' ' . $link['to']]) ? 0 : 1;
+            $merged[$link['from'] . ' ' . $link['to']] = $link;
+        }
+        return array($count, array_values($merged));
     }
 
     /**
@@ -620,106 +869,23 @@ final class SEOProStats_Backlinks {
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its status_first key in its order.
         $live = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, authority, providers, facts FROM %i FORCE INDEX (`status_first`) WHERE status = %d ORDER BY first_seen DESC LIMIT %d', $table, self::LINK_LIVE, self::MAX_ROWS), ARRAY_A);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, a range of its lost key in its order.
-        $lost = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost, providers, facts FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
-        $live = array_values(array_filter($live, static function ($row) use ($source) {
-            return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
-        }));
-        $lost = array_values(array_filter($lost, static function ($row) use ($source) {
-            return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
-        }));
-        $ids = array();
-        foreach (array_merge($live, $lost) as $row) {
-            array_push($ids, (int) $row['source_host_id'], (int) $row['source_url_id'], (int) $row['path_id'], (int) $row['anchor_id']);
+        $lost  = (array) $wpdb->get_results($wpdb->prepare('SELECT source_host_id, source_url_id, path_id, anchor_id, rel, found, first_seen, last_seen, lost, providers, facts FROM %i FORCE INDEX (`lost`) WHERE lost >= %d AND lost < %d ORDER BY lost DESC LIMIT %d', $table, $from, $to, self::MAX_ROWS), ARRAY_A);
+        $live  = self::of_source($live, $source);
+        $lost  = self::of_source($lost, $source);
+        $texts = self::row_texts(array_merge($live, $lost));
+        $links = array();
+        foreach ($live as $row) {
+            $links[] = self::link_out($row, $texts, $from, $to);
         }
-        $texts  = SEOProStats_Dict::values($ids);
-        $text   = static function ($id) use ($texts) {
-            return isset($texts[(int) $id]) ? (string) $texts[(int) $id] : '';
-        };
-        $date   = static function ($ts) {
-            return (int) $ts ? (string) wp_date('c', (int) $ts) : null;
-        };
-        $link   = static function (array $row) use ($text, $date, $from, $to) {
-            $providers = json_decode(isset($row['providers']) ? (string) $row['providers'] : '', true);
-            $providers = is_array($providers) ? $providers : array();
-            foreach ($providers as &$provider) {
-                $provider['last_seen'] = $date($provider['last_seen']);
-            }
-            unset($provider);
-            return array(
-                'source'     => $text($row['source_url_id']),
-                'host'       => $text($row['source_host_id']),
-                'page'       => $text($row['path_id']),
-                'anchor'     => $text($row['anchor_id']),
-                'rel'        => self::names(self::REL, (int) $row['rel']),
-                'found'      => self::names(self::FOUND, (int) $row['found']),
-                'first_seen' => $date($row['first_seen']),
-                'last_seen'  => $date($row['last_seen']),
-                'new'        => (int) $row['first_seen'] >= $from && (int) $row['first_seen'] < $to,
-                'authority'  => isset($row['authority']) ? (int) $row['authority'] : 0,
-                'providers'  => (object) $providers,
-                'facts'      => (object) (json_decode(isset($row['facts']) ? (string) $row['facts'] : '', true) ?: array()),
-            );
-        };
-        $links = array_map($link, $live);
         $lost_rows = array();
         foreach ($lost as $row) {
-            $lost_rows[] = $link($row) + array('lost' => $date($row['lost']));
+            $lost_rows[] = self::link_out($row, $texts, $from, $to) + array('lost' => self::date_out($row['lost']));
         }
         // Referring sites and linked pages, from the live links.
-        $sites = array();
-        $pages = array();
-        foreach ($live as $i => $row) {
-            $host = (int) $row['source_host_id'];
-            $path = (int) $row['path_id'];
-            if (!isset($sites[$host])) {
-                $sites[$host] = array('host' => $text($host), 'host_id' => $host, 'links' => 0, 'pages' => array(), 'new' => 0, 'first' => PHP_INT_MAX, 'last' => 0, 'follow' => 0);
-            }
-            $sites[$host]['links']++;
-            $sites[$host]['pages'][$path] = true;
-            $sites[$host]['new']   += $links[$i]['new'] ? 1 : 0;
-            $sites[$host]['first']  = min($sites[$host]['first'], (int) $row['first_seen']);
-            $sites[$host]['last']   = max($sites[$host]['last'], (int) $row['last_seen']);
-            $sites[$host]['follow'] += ((int) $row['rel'] & (self::REL['nofollow'] | self::REL['sponsored'] | self::REL['ugc'])) ? 0 : 1;
-            if (!isset($pages[$path])) {
-                $pages[$path] = array('page' => $text($path), 'links' => 0, 'hosts' => array(), 'new' => 0, 'first' => PHP_INT_MAX);
-            }
-            $pages[$path]['links']++;
-            $pages[$path]['hosts'][$host] = true;
-            $pages[$path]['new']   += $links[$i]['new'] ? 1 : 0;
-            $pages[$path]['first']  = min($pages[$path]['first'], (int) $row['first_seen']);
-        }
-        $lost_by_host = array_count_values(array_map('intval', array_column($lost, 'source_host_id')));
-        $visits       = self::visits(array_keys($sites), $range);
-        $domains      = array();
-        foreach ($sites as $host => $site) {
-            $domains[] = array(
-                'host'       => $site['host'],
-                'links'      => $site['links'],
-                'followed'   => $site['follow'],
-                'pages'      => count($site['pages']),
-                'new'        => $site['new'],
-                'lost'       => isset($lost_by_host[$host]) ? (int) $lost_by_host[$host] : 0,
-                'visits'     => isset($visits[$host]) ? (int) $visits[$host] : 0,
-                'first_seen' => $date($site['first']),
-                'last_seen'  => $date($site['last']),
-            );
-        }
-        usort($domains, static function ($a, $b) {
-            return array($b['visits'], $b['links'], $a['host']) <=> array($a['visits'], $a['links'], $b['host']);
-        });
-        $targets = array();
-        foreach ($pages as $page) {
-            $targets[] = array(
-                'page'       => $page['page'],
-                'links'      => $page['links'],
-                'domains'    => count($page['hosts']),
-                'new'        => $page['new'],
-                'first_seen' => $date($page['first']),
-            );
-        }
-        usort($targets, static function ($a, $b) {
-            return array($b['domains'], $b['links'], $a['page']) <=> array($a['domains'], $a['links'], $b['page']);
-        });
+        $sites     = self::sites($live, $links, $texts);
+        $pages     = self::linked_pages($live, $links, $texts);
+        $domains   = self::domains($sites, $lost, $range);
+        $targets   = self::targets($pages);
         $new_sites = 0;
         foreach ($sites as $site) {
             $new_sites += $site['first'] >= $from && $site['first'] < $to ? 1 : 0;
@@ -750,6 +916,189 @@ final class SEOProStats_Backlinks {
                 'lost'    => $lost_rows,
             ),
         );
+    }
+
+    /**
+     * Link rows (not referring pages' own rows), of one source when given.
+     *
+     * @param array<int,array<string,string>> $rows   Rows of the links table.
+     * @param string                          $source One of FOUND, or '' for all.
+     * @return array<int,array<string,string>>
+     */
+    private static function of_source(array $rows, $source) {
+        return array_values(array_filter($rows, static function ($row) use ($source) {
+            return (int) $row['path_id'] > 0 && ($source === '' || ((int) $row['found'] & self::FOUND[$source]));
+        }));
+    }
+
+    /**
+     * The texts of link rows' hosts, addresses, pages and link texts.
+     *
+     * @param array<int,array<string,string>> $rows Rows of the links table.
+     * @return array<int,string> Id => text.
+     */
+    private static function row_texts(array $rows) {
+        $ids = array();
+        foreach ($rows as $row) {
+            array_push($ids, (int) $row['source_host_id'], (int) $row['source_url_id'], (int) $row['path_id'], (int) $row['anchor_id']);
+        }
+        return SEOProStats_Dict::values($ids);
+    }
+
+    /**
+     * A text by its id, '' when unknown.
+     *
+     * @param array<int,string> $texts Id => text.
+     * @param int|string        $id    Id.
+     * @return string
+     */
+    private static function text_of(array $texts, $id) {
+        return isset($texts[(int) $id]) ? (string) $texts[(int) $id] : '';
+    }
+
+    /**
+     * A time for the answer (ISO 8601 in the site's time zone), null for 0.
+     *
+     * @param int|string $ts Unix seconds.
+     * @return string|null
+     */
+    private static function date_out($ts) {
+        return (int) $ts ? (string) wp_date('c', (int) $ts) : null;
+    }
+
+    /**
+     * A link row as the report gives it.
+     *
+     * @param array<string,string> $row   Row of the links table.
+     * @param array<int,string>    $texts Id => text.
+     * @param int                  $from  Range start, Unix seconds.
+     * @param int                  $to    Range end, Unix seconds.
+     * @return array<string,mixed>
+     */
+    private static function link_out(array $row, array $texts, $from, $to) {
+        $providers = json_decode(isset($row['providers']) ? (string) $row['providers'] : '', true);
+        $providers = is_array($providers) ? $providers : array();
+        foreach ($providers as &$provider) {
+            $provider['last_seen'] = self::date_out($provider['last_seen']);
+        }
+        unset($provider);
+        return array(
+            'source'     => self::text_of($texts, $row['source_url_id']),
+            'host'       => self::text_of($texts, $row['source_host_id']),
+            'page'       => self::text_of($texts, $row['path_id']),
+            'anchor'     => self::text_of($texts, $row['anchor_id']),
+            'rel'        => self::names(self::REL, (int) $row['rel']),
+            'found'      => self::names(self::FOUND, (int) $row['found']),
+            'first_seen' => self::date_out($row['first_seen']),
+            'last_seen'  => self::date_out($row['last_seen']),
+            'new'        => (int) $row['first_seen'] >= $from && (int) $row['first_seen'] < $to,
+            'authority'  => isset($row['authority']) ? (int) $row['authority'] : 0,
+            'providers'  => (object) $providers,
+            'facts'      => (object) (json_decode(isset($row['facts']) ? (string) $row['facts'] : '', true) ?: array()),
+        );
+    }
+
+    /**
+     * Referring sites of the live links, by host id.
+     *
+     * @param array<int,array<string,string>> $live  Live link rows.
+     * @param array<int,array<string,mixed>>  $links The same links from link_out().
+     * @param array<int,string>               $texts Id => text.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function sites(array $live, array $links, array $texts) {
+        $sites = array();
+        foreach ($live as $i => $row) {
+            $host = (int) $row['source_host_id'];
+            if (!isset($sites[$host])) {
+                $sites[$host] = array('host' => self::text_of($texts, $host), 'host_id' => $host, 'links' => 0, 'pages' => array(), 'new' => 0, 'first' => PHP_INT_MAX, 'last' => 0, 'follow' => 0);
+            }
+            $sites[$host]['links']++;
+            $sites[$host]['pages'][(int) $row['path_id']] = true;
+            $sites[$host]['new']   += $links[$i]['new'] ? 1 : 0;
+            $sites[$host]['first']  = min($sites[$host]['first'], (int) $row['first_seen']);
+            $sites[$host]['last']   = max($sites[$host]['last'], (int) $row['last_seen']);
+            $sites[$host]['follow'] += ((int) $row['rel'] & (self::REL['nofollow'] | self::REL['sponsored'] | self::REL['ugc'])) ? 0 : 1;
+        }
+        return $sites;
+    }
+
+    /**
+     * The site's pages the live links go to, by path id.
+     *
+     * @param array<int,array<string,string>> $live  Live link rows.
+     * @param array<int,array<string,mixed>>  $links The same links from link_out().
+     * @param array<int,string>               $texts Id => text.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function linked_pages(array $live, array $links, array $texts) {
+        $pages = array();
+        foreach ($live as $i => $row) {
+            $path = (int) $row['path_id'];
+            if (!isset($pages[$path])) {
+                $pages[$path] = array('page' => self::text_of($texts, $path), 'links' => 0, 'hosts' => array(), 'new' => 0, 'first' => PHP_INT_MAX);
+            }
+            $pages[$path]['links']++;
+            $pages[$path]['hosts'][(int) $row['source_host_id']] = true;
+            $pages[$path]['new']   += $links[$i]['new'] ? 1 : 0;
+            $pages[$path]['first']  = min($pages[$path]['first'], (int) $row['first_seen']);
+        }
+        return $pages;
+    }
+
+    /**
+     * The domains list: referring sites with their lost links and visits,
+     * most visits first.
+     *
+     * @param array<int,array<string,mixed>>  $sites From sites().
+     * @param array<int,array<string,string>> $lost  Lost link rows in the range.
+     * @param array<string,mixed>             $range From SEOProStats_Query::range().
+     * @return array<int,array<string,mixed>>
+     */
+    private static function domains(array $sites, array $lost, array $range) {
+        $lost_by_host = array_count_values(array_map('intval', array_column($lost, 'source_host_id')));
+        $visits       = self::visits(array_keys($sites), $range);
+        $domains      = array();
+        foreach ($sites as $host => $site) {
+            $domains[] = array(
+                'host'       => $site['host'],
+                'links'      => $site['links'],
+                'followed'   => $site['follow'],
+                'pages'      => count($site['pages']),
+                'new'        => $site['new'],
+                'lost'       => isset($lost_by_host[$host]) ? (int) $lost_by_host[$host] : 0,
+                'visits'     => isset($visits[$host]) ? (int) $visits[$host] : 0,
+                'first_seen' => self::date_out($site['first']),
+                'last_seen'  => self::date_out($site['last']),
+            );
+        }
+        usort($domains, static function ($a, $b) {
+            return array($b['visits'], $b['links'], $a['host']) <=> array($a['visits'], $a['links'], $b['host']);
+        });
+        return $domains;
+    }
+
+    /**
+     * The linked pages list, most referring sites first.
+     *
+     * @param array<int,array<string,mixed>> $pages From linked_pages().
+     * @return array<int,array<string,mixed>>
+     */
+    private static function targets(array $pages) {
+        $targets = array();
+        foreach ($pages as $page) {
+            $targets[] = array(
+                'page'       => $page['page'],
+                'links'      => $page['links'],
+                'domains'    => count($page['hosts']),
+                'new'        => $page['new'],
+                'first_seen' => self::date_out($page['first']),
+            );
+        }
+        usort($targets, static function ($a, $b) {
+            return array($b['domains'], $b['links'], $a['page']) <=> array($a['domains'], $a['links'], $b['page']);
+        });
+        return $targets;
     }
 
     /**
@@ -909,52 +1258,24 @@ final class SEOProStats_Backlinks {
      * @param array<int,array{url:string,path:string,anchor:string,rel:int,first_seen:int,last_seen:int,lost:int,facts?:array<string,mixed>}> $links Links; lost 0 for live ones.
      */
     public static function write_links(array $links) {
-        global $wpdb;
         self::load();
-        $urls    = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array_column($links, 'url'));
-        $paths   = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_column($links, 'path'));
-        $anchors = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor'));
-        $hosts   = array();
-        foreach ($links as $link) {
-            $host = (string) wp_parse_url($link['url'], PHP_URL_HOST);
-            $hosts[$host] = true;
-        }
-        $host_ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_HOST, array_keys($hosts));
+        $urls     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_URL, array_column($links, 'url'));
+        $paths    = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_column($links, 'path'));
+        $anchors  = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor'));
+        $host_ids = self::link_host_ids($links);
         $table    = SEOProStats_Schema::table('links');
         $pages    = array();
         foreach ($links as $link) {
             $url     = (string) $link['url'];
             $host    = (string) wp_parse_url($url, PHP_URL_HOST);
-            $url_id  = isset($urls[SEOProStats_Dict::clean($url)]) ? (int) $urls[SEOProStats_Dict::clean($url)] : 0;
-            $path_id = isset($paths[SEOProStats_Dict::clean($link['path'])]) ? (int) $paths[SEOProStats_Dict::clean($link['path'])] : 0;
+            $url_id  = self::dict_id($urls, $url);
+            $path_id = self::dict_id($paths, $link['path']);
             $host_id = isset($host_ids[$host]) ? (int) $host_ids[$host] : 0;
             if (!$url_id || !$path_id) {
                 continue;
             }
-            $lost = (int) $link['lost'];
-            self::put($table, self::key($url, $path_id), array(
-                $host_id,
-                $url_id,
-                $path_id,
-                isset($anchors[SEOProStats_Dict::clean($link['anchor'])]) ? (int) $anchors[SEOProStats_Dict::clean($link['anchor'])] : 0,
-                (int) $link['rel'],
-                self::FOUND['referrer'],
-                $lost ? self::LINK_LOST : self::LINK_LIVE,
-                (int) $link['first_seen'],
-                (int) $link['last_seen'],
-                $lost,
-                (int) $link['last_seen'],
-                $lost ? self::MISSES : 0,
-            ));
-            if (isset($link['facts'])) {
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- demo data only, indexed source_url read/write.
-                $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', $table, (string) wp_json_encode($link['facts']), $url_id));
-            }
-            $page = isset($pages[$url]) ? $pages[$url] : array('host_id' => $host_id, 'url_id' => $url_id, 'first' => (int) $link['first_seen'], 'checked' => 0, 'live' => false);
-            $page['first']   = min($page['first'], (int) $link['first_seen']);
-            $page['checked'] = max($page['checked'], (int) $link['last_seen']);
-            $page['live']    = $page['live'] || !$lost;
-            $pages[$url]     = $page;
+            self::put_link($table, $link, array($host_id, $url_id, $path_id, self::dict_id($anchors, $link['anchor'])));
+            $pages[$url] = self::demo_page(isset($pages[$url]) ? $pages[$url] : null, $link, $host_id, $url_id);
         }
         foreach ($pages as $url => $page) {
             self::put($table, self::key((string) $url, 0), array($page['host_id'], $page['url_id'], 0, 0, 0, self::FOUND['referrer'], $page['live'] ? self::PAGE_LINKS : self::PAGE_NONE, $page['first'], $page['checked'], 0, $page['checked'], 0));
@@ -964,6 +1285,81 @@ final class SEOProStats_Backlinks {
         $state['last']    = time();
         $state['version'] = time();
         update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
+    }
+
+    /**
+     * Host ids of the referring pages of links to write.
+     *
+     * @param array<int,array<string,mixed>> $links Links (url).
+     * @return array<string,int> Host => id.
+     */
+    private static function link_host_ids(array $links) {
+        $hosts = array();
+        foreach ($links as $link) {
+            $host = (string) wp_parse_url($link['url'], PHP_URL_HOST);
+            $hosts[$host] = true;
+        }
+        return SEOProStats_Dict::ids(SEOProStats_Schema::DICT_HOST, array_keys($hosts));
+    }
+
+    /**
+     * Write one demo link whole, and its referring page's facts when given.
+     *
+     * @param string              $table The links table.
+     * @param array<string,mixed> $link  The link (url, rel, first_seen, last_seen, lost, facts?).
+     * @param int[]               $ids   source_host_id, source_url_id, path_id, anchor_id.
+     */
+    private static function put_link($table, array $link, array $ids) {
+        global $wpdb;
+        list($host_id, $url_id, $path_id, $anchor_id) = $ids;
+        $lost = (int) $link['lost'];
+        self::put($table, self::key((string) $link['url'], $path_id), array(
+            $host_id,
+            $url_id,
+            $path_id,
+            $anchor_id,
+            (int) $link['rel'],
+            self::FOUND['referrer'],
+            $lost ? self::LINK_LOST : self::LINK_LIVE,
+            (int) $link['first_seen'],
+            (int) $link['last_seen'],
+            $lost,
+            (int) $link['last_seen'],
+            $lost ? self::MISSES : 0,
+        ));
+        if (isset($link['facts'])) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- demo data only, indexed source_url read/write.
+            $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', $table, (string) wp_json_encode($link['facts']), $url_id));
+        }
+    }
+
+    /**
+     * A demo referring page with one more of its links added.
+     *
+     * @param array{host_id:int,url_id:int,first:int,checked:int,live:bool}|null $page The page so far, or null.
+     * @param array<string,mixed>      $link    The link (first_seen, last_seen, lost).
+     * @param int                      $host_id Its host.
+     * @param int                      $url_id  Its address.
+     * @return array{host_id:int,url_id:int,first:int,checked:int,live:bool}
+     */
+    private static function demo_page($page, array $link, $host_id, $url_id) {
+        $page            = $page !== null ? $page : array('host_id' => $host_id, 'url_id' => $url_id, 'first' => (int) $link['first_seen'], 'checked' => 0, 'live' => false);
+        $page['first']   = min($page['first'], (int) $link['first_seen']);
+        $page['checked'] = max($page['checked'], (int) $link['last_seen']);
+        $page['live']    = $page['live'] || !(int) $link['lost'];
+        return $page;
+    }
+
+    /**
+     * The id SEOProStats_Dict::ids() gave a text, 0 when none.
+     *
+     * @param array<string,int|string> $ids   Clean text => id.
+     * @param string                   $value The text.
+     * @return int
+     */
+    private static function dict_id(array $ids, $value) {
+        $key = SEOProStats_Dict::clean($value);
+        return isset($ids[$key]) ? (int) $ids[$key] : 0;
     }
 
     /**

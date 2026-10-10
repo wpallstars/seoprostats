@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Backlink_Review {
+final class SEOProStats_Backlink_Review { // NOSONAR: one review facade for REST, WP-CLI, abilities and the backlink check; private helpers decompose its signals and report.
     const DECISIONS = array('keep', 'disavow', 'undecided');
     const MAX_BYTES = 2097152;
     const MAX_LINES = 100000;
@@ -97,32 +97,10 @@ final class SEOProStats_Backlink_Review {
             return self::error();
         }
         foreach (array_chunk($entries, 500, true) as $chunk) {
-            $args = array(SEOProStats_Schema::table('link_reviews'));
-            foreach ($chunk as $key => $entry) {
-                array_push($args, $key, $entry['scope'], $entry['target'], get_current_user_id(), time());
-            }
-            $holders = implode(', ', array_fill(0, count($chunk), "(UNHEX(%s), %s, %s, 'disavow', 1, %d, %d)"));
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- holders contains only fixed placeholder groups, values are separately prepared.
-            $ok = $wpdb->query($wpdb->prepare("INSERT INTO %i (rkey, scope, target, decision, imported, user_id, reviewed) VALUES $holders ON DUPLICATE KEY UPDATE rkey = VALUES(rkey)", $args));
-            if ($ok === false) {
+            $failed = self::merge_chunk($chunk);
+            if ($failed) {
                 $wpdb->query('ROLLBACK');
-                return self::error();
-            }
-            // Insert/no-op has locked every key, including rows that raced an
-            // absent-key read under READ COMMITTED. Validate the locked result
-            // before commit, never silently omit a supplied entry.
-            $keys = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
-            // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- keys contains only placeholder groups; unique-key reads retain locks until commit.
-            $existing = $wpdb->get_results($wpdb->prepare("SELECT decision FROM %i WHERE rkey IN ($keys) FOR UPDATE", array_merge(array(SEOProStats_Schema::table('link_reviews')), array_keys($chunk))), ARRAY_A);
-            if ($existing === null || $wpdb->last_error !== '' || count($existing) !== count($chunk)) {
-                $wpdb->query('ROLLBACK');
-                return self::error();
-            }
-            foreach ($existing as $row) {
-                if ($row['decision'] !== 'disavow') {
-                    $wpdb->query('ROLLBACK');
-                    return new WP_Error('seoprostats_disavow_conflict', __('A prior-list entry already has a keep or undecided decision. Change that decision explicitly, or remove the entry from the supplied list before merging. No entries were saved.', 'seoprostats'), array('status' => 400));
-                }
+                return $failed;
             }
         }
         if ($wpdb->query('COMMIT') === false) {
@@ -131,6 +109,38 @@ final class SEOProStats_Backlink_Review {
         }
         // phpcs:enable
         return array('entries' => count($entries));
+    }
+
+    /** Insert one chunk of a prior list inside merge()'s transaction, and check the locked result. @param array<string,array{scope:string,target:string}> $chunk Entries by key. @return WP_Error|null The error to roll back for, or null. */
+    private static function merge_chunk(array $chunk) {
+        global $wpdb;
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table, unique key writes within merge()'s transaction.
+        $args = array(SEOProStats_Schema::table('link_reviews'));
+        foreach ($chunk as $key => $entry) {
+            array_push($args, $key, $entry['scope'], $entry['target'], get_current_user_id(), time());
+        }
+        $holders = implode(', ', array_fill(0, count($chunk), "(UNHEX(%s), %s, %s, 'disavow', 1, %d, %d)"));
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- holders contains only fixed placeholder groups, values are separately prepared.
+        $ok = $wpdb->query($wpdb->prepare("INSERT INTO %i (rkey, scope, target, decision, imported, user_id, reviewed) VALUES $holders ON DUPLICATE KEY UPDATE rkey = VALUES(rkey)", $args));
+        if ($ok === false) {
+            return self::error();
+        }
+        // Insert/no-op has locked every key, including rows that raced an
+        // absent-key read under READ COMMITTED. Validate the locked result
+        // before commit, never silently omit a supplied entry.
+        $keys = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- keys contains only placeholder groups; unique-key reads retain locks until commit.
+        $existing = $wpdb->get_results($wpdb->prepare("SELECT decision FROM %i WHERE rkey IN ($keys) FOR UPDATE", array_merge(array(SEOProStats_Schema::table('link_reviews')), array_keys($chunk))), ARRAY_A);
+        // phpcs:enable
+        if ($existing === null || $wpdb->last_error !== '' || count($existing) !== count($chunk)) {
+            return self::error();
+        }
+        foreach ($existing as $row) {
+            if ($row['decision'] !== 'disavow') {
+                return new WP_Error('seoprostats_disavow_conflict', __('A prior-list entry already has a keep or undecided decision. Change that decision explicitly, or remove the entry from the supplied list before merging. No entries were saved.', 'seoprostats'), array('status' => 400));
+            }
+        }
+        return null;
     }
 
     /** Bounded indexed decisions, including ones without a known backlink. @param string $decision Filter. @return array<int,array<string,mixed>>|WP_Error */
@@ -179,6 +189,40 @@ final class SEOProStats_Backlink_Review {
 
     /** Review observed links (bounded like the backlinks report), with decisions even outside that sample. @param array<string,mixed> $req Request. @return array<string,mixed>|WP_Error */
     public static function report(array $req) {
+        $links = self::sampled_links($req);
+        if (is_wp_error($links)) {
+            return $links;
+        }
+        $decisions = self::all_decisions();
+        if (is_wp_error($decisions)) {
+            return $decisions;
+        }
+        $sites = array();
+        foreach ($links as $link) {
+            $host = $link['host'];
+            if (!isset($sites[$host])) {
+                $sites[$host] = self::site($decisions, $host);
+            }
+            $sites[$host]['links'][] = self::review_link($link, $decisions);
+        }
+        $urls_by_host = self::decided_sites($sites, $decisions);
+        foreach ($sites as &$site) {
+            $site['reasons']       = self::site_reasons($site, $decisions);
+            $site['score']         = min(100, array_sum(array_column($site['reasons'], 'weight')));
+            $site['url_decisions'] = isset($urls_by_host[$site['host']]) ? $urls_by_host[$site['host']] : array();
+        }
+        unset($site);
+        $sites = array_values($sites);
+        usort($sites, static function ($a, $b) {
+            return $b['score'] <=> $a['score'] ?: strcmp($a['host'], $b['host']);
+        });
+        $offset = max(0, isset($req['offset']) ? (int) $req['offset'] : 0);
+        $limit = max(1, min(100, isset($req['limit']) ? (int) $req['limit'] : 25));
+        return array('rows' => array_slice($sites, $offset, $limit), 'total' => count($sites), 'more' => $offset + $limit < count($sites), 'max_rows' => SEOProStats_Backlinks::MAX_ROWS, 'signals_are_proof' => false);
+    }
+
+    /** Live and lost links of the backlinks report, page by page, up to its bound. @param array<string,mixed> $req Request. @return array<int,array<string,mixed>>|WP_Error */
+    private static function sampled_links(array $req) {
         require_once __DIR__ . '/class-seoprostats-backlinks.php';
         $links = array();
         foreach (array('links', 'lost') as $kind) {
@@ -193,6 +237,11 @@ final class SEOProStats_Backlink_Review {
                 }
             }
         }
+        return $links;
+    }
+
+    /** Every decision by review key, typed. @return array<string,array<string,mixed>>|WP_Error */
+    private static function all_decisions() {
         $decisions = array();
         foreach (self::DECISIONS as $decision) {
             $rows = self::decisions($decision);
@@ -206,22 +255,11 @@ final class SEOProStats_Backlink_Review {
                 $decisions[self::key($row['scope'], $row['target'])] = $row;
             }
         }
-        $sites = array();
-        foreach ($links as $link) {
-            $host = $link['host'];
-            if (!isset($sites[$host])) {
-                $sites[$host] = array('host' => $host, 'score' => 0, 'reasons' => array(), 'links' => array(), 'decision' => self::decision($decisions, 'domain', $host));
-            }
-            $link['decision'] = self::decision($decisions, 'url', $link['source']);
-            $link['reasons'] = self::signals($link);
-            $link['score'] = min(100, array_sum(array_column($link['reasons'], 'weight')));
-            if ($link['decision']['decision'] === 'keep' || self::kept_domain($decisions, $host)) {
-                $link['reasons'] = array();
-                $link['score'] = 0;
-            }
-            $sites[$host]['links'][] = $link;
-        }
-        // Decisions from a prior list remain visible even with no sampled links.
+        return $decisions;
+    }
+
+    /** Decisions from a prior list remain visible even with no sampled links: add their sites. @param array<string,array<string,mixed>> $sites Sites by host; added to. @param array<string,array<string,mixed>> $decisions Decisions. @return array<string,array<int,array<string,mixed>>> URL decisions by host. */
+    private static function decided_sites(array &$sites, array $decisions) {
         $urls_by_host = array();
         foreach ($decisions as $row) {
             $host = $row['scope'] === 'domain' ? $row['target'] : strtolower((string) wp_parse_url($row['target'], PHP_URL_HOST));
@@ -229,34 +267,44 @@ final class SEOProStats_Backlink_Review {
                 $urls_by_host[$host][] = $row;
             }
             if (!isset($sites[$host])) {
-                $sites[$host] = array('host' => $host, 'score' => 0, 'reasons' => array(), 'links' => array(), 'decision' => self::decision($decisions, 'domain', $host));
+                $sites[$host] = self::site($decisions, $host);
             }
         }
-        foreach ($sites as &$site) {
-            $reasons = array();
-            foreach ($site['links'] as $link) {
-                foreach ($link['reasons'] as $reason) {
-                    $reasons[$reason['signal']] = $reason;
-                }
-            }
-            $unkept = array_filter($site['links'], static function ($link) {
-                return $link['decision']['decision'] !== 'keep';
-            });
-            if (!self::kept_domain($decisions, $site['host']) && count($unkept) >= 20 && count(array_unique(array_column($unkept, 'page'))) >= 5) {
-                $reasons['many_pages'] = array('signal' => 'many_pages', 'weight' => 20, 'reason' => __('Many links from one site to many pages; check for sitewide placements.', 'seoprostats'));
-            }
-            $site['reasons'] = array_values($reasons);
-            $site['score'] = min(100, array_sum(array_column($site['reasons'], 'weight')));
-            $site['url_decisions'] = isset($urls_by_host[$site['host']]) ? $urls_by_host[$site['host']] : array();
+        return $urls_by_host;
+    }
+
+    /** A referring site before its links are added. @param array<string,array<string,mixed>> $decisions Decisions. @param string $host Host. @return array<string,mixed> */
+    private static function site(array $decisions, $host) {
+        return array('host' => $host, 'score' => 0, 'reasons' => array(), 'links' => array(), 'decision' => self::decision($decisions, 'domain', $host));
+    }
+
+    /** A link with its decision, signals and score; none for a kept link or domain. @param array<string,mixed> $link Link. @param array<string,array<string,mixed>> $decisions Decisions. @return array<string,mixed> */
+    private static function review_link(array $link, array $decisions) {
+        $link['decision'] = self::decision($decisions, 'url', $link['source']);
+        $link['reasons'] = self::signals($link);
+        $link['score'] = min(100, array_sum(array_column($link['reasons'], 'weight')));
+        if ($link['decision']['decision'] === 'keep' || self::kept_domain($decisions, $link['host'])) {
+            $link['reasons'] = array();
+            $link['score'] = 0;
         }
-        unset($site);
-        $sites = array_values($sites);
-        usort($sites, static function ($a, $b) {
-            return $b['score'] <=> $a['score'] ?: strcmp($a['host'], $b['host']);
+        return $link;
+    }
+
+    /** A site's distinct link signals, and many_pages for many links to many pages. @param array<string,mixed> $site Site with its links. @param array<string,array<string,mixed>> $decisions Decisions. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function site_reasons(array $site, array $decisions) {
+        $reasons = array();
+        foreach ($site['links'] as $link) {
+            foreach ($link['reasons'] as $reason) {
+                $reasons[$reason['signal']] = $reason;
+            }
+        }
+        $unkept = array_filter($site['links'], static function ($link) {
+            return $link['decision']['decision'] !== 'keep';
         });
-        $offset = max(0, isset($req['offset']) ? (int) $req['offset'] : 0);
-        $limit = max(1, min(100, isset($req['limit']) ? (int) $req['limit'] : 25));
-        return array('rows' => array_slice($sites, $offset, $limit), 'total' => count($sites), 'more' => $offset + $limit < count($sites), 'max_rows' => SEOProStats_Backlinks::MAX_ROWS, 'signals_are_proof' => false);
+        if (!self::kept_domain($decisions, $site['host']) && count($unkept) >= 20 && count(array_unique(array_column($unkept, 'page'))) >= 5) {
+            $reasons['many_pages'] = array('signal' => 'many_pages', 'weight' => 20, 'reason' => __('Many links from one site to many pages; check for sitewide placements.', 'seoprostats'));
+        }
+        return array_values($reasons);
     }
 
     /** Lookup without guessing a decision. @param array<string,array<string,mixed>> $rows Rows. @param string $scope Scope. @param string $target Target. @return array<string,mixed> */
@@ -278,68 +326,123 @@ final class SEOProStats_Backlink_Review {
 
     /** Each distinct observed signal adds its weight once. Missing facts add nothing. @param array<string,mixed> $link Link. @return array<int,array{signal:string,weight:int,reason:string}> */
     public static function signals(array $link) {
+        $facts    = isset($link['facts']) ? (array) $link['facts'] : array();
+        $language = strtolower((string) strtok(str_replace('_', '-', get_locale()), '-'));
+        return array_merge(
+            self::anchor_signals(strtolower($link['anchor']), $link['page']),
+            self::host_signals($link['host']),
+            self::page_signals($facts),
+            self::language_signals($facts, $language),
+            self::redirect_signals($facts),
+            self::provider_signals((array) $link['providers']),
+            self::age_signals($link)
+        );
+    }
+
+    /** One signal. @param string $signal Name. @param int $weight Weight. @param string $reason Why. @return array{signal:string,weight:int,reason:string} */
+    private static function signal($signal, $weight, $reason) {
+        return array('signal' => $signal, 'weight' => $weight, 'reason' => $reason);
+    }
+
+    /** Signals of the link text. @param string $anchor Link text, lower case. @param string $page Linked page. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function anchor_signals($anchor, $page) {
         $out = array();
-        $add = static function ($signal, $weight, $reason) use (&$out) {
-            $out[] = array('signal' => $signal, 'weight' => $weight, 'reason' => $reason);
-        };
-        $anchor = strtolower($link['anchor']);
         foreach (self::SPAM_WORDS as $word) {
             if (preg_match('/\b' . preg_quote($word, '/') . '\b/i', $anchor)) {
-                $add('anchor_topic', 35, __('Anchor contains a commonly abused topic; verify relevance to this site.', 'seoprostats'));
+                $out[] = self::signal('anchor_topic', 35, __('Anchor contains a commonly abused topic; verify relevance to this site.', 'seoprostats'));
                 break;
             }
         }
-        $target_words = trim((string) preg_replace('/[^a-z0-9]+/', ' ', strtolower(basename($link['page']))));
+        $target_words = trim((string) preg_replace('/[^a-z0-9]+/', ' ', strtolower(basename($page))));
         if ($target_words !== '' && $anchor === $target_words && preg_match('/\b(buy|cheap|best|price|loans|pills|casino)\b/', $anchor)) {
-            $add('commercial_exact', 20, __('Commercial anchor exactly matches the target page slug.', 'seoprostats'));
-        }
-        $tld = substr((string) strrchr($link['host'], '.'), 1);
-        if (in_array($tld, self::TLD_PATTERNS, true)) {
-            $add('tld_pattern', 10, __('Referring domain has a commonly abused TLD; legitimate sites use it too.', 'seoprostats'));
-        }
-        $facts = isset($link['facts']) ? (array) $link['facts'] : array();
-        if (isset($facts['outbound']) && $facts['outbound'] >= 100) {
-            $add('outbound', 20, __('Checked page has at least 100 outgoing links; inspect the placement.', 'seoprostats'));
-        }
-        if (!empty($facts['link_list'])) {
-            $add('link_list', 15, __('Checked page is mostly a list of outgoing links.', 'seoprostats'));
-        }
-        $language = strtolower((string) strtok(str_replace('_', '-', get_locale()), '-'));
-        if (!empty($facts['language']) && $facts['language'] !== $language) {
-            $add('language', 5, __('Checked page declares another language; this alone is not spam.', 'seoprostats'));
-        }
-        $scripts = array('Latin' => array('en', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'pl', 'tr', 'vi'), 'Cyrillic' => array('ru', 'uk', 'bg'), 'Arabic' => array('ar', 'fa', 'ur'), 'Han' => array('zh', 'ja'), 'Greek' => array('el'), 'Hebrew' => array('he'), 'Hangul' => array('ko'), 'Thai' => array('th'), 'Devanagari' => array('hi'));
-        foreach ($scripts as $script => $languages) {
-            if (in_array($language, $languages, true) && !empty($facts['script']) && $facts['script'] !== $script) {
-                $add('script', 5, __('Checked page predominantly uses a different script; verify audience relevance.', 'seoprostats'));
-                break;
-            }
-        }
-        if (!empty($facts['redirects'])) {
-            $add('redirects', 10, __('Observed referring-page redirect chain; inspect its destination.', 'seoprostats'));
-        }
-        foreach ((array) $link['providers'] as $provider) {
-            if (isset($provider['authority']) && is_numeric($provider['authority']) && $provider['authority'] >= 0 && $provider['authority'] <= 10) {
-                $add('low_authority', 5, __('Provider reports authority of 10/100 or less. New legitimate sites can score low; this is not a spam score and providers differ.', 'seoprostats'));
-                break;
-            }
-        }
-        foreach ((array) $link['providers'] as $provider) {
-            if (isset($provider['spam_score']) && is_numeric($provider['spam_score']) && $provider['spam_score'] >= 50 && $provider['spam_score'] <= 100) {
-                $add('provider_spam', 25, __('Provider reports a spam score of at least 50/100; not a Google verdict.', 'seoprostats'));
-                break;
-            }
-        }
-        $first = !empty($link['first_seen']) ? strtotime($link['first_seen']) : false;
-        $lost = !empty($link['lost']) ? strtotime($link['lost']) : false;
-        if ($first !== false && $lost !== false && $lost >= $first && $lost - $first <= 7 * DAY_IN_SECONDS) {
-            $add('short_lived', 10, __('Link was found and lost within seven days.', 'seoprostats'));
+            $out[] = self::signal('commercial_exact', 20, __('Commercial anchor exactly matches the target page slug.', 'seoprostats'));
         }
         return $out;
     }
 
+    /** Signals of the referring host. @param string $host Host. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function host_signals($host) {
+        $tld = substr((string) strrchr($host, '.'), 1);
+        return in_array($tld, self::TLD_PATTERNS, true) ? array(self::signal('tld_pattern', 10, __('Referring domain has a commonly abused TLD; legitimate sites use it too.', 'seoprostats'))) : array();
+    }
+
+    /** Signals of the checked page's links and redirects. @param array<string,mixed> $facts Page facts. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function page_signals(array $facts) {
+        $out = array();
+        if (isset($facts['outbound']) && $facts['outbound'] >= 100) {
+            $out[] = self::signal('outbound', 20, __('Checked page has at least 100 outgoing links; inspect the placement.', 'seoprostats'));
+        }
+        if (!empty($facts['link_list'])) {
+            $out[] = self::signal('link_list', 15, __('Checked page is mostly a list of outgoing links.', 'seoprostats'));
+        }
+        return $out;
+    }
+
+    /** Signals of the checked page's language and script, against the site's. @param array<string,mixed> $facts Page facts. @param string $language The site's language code. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function language_signals(array $facts, $language) {
+        $out = array();
+        if (!empty($facts['language']) && $facts['language'] !== $language) {
+            $out[] = self::signal('language', 5, __('Checked page declares another language; this alone is not spam.', 'seoprostats'));
+        }
+        $scripts = array('Latin' => array('en', 'fr', 'de', 'es', 'it', 'pt', 'nl', 'pl', 'tr', 'vi'), 'Cyrillic' => array('ru', 'uk', 'bg'), 'Arabic' => array('ar', 'fa', 'ur'), 'Han' => array('zh', 'ja'), 'Greek' => array('el'), 'Hebrew' => array('he'), 'Hangul' => array('ko'), 'Thai' => array('th'), 'Devanagari' => array('hi'));
+        foreach ($scripts as $script => $languages) {
+            if (in_array($language, $languages, true) && !empty($facts['script']) && $facts['script'] !== $script) {
+                $out[] = self::signal('script', 5, __('Checked page predominantly uses a different script; verify audience relevance.', 'seoprostats'));
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /** A redirect chain before the checked page. @param array<string,mixed> $facts Page facts. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function redirect_signals(array $facts) {
+        return !empty($facts['redirects']) ? array(self::signal('redirects', 10, __('Observed referring-page redirect chain; inspect its destination.', 'seoprostats'))) : array();
+    }
+
+    /** Signals of the backlink providers' figures. @param array<int|string,mixed> $providers Providers. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function provider_signals(array $providers) {
+        $out = array();
+        if (self::any_figure($providers, 'authority', 0, 10)) {
+            $out[] = self::signal('low_authority', 5, __('Provider reports authority of 10/100 or less. New legitimate sites can score low; this is not a spam score and providers differ.', 'seoprostats'));
+        }
+        if (self::any_figure($providers, 'spam_score', 50, 100)) {
+            $out[] = self::signal('provider_spam', 25, __('Provider reports a spam score of at least 50/100; not a Google verdict.', 'seoprostats'));
+        }
+        return $out;
+    }
+
+    /** Whether any provider reports a figure within a range. @param array<int|string,mixed> $providers Providers. @param string $figure Figure. @param int $min Lowest. @param int $max Highest. @return bool */
+    private static function any_figure(array $providers, $figure, $min, $max) {
+        foreach ($providers as $provider) {
+            if (isset($provider[$figure]) && is_numeric($provider[$figure]) && $provider[$figure] >= $min && $provider[$figure] <= $max) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A link found and lost within seven days. @param array<string,mixed> $link Link. @return array<int,array{signal:string,weight:int,reason:string}> */
+    private static function age_signals(array $link) {
+        $first = !empty($link['first_seen']) ? strtotime($link['first_seen']) : false;
+        $lost = !empty($link['lost']) ? strtotime($link['lost']) : false;
+        if ($first !== false && $lost !== false && $lost >= $first && $lost - $first <= 7 * DAY_IN_SECONDS) {
+            return array(self::signal('short_lived', 10, __('Link was found and lost within seven days.', 'seoprostats')));
+        }
+        return array();
+    }
+
     /** Retain facts only from the page already fetched by the existing check. @param string $html HTML. @return array<string,mixed> */
     public static function page_facts($html) {
+        $out = self::tag_facts($html);
+        $text = wp_strip_all_tags($html);
+        $words = preg_match_all('/\p{L}+/u', $text);
+        $out['link_list'] = $out['outbound'] >= 30 && $words !== false && $words < $out['outbound'] * 10;
+        $out['script'] = self::main_script($text);
+        return $out;
+    }
+
+    /** Outgoing links and the declared language, from the page's tags. @param string $html HTML. @return array{outbound:int,language:string} */
+    private static function tag_facts($html) {
         $tags = new WP_HTML_Tag_Processor($html);
         $out = array('outbound' => 0, 'language' => '');
         $hosts = SEOProStats_Collection::hosts();
@@ -348,25 +451,28 @@ final class SEOProStats_Backlink_Review {
                 $lang = $tags->get_attribute('lang');
                 $out['language'] = is_string($lang) ? strtolower((string) strtok(str_replace('_', '-', $lang), '-')) : '';
             }
-            if ($tags->get_tag() === 'A') {
-                $href = $tags->get_attribute('href');
-                $host = is_string($href) ? strtolower((string) wp_parse_url($href, PHP_URL_HOST)) : '';
-                if ($host !== '' && !in_array($host, $hosts, true)) {
-                    ++$out['outbound'];
-                }
+            if ($tags->get_tag() === 'A' && self::outbound($tags->get_attribute('href'), $hosts)) {
+                ++$out['outbound'];
             }
         }
-        $text = wp_strip_all_tags($html);
-        $words = preg_match_all('/\p{L}+/u', $text);
-        $out['link_list'] = $out['outbound'] >= 30 && $words !== false && $words < $out['outbound'] * 10;
+        return $out;
+    }
+
+    /** A link to another site. @param string|bool|null $href The href attribute. @param string[] $hosts The site's hosts. @return bool */
+    private static function outbound($href, array $hosts) {
+        $host = is_string($href) ? strtolower((string) wp_parse_url($href, PHP_URL_HOST)) : '';
+        return $host !== '' && !in_array($host, $hosts, true);
+    }
+
+    /** The script of most of the text: at least 100 letters and over 60% of the counted ones, else ''. @param string $text Text. @return string */
+    private static function main_script($text) {
         $counts = array();
         foreach (array('Latin', 'Cyrillic', 'Arabic', 'Han', 'Greek', 'Hebrew', 'Hangul', 'Thai', 'Devanagari') as $script) {
             $counts[$script] = (int) preg_match_all('/\p{' . $script . '}/u', $text);
         }
         arsort($counts);
         $script = (string) key($counts);
-        $out['script'] = $counts[$script] >= 100 && $counts[$script] > array_sum($counts) * 0.6 ? $script : '';
-        return $out;
+        return $counts[$script] >= 100 && $counts[$script] > array_sum($counts) * 0.6 ? $script : '';
     }
 
     /** Consistent validation/write error. @return WP_Error */
