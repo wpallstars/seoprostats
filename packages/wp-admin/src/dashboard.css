@@ -1207,7 +1207,7 @@ code.spst-meta {
 
 .spst-sort:hover,
 .spst-sort.is-active {
-	color: var(--wp-admin-theme-color, #2271b1);
+	color: var(--spst-accent, var(--wp-admin-theme-color, #2271b1));
 }
 
 .spst-sort:focus-visible {

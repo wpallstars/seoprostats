@@ -60,6 +60,8 @@ html.spst-dark .spst-wrap {
 	--spst-border: var(--spst-ui-border);
 	--spst-surface: var(--spst-ui-surface);
 	--spst-subtle: var(--spst-ui-raised);
+	--spst-divider: var(--spst-ui-divider);
+	--spst-hover: var(--spst-ui-raised);
 	--spst-success: var(--spst-ui-good);
 	--spst-error: var(--spst-ui-bad);
 	--spst-shadow: 0 1px 2px rgb(0 0 0 / 40%);
@@ -148,8 +150,9 @@ html.spst-dark #wpbody-content {
 	color: var(--spst-ui-text);
 }
 
+/* As specific as WordPress's own p.description, so it wins by order. */
 html.spst-dark #wpfooter,
-:where(html.spst-dark #wpbody) .description {
+:where(html.spst-dark #wpbody) :is(p, span, div).description {
 	color: var(--spst-ui-muted);
 }
 
@@ -259,6 +262,11 @@ html.spst-dark #wpbody .widefat :is(td, th, thead td, thead th, tfoot td, tfoot 
 html.spst-dark .components-modal__frame .widefat :is(td, th) {
 	color: var(--spst-ui-text);
 	border-color: var(--spst-ui-border);
+}
+
+/* WordPress paints lists and paragraphs in tables dark grey. */
+html.spst-dark :is(#wpbody, .components-modal__frame) .widefat :is(ol, ul, p) {
+	color: inherit;
 }
 
 html.spst-dark #wpbody .widefat :is(thead th, thead td, tfoot th, tfoot td) {
