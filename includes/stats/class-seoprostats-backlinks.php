@@ -360,7 +360,8 @@ final class SEOProStats_Backlinks {
         $gone = $got === 'gone';
         $seen = array();
         if (!$gone) {
-            $seen = self::keep_page($page, $url, $host, (string) $got, $redirects, $by, $now, $events);
+            $seen = self::keep_page($page, $url, $host, (string) $got, $by, $now, $events);
+            self::save_facts((int) $page['source_url_id'], (string) $got, $redirects);
         }
         // Links not found now: a miss, lost after MISSES in a row or when the page is gone.
         $gone_paths = self::miss_links($table, $by, $seen, $gone, $now);
@@ -396,28 +397,36 @@ final class SEOProStats_Backlinks {
     }
 
     /**
-     * Keep the links an opened referring page has to the site, then its
-     * page facts.
+     * Keep the links an opened referring page has to the site.
      *
-     * @param array<string,string>                                    $page      Its row.
-     * @param string                                                  $url       Its address.
-     * @param string                                                  $host      Its host.
-     * @param string                                                  $html      What it answered.
-     * @param array<string,int>                                       $redirects Observed redirect count.
-     * @param array<int,array<string,string>>                         $by        Its links known before, by linked page.
-     * @param int                                                     $now       Unix seconds.
-     * @param array{new:array<string,array>,lost:array<string,array>} $events    New and lost links by referring host; added to.
+     * @param array<string,string>                                    $page   Its row.
+     * @param string                                                  $url    Its address.
+     * @param string                                                  $host   Its host.
+     * @param string                                                  $html   What it answered.
+     * @param array<int,array<string,string>>                         $by     Its links known before, by linked page.
+     * @param int                                                     $now    Unix seconds.
+     * @param array{new:array<string,array>,lost:array<string,array>} $events New and lost links by referring host; added to.
      * @return array<int,bool> Linked pages found now.
      */
-    private static function keep_page(array $page, $url, $host, $html, array $redirects, array $by, $now, array &$events) {
-        global $wpdb;
+    private static function keep_page(array $page, $url, $host, $html, array $by, $now, array &$events) {
         $links = self::parse($html);
+        return $links ? self::keep_links($page, $url, $host, $links, $by, $now, $events) : array();
+    }
+
+    /**
+     * Save the page facts of an opened referring page on each of its links.
+     *
+     * @param int               $url_id    The referring page.
+     * @param string            $html      What it answered.
+     * @param array<string,int> $redirects Observed redirect count.
+     * @return void
+     */
+    private static function save_facts($url_id, $html, array $redirects) {
+        global $wpdb;
         require_once __DIR__ . '/class-seoprostats-backlink-review.php';
         $facts = wp_json_encode(SEOProStats_Backlink_Review::page_facts($html) + $redirects);
-        $seen  = $links ? self::keep_links($page, $url, $host, $links, $by, $now, $events) : array();
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, indexed source_url read/write; no new requests.
-        $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', SEOProStats_Schema::table('links'), (string) $facts, (int) $page['source_url_id']));
-        return $seen;
+        $wpdb->query($wpdb->prepare('UPDATE %i SET facts = %s WHERE source_url_id = %d', SEOProStats_Schema::table('links'), (string) $facts, $url_id));
     }
 
     /**
