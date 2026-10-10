@@ -178,7 +178,15 @@ Interfaces (administrator access): `GET /seoprostats/v1/backlinks/review`; `POST
 
 #### Targets
 
-**Targets**, before Plan, lists the searches you chose to win and the page meant for each, highest priority first: its position, clicks and impressions on any page, the page search shows most for it, and whether that is the page meant for it (**Ranking with its page**), another page (**Another page ranks**), no page chosen yet, or not shown at all. Administrators **Import targets** by pasting a list: one search a row with its page (a path such as `/pricing/` or an address on this site), priority (0–100, or high, medium, low) and status (candidate, targeted, live, won, retired), as CSV or tab-separated text, JSON, or the aidevops search targets table. A row that cannot be read (no search, an address on another site, a priority or status it does not know, the same search twice) is skipped and listed with its reason, never guessed. Plan lists each open target (candidate, targeted, live) where another page ranks, and each with priority 70 or more in positions 4–20, weighted by its priority.
+**Targets**, before Plan, lists the searches you chose to win and the page meant for each, highest priority first: its position, clicks and impressions on any page, the page search shows most for it, and whether that is the page meant for it (**Ranking with its page**), another page (**Another page ranks**), no page chosen yet, or not shown at all.
+
+Targets come from three places, and with none yet the tab lists them:
+
+- **Your SEO plugin.** **Suggest from SEO plugin** lists the focus keyword each published page has in Rank Math, Yoast SEO, SEOPress or All in One SEO, with that page: new ones (ticked), those already targets (left as they are), and those set on more than one page, which are not imported, since which page is meant is yours to choose. **Import** adds the ticked ones as targeted, priority 50, with their page. Tick **Include each page's other focus keywords** for the extra keywords too.
+- **The search reports.** **Add as target** after a search in Rankings, and in Opportunities → Striking distance and Overlapping pages, adds it as a candidate: with the page that ranks in Striking distance, the page picked in Rankings (if any), and none in Overlapping pages, where choosing the page is the point. A search that is a target already shows **Target**, and is never changed.
+- **Keyword research.** **Import targets** pastes a list: one search a row with its page (a path such as `/pricing/` or an address on this site), priority (0–100, or high, medium, low) and status (candidate, targeted, live, won, retired), as CSV or tab-separated text, JSON, or the aidevops search targets table. A row that cannot be read (no search, an address on another site, a priority or status it does not know, the same search twice) is skipped and listed with its reason, never guessed.
+
+Plan lists each open target (candidate, targeted, live) where another page ranks, and each with priority 70 or more in positions 4–20, weighted by its priority.
 
 #### Research and the Keyword Golden Ratio
 

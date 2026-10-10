@@ -561,8 +561,20 @@ Built (GH#80), no schema change (`SEOProStats_Refresh`):
 
 The site's chosen queries and the page meant for each: `targets` (schema
 v13), `query_id` primary key, `path_id`, priority (0–100), status, source.
-Imported from a simple list (query, address, priority) or the aidevops
-search targets table (`phrase`, `target_url`, `priority`, `status`). The
+They come from three places (GH#247), each saying where to find them:
+
+- **The SEO plugin's focus keywords**: the keyword a page is already
+  written for, so the page meant for it is known. Suggested, never
+  imported unasked; a keyword set on more than one page is listed but not
+  imported, as which page is meant is the owner's choice.
+- **The search reports**: Add as target after a search in Rankings,
+  Striking distance or Overlapping pages, as a candidate, never changing
+  a target already listed.
+- **Keyword research**: a simple list (query, address, priority) pasted
+  from a spreadsheet or keyword tool, or the aidevops search targets table
+  (`phrase`, `target_url`, `priority`, `status`).
+
+The
 report gives each target's position, clicks and the page that ranks; a
 target ranking with another page is a queue item (`target`), as is a
 high-priority target in striking distance.
@@ -573,8 +585,8 @@ Built (GH#81), schema v13 (`SEOProStats_Targets`):
   key), `path_id` (0: no page chosen yet), `priority` (0–100, 50 when
   left out; high 80, medium 50, low 20), `status` (candidate, targeted,
   live, won, retired; `active` imports as targeted), `source` (list,
-  aidevops, demo), `created`, `updated`, `user_id`. At most 1,000
-  targets; read whole by its primary key.
+  aidevops, demo, seo-plugin, search), `created`, `updated`, `user_id`.
+  At most 1,000 targets; read whole by its primary key.
 - Import: CSV or tab-separated text (a header row naming query, page,
   priority and status under any of their usual names, or those columns
   in that order), JSON (a list, or an object with `targets`), or the
@@ -582,8 +594,28 @@ Built (GH#81), schema v13 (`SEOProStats_Targets`):
   or `query` column). Each row is checked: no query text, an address not
   on this site, or a priority or status that cannot be read skips the row
   with its number and reason, never a guess. Searches already listed are
-  updated; `replace` deletes those not in the import. At most 5,000 rows
-  and 1 MB.
+  updated; `replace` deletes those not in the import; `only_new` skips
+  them instead (`exists`) and leaves them as they are. `source: search`
+  marks rows added from a search report. At most 5,000 rows and 1 MB.
+- Focus keyword suggestions (`SEOProStats_Target_Sources`): the focus
+  keywords Rank Math, Yoast SEO, SEOPress or All in One SEO keeps for
+  published, viewable posts (the active plugin's; any plugin's when none
+  is active; plus the `seoprostats_focus_keywords` filter), read through
+  `SEOProStats_Coverage::seo_fields()`. One row per search, in a state:
+  `new` (one page's, not a target), `clash` (more than one page's; never
+  imported, as which page is meant is the owner's choice) or `targeted`
+  (a target already). Each page's main keyword; `all_keywords` adds the
+  others. Import adds the new ones (all, or those named) as targeted,
+  priority 50, source seo-plugin, with only_new, so targets already set
+  never change. Reads postmeta by its `meta_key` index, one key at a
+  time, at most 1,000 posts, on an admin request only; nothing stored.
+  The demo reads its pages' focus keywords.
+- Add as target: Rankings (queries, with the page picked, if any),
+  Opportunities → Striking distance (with the page that ranks) and
+  Overlapping pages (no page chosen, as choosing one is what overlap
+  asks) add the search as a candidate with only_new and source search.
+  A search that is a target already shows **Target** instead; the marks
+  read `GET /targets/queries` (queries, pages and statuses, no figures).
 - Report: per target, for the period (cut at the newest search day, to
   its newest 91 days), the query's clicks, impressions, CTR and position
   on any page, the page search shows most for it (`shown`, with its share
@@ -604,12 +636,18 @@ Built (GH#81), schema v13 (`SEOProStats_Targets`):
   impressions; effort 2.
 - REST `GET /targets` (`status`: all, open or one status; `engine`,
   period, `compare`, `limit`, `offset`), `POST /targets` (`targets` as a
-  list or `text`, `replace`) and `DELETE /targets` (`queries` or `all`);
-  WP-CLI `wp seoprostats targets [list|import <file|->|delete <query>...]`;
-  abilities `seoprostats/targets` (read) and `seoprostats/targets-import`.
-  Writes need `manage_options`. Dashboard: Search → **Targets**, with a
-  status switch, an import form and delete for administrators; Plan shows
-  `Search target: <finding>`. Shared reports leave Targets out.
+  list or `text`, `replace`, `only_new`, `source`), `DELETE /targets`
+  (`queries` or `all`), `GET /targets/queries`, and `GET`/`POST
+  /targets/suggestions` (`all_keywords`; `queries` to import some);
+  WP-CLI `wp seoprostats targets [list|import <file|->|import
+  --from=seo-plugin [<query>...]|suggest|delete <query>...]`; abilities
+  `seoprostats/targets` (read), `seoprostats/targets-suggest` and
+  `seoprostats/targets-import` (`from: seo-plugin`, `only_new`,
+  `source`). Writes and suggestions need `manage_options`. Dashboard:
+  Search → **Targets**, with a status switch, Suggest from SEO plugin, an
+  import form and delete for administrators, and, with no targets yet,
+  the three places targets come from; Plan shows `Search target:
+  <finding>`. Shared reports leave Targets and Add as target out.
 - Demo data: nine targets: two shown with another page, three
   high-priority ones in striking distance (one with no page chosen), one
   won, one retired, one ranking as meant, one not shown yet.
