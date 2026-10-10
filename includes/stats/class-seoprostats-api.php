@@ -96,6 +96,7 @@ final class SEOProStats_API {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-target-sources.php';
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-loop.php';
     }
 
@@ -917,6 +918,17 @@ final class SEOProStats_API {
                         'type'        => 'boolean',
                         'default'     => false,
                     ),
+                    'only_new' => array(
+                        'description' => __('Add new searches only: searches already listed are skipped (exists) and left as they are. replace is ignored.', 'seoprostats'),
+                        'type'        => 'boolean',
+                        'default'     => false,
+                    ),
+                    'source'  => array(
+                        'description' => __('Where the targets come from: list (the default; the aidevops table when the text is TOON) or search (rows of the search reports).', 'seoprostats'),
+                        'type'        => 'string',
+                        'enum'        => array('list', 'search'),
+                        'default'     => 'list',
+                    ),
                 ),
             ),
             array(
@@ -934,6 +946,38 @@ final class SEOProStats_API {
                         'description' => __('Delete every target.', 'seoprostats'),
                         'type'        => 'boolean',
                         'default'     => false,
+                    ),
+                ),
+            ),
+        ));
+        register_rest_route($ns, '/targets/queries', array(
+            $read + array(
+                'callback' => array(__CLASS__, 'targets_queries'),
+                'args'     => array('data' => $base['data']),
+            ),
+        ));
+        $keywords = array(
+            'description' => __('Every focus keyword of a page, not only its main one.', 'seoprostats'),
+            'type'        => 'boolean',
+            'default'     => false,
+        );
+        register_rest_route($ns, '/targets/suggestions', array(
+            array(
+                'methods'             => WP_REST_Server::READABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'targets_suggestions'),
+                'args'                => array('data' => $base['data'], 'all_keywords' => $keywords),
+            ),
+            array(
+                'methods'             => WP_REST_Server::CREATABLE,
+                'permission_callback' => $manage,
+                'callback'            => array(__CLASS__, 'targets_suggestions_import'),
+                'args'                => array('data' => $base['data'], 'all_keywords' => $keywords) + array(
+                    'queries' => array(
+                        'description' => __('The suggested searches to import; left out for every new one.', 'seoprostats'),
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'default'     => array(),
                     ),
                 ),
             ),
@@ -2327,10 +2371,12 @@ final class SEOProStats_API {
      * @return WP_REST_Response|WP_Error
      */
     public static function targets_import($request) {
-        $rows    = $request->get_param('targets');
-        $text    = (string) $request->get_param('text');
-        $replace = (bool) $request->get_param('replace');
-        return self::define($request, static function () use ($rows, $text, $replace) {
+        $rows     = $request->get_param('targets');
+        $text     = (string) $request->get_param('text');
+        $replace  = (bool) $request->get_param('replace');
+        $only_new = (bool) $request->get_param('only_new');
+        $from     = (string) $request->get_param('source') === 'search' ? 'search' : 'list';
+        return self::define($request, static function () use ($rows, $text, $replace, $only_new, $from) {
             $format = 'list';
             if (!is_array($rows) || !$rows) {
                 if (trim($text) === '') {
@@ -2343,8 +2389,53 @@ final class SEOProStats_API {
                 $rows   = $parsed['rows'];
                 $format = $parsed['format'];
             }
-            $done = SEOProStats_Targets::import($rows, $format === 'toon' ? 'aidevops' : 'list', $replace);
+            $source = $format === 'toon' ? 'aidevops' : $from;
+            $done   = SEOProStats_Targets::import($rows, $source, $replace, $only_new);
             return is_wp_error($done) ? $done : array('format' => $format) + $done;
+        });
+    }
+
+    /**
+     * GET /targets/queries: every target's search with its page, status
+     * and priority, without search figures, so reports can mark searches
+     * that are targets.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets_queries($request) {
+        return self::define($request, static function () {
+            return array('targets' => array_values(SEOProStats_Targets::listed()));
+        });
+    }
+
+    /**
+     * GET /targets/suggestions: the SEO plugin's focus keywords, each
+     * with its page and whether it is new, a target already, or the focus
+     * keyword of more than one page.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets_suggestions($request) {
+        $all = (bool) $request->get_param('all_keywords');
+        return self::define($request, static function () use ($all) {
+            return SEOProStats_Target_Sources::suggestions($all);
+        });
+    }
+
+    /**
+     * POST /targets/suggestions: import the new suggestions (all, or the
+     * searches given) as targeted, leaving existing targets as they are.
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response|WP_Error
+     */
+    public static function targets_suggestions_import($request) {
+        $all     = (bool) $request->get_param('all_keywords');
+        $queries = array_map('strval', (array) $request->get_param('queries'));
+        return self::define($request, static function () use ($queries, $all) {
+            return SEOProStats_Target_Sources::import($queries, $all);
         });
     }
 

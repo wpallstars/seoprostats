@@ -65,11 +65,17 @@ final class SEOProStats_Targets {
     /** Status lists the report can ask for: every target, the open ones, or one status. */
     const FILTERS = array('all', 'open', 'candidate', 'targeted', 'live', 'won', 'retired');
 
-    /** Where a target came from: code (the source column) => name. */
+    /**
+     * Where a target came from: code (the source column) => name. A list,
+     * the aidevops table, the demo, an SEO plugin's focus keywords
+     * (SEOProStats_Target_Sources), or a search report's row.
+     */
     const SOURCES = array(
         1 => 'list',
         2 => 'aidevops',
         3 => 'demo',
+        4 => 'seo-plugin',
+        5 => 'search',
     );
 
     /** How search treats a target now. */
@@ -511,6 +517,38 @@ final class SEOProStats_Targets {
         return $out;
     }
 
+    /**
+     * Every target's query with its page, status and priority, without
+     * search figures: by query (lower case, as stored). A primary-key read
+     * of the targets and their texts, for the searches reports mark as
+     * targets and the SEO plugin suggestions.
+     *
+     * @return array<string,array{query:string,page:string,status:string,priority:int}>
+     */
+    public static function listed() {
+        self::load();
+        $targets = self::stored();
+        if (!$targets) {
+            return array();
+        }
+        $text = SEOProStats_Query::texts(array_values(array_unique(array_filter(array_merge(array_keys($targets), array_column($targets, 'path_id'))))));
+        $out  = array();
+        foreach ($targets as $query_id => $target) {
+            $query = isset($text[$query_id]) ? (string) $text[$query_id] : '';
+            if ($query === '') {
+                continue;
+            }
+            $out[$query] = array(
+                'query'    => $query,
+                'page'     => $target['path_id'] && isset($text[$target['path_id']]) ? (string) $text[$target['path_id']] : '',
+                'status'   => (string) $target['status'],
+                'priority' => (int) $target['priority'],
+            );
+        }
+        ksort($out, SORT_STRING);
+        return $out;
+    }
+
     // ------------------------------------------------------------------
     // Importing and deleting.
 
@@ -730,14 +768,18 @@ final class SEOProStats_Targets {
     /**
      * Import targets: each row checked, valid ones added or updated (by
      * query), the others reported. With $replace, targets not in the
-     * import are deleted. Rows over MAX_TARGETS are skipped.
+     * import are deleted. With $only_new, searches already listed are
+     * skipped (exists) and left as they are, so adding a search from a
+     * report never changes a target someone set. Rows over MAX_TARGETS are
+     * skipped.
      *
-     * @param array<int,mixed> $rows    Rows: query (or phrase), page (or address, url, target_url), priority, status.
-     * @param string           $source  One of SOURCES.
-     * @param bool             $replace Delete targets not in the import.
+     * @param array<int,mixed> $rows     Rows: query (or phrase), page (or address, url, target_url), priority, status.
+     * @param string           $source   One of SOURCES.
+     * @param bool             $replace  Delete targets not in the import.
+     * @param bool             $only_new Add new searches only; leave listed ones as they are.
      * @return array<string,mixed>|WP_Error added, updated, removed, skipped (row, query, reason, message), total.
      */
-    public static function import(array $rows, $source = 'list', $replace = false) {
+    public static function import(array $rows, $source = 'list', $replace = false, $only_new = false) {
         self::load();
         if (!SEOProStats_Schema::maybe_upgrade()) {
             return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
@@ -752,10 +794,10 @@ final class SEOProStats_Targets {
         $now      = time();
         $existing = self::stored();
         $removed  = 0;
-        if ($replace && $existing) {
+        if ($replace && !$only_new && $existing) {
             list($removed, $existing) = self::remove_others($existing, $valid);
         }
-        $saved = self::save_valid($valid, $existing, $code, $now, $skipped);
+        $saved = self::save_valid($valid, $existing, array('code' => $code, 'now' => $now, 'only_new' => (bool) $only_new), $skipped);
         if (is_wp_error($saved)) {
             return $saved;
         }
@@ -816,12 +858,11 @@ final class SEOProStats_Targets {
      *
      * @param array<string,array<string,mixed>> $valid    check_rows()'s valid rows.
      * @param array<int,array<string,mixed>>    $existing Stored targets by query id.
-     * @param int                               $code     Source code (SOURCES).
-     * @param int                               $now      Unix time.
+     * @param array{code:int,now:int,only_new:bool} $how  Source code (SOURCES), Unix time, and whether listed searches are left as they are.
      * @param array<int,array<string,mixed>>    $skipped  Skipped rows; added to.
      * @return array{0:int,1:int}|WP_Error Added, updated.
      */
-    private static function save_valid(array $valid, array $existing, $code, $now, array &$skipped) {
+    private static function save_valid(array $valid, array $existing, array $how, array &$skipped) {
         list($queries, $path_id) = self::valid_ids($valid);
         $room    = self::MAX_TARGETS - count($existing);
         $added   = 0;
@@ -833,12 +874,16 @@ final class SEOProStats_Targets {
                 continue;
             }
             $known = isset($existing[$query_id]);
+            if ($known && $how['only_new']) {
+                $skipped[] = self::skip($target['row'], $query, 'exists');
+                continue;
+            }
             if (!$known && $room <= 0) {
                 $skipped[] = self::skip($target['row'], $query, 'limit');
                 continue;
             }
             $page = $target['page'] !== '' ? self::dict_id($path_id, $target['page']) : 0;
-            if (!self::upsert($query_id, $page, $target, $code, $now)) {
+            if (!self::upsert($query_id, $page, $target, $how['code'], $how['now'])) {
                 self::touch();
                 return self::error('seoprostats_targets_failed', __('The targets could not be saved.', 'seoprostats'), 500);
             }
@@ -915,9 +960,8 @@ final class SEOProStats_Targets {
      * @return array{query:string,page:string,priority:int,status:string,measurements:array<string,mixed>}|string The reason code when skipped.
      */
     private static function check(array $row) {
-        $raw   = self::field($row, 'query');
-        $query = SEOProStats_Search_Import::query(function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw));
-        if ($query === '' || preg_match('/[\x00-\x1f\x7f]/', $query) || (function_exists('mb_check_encoding') && !mb_check_encoding($query, 'UTF-8'))) {
+        $query = self::query_text(self::field($row, 'query'));
+        if ($query === '') {
             return 'query';
         }
         $page = self::page_path(self::field($row, 'page'));
@@ -941,6 +985,23 @@ final class SEOProStats_Targets {
             return 'measurements';
         }
         return array('query' => $query, 'page' => $page, 'priority' => $priority, 'status' => $status, 'measurements' => $measurements);
+    }
+
+    /**
+     * A search as targets store it (lower case, as engines report
+     * queries); '' when it is not search text.
+     *
+     * @param string $raw Search as given.
+     * @return string
+     */
+    public static function query_text($raw) {
+        self::load();
+        $raw   = (string) $raw;
+        $query = SEOProStats_Search_Import::query(function_exists('mb_strtolower') ? mb_strtolower($raw, 'UTF-8') : strtolower($raw));
+        if ($query === '' || preg_match('/[\x00-\x1f\x7f]/', $query) || (function_exists('mb_check_encoding') && !mb_check_encoding($query, 'UTF-8'))) {
+            return '';
+        }
+        return $query;
     }
 
     /**
@@ -1163,11 +1224,14 @@ final class SEOProStats_Targets {
      *
      * @param int    $row    Row number (1 for the first data row).
      * @param string $query  Its query as given.
-     * @param string $reason query, address, priority, status, duplicate or limit.
+     * @param string $reason query, address, priority, measurements, status, duplicate, limit, exists, clash or unknown.
      * @return array{row:int,query:string,reason:string,message:string}
      */
-    private static function skip($row, $query, $reason) {
+    public static function skip($row, $query, $reason) {
         $messages = array(
+            'exists'    => __('Already a target; left as it is.', 'seoprostats'),
+            'clash'     => __('The focus keyword of more than one page: choose its page, then import it as a list.', 'seoprostats'),
+            'unknown'   => __('Not a focus keyword of a published page.', 'seoprostats'),
             'query'     => __('No search text.', 'seoprostats'),
             'address'   => __('The address is not a page of this site.', 'seoprostats'),
             'priority'  => __('The priority is not 0 to 100 (or high, medium, low).', 'seoprostats'),

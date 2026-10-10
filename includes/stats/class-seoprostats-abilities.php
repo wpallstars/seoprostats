@@ -35,8 +35,11 @@
  *   or restore an item, or set its effort or note (administrators).
  * - seoprostats/targets: the site's search targets, each with its
  *   position, clicks and the page that ranks (read).
- * - seoprostats/targets-import: import or delete search targets
- *   (administrators).
+ * - seoprostats/targets-import: import or delete search targets, or
+ *   import the SEO plugin's focus keywords (administrators).
+ * - seoprostats/targets-suggest: the SEO plugin's focus keywords as
+ *   target suggestions, each new, a target already, or the focus keyword
+ *   of more than one page (administrators; read).
  * - seoprostats/migrate: other statistics plugins whose history is on
  *   the site, an import's dry run and what a plugin leaves behind
  *   (administrators; read).
@@ -1122,7 +1125,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/targets-import', array(
             'label'               => __('Import or delete search targets', 'seoprostats'),
-            'description'         => __('Add or update search targets by query, from targets (a list of objects: query or phrase; page or target_url, a path such as /pricing/ or an address on this site, left out when no page is chosen yet; priority 0–100 or high, medium, low, 50 when left out; status candidate, targeted, live, won or retired, targeted when left out) or text (CSV or tab-separated with a header row, JSON, or the aidevops search targets table in TOON). Rows without search text, with an address that is not on this site, or with a priority or status that cannot be read are skipped and listed with the reason, never guessed. replace deletes targets not in the import; delete removes the searches given (all: every target) instead of importing.', 'seoprostats'),
+            'description'         => __('Add or update search targets by query, from targets (a list of objects: query or phrase; page or target_url, a path such as /pricing/ or an address on this site, left out when no page is chosen yet; priority 0–100 or high, medium, low, 50 when left out; status candidate, targeted, live, won or retired, targeted when left out) or text (CSV or tab-separated with a header row, JSON, or the aidevops search targets table in TOON). Rows without search text, with an address that is not on this site, or with a priority or status that cannot be read are skipped and listed with the reason, never guessed. replace deletes targets not in the import; only_new adds new searches only and leaves listed ones as they are; source search marks targets added from search report rows. from seo-plugin imports the SEO plugin\'s new focus keywords instead (see seoprostats/targets-suggest; queries picks some, all_keywords adds each page\'s other focus keywords), as targeted with the page, leaving existing targets and keywords of more than one page alone. delete removes the searches given (all: every target) instead of importing.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -1140,6 +1143,30 @@ final class SEOProStats_Abilities {
                     'replace' => array(
                         'type'    => 'boolean',
                         'default' => false,
+                    ),
+                    'only_new' => array(
+                        'type'    => 'boolean',
+                        'default' => false,
+                    ),
+                    'source'  => array(
+                        'type'    => 'string',
+                        'enum'    => array('list', 'search'),
+                        'default' => 'list',
+                    ),
+                    'from'    => array(
+                        'type'        => 'string',
+                        'enum'        => array('seo-plugin'),
+                        'description' => __('seo-plugin: import the SEO plugin\'s new focus keywords instead of targets or text.', 'seoprostats'),
+                    ),
+                    'queries' => array(
+                        'type'        => 'array',
+                        'items'       => array('type' => 'string'),
+                        'description' => __('With from: the suggested searches to import; left out for every new one.', 'seoprostats'),
+                    ),
+                    'all_keywords' => array(
+                        'type'        => 'boolean',
+                        'default'     => false,
+                        'description' => __('With from: every focus keyword of a page, not only its main one.', 'seoprostats'),
                     ),
                     'delete'  => array(
                         'type'        => 'array',
@@ -1162,6 +1189,48 @@ final class SEOProStats_Abilities {
                 'annotations'  => array(
                     'readonly'    => false,
                     'destructive' => true,
+                    'idempotent'  => true,
+                ),
+            ),
+        ));
+        wp_register_ability('seoprostats/targets-suggest', array(
+            'label'               => __('Suggest search targets from the SEO plugin', 'seoprostats'),
+            'description'         => __('The focus keywords Rank Math, Yoast SEO, SEOPress or All in One SEO keeps for published posts (the active one\'s; any when none is active), one row per search with its page or pages and a state: new (the focus keyword of one page, not a target yet), clash (the focus keyword of more than one page: choose its page and import it as a list) or targeted (already a target, with its page and status). The main keyword of each page; all_keywords adds its other focus keywords. At most max_posts posts are read (more says there were more). Import the new ones with seoprostats/targets-import, from seo-plugin.', 'seoprostats'),
+            'category'            => self::CATEGORY,
+            'input_schema'        => array(
+                'type'                 => 'object',
+                'additionalProperties' => false,
+                'default'              => array(),
+                'properties'           => array(
+                    'all_keywords' => array(
+                        'type'    => 'boolean',
+                        'default' => false,
+                    ),
+                    'data'         => $data,
+                ),
+            ),
+            'output_schema'       => array(
+                'type'       => 'object',
+                'properties' => array(
+                    'plugin'       => array('type' => 'string'),
+                    'all_keywords' => array('type' => 'boolean'),
+                    'pages'        => array('type' => 'integer'),
+                    'more'         => array('type' => 'boolean'),
+                    'max_posts'    => array('type' => 'integer'),
+                    'counts'       => array('type' => 'object'),
+                    'rows'         => array(
+                        'type'  => 'array',
+                        'items' => array('type' => 'object'),
+                    ),
+                ),
+            ),
+            'execute_callback'    => array(__CLASS__, 'targets_suggest'),
+            'permission_callback' => array('SEOProStats_API', 'can_manage'),
+            'meta'                => array(
+                'show_in_rest' => true,
+                'annotations'  => array(
+                    'readonly'    => true,
+                    'destructive' => false,
                     'idempotent'  => true,
                 ),
             ),
@@ -1320,6 +1389,9 @@ final class SEOProStats_Abilities {
             if (isset($input['delete']) || !empty($input['all'])) {
                 return SEOProStats_Targets::delete(array_map('strval', isset($input['delete']) ? (array) $input['delete'] : array()), !empty($input['all']));
             }
+            if (isset($input['from']) && $input['from'] === 'seo-plugin') {
+                return SEOProStats_Target_Sources::import(array_map('strval', isset($input['queries']) ? (array) $input['queries'] : array()), !empty($input['all_keywords']));
+            }
             $format = 'list';
             $rows   = isset($input['targets']) ? (array) $input['targets'] : array();
             if (!$rows) {
@@ -1330,8 +1402,22 @@ final class SEOProStats_Abilities {
                 $rows   = $parsed['rows'];
                 $format = $parsed['format'];
             }
-            $done = SEOProStats_Targets::import($rows, $format === 'toon' ? 'aidevops' : 'list', !empty($input['replace']));
+            $source = isset($input['source']) && $input['source'] === 'search' ? 'search' : 'list';
+            $done   = SEOProStats_Targets::import($rows, $format === 'toon' ? 'aidevops' : $source, !empty($input['replace']), !empty($input['only_new']));
             return is_wp_error($done) ? $done : array('format' => $format) + $done;
+        });
+    }
+
+    /**
+     * seoprostats/targets-suggest.
+     *
+     * @param array<string,mixed>|null $input Input.
+     * @return array<string,mixed>|WP_Error
+     */
+    public static function targets_suggest($input = null) {
+        $input = is_array($input) ? $input : array();
+        return SEOProStats_API::on_data(self::data($input), static function () use ($input) {
+            return SEOProStats_Target_Sources::suggestions(!empty($input['all_keywords']));
         });
     }
 
