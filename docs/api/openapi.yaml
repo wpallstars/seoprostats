@@ -5446,9 +5446,15 @@ components:
         post_id:
           type: integer
           description: Pages rows only; 0 when no post matches.
+        term_id:
+          type: integer
+          description: Pages rows only; present only when the page is a term archive and no post.
+        taxonomy:
+          type: string
+          description: Pages rows only; with term_id.
         edit_url:
           type: [string, 'null']
-          description: Pages rows only; null without edit_post permission. Shared read-only views omit it.
+          description: Pages rows only; null without edit_post (term archives: edit_term) permission. Shared read-only views omit it.
         links:
           type: integer
           description: Pages rows only; link clicks on the page.
@@ -5467,10 +5473,16 @@ components:
           type: string
         post_id:
           type: integer
-          description: 0 when no post matches, including made-up demo paths.
+          description: 0 when no post matches, including made-up demo paths. Found by url_to_postid(), else by slug among viewable post types when the post's permalink has this path (custom post types without a base).
+        term_id:
+          type: integer
+          description: Present only when the path is a term archive of a viewable taxonomy and no post.
+        taxonomy:
+          type: string
+          description: With term_id.
         edit_url:
           type: [string, 'null']
-          description: Editor address only when the current user can edit the post; otherwise null.
+          description: Editor address only when the current user can edit the post (or the term); otherwise null.
 
     ClicksAnswer:
       allOf:
@@ -5583,9 +5595,15 @@ components:
             post_id:
               type: integer
               description: Pages rows only; 0 when no post matches.
+            term_id:
+              type: integer
+              description: Pages rows only; present only when the page is a term archive and no post.
+            taxonomy:
+              type: string
+              description: Pages rows only; with term_id.
             edit_url:
               type: [string, 'null']
-              description: Pages rows only; only when the current user can edit the post.
+              description: Pages rows only; only when the current user can edit the post (or the term).
             compare:
               description: With a comparison.
               allOf:
@@ -5685,9 +5703,15 @@ components:
         post_id:
           type: integer
           description: 0 when no post matches.
+        term_id:
+          type: integer
+          description: Present only when the page is a term archive and no post.
+        taxonomy:
+          type: string
+          description: With term_id.
         edit_url:
           type: [string, 'null']
-          description: Only when the current user can edit the post.
+          description: Only when the current user can edit the post (or the term).
 
     OpportunityPair:
       description: A page's query (striking and ctr).
