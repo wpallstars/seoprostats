@@ -10,7 +10,6 @@ import { Button, SelectControl } from '@wordpress/components';
 import { __ } from '@wordpress/i18n';
 import { COMPARE_KEYS, RANGE_KEYS, type CompareKey, type RangeKey, type ViewState } from '@seoprostats/core';
 import { compareLabel, rangeLabel } from '../labels';
-import { savePeriod } from '../boot';
 
 interface Props {
 	state: ViewState;
@@ -55,7 +54,6 @@ export function Controls({ state, update }: Readonly<Props>) {
 					}
 					setEditing(false);
 					update({ range: value as RangeKey, from: undefined, to: undefined });
-					savePeriod({ range: value as RangeKey, compare: state.compare });
 				}}
 			/>
 			{custom && (
@@ -90,10 +88,7 @@ export function Controls({ state, update }: Readonly<Props>) {
 				value={state.compare}
 				options={COMPARE_KEYS.map((k) => ({ value: k, label: compareLabel(k) }))}
 				disabled={state.range === 'all'}
-				onChange={(value: string) => {
-					update({ compare: value as CompareKey });
-					savePeriod({ range: state.range, compare: value as CompareKey });
-				}}
+				onChange={(value: string) => update({ compare: value as CompareKey })}
 			/>
 		</div>
 	);
