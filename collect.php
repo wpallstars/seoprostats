@@ -32,7 +32,7 @@ if (!ctype_digit($seoprostats_site) || strlen($seoprostats_site) > 9) {
 
 // This file is wp-content/plugins/seoprostats/collect.php.
 $seoprostats_dir    = dirname(__DIR__, 2) . '/seoprostats/site-' . (int) $seoprostats_site;
-$seoprostats_config = is_file($seoprostats_dir . '/config.php') ? include $seoprostats_dir . '/config.php' : null; // NOSONAR: the file returns the config; include_once returns true if it was loaded before.
+$seoprostats_config = is_file($seoprostats_dir . '/config.php') ? include $seoprostats_dir . '/config.php' : null; // nosemgrep: php.lang.security.injection.tainted-filename.tainted-filename -- fixed local plugin-relative path; site ID is digit-validated, length-bounded and cast to int. NOSONAR: the file returns the config; include_once returns true if it was loaded before.
 if (!is_array($seoprostats_config)) {
     http_response_code(404);
     exit;
