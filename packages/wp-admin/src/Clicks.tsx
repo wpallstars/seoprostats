@@ -18,6 +18,7 @@ import { usePrintAll } from './printAll';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { EditLink } from './components/EditLink';
 import { TableScroll } from './components/TableScroll';
 
 interface Tile {
@@ -140,9 +141,7 @@ function PageLinks({ info }: Readonly<{ info: Pick<ClickPageInfo, 'path' | 'url'
 				<>
 					{' '}
 					·{' '}
-					<a href={info.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), info.path)}>
-						<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
-					</a>
+					<EditLink href={info.edit_url} path={info.path} />
 				</>
 			)}
 		</span>

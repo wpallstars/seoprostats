@@ -50,6 +50,7 @@ import { longLabel } from './dates';
 import type { ViewProps } from './App';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
+import { EditLink } from './components/EditLink';
 import { SearchSetup, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 
@@ -330,9 +331,7 @@ export function PageCell({ row, query, open, extra }: Readonly<{ row: Opportunit
 					{row.edit_url && (
 						<>
 							{row.url && ' · '}
-							<a href={row.edit_url} aria-label={sprintf(/* translators: %s: page path. */ __('Edit %s', 'seoprostats'), row.path)}>
-								<span className="dashicons dashicons-edit" aria-hidden="true" /> {__('Edit', 'seoprostats')}
-							</a>
+							<EditLink href={row.edit_url} path={row.path} />
 						</>
 					)}
 					{extra && (
