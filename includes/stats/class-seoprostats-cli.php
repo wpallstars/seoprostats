@@ -5291,7 +5291,12 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $add('WP-Cron', true, 'runs when pages load; minute job ' . $ago);
             return;
         }
-        $running = null !== $late && $late <= SEOProStats_Collection::JOBS_LATE;
+        if (null === $late) {
+            // Nothing to measure yet: the cron seoprostats_process check says why.
+            $add('WP-Cron', true, 'DISABLE_WP_CRON is set; the minute job is not scheduled yet, so whether a server cron job runs the jobs shows once it is');
+            return;
+        }
+        $running = $late <= SEOProStats_Collection::JOBS_LATE;
         $add(
             'WP-Cron',
             $running,
