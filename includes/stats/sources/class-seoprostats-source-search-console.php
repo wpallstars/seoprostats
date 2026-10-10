@@ -480,7 +480,10 @@ final class SEOProStats_Source_Search_Console {
             'exp'   => $now + HOUR_IN_SECONDS,
         );
         $input  = self::base64url((string) wp_json_encode($header)) . '.' . self::base64url((string) wp_json_encode($claims));
-        $pkey   = function_exists('openssl_pkey_get_private') ? openssl_pkey_get_private(isset($key['private_key']) ? (string) $key['private_key'] : '') : false;
+        $pkey   = false;
+        if (function_exists('openssl_pkey_get_private')) {
+            $pkey = openssl_pkey_get_private(isset($key['private_key']) ? (string) $key['private_key'] : '');
+        }
         $signed = '';
         if (!$pkey || !openssl_sign($input, $signed, $pkey, OPENSSL_ALGO_SHA256)) {
             return new WP_Error('seoprostats_key_sign', __('The private key could not sign the sign-in request. Connect again with a new key.', 'seoprostats'));
@@ -716,7 +719,10 @@ final class SEOProStats_Source_Search_Console {
             ))));
         }
         $answer = self::query($token, $property, $body);
-        return is_wp_error($answer) ? $answer : (isset($answer['rows']) && is_array($answer['rows']) ? $answer['rows'] : array());
+        if (is_wp_error($answer)) {
+            return $answer;
+        }
+        return isset($answer['rows']) && is_array($answer['rows']) ? $answer['rows'] : array();
     }
 
     /**

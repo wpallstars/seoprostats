@@ -385,6 +385,42 @@ export type SearchKind = (typeof SEARCH_KINDS)[number];
 /** The kinds every engine, page and query has; the others are Google's whole site only. */
 export const SEARCH_ANY_KINDS: readonly SearchKind[] = ['queries', 'pages', 'days'];
 
+/** Directions of a sorted table: desc most (or newest) first, asc least first. */
+export const SORT_ORDERS = ['desc', 'asc'] as const;
+export type SortOrder = (typeof SORT_ORDERS)[number];
+
+/** Columns whose first click sorts lowest first (a lower position is better); the others sort most first. */
+const ASCENDING_SORTS: readonly string[] = ['position'];
+
+/** A column's natural order: its first click; a second click reverses it. */
+export function naturalOrder(sort: string): SortOrder {
+	return ASCENDING_SORTS.includes(sort) ? 'asc' : 'desc';
+}
+
+/**
+ * A table's sort from the view: the column asked for if the table has it
+ * (else the table's default, the first) and the direction that goes with
+ * it (the column's natural one unless reversed).
+ */
+export function tableSort<K extends string>(sorts: readonly K[], sort: string | undefined, order: SortOrder | undefined): { sort: K; order: SortOrder } {
+	const has = sort === undefined || (sorts as readonly string[]).includes(sort);
+	const column = has && sort !== undefined ? (sort as K) : sorts[0]!;
+	return { sort: column, order: (has ? order : undefined) ?? naturalOrder(column) };
+}
+
+/** Orders of the search rows (Rankings) and of Audit's pages; the first is the default. */
+export const SEARCH_SORTS = ['impressions', 'clicks', 'ctr', 'position'] as const;
+export type SearchSort = (typeof SEARCH_SORTS)[number];
+
+/** Orders of the days rows: by day (the default, newest first) or a figure. */
+export const SEARCH_DAY_SORTS = ['day', ...SEARCH_SORTS] as const;
+export type SearchDaySort = (typeof SEARCH_DAY_SORTS)[number];
+
+/** The orders of a kind of search rows; the first is the default. */
+export function searchSorts(kind: SearchKind): readonly SearchDaySort[] {
+	return kind === 'days' ? SEARCH_DAY_SORTS : SEARCH_SORTS;
+}
+
 /** The Search section's reports; the first is the default. */
 export const SEARCH_REPORTS = ['rankings', 'opportunities', 'audit', 'content', 'backlinks', 'targets', 'plan', 'experiments'] as const;
 export type SearchReport = (typeof SEARCH_REPORTS)[number];
@@ -469,6 +505,9 @@ export interface SearchAnswer extends Answer, SearchEngineAnswer<SearchEngineCho
 	/** Whether the engine's source is connected (demo data: always). */
 	connected: boolean;
 	kind: SearchKind;
+	/** The rows' order, as asked or the kind's default. */
+	sort: SearchDaySort;
+	order: SortOrder;
 	page: string;
 	query: string;
 	page_info: ClickPageInfo | null;
@@ -659,8 +698,8 @@ export interface CoverageAnswer extends Answer {
 	more: boolean;
 }
 
-/** Orders of the content report, most first. */
-export const CONTENT_SORTS = ['clicks', 'visits', 'conversions'] as const;
+/** Orders of the content report; the first is the default. Conversions need a goal. */
+export const CONTENT_SORTS = ['impressions', 'clicks', 'ctr', 'position', 'visits', 'bounce_rate', 'visit_duration', 'conversions', 'conversion_rate'] as const;
 export type ContentSort = (typeof CONTENT_SORTS)[number];
 
 /** A page's search figures with its visits from search and their conversions of the goal. */
@@ -693,6 +732,7 @@ export interface ContentAnswer extends Answer, SearchEngineAnswer<SearchEngineCh
 	connected: boolean;
 	ignored: string[];
 	sort: ContentSort;
+	order: SortOrder;
 	/** The goal counted (the first unless one is chosen); null without goals. */
 	goal: { id: string; name: string; kind: string; match: string } | null;
 	goals: { id: string; name: string }[];
@@ -1177,6 +1217,9 @@ export interface AuditAnswer extends Answer, SearchEngineAnswer {
 	ignored: string[];
 	/** The finding asked for; '' for all. */
 	finding: AuditFinding | '';
+	/** The pages' order, as asked or most impressions first. */
+	sort: SearchSort;
+	order: SortOrder;
 	rules: {
 		title_max: number;
 		description_max: number;

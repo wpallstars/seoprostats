@@ -78,7 +78,7 @@ type OpportunitiesProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Opportunities({ state, open, onEngines }: OpportunitiesProps) {
+export function Opportunities({ state, open, onEngines }: Readonly<OpportunitiesProps>) {
 	// The striking card's own request (the same arguments, so fetched once).
 	const striking = useOpportunities(state, 'striking', PER_PAGE, 0);
 	const answer = striking.data;
@@ -176,7 +176,7 @@ function kindIntro(answer: OpportunitiesAnswer): string {
 	);
 }
 
-function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: OpportunityKind; open: OpportunitiesProps['open'] }) {
+function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; kind: OpportunityKind; open: OpportunitiesProps['open'] }>) {
 	// Back to the first rows when the period, filters or engine change.
 	const scope = JSON.stringify({ ...apiArgs(state), engine: state.engine ?? 'google' });
 	const [at, setAt] = useState({ scope, offset: 0 });
@@ -261,7 +261,7 @@ function KindCard({ state, kind, open }: { state: ViewProps['state']; kind: Oppo
 }
 
 /** Notes under a card: the period read, the CTR curve's source, search engine updates. */
-function Notes({ answer }: { answer: OpportunitiesAnswer }) {
+function Notes({ answer }: Readonly<{ answer: OpportunitiesAnswer }>) {
 	const notes: string[] = [];
 	if (answer.cut) {
 		notes.push(
@@ -302,7 +302,7 @@ function Notes({ answer }: { answer: OpportunitiesAnswer }) {
 }
 
 /** A page: its path (opens Rankings) and View and Edit links, then any extra figures; also Content's. */
-export function PageCell({ row, query, open, extra }: { row: OpportunityPage; query: string; open: OpportunitiesProps['open']; extra?: ReactNode }) {
+export function PageCell({ row, query, open, extra }: Readonly<{ row: OpportunityPage; query: string; open: OpportunitiesProps['open']; extra?: ReactNode }>) {
 	return (
 		<>
 			<button type="button" className="spst-link" title={__('Open in Rankings', 'seoprostats')} onClick={() => open({ page: row.path, query })}>
@@ -351,7 +351,7 @@ interface PairTableProps {
 	label: string;
 }
 
-function PairTable({ kind, rows, open, refreshing, label }: PairTableProps) {
+function PairTable({ kind, rows, open, refreshing, label }: Readonly<PairTableProps>) {
 	return (
 		<TableScroll label={label}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -407,7 +407,7 @@ interface MissingTableProps {
 	label: string;
 }
 
-function MissingTable({ rows, open, refreshing, label }: MissingTableProps) {
+function MissingTable({ rows, open, refreshing, label }: Readonly<MissingTableProps>) {
 	return (
 		<TableScroll label={label}>
 			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
@@ -453,7 +453,7 @@ interface OverlapTableProps {
 	label: string;
 }
 
-function OverlapTable({ rows, open, refreshing, label }: OverlapTableProps) {
+function OverlapTable({ rows, open, refreshing, label }: Readonly<OverlapTableProps>) {
 	return (
 		<TableScroll label={label}>
 			<table className={`widefat striped spst-table spst-decay spst-overlap${refreshing ? ' is-refreshing' : ''}`}>
@@ -555,7 +555,7 @@ interface DecayTableProps {
 	label: string;
 }
 
-function DecayTable({ rows, open, refreshing, label }: DecayTableProps) {
+function DecayTable({ rows, open, refreshing, label }: Readonly<DecayTableProps>) {
 	return (
 		<TableScroll label={label}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>

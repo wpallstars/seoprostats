@@ -275,7 +275,7 @@ function Coverage() {
 	);
 }
 
-function Part({ title, more = 0, children }: { title: string; more?: number; children: ReactNode }) {
+function Part({ title, more = 0, children }: Readonly<{ title: string; more?: number; children: ReactNode }>) {
 	return (
 		<div className="spst-editor__part">
 			<h3 className="spst-editor__heading">{title}</h3>
@@ -289,7 +289,7 @@ function Part({ title, more = 0, children }: { title: string; more?: number; chi
 	);
 }
 
-function QueryItem({ row }: { row: CoverageRow }) {
+function QueryItem({ row }: Readonly<{ row: CoverageRow }>) {
 	return (
 		<li>
 			<strong className="spst-editor__query">{row.query}</strong>

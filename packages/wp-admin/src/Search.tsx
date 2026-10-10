@@ -41,8 +41,11 @@ import {
 	SEARCH_REPORTS,
 	SHARE_SEARCH_REPORTS,
 	COMBINED_REPORTS,
+	searchSorts,
+	tableSort,
 	type Marker,
 	type SearchAnswer,
+	type SearchDaySort,
 	type SearchEngine,
 	type SearchEngineChoice,
 	type SearchKind,
@@ -63,6 +66,7 @@ import { Change } from './components/Change';
 import { ChangeDots } from './components/ChangeDots';
 import { useChangesModal, type MarkerPick } from './components/ChangesModal';
 import { MainChart } from './components/MainChart';
+import { SortHeader, type TableSortProps } from './components/SortHeader';
 import { EngineSwitch, SearchSetup as Setup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
 import { ResearchMenu } from './components/ResearchMenu';
@@ -159,7 +163,7 @@ function title(page: string, query: string, engine: SearchEngineChoice): string 
 }
 
 /** An × in a text box: empties it and applies at once. */
-function ClearButton({ label, onClear }: { label: string; onClear: () => void }) {
+function ClearButton({ label, onClear }: Readonly<{ label: string; onClear: () => void }>) {
 	return (
 		<button type="button" className="spst-clearable__clear" aria-label={label} title={label} onClick={onClear}>
 			<span className="dashicons dashicons-no-alt" aria-hidden="true" />
@@ -168,7 +172,7 @@ function ClearButton({ label, onClear }: { label: string; onClear: () => void })
 }
 
 /** Search: Rankings (what happened), Opportunities (where effort pays) and Content (what search visits do), as `report` in the address. */
-export function Search(props: ViewProps & { shared?: boolean }) {
+export function Search(props: Readonly<ViewProps & { shared?: boolean }>) {
 	const { state, update, shared = false } = props;
 	// A shared report: its section is one engine, without the owner's Plan and Experiments.
 	const reports: readonly SearchReport[] = shared ? SHARE_SEARCH_REPORTS : SEARCH_REPORTS;
@@ -198,8 +202,8 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 		plan: __('Plan', 'seoprostats'),
 		experiments: __('Experiments', 'seoprostats'),
 	};
-	// Rankings is the default, so it is left out of the address; Content's order and goal go with Content, Plan's state and goal with Plan, a change with Experiments.
-	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, goal: undefined, status: undefined, targets: undefined, backlinks: undefined, finding: undefined, change: undefined });
+	// Rankings is the default, so it is left out of the address; a table's order goes with its report, the goal with Content, Plan's state and goal with Plan, a change with Experiments.
+	const show = (next: SearchReport) => update({ report: next === 'rankings' ? undefined : next, sort: undefined, order: undefined, goal: undefined, status: undefined, targets: undefined, backlinks: undefined, finding: undefined, change: undefined });
 
 	const onKey = (event: KeyboardEvent<HTMLButtonElement>) => {
 		const at = reports.indexOf(report);
@@ -218,6 +222,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 		update({
 			report: undefined,
 			sort: undefined,
+			order: undefined,
 			goal: undefined,
 			status: undefined,
 			targets: undefined,
@@ -275,7 +280,7 @@ export function Search(props: ViewProps & { shared?: boolean }) {
 	);
 }
 
-function Rankings({ state, update, onEngines }: SearchReportProps) {
+function Rankings({ state, update, onEngines }: Readonly<SearchReportProps>) {
 	const engine: SearchEngineChoice = state.engine ?? 'google';
 	const kind: SearchKind = state.tab ?? 'queries';
 	const metric: SearchMetricKey = state.chart ?? 'clicks';
@@ -286,17 +291,21 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 	const [typedQuery, setTypedQuery] = useState(query);
 	useEffect(() => setTypedPage(page), [page]);
 	useEffect(() => setTypedQuery(query), [query]);
-	const setKind = (tab: SearchKind) => update({ tab });
+	// A chosen figure column stays across tabs; the default column differs (days: by day), so its reversal does not.
+	const setKind = (tab: SearchKind) => update(state.sort && state.sort !== 'day' ? { tab } : { tab, sort: undefined, order: undefined });
 	const id = useId();
 	// Countries, devices and search appearances exist for the whole site only, and from Google only (not Bing, so not Combined).
 	const kinds: SearchKind[] = page || query || engine !== 'google' ? [...SEARCH_ANY_KINDS] : [...SEARCH_KINDS];
 	const shown: SearchKind = kinds.includes(kind) ? kind : 'queries';
-	// Days page through the chart's points; back to the newest when the period, filters, engine, page or query change.
-	const scope = JSON.stringify({ ...apiArgs(state), engine, page, query, shown });
+	// The table's order: impressions, most first (days: newest first) unless a header was chosen.
+	const by = tableSort(searchSorts(shown), state.sort, state.order);
+	const onSort = (sort: SearchDaySort, order: TableSortProps<SearchDaySort>['order']) => update({ sort, order });
+	// Days page through the chart's points; back to the first page when the period, filters, engine, page, query or order change.
+	const scope = JSON.stringify({ ...apiArgs(state), engine, page, query, shown, by });
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = shown === 'days' && at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
-	const search = useSearch(state, shown, page, query, PER_PAGE, offset);
+	const search = useSearch(state, shown, page, query, PER_PAGE, offset, by);
 	const markers = useMarkers(state, page);
 	const changes = useChangesModal(update, page);
 	const answer = search.data;
@@ -528,6 +537,9 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 							choose={choose}
 							markers={markers.data?.markers ?? NO_MARKERS}
 							onMarker={changes.onMarker}
+							sort={by.sort}
+							order={by.order}
+							onSort={onSort}
 						/>
 						{answer && rows.length > 0 && <SearchNote engine={answered} kind={shown} />}
 						{answer?.kind === 'days' && answer.points.length > PER_PAGE && (
@@ -541,11 +553,12 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 										formatMetric(answer.points.length, 'number', locale)
 									)}
 								</span>
+								{/* Newer and Older while the rows go by day; Previous and Next when sorted by a figure. */}
 								<Button variant="secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PER_PAGE))}>
-									{__('Newer', 'seoprostats')}
+									{by.sort !== 'day' ? __('Previous', 'seoprostats') : by.order === 'asc' ? __('Older', 'seoprostats') : __('Newer', 'seoprostats')}
 								</Button>
 								<Button variant="secondary" disabled={!answer.more} onClick={() => setOffset(offset + PER_PAGE)}>
-									{__('Older', 'seoprostats')}
+									{by.sort !== 'day' ? __('Next', 'seoprostats') : by.order === 'asc' ? __('Newer', 'seoprostats') : __('Older', 'seoprostats')}
 								</Button>
 							</nav>
 						)}
@@ -557,7 +570,7 @@ function Rankings({ state, update, onEngines }: SearchReportProps) {
 }
 
 /** Paper: every kind of the top searches, each under its name. */
-function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }) {
+function PrintedSearches({ state, kinds, page, query, choose }: Readonly<{ state: ViewState; kinds: SearchKind[]; page: string; query: string; choose: RowProps['choose'] }>) {
 	return (
 		<Card className="spst-card is-wide spst-section is-print-all" size="small">
 			<CardHeader className="spst-card__header">
@@ -573,22 +586,23 @@ function PrintedSearches({ state, kinds, page, query, choose }: { state: ViewSta
 	);
 }
 
-function PrintedKind({ state, kind, page, query, choose }: { state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }) {
-	// Paper has no pages: every day (week or month) of the period.
-	const search = useSearch(state, kind, page, query, kind === 'days' ? 1000 : PER_PAGE);
+function PrintedKind({ state, kind, page, query, choose }: Readonly<{ state: ViewState; kind: SearchKind; page: string; query: string; choose: RowProps['choose'] }>) {
+	// Paper has no pages: every day (week or month) of the period, in the screen's order where the kind has its column.
+	const by = tableSort(searchSorts(kind), state.sort, state.order);
+	const search = useSearch(state, kind, page, query, kind === 'days' ? 1000 : PER_PAGE, 0, by);
 	return (
 		<section className="spst-print-tab">
 			<h3 className="spst-print-tab__title">{kindName(kind)}</h3>
-			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} />
+			<SearchTable answer={search.data} kind={kind} failed={search.isError} fetching={search.isFetching} page={page} query={query} choose={choose} sort={by.sort} order={by.order} />
 			{kind === 'appearance' && <SearchNote engine={state.engine ?? 'google'} kind={kind} />}
 		</section>
 	);
 }
 
 /** Why the rows add up to less than the totals, by engine. */
-function SearchNote({ engine, kind }: { engine: SearchEngineChoice; kind?: SearchKind }) {
+function SearchNote({ engine, kind }: Readonly<{ engine: SearchEngineChoice; kind?: SearchKind }>) {
 	if (kind === 'days') {
-		return <p className="spst-note">{__('Each row is a point of the chart, newest first; together they make the period’s totals.', 'seoprostats')}</p>;
+		return <p className="spst-note">{__('Each row is a point of the chart; together they make the period’s totals.', 'seoprostats')}</p>;
 	}
 	if (kind === 'appearance') {
 		return <p className="spst-note">{__('One search can show several appearances, so these figures do not add up to the site’s totals. Search appearances are counted by page.', 'seoprostats')}</p>;
@@ -629,6 +643,10 @@ interface SearchTableProps {
 	/** Changes in the range: days rows show theirs, as the chart's markers, before Clicks. */
 	markers?: Marker[];
 	onMarker?: (pick: MarkerPick) => void;
+	/** The rows' order (the kind's default when left out); headers sort only with onSort. */
+	sort?: SearchDaySort;
+	order?: TableSortProps<SearchDaySort>['order'];
+	onSort?: TableSortProps<SearchDaySort>['onSort'];
 }
 
 /**
@@ -650,8 +668,10 @@ function changesByDay(answer: SearchAnswer | undefined, markers: Marker[] | unde
 }
 
 /** One kind of top searches: loading, empty, or its table. */
-function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker }: SearchTableProps) {
+function SearchTable({ answer, kind, failed, fetching, page, query, choose, markers, onMarker, sort, order, onSort }: Readonly<SearchTableProps>) {
 	const rows = answer?.kind === kind ? answer.rows : [];
+	// The order the answer says it has (the asked one while it loads).
+	const by = tableSort(searchSorts(kind), answer?.kind === kind ? answer.sort : sort, answer?.kind === kind ? answer.order : order);
 	const top = Math.max(...rows.map((r) => r.clicks), 1);
 	const byDay = kind === 'days' ? changesByDay(answer, markers) : null;
 	return (
@@ -667,16 +687,18 @@ function SearchTable({ answer, kind, failed, fetching, page, query, choose, mark
 					<table className={`widefat striped spst-table${fetching ? ' is-refreshing' : ''}`}>
 						<thead>
 							<tr>
-								<th scope="col">{kindHeading(kind, answer?.grain)}</th>
+								{kind === 'days' ? (
+									<SortHeader column="day" label={kindHeading(kind, answer?.grain)} sort={by.sort} order={by.order} onSort={onSort} className="" />
+								) : (
+									<th scope="col">{kindHeading(kind, answer?.grain)}</th>
+								)}
 								{byDay && (
 									<th scope="col" className="spst-table__changes">
 										{__('Changes', 'seoprostats')}
 									</th>
 								)}
 								{METRIC_ORDER.map((key) => (
-									<th key={key} scope="col" className="num">
-										{key === 'position' ? __('Position', 'seoprostats') : metricName(key)}
-									</th>
+									<SortHeader key={key} column={key} label={key === 'position' ? __('Position', 'seoprostats') : metricName(key)} sort={by.sort} order={by.order} onSort={onSort} />
 								))}
 							</tr>
 						</thead>
@@ -717,7 +739,7 @@ interface RowProps {
 	onMarker?: (pick: MarkerPick) => void;
 }
 
-function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: RowProps) {
+function Row({ row, kind, grain, top, page, query, choose, changes, onMarker }: Readonly<RowProps>) {
 	const before = row.compare;
 	const when = kind === 'days' ? longLabel(row.from ?? row.value, grain) : '';
 	let name = <span>{kind === 'appearance' ? appearanceLabel(row.value) : kind === 'days' ? when : row.label}</span>;

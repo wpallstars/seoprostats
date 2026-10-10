@@ -1402,12 +1402,13 @@ paths:
         Tools (`/connections`), one `engine` at a time: totals of the
         period, a point per day (per month past 120 days), and rows of
         one `kind`: search queries, pages, countries, devices or appearance, sorted
-        by clicks, or `days`. `page` keeps the searches that showed that page (its
+        by impressions, most first (`sort` and `order` choose another), or `days`. `page` keeps the searches that showed that page (its
         queries), `query` keeps one query (its pages); countries, devices
         and appearance exist for the whole site and Google only, so with either they are
         empty.
 
-        `days` rows are the chart's points as a table, newest first, by the
+        `days` rows are the chart's points as a table, newest first (`sort`
+        `day`, or a figure), by the
         answer's `grain` (day, week or month), for every engine, page and
         query: each has `from` and `to`, the days it covers (both
         included), and together they make the period's totals. `limit`
@@ -1448,6 +1449,17 @@ paths:
             type: string
             enum: [queries, pages, countries, devices, appearance, days]
             default: queries
+        - name: sort
+          in: query
+          description: |
+            The figure the rows are sorted by, in `order`; `day` (the
+            default for `days`) is for `days` only. The answer's `sort` and
+            `order` say what was applied.
+          schema:
+            type: string
+            enum: [impressions, clicks, ctr, position, day]
+            default: impressions
+        - $ref: '#/components/parameters/order'
         - name: page
           in: query
           description: A path; `*` is any text.
@@ -1625,7 +1637,7 @@ paths:
         (Google's rich result report has errors). Each row's `google` gives
         the inspection, null until the page is inspected.
 
-        Pages are listed most impressions first, with their search figures
+        Pages are listed most impressions first (`sort` and `order` choose another), with their search figures
         from the same imported days as `/search` (one `engine`; cut as
         `/opportunities` is). `counts` gives pages per finding whatever
         `finding` is asked for. Each finding also becomes a `/queue` item.
@@ -1637,6 +1649,14 @@ paths:
           description: Only pages with this finding; all when left out.
           schema:
             $ref: '#/components/schemas/AuditFinding'
+        - name: sort
+          in: query
+          description: The search figure the pages are sorted by, in `order`; the answer's `sort` and `order` say what was applied.
+          schema:
+            type: string
+            enum: [impressions, clicks, ctr, position]
+            default: impressions
+        - $ref: '#/components/parameters/order'
         - $ref: '#/components/parameters/range'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'
@@ -2338,11 +2358,15 @@ paths:
         - $ref: '#/components/parameters/combinedEngine'
         - name: sort
           in: query
-          description: Order of the pages, most first.
+          description: |
+            The figure the pages are sorted by, in `order`. `conversions`
+            and `conversion_rate` need a goal; without goals the default is
+            used. The answer's `sort` and `order` say what was applied.
           schema:
             type: string
-            enum: [clicks, visits, conversions]
-            default: clicks
+            enum: [impressions, clicks, ctr, position, visits, bounce_rate, visit_duration, conversions, conversion_rate]
+            default: impressions
+        - $ref: '#/components/parameters/order'
         - name: goal
           in: query
           description: ID of the goal whose conversions are counted; the first goal when left out.
@@ -2990,6 +3014,18 @@ components:
         type: string
         enum: [live, demo]
         default: live
+    order:
+      name: order
+      in: query
+      description: |
+        Direction of `sort`: `desc` highest (or newest) first, `asc`
+        lowest (or oldest) first. Left out, the column's natural one:
+        `asc` for `position` (a lower position is better), `desc` for
+        the rest. Rows without the figure (a position without
+        impressions, a rate without visits) come last either way.
+      schema:
+        type: string
+        enum: [desc, asc]
     engine:
       name: engine
       in: query
@@ -5308,7 +5344,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, combined, range, through, first, connected, kind, page, query, page_info, ignored, totals, grain, points, rows, more]
+          required: [engine, engines, combined, range, through, first, connected, kind, sort, order, page, query, page_info, ignored, totals, grain, points, rows, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
@@ -5330,6 +5366,13 @@ components:
             kind:
               type: string
               enum: [queries, pages, countries, devices, appearance, days]
+            sort:
+              type: string
+              enum: [impressions, clicks, ctr, position, day]
+              description: The rows' order applied (as asked, or the kind's default).
+            order:
+              type: string
+              enum: [desc, asc]
             page:
               type: string
             query:
@@ -5826,7 +5869,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, range, days, cut, through, first, connected, ignored, finding, rules, checked, plugin, counts, pages, rows, total, more]
+          required: [engine, engines, range, days, cut, through, first, connected, ignored, finding, sort, order, rules, checked, plugin, counts, pages, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
@@ -5852,6 +5895,13 @@ components:
             finding:
               type: string
               description: The finding asked for; empty for all.
+            sort:
+              type: string
+              enum: [impressions, clicks, ctr, position]
+              description: The pages' order applied.
+            order:
+              type: string
+              enum: [desc, asc]
             rules:
               type: object
               required: [title_max, description_max, thin_words, thin_impressions, batch, stale_days]
@@ -6738,7 +6788,7 @@ components:
       allOf:
         - $ref: '#/components/schemas/Answer'
         - type: object
-          required: [engine, engines, combined, range, through, first, connected, ignored, sort, goal, goals, landings_from, partial, totals, rows, total, more]
+          required: [engine, engines, combined, range, through, first, connected, ignored, sort, order, goal, goals, landings_from, partial, totals, rows, total, more]
           properties:
             engine:
               $ref: '#/components/schemas/SearchEngine'
@@ -6764,7 +6814,11 @@ components:
                 type: string
             sort:
               type: string
-              enum: [clicks, visits, conversions]
+              enum: [impressions, clicks, ctr, position, visits, bounce_rate, visit_duration, conversions, conversion_rate]
+              description: The order applied (the default when a goal's column was asked without goals).
+            order:
+              type: string
+              enum: [desc, asc]
             goal:
               type: [object, 'null']
               description: The goal counted; null without goals.

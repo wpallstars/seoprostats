@@ -13,7 +13,7 @@ interface Props {
 	height?: number;
 }
 
-export function Sparkline({ values, width = 96, height = 28 }: Props) {
+export function Sparkline({ values, width = 96, height = 28 }: Readonly<Props>) {
 	if (values.length < 2) {
 		return null;
 	}

@@ -46,7 +46,7 @@ function measurable(change: Marker): boolean {
 	return !!change.path && change.group !== 'note' && change.group !== 'search';
 }
 
-export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Props) {
+export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Readonly<Props>) {
 	const actions = boot.canManage && (!!onDelete || !!onExperiment);
 	// A shared report does not say who made a change.
 	const who = !shareAccess.token;

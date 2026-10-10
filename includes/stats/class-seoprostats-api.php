@@ -295,6 +295,13 @@ final class SEOProStats_API {
             'description' => __('Search engine: google (Search Console), bing (Bing Webmaster Tools) or all (Combined: every engine with data added up; as the one engine while only one has data).', 'seoprostats'),
             'enum'        => array_merge(array_keys(SEOProStats_Search::ENGINES), array(SEOProStats_Search::ALL)),
         ) + $engine;
+        // Sorted tables (Rankings, Content, Audit): the column's natural order unless asked otherwise.
+        $order = array(
+            'description' => __('Order of the sort: desc (most first) or asc (least first). Left out: the sort\'s natural order, lowest first for position (a lower position is better) and most first for the rest.', 'seoprostats'),
+            'type'        => 'string',
+            'enum'        => array('', 'asc', 'desc'),
+            'default'     => '',
+        );
         register_rest_route($ns, '/search', $read + array(
             'callback' => array(__CLASS__, 'search'),
             'args'     => $base + array(
@@ -305,6 +312,13 @@ final class SEOProStats_API {
                     'enum'        => SEOProStats_Search::KINDS,
                     'default'     => 'queries',
                 ),
+                'sort'   => array(
+                    'description' => __('Order of the rows: impressions (the default), clicks, ctr or position; days also by day (their default, newest first). Ties: most impressions, then most clicks, first.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), SEOProStats_Search::SORTS, array('day')),
+                    'default'     => '',
+                ),
+                'order'  => $order,
                 'page'   => array(
                     'description' => __('Only searches that showed this page (a path such as /pricing/; * for any text).', 'seoprostats'),
                     'type'        => 'string',
@@ -343,6 +357,13 @@ final class SEOProStats_API {
                     'enum'        => array_merge(array(''), SEOProStats_Audit::FINDINGS),
                     'default'     => '',
                 ),
+                'sort'    => array(
+                    'description' => __('Order of the pages by their search figures: impressions (the default), clicks, ctr or position.', 'seoprostats'),
+                    'type'        => 'string',
+                    'enum'        => array_merge(array(''), SEOProStats_Search::SORTS),
+                    'default'     => '',
+                ),
+                'order'   => $order,
                 'limit'   => array('maximum' => SEOProStats_Audit::MAX_LIMIT, 'default' => SEOProStats_Audit::LIMIT) + self::args(true)['limit'],
                 'offset'  => self::args(true)['offset'],
             ),
@@ -446,11 +467,12 @@ final class SEOProStats_API {
             'args'     => $base + array(
                 'engine' => $combined,
                 'sort'   => array(
-                    'description' => __('Order of the pages, most first: search clicks, visits from search, or conversions of the goal.', 'seoprostats'),
+                    'description' => __('Order of the pages: impressions (the default), clicks, ctr, position, visits (from search), bounce_rate, visit_duration, or conversions and conversion_rate of the goal (with a goal).', 'seoprostats'),
                     'type'        => 'string',
-                    'enum'        => SEOProStats_Content::SORTS,
-                    'default'     => 'clicks',
+                    'enum'        => array_merge(array(''), SEOProStats_Content::SORTS),
+                    'default'     => '',
                 ),
+                'order'  => $order,
                 'goal'   => array(
                     'description' => __('ID of the goal whose conversions are counted; the first goal when left out.', 'seoprostats'),
                     'type'        => 'string',
@@ -1421,7 +1443,7 @@ final class SEOProStats_API {
         if (in_array($section, SEOProStats_Shares::PAGE_ONLY, true) && !SEOProStats_Shares::page_locks_only($share['locked_filters'])) {
             return SEOProStats_Shares::denied();
         }
-        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind', 'engine', 'query', 'key', 'event', 'kinds', 'sort', 'goal', 'finding', 'days')));
+        $args = array_intersect_key($request->get_query_params(), array_flip(array('range', 'from', 'to', 'compare', 'grain', 'filters', 'dimension', 'limit', 'offset', 'page', 'kind', 'engine', 'query', 'key', 'event', 'kinds', 'sort', 'order', 'goal', 'finding', 'days')));
         $filters = SEOProStats_Shares::filters($args['filters'] ?? array());
         if (is_wp_error($filters)) {
             return $filters;
@@ -1749,8 +1771,10 @@ final class SEOProStats_API {
         $page   = (string) $request->get_param('page');
         $query  = (string) $request->get_param('query');
         $engine = (string) $request->get_param('engine');
-        return self::report($request, static function ($req) use ($kind, $page, $query, $engine) {
-            return SEOProStats_Search::report($req, $kind, $page, $query, $engine);
+        $sort   = (string) $request->get_param('sort');
+        $order  = (string) $request->get_param('order');
+        return self::report($request, static function ($req) use ($kind, $page, $query, $engine, $sort, $order) {
+            return SEOProStats_Search::report($req, $kind, $page, $query, $engine, $sort, $order);
         });
     }
 
@@ -1772,7 +1796,8 @@ final class SEOProStats_API {
 
     /**
      * GET /audit: published pages with findings from their WordPress
-     * content and SEO fields, most search impressions first.
+     * content and SEO fields, most search impressions first unless sorted
+     * otherwise.
      *
      * @param WP_REST_Request $request Request.
      * @return WP_REST_Response|WP_Error
@@ -1780,8 +1805,10 @@ final class SEOProStats_API {
     public static function audit($request) {
         $engine  = (string) $request->get_param('engine');
         $finding = (string) $request->get_param('finding');
-        return self::report($request, static function ($req) use ($engine, $finding) {
-            return SEOProStats_Audit::report($req, $engine, $finding);
+        $sort    = (string) $request->get_param('sort');
+        $order   = (string) $request->get_param('order');
+        return self::report($request, static function ($req) use ($engine, $finding, $sort, $order) {
+            return SEOProStats_Audit::report($req, $engine, $finding, $sort, $order);
         });
     }
 
@@ -1914,8 +1941,9 @@ final class SEOProStats_API {
         $sort   = (string) $request->get_param('sort');
         $goal   = (string) $request->get_param('goal');
         $engine = (string) $request->get_param('engine');
-        return self::report($request, static function ($req) use ($sort, $goal, $engine) {
-            return SEOProStats_Content::report($req, $sort, $goal, $engine);
+        $order  = (string) $request->get_param('order');
+        return self::report($request, static function ($req) use ($sort, $goal, $engine, $order) {
+            return SEOProStats_Content::report($req, $sort, $goal, $engine, $order);
         });
     }
 

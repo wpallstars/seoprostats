@@ -1613,7 +1613,12 @@ its key (`FORCE INDEX`, the primary key without a page or query), so a
 year over most of a table still reads only its days. Rows: queries
 (`gsc_queries`, or pairs by `path_day` for a page), pages (`gsc_pages`,
 or pairs by `query_day` for a query), countries and devices (`gsc_totals`,
-the site only), ordered by clicks, each with clicks, impressions, CTR,
+the site only), ordered by `sort` (impressions by default, or clicks,
+CTR or position) in `order` (the column's natural one when left out:
+lowest first for position, most first for the rest; CTR and position
+without impressions last), ties most impressions then clicks first; the
+days rows newest first unless `sort` is a figure or `order` is asc. Each
+row has clicks, impressions, CTR,
 the weighted position and its share of clicks, and with a comparison the
 rows shown get their figures then and the change. Position changes are
 in places (now − then; lower is better). Page filters narrow it like the
@@ -1723,8 +1728,10 @@ and none growing with all the visits:
   in the period. Only pages with visits from search count them.
 
 Rows are every page with clicks or visits from search, ordered by
-`sort` (clicks, visits or conversions), then clicks, visits and
-impressions; with a comparison the rows shown get their figures then and
+`sort` (impressions by default; any figure of the row, conversions and
+their rate only with a goal) in `order` (the column's natural one when
+left out: lowest first for position, most first for the rest; rows
+without the figure last), then impressions, clicks and visits; with a comparison the rows shown get their figures then and
 the change. Search figures are the chosen engine's (`engine`), visits
 any engine's, so the two differ.
 
@@ -1766,9 +1773,9 @@ in the future meets the same length of the other period.
   `stats`, `breakdown`, `goals`, `funnels` (each `list`, `add`, `update`,
   `delete` too), `properties [<key>]`, `clicks [<kind>] [--page=<path>]`,
   `changes [--page=<path>] [--kind=<kinds>]`, `search [<kind>]
-  [--page=<path>] [--query=<query>]`, `opportunities [<kind>]`, `coverage
+  [--page=<path>] [--query=<query>] [--sort=<sort>] [--order=<order>]`, `opportunities [<kind>]`, `coverage
   <page|post> [--missing] [--questions]`, `content [--sort=<sort>]
-  [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
+  [--order=<order>] [--goal=<id>]`, `experiments` (`list`, `add`, `show`, `decide`,
   `cancel`, `note`, `delete`), `ab-tests [<id>] [--status=<status>]
   [--filter=<filters>]`, `queue` (`list`, `accept`, `done`,
   `dismiss`, `restore`, `effort`, `note`), `audit` (`list
@@ -1901,7 +1908,7 @@ days, comparison, chart metric, filters); and the section's own choices:
 | Section | Address | Default (left out) |
 |---|---|---|
 | Overview | `tab.sources`, `tab.pages`, `tab.content`, `tab.search`, `tab.locations`, `tab.devices`, `tab.events`: the card's open tab | each card's first tab |
-| Search | `report` (rankings, opportunities, content), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query`; with Content, `sort` (clicks, visits, conversions) and `goal` (a goal's ID) | rankings, queries, clicks, none; clicks, the first goal |
+| Search | `report` (rankings, opportunities, content), `tab` (queries, pages, countries, devices), `chart` (clicks, impressions, ctr, position), `page`, `query`; with Rankings, Content and Audit, `sort` (a column of the table: impressions, clicks, ctr, position; Rankings' days also day; Content also visits, bounce_rate, visit_duration, conversions, conversion_rate) and `order` (desc, asc); with Content, `goal` (a goal's ID) | rankings, queries, clicks, none; impressions (days: day), the column's natural order (position asc, the rest desc), the first goal |
 | Properties | `key` (the property listed), `event` | none |
 | Clicks | `kind` (elements, dead, links, downloads, forms, pages), `page` | elements, none |
 | A/B tests | `test` (a test's id: that test's view) | the list |

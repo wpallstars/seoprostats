@@ -104,7 +104,7 @@ function useAnswer(testId: string): AbTestAnswer | 'none' | undefined {
 	return useSyncExternalStore(subscribeAnswers, () => answers.get(testId));
 }
 
-function ResultsBody({ testId }: { testId: string }) {
+function ResultsBody({ testId }: Readonly<{ testId: string }>) {
 	const answer = useAnswer(testId);
 	const [error, setError] = useState('');
 	const [round, setRound] = useState(0);
@@ -225,7 +225,7 @@ function ResultsBody({ testId }: { testId: string }) {
 }
 
 /** The results panel; reads when opened. Only for people who may read the statistics. */
-export function ResultsPanel({ testId }: { testId: string }) {
+export function ResultsPanel({ testId }: Readonly<{ testId: string }>) {
 	if (!resultsBoot.canRead) {
 		return null;
 	}
@@ -367,13 +367,13 @@ export function WinnerPanel({
 	status,
 	variants,
 	shown,
-}: {
+}: Readonly<{
 	testClientId: string;
 	testId: string;
 	status: Status;
 	variants: BlockInstance[];
 	shown: string | undefined;
-}) {
+}>) {
 	const [choice, setChoice] = useState('');
 	const [confirming, setConfirming] = useState(false);
 	const leader = useAnswer(testId);

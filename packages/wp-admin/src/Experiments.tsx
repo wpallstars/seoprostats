@@ -140,7 +140,7 @@ function statusText(item: Experiment): string {
 	return __('Running', 'seoprostats');
 }
 
-export function Experiments({ state, update }: SearchReportProps) {
+export function Experiments({ state, update }: Readonly<SearchReportProps>) {
 	const query = useExperiments();
 	const answer = query.data;
 	const list = answer?.experiments ?? [];
@@ -260,7 +260,7 @@ function figure(metric: ExperimentMetric, figures: ExperimentFigures): string {
 	}
 }
 
-function Detail({ item, onError, onDeleted }: { item: Experiment; onError: (message: string) => void; onDeleted: () => void }) {
+function Detail({ item, onError, onDeleted }: Readonly<{ item: Experiment; onError: (message: string) => void; onDeleted: () => void }>) {
 	const data = useDataSet();
 	const m = item.measurement && item.measurement.state === 'ready' ? item.measurement : null;
 	const running = item.measurement && item.measurement.state === 'running' ? item.measurement : null;
@@ -509,7 +509,7 @@ function today(): string {
 	return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
-function AddModal({ change, engine, state, onClose }: { change: string; engine: SearchEngine; state: SearchReportProps['state']; onClose: () => void }) {
+function AddModal({ change, engine, state, onClose }: Readonly<{ change: string; engine: SearchEngine; state: SearchReportProps['state']; onClose: () => void }>) {
 	const data = useDataSet();
 	const from = chosenChange && String(chosenChange.id) === change ? chosenChange : null;
 	const [name, setName] = useState('');
