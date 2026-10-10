@@ -8,8 +8,11 @@
 
 export { WORLD_HEIGHT, WORLD_SHAPES, WORLD_WIDTH } from './world-shapes';
 
-/** Lightest shade a country with any count gets, so one visit still shows. */
-export const MAP_MIN_SHADE = 0.15;
+/**
+ * Lightest shade a country with any count gets, so one visit still shows
+ * apart from a country with none, on light and dark surfaces.
+ */
+export const MAP_MIN_SHADE = 0.3;
 
 /**
  * Each country's shade from 0 (none) to 1 (the most): a square-root scale,

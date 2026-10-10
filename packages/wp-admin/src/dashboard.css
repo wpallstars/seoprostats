@@ -534,16 +534,28 @@
 	height: auto;
 }
 
+/* --spst-map-empty: a country with no visits (dark mode sets it nearer the surface). */
 .spst-map__country {
-	fill: var(--spst-border);
+	fill: var(--spst-map-empty, var(--spst-border));
 	stroke: var(--spst-background, #fff);
 	stroke-width: 0.5;
 	stroke-linejoin: round;
 }
 
+/* A country's shade (--spst-shade, 0.3 to 1) runs from the grey of a country
+ * with no visits to the accent, so few visits never look like none (on a
+ * dark surface, the accent faded towards the surface would). */
 .spst-map__country.has-visits {
 	fill: var(--spst-accent);
+	fill-opacity: var(--spst-shade, 1);
 	cursor: pointer;
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-map__country.has-visits {
+		fill: color-mix(in srgb, var(--spst-accent) calc(var(--spst-shade, 1) * 100%), var(--spst-map-empty, var(--spst-border)));
+		fill-opacity: 1;
+	}
 }
 
 .spst-map__country.has-visits:hover {
@@ -584,6 +596,12 @@
 	height: 8px;
 	border-radius: 4px;
 	background: linear-gradient(90deg, var(--spst-accent-soft), var(--spst-accent));
+}
+
+@supports (color: color-mix(in srgb, red 10%, transparent)) {
+	.spst-map__scale {
+		background: linear-gradient(90deg, color-mix(in srgb, var(--spst-accent) 30%, var(--spst-map-empty, var(--spst-border))), var(--spst-accent));
+	}
 }
 
 .spst-card__header.components-card__header {
@@ -879,6 +897,7 @@
 .spst-meta code,
 code.spst-meta {
 	padding: 0 3px;
+	color: var(--spst-muted); /* The subtle grey is under 4.5:1 on WordPress's code background. */
 	font-size: 12px;
 }
 

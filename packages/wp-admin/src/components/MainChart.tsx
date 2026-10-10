@@ -69,9 +69,24 @@ function pointDays(series: ChartData, indexes: number[]): { from: string; to: st
 }
 
 /**
+ * A computed colour the regexes don't read (oklch(), lab()) as sRGB
+ * channels: painted on a one-pixel canvas, which converts it.
+ */
+function paintedChannels(computed: string): number[] | undefined {
+	const context = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+	if (!context) {
+		return undefined;
+	}
+	context.fillStyle = '#000';
+	context.fillStyle = computed;
+	context.fillRect(0, 0, 1, 1);
+	return Array.from(context.getImageData(0, 0, 1, 1).data.slice(0, 3));
+}
+
+/**
  * A CSS colour as #rrggbb, which the chart can fade for its area. Plain hex
- * passes through; anything else (color-mix() in dark mode, a named colour)
- * is resolved by the browser on a hidden probe inside the element.
+ * passes through; anything else (the lighter accent in dark mode, a named
+ * colour) is resolved by the browser on a hidden probe inside the element.
  */
 function hexColor(el: HTMLElement, value: string, fallback: string): string {
 	if (/^#[0-9a-f]{6}$/i.test(value)) {
@@ -88,7 +103,7 @@ function hexColor(el: HTMLElement, value: string, fallback: string): string {
 	probe.remove();
 	const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/.exec(computed);
 	const srgb = rgb ? null : /^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/.exec(computed);
-	const channels = rgb ? rgb.slice(1, 4).map(Number) : srgb?.slice(1, 4).map((v) => Number(v) * 255);
+	const channels = rgb ? rgb.slice(1, 4).map(Number) : srgb?.slice(1, 4).map((v) => Number(v) * 255) ?? paintedChannels(computed);
 	if (!channels || channels.some((v) => Number.isNaN(v))) {
 		return fallback;
 	}

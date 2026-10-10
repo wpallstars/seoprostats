@@ -8,5 +8,5 @@
 		'wp-i18n',
 		'wp-url'
 	),
-	'version' => '080d6befce16501b828d'
+	'version' => '8738fa67c00034984b16'
 );

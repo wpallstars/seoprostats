@@ -15,8 +15,8 @@
  * variables (--wp-components-color-*) take their dark values from it;
  * WordPress's classic admin styles, which paint fixed light colours, get
  * the same values below. The admin colour scheme's accent stays the fill
- * of primary buttons; text and lines in the accent use a lighter mix of
- * it, so they read at 4.5:1 on the dark surfaces.
+ * of primary buttons; text and lines in the accent use a lighter tone of
+ * its hue, so they read at 4.5:1 on the dark surfaces.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -35,8 +35,6 @@ html.spst-dark {
 	--spst-ui-text: #f0f0f1;
 	--spst-ui-muted: #c3c4c7;
 	--spst-ui-subtle: #a7aaad;
-	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
-	--spst-ui-accent: #72aee6;
 	--spst-ui-good: #68de7c;
 	--spst-ui-bad: #ff8085;
 	--spst-ui-warning: #f0c33c;
@@ -45,9 +43,65 @@ html.spst-dark {
 	background: var(--spst-ui-canvas);
 }
 
+/*
+ * The accent, on body: WordPress sets the admin colour scheme's
+ * --wp-admin-theme-color on body (admin-color-*), so on html it is still
+ * the default blue. The text accent keeps the scheme's hue and raises its
+ * lightness (OKLCH) to read at 4.5:1 on every dark surface; older
+ * browsers mix it with white instead. Also WordPress components' theme
+ * variables (in dialogs and popovers too, outside the app).
+ */
+html.spst-dark body {
+	--spst-ui-accent-fill: var(--wp-admin-theme-color, #2271b1);
+	--spst-ui-accent: #72aee6;
+	--wp-components-color-background: var(--spst-ui-surface);
+	--wp-components-color-foreground: var(--spst-ui-text);
+	--wp-components-color-foreground-inverted: var(--spst-ui-surface);
+	--wp-components-color-gray-100: var(--spst-ui-raised);
+	--wp-components-color-gray-200: var(--spst-ui-border);
+	--wp-components-color-gray-300: var(--spst-ui-border);
+	--wp-components-color-gray-400: #646970;
+	--wp-components-color-gray-600: var(--spst-ui-field-border);
+	--wp-components-color-gray-700: var(--spst-ui-subtle);
+	--wp-components-color-gray-800: var(--spst-ui-muted);
+
+	/* ExternalLink: the accent, and the text colour on hover (WordPress darkens it). */
+	--wpds-color-foreground-interactive-brand: var(--spst-ui-accent);
+	--wpds-color-foreground-interactive-brand-active: var(--spst-ui-text);
+
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
+}
+
 @supports (color: color-mix(in srgb, red 10%, transparent)) {
-	html.spst-dark {
+	html.spst-dark body {
 		--spst-ui-accent: color-mix(in srgb, var(--spst-ui-accent-fill) 55%, #fff);
+	}
+}
+
+/*
+ * Primary buttons: the scheme's fill, darkened only where light text on it
+ * would fall below 4.5:1 (lighter fills, such as Sunrise's). Older browsers
+ * keep the scheme's own fill, as WordPress does.
+ */
+@supports (color: oklch(from red max(l, 0.75) min(c, 0.15) h)) {
+	html.spst-dark body {
+		--spst-ui-accent: oklch(from var(--spst-ui-accent-fill) max(l, 0.75) min(c, 0.15) h);
+		--spst-ui-primary: oklch(from var(--spst-ui-accent-fill) min(l, 0.53) c h);
+		--spst-ui-primary-hover: oklch(from var(--spst-ui-primary) calc(l - 0.06) c h);
+		--wp-components-color-accent: var(--spst-ui-primary);
+		--wp-components-color-accent-darker-10: var(--spst-ui-primary-hover);
+		--wp-components-color-accent-darker-20: oklch(from var(--spst-ui-primary) calc(l - 0.12) c h);
+	}
+
+	html.spst-dark .wp-core-ui .button-primary:not(:disabled, .disabled) {
+		background: var(--spst-ui-primary);
+		border-color: var(--spst-ui-primary);
+	}
+
+	html.spst-dark .wp-core-ui .button-primary:is(:hover, :focus):not(:disabled, .disabled) {
+		background: var(--spst-ui-primary-hover);
+		border-color: var(--spst-ui-primary-hover);
 	}
 }
 
@@ -83,6 +137,7 @@ html.spst-dark .spst-modal {
 	--spst-bad: var(--spst-ui-bad);
 	--spst-grid: rgb(255 255 255 / 10%);
 	--spst-compare: #8c8f94;
+	--spst-map-empty: var(--spst-ui-raised);
 
 	/* Chart tooltips: a raised panel with an edge, not a light box. */
 	--spst-tip-bg: var(--spst-ui-raised);
@@ -108,23 +163,6 @@ html.spst-dark .spst-modal {
 	}
 }
 
-/* WordPress components (also in dialogs and popovers, outside the app). */
-html.spst-dark body {
-	--wp-components-color-background: var(--spst-ui-surface);
-	--wp-components-color-foreground: var(--spst-ui-text);
-	--wp-components-color-foreground-inverted: var(--spst-ui-surface);
-	--wp-components-color-gray-100: var(--spst-ui-raised);
-	--wp-components-color-gray-200: var(--spst-ui-border);
-	--wp-components-color-gray-300: var(--spst-ui-border);
-	--wp-components-color-gray-400: #646970;
-	--wp-components-color-gray-600: var(--spst-ui-field-border);
-	--wp-components-color-gray-700: var(--spst-ui-subtle);
-	--wp-components-color-gray-800: var(--spst-ui-muted);
-
-	color: var(--spst-ui-text);
-	background: var(--spst-ui-canvas);
-}
-
 /* WordPress's admin page --------------------------------------------- */
 
 html.spst-dark #wpwrap,
@@ -146,7 +184,8 @@ html.spst-dark #wpbody-content {
 	color: var(--spst-ui-accent);
 }
 
-:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a:is(:hover, :active) {
+/* WordPress darkens links on hover and focus (#135e96, #043959). */
+:where(html.spst-dark :is(#wpbody, #wpfooter, .components-modal__frame)) a:is(:hover, :active, :focus) {
 	color: var(--spst-ui-text);
 }
 
@@ -201,8 +240,18 @@ html.spst-dark .contextual-help-tabs .active {
 	background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20width%3D%2220%22%20height%3D%2220%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cpath%20d%3D%22M5%206l5%205%205-5%202%201-7%207-7-7%202-1z%22%20fill%3D%22%23c3c4c7%22%2F%3E%3C%2Fsvg%3E");
 }
 
-:where(html.spst-dark #wpbody) select:hover {
-	color: var(--spst-ui-accent);
+/* WordPress's own select:hover and :focus (.wp-core-ui) paint #1e1e1e text and borders. */
+html.spst-dark .wp-core-ui select:is(:hover, :focus) {
+	color: var(--spst-ui-text);
+}
+
+html.spst-dark .wp-core-ui select:hover {
+	border-color: var(--spst-ui-text);
+}
+
+html.spst-dark .wp-core-ui select:disabled:is(:hover, :focus) {
+	color: var(--spst-ui-subtle);
+	border-color: var(--spst-ui-border);
 }
 
 :where(html.spst-dark #wpbody) :is(input[type="checkbox"], input[type="radio"]) {
@@ -249,6 +298,26 @@ html.spst-dark #wpbody div.error {
 
 html.spst-dark #wpbody .notice-dismiss::before {
 	color: var(--spst-ui-muted);
+}
+
+/* WordPress paints notice text #1e1e1e and links in darker tones of the scheme. */
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) :is(p, .notice-title) {
+	color: inherit;
+}
+
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) a {
+	color: var(--spst-ui-accent);
+}
+
+html.spst-dark #wpbody :is(.notice, div.updated, div.error) a:is(:hover, :active, :focus) {
+	color: var(--spst-ui-text);
+}
+
+/* SEO Pro Stack's notices panel (the admin bar's megaphone), light until it has a dark mode. */
+html.spst-dark #sps-notices-wrap {
+	color: var(--spst-ui-text);
+	background: var(--spst-ui-canvas);
+	border-color: var(--spst-ui-border);
 }
 
 /* Tables, boxes and cards. */
@@ -325,6 +394,29 @@ html.spst-dark .components-button.is-secondary:not(:disabled, [aria-disabled="tr
 html.spst-dark .components-button:is(.is-secondary, .is-tertiary):hover:not(:disabled, [aria-disabled="true"]) {
 	color: var(--spst-ui-text);
 	background: var(--spst-ui-raised);
+}
+
+/* WordPress paints other buttons the scheme's colour on hover and while their menu is open. */
+html.spst-dark .components-button:not(.is-primary, .is-secondary, .is-tertiary, .is-pressed, .is-destructive):is(:hover, [aria-expanded="true"]):not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-accent);
+}
+
+/* A pressed button is filled with the text colour; WordPress's primary hover would make its label white. */
+html.spst-dark .components-button.is-pressed:not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-surface);
+}
+
+/* Destructive buttons in the light red (WordPress's #cc1818, #710d0d on hover). */
+html.spst-dark .components-button.is-destructive:not(.is-primary, :disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-bad);
+}
+
+html.spst-dark .components-button.is-destructive.is-secondary:not(:disabled, [aria-disabled="true"]) {
+	box-shadow: inset 0 0 0 1px var(--spst-ui-bad);
+}
+
+html.spst-dark .components-button.is-destructive:not(.is-primary):hover:not(:disabled, [aria-disabled="true"]) {
+	color: var(--spst-ui-text);
 }
 
 /* Plain (icon) buttons take the text colour; any more specific rule wins. */
