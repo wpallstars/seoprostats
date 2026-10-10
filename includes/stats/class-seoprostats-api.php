@@ -2008,9 +2008,19 @@ final class SEOProStats_API {
         return new WP_REST_Response($job + array('history' => (int) $entry['id']), 202);
     }
 
-    /** Import progress (cron does the work). @param WP_REST_Request $request Request. @return WP_REST_Response */
+    /**
+     * Import progress. Cron does the work; while an administrator watches,
+     * each poll also moves it on for a few seconds, so it never waits on a
+     * cron run that a busy or replaced site lost (run() schedules the next).
+     *
+     * @param WP_REST_Request $request Request.
+     * @return WP_REST_Response
+     */
     public static function backlinks_import_status($request) {
         require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        if (SEOProStats_Backlinks_Import::status()['status'] === 'running') {
+            return new WP_REST_Response(SEOProStats_Backlinks_Import::run(SEOProStats_Backlinks_Import::POLL_BUDGET));
+        }
         return new WP_REST_Response(SEOProStats_Backlinks_Import::status());
     }
 

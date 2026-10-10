@@ -1524,6 +1524,10 @@ final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade st
      * @param bool   $deleted Whether it was.
      */
     public static function deleted_plugin($file, $deleted) {
+        if ((string) $file === plugin_basename(SEOPROSTATS_FILE)) {
+            // Its own files are gone (and its tables with them): nothing left to record with.
+            return;
+        }
         $was = isset(self::$installed['plugin:' . $file]) ? self::$installed['plugin:' . $file] : array('name' => '', 'version' => '');
         if ($deleted && $was['name'] !== '') {
             self::record(44, array('object_type' => 'plugin', 'old' => $was['version'], 'meta' => array('name' => $was['name'], 'file' => (string) $file)));
