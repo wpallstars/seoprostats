@@ -34,6 +34,7 @@ import { errorMessage, useAbTest, useAbTests } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
 import type { ViewProps } from './App';
+import { EditLink } from './components/EditLink';
 import { Money } from './components/Money';
 import { TableScroll } from './components/TableScroll';
 
@@ -148,7 +149,13 @@ function PageCell({ test }: Readonly<{ test: Pick<AbTestRow, 'post' | 'removed'>
 	const title = test.post.title || test.post.path || __('(no page)', 'seoprostats');
 	return (
 		<span className="spst-meta">
-			{test.post.edit_url ? <a href={test.post.edit_url}>{title}</a> : title}
+			{test.post.edit_url ? (
+				<EditLink href={test.post.edit_url} path={title}>
+					{title}
+				</EditLink>
+			) : (
+				title
+			)}
 			{test.post.path && test.post.title && <span className="spst-muted"> · {test.post.path}</span>}
 			{test.removed && <span className="spst-muted"> · {__('block removed', 'seoprostats')}</span>}
 		</span>
