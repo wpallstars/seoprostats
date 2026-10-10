@@ -492,32 +492,54 @@ abstract class SEOProStats_Migrate_Source {
      */
     protected static function visit_sources(array $groups) {
         $sums = array();
-        $add  = function ($dimension, $value, array $metrics) use (&$sums) {
-            $key = $dimension . "\0" . $value;
-            if (!isset($sums[$key])) {
-                $sums[$key] = array($dimension, $value, array_fill_keys(array_keys($metrics), 0));
-            }
-            foreach ($metrics as $name => $count) {
-                $sums[$key][2][$name] = (isset($sums[$key][2][$name]) ? $sums[$key][2][$name] : 0) + $count;
-            }
-        };
         foreach ($groups as $row) {
-            $metrics = $row['metrics'];
-            $host    = self::host((string) $row['r']);
-            $host    = $host === 'spammer' ? '' : $host;
-            $split   = SEOProStats_Processor::split_url('/?' . ltrim((string) $row['q'], '?'));
-            $click   = !empty($row['c']) ? (string) $row['c'] : $split['click'];
-            $channel = SEOProStats_Channels::classify($host, $split['utm'], $click);
-            $add('source', $host, $metrics);
-            $add('channel', $channel, $metrics);
-            foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
-                $add($tag, isset($split['utm'][$tag]) ? $split['utm'][$tag] : '', $metrics);
-            }
-            if ($channel === SEOProStats_Query::CHANNELS['organic_search']) {
-                $add('landing', (string) $row['e'], $metrics);
-            }
+            self::add_group($sums, $row);
         }
         return array_values($sums);
+    }
+
+    /**
+     * Add one group of visit_sources() to the sums: its source, channel,
+     * campaign tags and, from search, its landing page.
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}>       $sums Dimension and value => row; added to.
+     * @param array{r:string,q:string,e:string,c?:string,metrics:array<string,int>} $row  The group.
+     * @return void
+     */
+    private static function add_group(array &$sums, array $row) {
+        $metrics = $row['metrics'];
+        $host    = self::host((string) $row['r']);
+        $host    = $host === 'spammer' ? '' : $host;
+        $split   = SEOProStats_Processor::split_url('/?' . ltrim((string) $row['q'], '?'));
+        $click   = !empty($row['c']) ? (string) $row['c'] : $split['click'];
+        $channel = SEOProStats_Channels::classify($host, $split['utm'], $click);
+        self::add_sum($sums, 'source', $host, $metrics);
+        self::add_sum($sums, 'channel', $channel, $metrics);
+        foreach (array('utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content') as $tag) {
+            self::add_sum($sums, $tag, isset($split['utm'][$tag]) ? $split['utm'][$tag] : '', $metrics);
+        }
+        if ($channel === SEOProStats_Query::CHANNELS['organic_search']) {
+            self::add_sum($sums, 'landing', (string) $row['e'], $metrics);
+        }
+    }
+
+    /**
+     * Add metrics to one dimension value's row of the sums.
+     *
+     * @param array<string,array{0:string,1:int|string,2:array<string,int>}> $sums      Dimension and value => row; added to.
+     * @param string                                                         $dimension Dimension name.
+     * @param int|string                                                     $value     Its value.
+     * @param array<string,int>                                              $metrics   The visits' sums.
+     * @return void
+     */
+    private static function add_sum(array &$sums, $dimension, $value, array $metrics) {
+        $key = $dimension . "\0" . $value;
+        if (!isset($sums[$key])) {
+            $sums[$key] = array($dimension, $value, array_fill_keys(array_keys($metrics), 0));
+        }
+        foreach ($metrics as $name => $count) {
+            $sums[$key][2][$name] = (isset($sums[$key][2][$name]) ? $sums[$key][2][$name] : 0) + $count;
+        }
     }
 
     /**
