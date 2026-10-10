@@ -696,15 +696,37 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
     private static function add_result_hosts(array &$out, array $result) {
         $one = self::host(isset($result['url']) ? (string) $result['url'] : '');
         if ($one === '' && !empty($result['children']) && is_array($result['children'])) {
-            foreach ($result['children'] as $child) {
-                if (is_array($child)) {
-                    $child_host = self::host(isset($child['url']) ? (string) $child['url'] : '');
-                    self::add_host($out, $child_host !== '' ? $child_host : self::name_host($child), isset($child['views']) ? (int) $child['views'] : 0);
-                }
-            }
+            self::add_child_hosts($out, $result['children']);
             return;
         }
         self::add_host($out, $one !== '' ? $one : self::name_host($result), isset($result['views']) ? (int) $result['views'] : 0);
+    }
+
+    /**
+     * Add a referrer result's children's views by host.
+     *
+     * @param array<string,int> $out      Host => views; added to.
+     * @param array<mixed>      $children A results[].children list.
+     * @return void
+     */
+    private static function add_child_hosts(array &$out, array $children) {
+        foreach ($children as $child) {
+            if (is_array($child)) {
+                self::add_host($out, self::item_host($child), isset($child['views']) ? (int) $child['views'] : 0);
+            }
+        }
+    }
+
+    /**
+     * A referrer item's host: its address's, else its name when that is a
+     * host.
+     *
+     * @param array<string,mixed> $item Referrer item.
+     * @return string '' for none.
+     */
+    private static function item_host(array $item) {
+        $host = self::host(isset($item['url']) ? (string) $item['url'] : '');
+        return $host !== '' ? $host : self::name_host($item);
     }
 
     /**
@@ -851,20 +873,43 @@ final class SEOProStats_Migrate_Jetpack extends SEOProStats_Migrate_Source {
      * @return string '' for neither.
      */
     private static function note_rows($data) {
-        if (is_array($data) && !empty($data['days']) && is_array($data['days'])) {
-            $first = reset($data['days']);
-            $parts = array();
-            foreach (is_array($first) ? $first : array() as $key => $value) {
-                $parts[] = is_array($value) ? $key . ': ' . count($value) : (string) $key;
-            }
-            return 'days[' . (string) key($data['days']) . '] ' . implode(', ', $parts);
+        if (!is_array($data)) {
+            return '';
         }
-        if (is_array($data) && isset($data['data']) && is_array($data['data'])) {
-            $fields = isset($data['fields']) && is_array($data['fields']) ? implode(',', array_map('strval', $data['fields'])) : '';
-            $days   = array_keys(self::visits_rows($data));
-            return 'data: ' . count($data['data']) . ' rows' . ($days ? ' (' . min($days) . ' – ' . max($days) . ')' : '') . '; fields: ' . $fields;
+        if (!empty($data['days']) && is_array($data['days'])) {
+            return self::days_note($data['days']);
+        }
+        if (isset($data['data']) && is_array($data['data'])) {
+            return self::visits_note($data);
         }
         return '';
+    }
+
+    /**
+     * A days answer's first day and its lists with their counts.
+     *
+     * @param array<mixed> $days The answer's days.
+     * @return string
+     */
+    private static function days_note(array $days) {
+        $first = reset($days);
+        $parts = array();
+        foreach (is_array($first) ? $first : array() as $key => $value) {
+            $parts[] = is_array($value) ? $key . ': ' . count($value) : (string) $key;
+        }
+        return 'days[' . (string) key($days) . '] ' . implode(', ', $parts);
+    }
+
+    /**
+     * A visits answer's row count, days and fields.
+     *
+     * @param array<string,mixed> $data The answer (its data is a list).
+     * @return string
+     */
+    private static function visits_note(array $data) {
+        $fields = isset($data['fields']) && is_array($data['fields']) ? implode(',', array_map('strval', $data['fields'])) : '';
+        $days   = array_keys(self::visits_rows($data));
+        return 'data: ' . count($data['data']) . ' rows' . ($days ? ' (' . min($days) . ' – ' . max($days) . ')' : '') . '; fields: ' . $fields;
     }
 
     /**
