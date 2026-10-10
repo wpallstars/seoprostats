@@ -387,17 +387,10 @@ final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI,
         $control  = $test['variants'] ? $test['variants'][0]['slug'] : '';
         $primary  = self::primary_metric($goals);
 
-        $mixed = array('visits' => 0, 'share' => 0);
         $exp   = self::exposures_sql($test['id'], $range);
         $by    = $exp !== null ? self::visit_rows($exp, $compiled) : array();
         $slugs = self::slugs(array_keys($by));
-        $total = 0;
-        foreach ($by as $row) {
-            $total += (int) $row['visits'];
-        }
-        if (isset($by[0])) {
-            $mixed = array('visits' => (int) $by[0]['visits'], 'share' => $total ? round((int) $by[0]['visits'] / $total, 4) : 0);
-        }
+        list($total, $mixed) = self::visit_totals($by);
 
         // Goals reached after the test was seen, per variant.
         $reached = self::goals_reached($full ? $goals : array_slice($goals, 0, 1), $exp, $compiled, $full);
@@ -422,6 +415,25 @@ final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI,
             'leader'   => $leader,
             'verdict'  => $verdict,
         );
+    }
+
+    /**
+     * All visits that saw a test, and those that saw more than one of its
+     * variants (row 0) with their share.
+     *
+     * @param array<int,array<string,mixed>> $by Visit rows by variant id (0: mixed).
+     * @return array{0:int,1:array{visits:int,share:float|int}} Total visits, and mixed.
+     */
+    private static function visit_totals(array $by) {
+        $mixed = array('visits' => 0, 'share' => 0);
+        $total = 0;
+        foreach ($by as $row) {
+            $total += (int) $row['visits'];
+        }
+        if (isset($by[0])) {
+            $mixed = array('visits' => (int) $by[0]['visits'], 'share' => $total ? round((int) $by[0]['visits'] / $total, 4) : 0);
+        }
+        return array($total, $mixed);
     }
 
     /**

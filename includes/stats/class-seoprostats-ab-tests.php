@@ -732,7 +732,6 @@ final class SEOProStats_AB_Tests { // NOSONAR: one block pair and its registry; 
      * @return array{id:string,status:string,winner:string}|WP_Error
      */
     public static function pick_winner($id, $slug) {
-        global $wpdb;
         if (!self::valid_id($id) || !self::ready()) {
             return new WP_Error('seoprostats_not_found', __('There is no such A/B test.', 'seoprostats'), array('status' => 404));
         }
@@ -754,6 +753,23 @@ final class SEOProStats_AB_Tests { // NOSONAR: one block pair and its registry; 
         if (self::still_in_post($post, $id)) {
             return new WP_Error('seoprostats_still_in_post', __('The A/B test is still in its post: save the post after picking the winner.', 'seoprostats'), array('status' => 409));
         }
+        self::end_with_winner($table, $id, $row, $slug, $variants, $post);
+        return array('id' => $id, 'status' => 'ended', 'winner' => $slug);
+    }
+
+    /**
+     * End a stored test with its winner, and mark that on the timeline.
+     *
+     * @param string                                                $table    The live ab_tests table.
+     * @param string                                                $id       Test id, as requested.
+     * @param array<string,mixed>                                   $row      The stored test.
+     * @param string                                                $slug     The winning variant's slug.
+     * @param array<int,array{slug:string,label:string,weight:int}> $variants Its variants.
+     * @param WP_Post|null                                          $post     Its post.
+     * @return void
+     */
+    private static function end_with_winner($table, $id, array $row, $slug, array $variants, $post) {
+        global $wpdb;
         $now = time();
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table by its primary key, on an editor's request.
         $wpdb->update(
@@ -770,14 +786,13 @@ final class SEOProStats_AB_Tests { // NOSONAR: one block pair and its registry; 
             array('%s')
         );
         $goals = json_decode((string) $row['goals'], true);
-        self::markers($post_id, array(
+        self::markers((int) $row['post_id'], array(
             'id'     => $id,
             'name'   => (string) $row['name'],
             'status' => 'ended',
             'goals'  => is_array($goals) ? array_map('strval', $goals) : array(),
             'winner' => $slug,
         ), $variants, $row, $post instanceof WP_Post ? get_the_title($post) : '');
-        return array('id' => $id, 'status' => 'ended', 'winner' => $slug);
     }
 
     /**

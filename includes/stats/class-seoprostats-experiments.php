@@ -129,7 +129,6 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
      * @return array<string,mixed>|WP_Error The experiment.
      */
     public static function add(array $input) {
-        global $wpdb;
         require_once __DIR__ . self::CHANGES_FILE;
         require_once __DIR__ . '/class-seoprostats-dict.php';
         if (!SEOProStats_Schema::maybe_upgrade()) {
@@ -154,8 +153,31 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
         if (is_wp_error($fields)) {
             return $fields;
         }
+        $meta = self::new_meta($pages, $fields['goal'], $input);
+        $id   = self::insert_experiment($name, $change_id, $start, $pages, $fields, $meta);
+        if (!$id) {
+            return self::error('seoprostats_experiment_failed', __('The experiment could not be saved.', 'seoprostats'), 500);
+        }
+
+        self::mark_start($id, $start, $pages, $name, $fields['metric'], $meta);
+        self::$through = array();
+        return self::get($id);
+    }
+
+    /**
+     * Save a new, running experiment's row.
+     *
+     * @param string              $name      Its name.
+     * @param int                 $change_id The change it is about (0: none).
+     * @param int                 $start     Its start (Unix).
+     * @param string[]            $pages     Its pages.
+     * @param array<string,mixed> $fields    From fields().
+     * @param array<string,mixed> $meta      From new_meta().
+     * @return int Its id, or 0 when it could not be saved.
+     */
+    private static function insert_experiment($name, $change_id, $start, array $pages, array $fields, array $meta) {
+        global $wpdb;
         $path_id = self::single_path_id($pages);
-        $meta    = self::new_meta($pages, $fields['goal'], $input);
         $windows = self::windows($start, $fields['days'], $fields['engine'], $fields['metric']);
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table.
@@ -181,14 +203,7 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
             ),
             array('%d', '%d', '%s', '%d', '%d', '%s', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%d', '%s')
         );
-        $id = $saved ? (int) $wpdb->insert_id : 0;
-        if (!$id) {
-            return self::error('seoprostats_experiment_failed', __('The experiment could not be saved.', 'seoprostats'), 500);
-        }
-
-        self::mark_start($id, $start, $pages, $name, $fields['metric'], $meta);
-        self::$through = array();
-        return self::get($id);
+        return $saved ? (int) $wpdb->insert_id : 0;
     }
 
     /**
