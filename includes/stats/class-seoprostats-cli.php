@@ -1862,12 +1862,13 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * [<action>]
-     * : list, import or delete.
+     * : list, import, set or delete.
      * ---
      * default: list
      * options:
      *   - list
      *   - import
+     *   - set
      *   - delete
      * ---
      *
@@ -1876,6 +1877,18 @@ final class SEOProStats_CLI {
      *
      * [--replace]
      * : For import: delete the targets that are not in the list.
+     *
+     * [--allintitle=<n>]
+     * : For set: Google allintitle result count (a non-negative whole number).
+     *
+     * [--volume=<n>]
+     * : For set: monthly search volume (a non-negative whole number).
+     *
+     * [--allintitle_measured=<date>]
+     * : For set: count measurement date, YYYY-MM-DD (today when omitted).
+     *
+     * [--volume_measured=<date>]
+     * : For set: volume measurement date, YYYY-MM-DD (today when omitted).
      *
      * [--all]
      * : For delete: delete every target.
@@ -1930,6 +1943,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats targets
      *     wp seoprostats targets --status=open --range=90d
      *     wp seoprostats targets import targets.csv
+     *     wp seoprostats targets set "privacy friendly analytics" --allintitle=40 --volume=200
      *     wp seoprostats targets import - < keywords.toon
      *     wp seoprostats targets delete "privacy friendly analytics"
      *     wp seoprostats targets --data=demo --format=json
@@ -1941,6 +1955,18 @@ final class SEOProStats_CLI {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-targets.php';
         $action = isset($args[0]) ? (string) $args[0] : 'list';
         $what   = array_slice($args, 1);
+        if ($action === 'set') {
+            $fields = array_intersect_key($assoc, array_flip(array('allintitle', 'volume', 'allintitle_measured', 'volume_measured')));
+            $query = isset($what[0]) ? $what[0] : '';
+            $done = $this->on_data($assoc, static function () use ($query, $fields) {
+                return SEOProStats_Targets::set($query, $fields);
+            });
+            if (is_wp_error($done)) {
+                WP_CLI::error($done->get_error_message());
+            }
+            WP_CLI::success(__('Target research measurements saved.', 'seoprostats'));
+            return;
+        }
         if ($action === 'import') {
             $this->targets_import($what, $assoc);
             return;
@@ -1961,7 +1987,7 @@ final class SEOProStats_CLI {
             return;
         }
         if ($action !== 'list') {
-            WP_CLI::error(__('The action is list, import or delete.', 'seoprostats'));
+            WP_CLI::error(__('The action is list, import, set or delete.', 'seoprostats'));
         }
         $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $status = isset($assoc['status']) ? (string) $assoc['status'] : 'all';
@@ -1989,6 +2015,11 @@ final class SEOProStats_CLI {
         foreach ($answer['rows'] as $row) {
             $rows[] = array(
                 'query'       => $row['query'],
+                'allintitle'  => $row['allintitle'],
+                'volume'      => $row['volume'],
+                'kgr'         => $row['kgr'],
+                'kgr_band'    => $row['kgr_band'],
+                'measured'    => wp_json_encode($row['measured']),
                 'priority'    => $row['priority'],
                 'status'      => $row['status'],
                 'state'       => $row['state'],

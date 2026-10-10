@@ -2108,7 +2108,8 @@ final class SEOProStats_API {
 
     /**
      * GET /targets: the site's search targets, each with how search
-     * treats it now: position, clicks and the page that ranks.
+     * treats it now: position, clicks and the page that ranks, plus nullable
+     * research counts, independent measurement dates and the KGR heuristic.
      *
      * @param WP_REST_Request $request Request.
      * @return WP_REST_Response|WP_Error

@@ -37,6 +37,7 @@ import {
 import { errorMessage, get, queryClient } from './api';
 import { boot, locale } from './boot';
 import { CoverageBadges } from './components/CoverageBadges';
+import { ResearchMenu } from './components/ResearchMenu';
 import './editor.css';
 
 interface EditorBoot {
@@ -292,6 +293,7 @@ function QueryItem({ row }: { row: CoverageRow }) {
 	return (
 		<li>
 			<strong className="spst-editor__query">{row.query}</strong>
+			<ResearchMenu query={row.query} />
 			<CoverageBadges result={row} />
 			<span className="spst-editor__meta">
 				{sprintf(

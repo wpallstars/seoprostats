@@ -36,6 +36,25 @@ Principles, in order:
 
 ## Layers
 
+### Research facts
+
+Schema v21 adds nullable `allintitle` and `volume` to the bounded targets table,
+with separate YYYY-MM-DD measurement dates. Missing is not zero. Imports validate
+whole non-negative counts and real, non-future dates before writing; omitted
+research fields preserve earlier values. Existing primary-key reads cover them;
+no new scan or visitor-page work is added. The targets report derives unrounded
+KGR and its band from these facts, shared by REST, CLI and abilities. The dashboard
+sorts/filters the complete bounded list before paging. Providers are not called
+automatically; future provider integrations must supply actual observations,
+never infer monthly volume from impressions.
+
+`packages/core/src/research.ts` builds allowlisted HTTPS search URLs and describes
+the operator templates without WordPress or React. Research menus navigate only
+when clicked, in a new tab without an opener or referrer. Unsupported operators
+are disabled; allintitle measurements always refer to Google, regardless of the
+engine chosen for the report. Site-restricted links use the home URL's hostname,
+not the wp-admin origin. See README → Research and the Keyword Golden Ratio.
+
 ```text
 browser tracker ──► collector (no WordPress) ──► buffer files
                                                     │ cron, every minute
