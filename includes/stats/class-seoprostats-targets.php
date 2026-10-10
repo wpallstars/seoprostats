@@ -1174,6 +1174,7 @@ final class SEOProStats_Targets {
      * @return string|null
      */
     public static function page_path($address) {
+        self::load();
         $address = trim((string) $address);
         if ($address === '') {
             return '';
