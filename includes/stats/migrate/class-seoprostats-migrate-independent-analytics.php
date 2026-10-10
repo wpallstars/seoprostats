@@ -41,7 +41,7 @@ if (!defined('ABSPATH')) {
 require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-channels.php';
 require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
 
-final class SEOProStats_Migrate_Independent_Analytics extends SEOProStats_Migrate_Source {
+final class SEOProStats_Migrate_Independent_Analytics extends SEOProStats_Migrate_Source { // NOSONAR: one import adapter implementing SEOProStats_Migrate_Source's contract; private helpers decompose its day reads.
 
     const KEY   = 'independent';
     const NAME  = 'Independent Analytics';
