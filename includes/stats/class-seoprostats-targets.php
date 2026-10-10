@@ -212,7 +212,8 @@ final class SEOProStats_Targets {
         $totals  = $now ? self::query_sums($engine, $ids, $now) : array();
         $pairs   = $now ? self::pair_sums($engine, $ids, $now) : array();
         $then    = array();
-        $other   = $now ? SEOProStats_Query::compare_range(array('key' => 'custom') + $now, isset($req['compare']) ? (string) $req['compare'] : 'none') : null;
+        $compare = isset($req['compare']) ? (string) $req['compare'] : 'none';
+        $other   = $now ? SEOProStats_Query::compare_range(array('key' => 'custom') + $now, $compare) : null;
         $before  = $other ? SEOProStats_Search::days($other, array('from' => '', 'to' => ''), $weekly) : null;
         if ($before) {
             $then              = self::query_sums($engine, $ids, $before);
@@ -272,6 +273,11 @@ final class SEOProStats_Targets {
             $state = $shown_id && $shown_id !== $meant ? 'wrong_page' : 'ranking';
         }
         $then_metrics = $then ? SEOProStats_Search::metrics($then['c'], $then['i'], $then['p']) : null;
+        $then_clicks  = null;
+        if ($compared) {
+            $then_clicks = $then_metrics ? $then_metrics['clicks'] : 0;
+        }
+        $meant_page = $meant ? self::page($meant, $text, $pages[$meant] ?? null, $metrics['impressions']) : null;
         return array(
             'query'         => $query,
             'allintitle'    => $target['allintitle'],
@@ -289,8 +295,8 @@ final class SEOProStats_Targets {
             'ctr'           => $metrics['ctr'],
             'position'      => $metrics['impressions'] ? $metrics['position'] : null,
             'then_position' => $compared && $then_metrics && $then_metrics['impressions'] ? $then_metrics['position'] : null,
-            'then_clicks'   => $compared ? ($then_metrics ? $then_metrics['clicks'] : 0) : null,
-            'page'          => $meant ? self::page($meant, $text, isset($pages[$meant]) ? $pages[$meant] : null, $metrics['impressions']) : null,
+            'then_clicks'   => $then_clicks,
+            'page'          => $meant_page,
             'shown'         => $shown_id ? self::page($shown_id, $text, $pages[$shown_id], $metrics['impressions']) : null,
             'pages'         => count($pages),
             'updated'       => wp_date('c', (int) $target['updated']),
@@ -454,7 +460,10 @@ final class SEOProStats_Targets {
             }
             $rows = array();
             foreach (array_values($data) as $item) {
-                $rows[] = is_array($item) ? $item : array('query' => is_scalar($item) ? (string) $item : '');
+                if (!is_array($item)) {
+                    $item = array('query' => is_scalar($item) ? (string) $item : '');
+                }
+                $rows[] = $item;
             }
             return array('format' => 'json', 'rows' => $rows);
         }
@@ -563,7 +572,9 @@ final class SEOProStats_Targets {
         $start  = $fields === $first ? 1 : 0;
         $rows   = array();
         $count  = count($lines);
-        for ($i = $start; $i < $count && count($rows) <= self::MAX_ROWS; $i++) {
+        // One row over the limit tells the caller there were more.
+        $last   = min($count, $start + self::MAX_ROWS + 1);
+        for ($i = $start; $i < $last; $i++) {
             $cells = str_getcsv($lines[$i], $delim, '"', '');
             $row   = array();
             foreach ($fields as $n => $field) {
@@ -699,7 +710,10 @@ final class SEOProStats_Targets {
             return 'priority';
         }
         $status = strtolower(self::field($row, 'status'));
-        $status = $status === '' ? 'targeted' : (isset(self::STATUS_ALIASES[$status]) ? self::STATUS_ALIASES[$status] : $status);
+        if ($status === '') {
+            $status = 'targeted';
+        }
+        $status = self::STATUS_ALIASES[$status] ?? $status;
         if (!in_array($status, self::STATUSES, true)) {
             return 'status';
         }
@@ -807,7 +821,13 @@ final class SEOProStats_Targets {
             return 'volume_too_high';
         }
         $ratio = self::kgr($count, $volume);
-        return $ratio === null ? 'unknown' : ($ratio < 0.25 ? 'good' : ($ratio <= 1 ? 'possible' : 'crowded'));
+        if ($ratio === null) {
+            return 'unknown';
+        }
+        if ($ratio < 0.25) {
+            return 'good';
+        }
+        return $ratio <= 1 ? 'possible' : 'crowded';
     }
 
     /**

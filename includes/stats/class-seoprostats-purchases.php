@@ -58,6 +58,13 @@ final class SEOProStats_Purchases {
     const KEEP_RENEWAL_DAYS = 400;
     const KEEP_RENEWAL_IDS = 10000;
 
+    /** The first renewal day kept, relative to today. */
+    const RENEWAL_FROM = '-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days';
+
+    /** A visitor or page-load key, and a currency code. */
+    const KEY_PATTERN      = '/^[0-9a-f]{16}$/';
+    const CURRENCY_PATTERN = '/^[A-Z]{3}$/';
+
     /** The passthrough field ThriveCart sends back. */
     const PASSTHROUGH = 'spst';
 
@@ -204,7 +211,7 @@ final class SEOProStats_Purchases {
         if (is_string($visit)) {
             $visit = json_decode($visit, true);
         }
-        if (!is_array($visit) || !isset($visit['v'], $visit['ts']) || !preg_match('/^[0-9a-f]{16}$/', (string) $visit['v'])) {
+        if (!is_array($visit) || !isset($visit['v'], $visit['ts']) || !preg_match(self::KEY_PATTERN, (string) $visit['v'])) {
             return null;
         }
         return $visit;
@@ -223,7 +230,7 @@ final class SEOProStats_Purchases {
      */
     public static function record(array $visit, $amount, $currency, $source, $items, $event = self::EVENT) {
         $currency = strtoupper(trim((string) $currency));
-        if (!is_numeric($amount) || (float) $amount <= 0 || !preg_match('/^[A-Z]{3}$/', $currency)) {
+        if (!is_numeric($amount) || (float) $amount <= 0 || !preg_match(self::CURRENCY_PATTERN, $currency)) {
             return false; // Free orders are not purchases.
         }
         $hit = array(
@@ -235,7 +242,7 @@ final class SEOProStats_Purchases {
         if ($event === self::REFUND && isset($visit['d']) && is_array($visit['d'])) {
             $hit['d'] = $visit['d']; // The purchase's properties, including filter-added ones.
         }
-        if (!empty($visit['p']) && preg_match('/^[0-9a-f]{16}$/', (string) $visit['p'])) {
+        if (!empty($visit['p']) && preg_match(self::KEY_PATTERN, (string) $visit['p'])) {
             $hit['p'] = (string) $visit['p']; // Takes its page load's path.
         } elseif (!empty($visit['u']) && is_string($visit['u'])) {
             $hit['u'] = $visit['u'];
@@ -255,7 +262,7 @@ final class SEOProStats_Purchases {
             return false;
         }
         $currency = isset($hit['rv']['c']) && is_string($hit['rv']['c']) ? strtoupper(trim($hit['rv']['c'])) : '';
-        if (!preg_match('/^[A-Z]{3}$/', $currency) || !isset($hit['rv']['a']) || !is_numeric($hit['rv']['a']) || (float) $hit['rv']['a'] <= 0) {
+        if (!preg_match(self::CURRENCY_PATTERN, $currency) || !isset($hit['rv']['a']) || !is_numeric($hit['rv']['a']) || (float) $hit['rv']['a'] <= 0) {
             return false;
         }
         $hit['rv']['c'] = $currency;
@@ -346,7 +353,7 @@ final class SEOProStats_Purchases {
      */
     private static function renewal($identity, $amount, $currency) {
         $currency = strtoupper(trim($currency));
-        if (!self::enabled() || $identity === '' || !is_finite($amount) || $amount <= 0 || $amount > PHP_INT_MAX / 100 || !preg_match('/^[A-Z]{3}$/', $currency)) {
+        if (!self::enabled() || $identity === '' || !is_finite($amount) || $amount <= 0 || $amount > PHP_INT_MAX / 100 || !preg_match(self::CURRENCY_PATTERN, $currency)) {
             return 'failed';
         }
         $cents = (int) round($amount * 100);
@@ -355,7 +362,7 @@ final class SEOProStats_Purchases {
         }
         $today = new DateTimeImmutable('today', wp_timezone());
         $day   = $today->format('Y-m-d');
-        $first = $today->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $first = $today->modify(self::RENEWAL_FROM)->format('Y-m-d');
         $state = get_option(self::STATE_OPTION, array());
         $state = is_array($state) ? $state : array();
         $days  = isset($state['renewals']) && is_array($state['renewals']) ? $state['renewals'] : array();
@@ -398,7 +405,7 @@ final class SEOProStats_Purchases {
             return $out;
         }
         $range = SEOProStats_Query::range($req);
-        $first = (new DateTimeImmutable('today', wp_timezone()))->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $first = (new DateTimeImmutable('today', wp_timezone()))->modify(self::RENEWAL_FROM)->format('Y-m-d');
         $from  = $req['range'] === 'all' ? $first : max($first, $range['start']->format('Y-m-d'));
         $to    = $range['end']->format('Y-m-d');
         $state = get_option(self::STATE_OPTION, array());
@@ -432,7 +439,7 @@ final class SEOProStats_Purchases {
      * @param mixed $subscription Subscription (not used as a payment identity).
      * @param mixed $order        Paid renewal order.
      */
-    public static function woo_renewal($subscription, $order) {
+    public static function woo_renewal($subscription, $order) { // NOSONAR: the woocommerce_subscription_renewal_payment_complete hook passes $subscription first.
         if ($order instanceof WC_Order) {
             self::locked('woo_renewal_locked', array($order->get_id()));
         }
@@ -475,7 +482,9 @@ final class SEOProStats_Purchases {
      * @param int|WC_Order $order Order or its ID (classic checkout passes the ID first).
      */
     public static function woo_checkout($order) {
-        $order = is_object($order) ? $order : (function_exists('wc_get_order') ? wc_get_order($order) : null);
+        if (!is_object($order)) {
+            $order = function_exists('wc_get_order') ? wc_get_order($order) : null;
+        }
         $visit = $order instanceof WC_Order ? self::current_visit() : null;
         if ($visit && !$order->get_meta(self::META_DONE)) {
             $order->update_meta_data(self::META_VISIT, wp_json_encode($visit));
@@ -865,7 +874,7 @@ final class SEOProStats_Purchases {
         $receipts = isset($state['receipts']) && is_array($state['receipts']) ? $state['receipts'] : array();
         $state['receipts'] = array_intersect_key($receipts, array_fill_keys($state['thrivecart'], true));
 
-        $visit = preg_match('/^[0-9a-f]{16}$/', $pkey) ? self::page_load_visit($pkey) : null;
+        $visit = preg_match(self::KEY_PATTERN, $pkey) ? self::page_load_visit($pkey) : null;
         if (!$visit) {
             $state['not_joined'] = (isset($state['not_joined']) ? (int) $state['not_joined'] : 0) + 1;
             update_option(self::STATE_OPTION, $state, false);
@@ -896,7 +905,10 @@ final class SEOProStats_Purchases {
         }
         $mark   = $state['receipts'][$order_id];
         $amount = isset($data['refund']['amount']) ? $data['refund']['amount'] : null;
-        $id     = !empty($data['webhook_id']) ? $data['webhook_id'] : (isset($data['event_id']) ? $data['event_id'] : '');
+        $id     = isset($data['event_id']) ? $data['event_id'] : '';
+        if (!empty($data['webhook_id'])) {
+            $id = $data['webhook_id'];
+        }
         if (!is_scalar($id) || (string) $id === '' || !is_numeric($amount) || (float) $amount <= 0) {
             return 'failed'; // Do not mistake refund.id (the product) for a refund transaction.
         }
@@ -924,7 +936,7 @@ final class SEOProStats_Purchases {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own tables, by the unique pkey and primary keys.
         $row = $wpdb->get_row($wpdb->prepare('SELECT p.ts, LOWER(HEX(s.visitor)) AS visitor FROM %i p JOIN %i s ON s.id = p.session_id WHERE p.pkey = UNHEX(%s)', SEOProStats_Schema::table('pageviews'), SEOProStats_Schema::table('sessions'), $pkey));
-        if (!$row || !preg_match('/^[0-9a-f]{16}$/', (string) $row->visitor)) {
+        if (!$row || !preg_match(self::KEY_PATTERN, (string) $row->visitor)) {
             return null;
         }
         return array('v' => (string) $row->visitor, 'ts' => (int) $row->ts, 'p' => $pkey, 'ua' => '', 'cc' => '', 'h' => '');
@@ -959,7 +971,7 @@ final class SEOProStats_Purchases {
         $state = get_option(self::STATE_OPTION, array());
         $report = self::renewals(array('range' => 'all', 'filters' => array()));
         $today = new DateTimeImmutable('today', wp_timezone());
-        $first = $today->modify('-' . (self::KEEP_RENEWAL_DAYS - 1) . ' days')->format('Y-m-d');
+        $first = $today->modify(self::RENEWAL_FROM)->format('Y-m-d');
         $day = $today->format('Y-m-d');
         $ids = is_array($state) && isset($state['renewal_ids']) && is_array($state['renewal_ids']) ? $state['renewal_ids'] : array();
         $ids = array_filter($ids, static function ($date) use ($first, $day) {

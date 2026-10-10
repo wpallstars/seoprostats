@@ -75,6 +75,9 @@ final class SEOProStats_Rollup {
     /** Seconds after a day ends before it is summarised: engagement of its last pages arrives late. */
     const GRACE = 3600;
 
+    /** The day after, for DateTimeImmutable::modify(). */
+    const NEXT_DAY = '+1 day';
+
     /**
      * Default retention in months (0 keeps forever): visits with their
      * pageviews; events; clicks and form submits; search data by page and
@@ -154,7 +157,7 @@ final class SEOProStats_Rollup {
         $tz    = wp_timezone();
         $state = self::state();
         if (!empty($state['through'])) {
-            $day = (new DateTimeImmutable((string) $state['through'], $tz))->modify('+1 day');
+            $day = (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY);
         } else {
             $first = self::first_visit();
             if (!$first) {
@@ -163,7 +166,7 @@ final class SEOProStats_Rollup {
             $day = (new DateTimeImmutable('@' . $first))->setTimezone($tz)->setTime(0, 0);
         }
         $today = new DateTimeImmutable('today', $tz);
-        if ($day >= $today || $day->modify('+1 day')->getTimestamp() + self::GRACE > self::clear()) {
+        if ($day >= $today || $day->modify(self::NEXT_DAY)->getTimestamp() + self::GRACE > self::clear()) {
             return null;
         }
         return $day;
@@ -201,7 +204,7 @@ final class SEOProStats_Rollup {
     public static function summarise(DateTimeImmutable $day) {
         global $wpdb;
         $from = $day->getTimestamp();
-        $to   = $day->modify('+1 day')->getTimestamp();
+        $to   = $day->modify(self::NEXT_DAY)->getTimestamp();
         $date = $day->format('Y-m-d');
         if ($from < self::kept_from()) {
             return false;
@@ -284,7 +287,7 @@ final class SEOProStats_Rollup {
         $tz = wp_timezone();
         if (!isset($state['landings'])) {
             // Days summarised from now on have them.
-            $state['landings'] = (new DateTimeImmutable((string) $state['through'], $tz))->modify('+1 day')->format('Y-m-d');
+            $state['landings'] = (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY)->format('Y-m-d');
             update_option(SEOProStats_Schema::option(self::STATE_OPTION), $state, false);
         }
         $floor = self::landings_floor();
@@ -299,7 +302,7 @@ final class SEOProStats_Rollup {
             // phpcs:disable WordPress.DB.DirectDatabaseQuery -- our own table by its primary key (day, dim).
             $wpdb->query('START TRANSACTION');
             $ok = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE day = %s AND dim = %d AND import_id = 0', $d, $date, self::SEARCH_LANDING)) !== false
-                && self::insert_landings($date, $day->getTimestamp(), $day->modify('+1 day')->getTimestamp());
+                && self::insert_landings($date, $day->getTimestamp(), $day->modify(self::NEXT_DAY)->getTimestamp());
             if (!$ok) {
                 $wpdb->query('ROLLBACK');
                 return false;
@@ -421,7 +424,7 @@ final class SEOProStats_Rollup {
             return array();
         }
         $tz    = wp_timezone();
-        $after = (new DateTimeImmutable((string) $state['through'], $tz))->modify('+1 day')->getTimestamp();
+        $after = (new DateTimeImmutable((string) $state['through'], $tz))->modify(self::NEXT_DAY)->getTimestamp();
         $today = new DateTimeImmutable('today', $tz);
         $jobs  = array();
         foreach (self::retention() as $kind => $months) {

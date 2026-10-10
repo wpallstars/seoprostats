@@ -361,7 +361,10 @@ final class SEOProStats_Backlinks {
                 );
             }
         }
-        $status = $gone ? self::PAGE_GONE : ($seen ? self::PAGE_LINKS : self::PAGE_NONE);
+        $status = $seen ? self::PAGE_LINKS : self::PAGE_NONE;
+        if ($gone) {
+            $status = self::PAGE_GONE;
+        }
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
         $wpdb->update($table, array('status' => $status, 'checked' => $now), array('id' => (int) $page['id']), array('%d', '%d'), array('%d'));
         return $gone ? 'gone' : 'ok';

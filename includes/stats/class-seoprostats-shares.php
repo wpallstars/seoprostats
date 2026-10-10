@@ -209,7 +209,8 @@ final class SEOProStats_Shares {
         $out    = array();
         $asked  = $view['sort'] ?? null;
         $sort   = in_array($asked, $sorts, true) ? (string) $asked : $sorts[0];
-        $order  = $asked === null || $asked === $sort ? SEOProStats_Search::sort_order($sort, in_array($view['order'] ?? '', array('asc', 'desc'), true) ? $view['order'] : '') : SEOProStats_Search::sort_order($sort);
+        $given  = in_array($view['order'] ?? '', array('asc', 'desc'), true) ? $view['order'] : '';
+        $order  = $asked === null || $asked === $sort ? SEOProStats_Search::sort_order($sort, $given) : SEOProStats_Search::sort_order($sort);
         if ($sort !== $sorts[0]) {
             $out['sort'] = $sort;
         }
@@ -432,7 +433,8 @@ final class SEOProStats_Shares {
             $id  = (int) ($raw[$key] ?? 0);
             $out[$key] = self::local_logo($id) ? $id : 0;
         }
-        $out['accent'] = is_string($raw['accent'] ?? '') ? (sanitize_hex_color($raw['accent'] ?? '') ?: '#2271b1') : '#2271b1';
+        $accent        = is_string($raw['accent'] ?? '') ? sanitize_hex_color($raw['accent'] ?? '') : '';
+        $out['accent'] = $accent ?: '#2271b1';
         if (strlen($out['accent']) === 4) {
             $out['accent'] = '#' . $out['accent'][1] . $out['accent'][1] . $out['accent'][2] . $out['accent'][2] . $out['accent'][3] . $out['accent'][3];
         }

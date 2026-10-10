@@ -45,6 +45,9 @@ final class SEOProStats_Search_Import {
     const CHUNK = 500;
     const BATCH = 5000;
 
+    /** Opens the transaction a replacement of rows runs in. */
+    const BEGIN = 'START TRANSACTION';
+
     /** Default most rows per day and kind (the top by clicks; the API sorts them so). */
     const LIMITS = array(
         'pages'   => 5000,
@@ -401,7 +404,7 @@ final class SEOProStats_Search_Import {
         $ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, array($value));
         $id = isset($ids[SEOProStats_Dict::clean($value)]) ? (int) $ids[SEOProStats_Dict::clean($value)] : 0;
         $table = SEOProStats_Schema::table('gsc_appearance');
-        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one appearance replaced together.
+        $wpdb->query(self::BEGIN); // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- BEGIN is fixed SQL; one appearance replaced together.
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our table, bounded by engine and day primary key prefix.
         $ok = $id > 0 && $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE engine = %d AND day >= %s AND day <= %s AND appearance_id = %d', $table, SEOProStats_Schema::ENGINE_GOOGLE, $from, $to, $id)) !== false;
         $written = 0;
@@ -578,7 +581,7 @@ final class SEOProStats_Search_Import {
             return 0;
         }
         $table = SEOProStats_Schema::table('gsc_pairs');
-        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one page's rows replaced together.
+        $wpdb->query(self::BEGIN); // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- BEGIN is fixed SQL; one page's rows replaced together.
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, one page's days by its path_day key.
         $ok      = $wpdb->query($wpdb->prepare('DELETE FROM %i WHERE path_id = %d AND engine = %d AND day >= %s AND day <= %s', $table, $path_id, $engine, $from, $to)) !== false;
         $written = 0;
@@ -798,7 +801,7 @@ final class SEOProStats_Search_Import {
         $rows = self::rows($data);
 
         $engine = (int) $class::ENGINE;
-        $wpdb->query('START TRANSACTION'); // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- one day's rows replaced together.
+        $wpdb->query(self::BEGIN); // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.NotPrepared -- BEGIN is fixed SQL; one day's rows replaced together.
         $ok      = true;
         $written = 0;
         // Only the kinds the source gives by day (Bing's pages with their queries come page by page).

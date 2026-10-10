@@ -565,6 +565,13 @@ final class SEOProStats_Queue {
         if ($clicks * $scale < 1) {
             return null;
         }
+        // The other pages with the same title or description.
+        $same = array();
+        if ($finding === 'title_duplicate') {
+            $same = array_values((array) $row['same_title']);
+        } elseif ($finding === 'description_duplicate') {
+            $same = array_values((array) $row['same_description']);
+        }
         $figures = array(
             'finding'      => $finding,
             'clicks'       => (int) $row['clicks'],
@@ -574,8 +581,7 @@ final class SEOProStats_Queue {
             'expected_ctr' => round((float) $curve[$place], 4),
             'share'        => SEOProStats_Audit::share(array($finding)),
             'facts'        => (array) $row['facts'],
-            // The other pages with the same title or description.
-            'same'         => $finding === 'title_duplicate' ? array_values((array) $row['same_title']) : ($finding === 'description_duplicate' ? array_values((array) $row['same_description']) : array()),
+            'same'         => $same,
         );
         $parts = array(
             'clicks'     => round($clicks * $scale, 1),
@@ -851,7 +857,10 @@ final class SEOProStats_Queue {
     private static function refresh_item($engine, array $row, array $facts, $days, array $value) {
         $path_id  = (int) $row['path_id'];
         $worth    = self::worth($path_id, $value);
-        $page     = $value['site'] ? (isset($value['pages'][$path_id]) ? $value['pages'][$path_id] : array('visits' => 0, 'conversions' => 0)) : null;
+        $page     = null;
+        if ($value['site']) {
+            $page = isset($value['pages'][$path_id]) ? $value['pages'][$path_id] : array('visits' => 0, 'conversions' => 0);
+        }
         $made     = SEOProStats_Refresh::propose($row, $facts, $page, $worth, $days);
         $proposal = $made['proposal'];
         $figures  = $made['figures'];
@@ -1370,7 +1379,9 @@ final class SEOProStats_Queue {
      * @return array<string,mixed>|null
      */
     private static function current($key, $row, array $req, $engine, $goal) {
-        $engine = $row ? ((int) $row['engine'] === SEOProStats_Schema::ENGINE_BING ? 'bing' : 'google') : $engine;
+        if ($row) {
+            $engine = (int) $row['engine'] === SEOProStats_Schema::ENGINE_BING ? 'bing' : 'google';
+        }
         $built  = self::build($req, $engine, $goal);
         if (isset($built['items'][$key])) {
             return $built['items'][$key] + self::blank();

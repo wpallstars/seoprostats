@@ -144,9 +144,20 @@ final class SEOProStats_Coverage {
         $full   = $bounds['to'] !== '' ? SEOProStats_Search::days($range, $bounds) : null;
         $now    = $full ? SEOProStats_Opportunities::cut($full) : null;
         $days   = $now ? SEOProStats_Search::length($now) : 0;
-        $texts  = $path_id ? self::texts(array($path_id => $page), $post_id ? array($path_id => $post_id) : array()) : array();
+        $posts  = $post_id ? array($path_id => $post_id) : array();
+        $texts  = $path_id ? self::texts(array($path_id => $page), $posts) : array();
         $text   = isset($texts[$path_id]) ? $texts[$path_id] : self::text_of_post($post_id);
         $index  = $text ? self::index($text) : null;
+        $about  = null;
+        if ($text) {
+            $about = array(
+                'source'      => $text['source'],
+                'words'       => $index ? $index['words'] : 0,
+                'plugin'      => $text['plugin'],
+                'seo_title'   => $text['seo_title'],
+                'description' => $text['description'],
+            );
+        }
 
         $answer = array(
             'page'    => $page,
@@ -156,13 +167,7 @@ final class SEOProStats_Coverage {
             'cut'     => $full && $now && SEOProStats_Search::length($full) > $days,
             'through' => $bounds['to'],
             'first'   => $bounds['from'],
-            'text'    => $text ? array(
-                'source'      => $text['source'],
-                'words'       => $index ? $index['words'] : 0,
-                'plugin'      => $text['plugin'],
-                'seo_title'   => $text['seo_title'],
-                'description' => $text['description'],
-            ) : null,
+            'text'    => $about,
             'focus'   => array(),
             'totals'  => array('queries' => 0, 'impressions' => 0, 'clicks' => 0, 'covered' => 0.0, 'missing' => 0, 'questions' => 0),
             'rows'    => array(),
@@ -401,7 +406,12 @@ final class SEOProStats_Coverage {
                     $fields['canonical'] = $fields['canonical'] !== '' ? $fields['canonical'] : trim((string) $row['canonical_url']);
                 }
                 $phrases = json_decode((string) $row['keyphrases'], true);
-                $list    = is_array($phrases) ? array_merge(isset($phrases['focus']) ? array($phrases['focus']) : array(), isset($phrases['additional']) && is_array($phrases['additional']) ? $phrases['additional'] : array()) : array();
+                $list    = array();
+                if (is_array($phrases)) {
+                    $main  = isset($phrases['focus']) ? array($phrases['focus']) : array();
+                    $extra = isset($phrases['additional']) && is_array($phrases['additional']) ? $phrases['additional'] : array();
+                    $list  = array_merge($main, $extra);
+                }
                 foreach ($list as $phrase) {
                     if (is_array($phrase) && isset($phrase['keyphrase']) && trim((string) $phrase['keyphrase']) !== '') {
                         $fields['focus'][] = array('keyword' => trim((string) $phrase['keyphrase']), 'source' => 'aioseo');

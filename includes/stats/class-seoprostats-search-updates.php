@@ -334,7 +334,7 @@ final class SEOProStats_Search_Updates {
                         'id'    => isset($item['id']) ? (string) $item['id'] : '',
                         'title' => isset($item['title']) ? (string) $item['title'] : '',
                         'url'   => isset($item['url']) ? (string) $item['url'] : '',
-                        'date'  => isset($item['date_published']) ? (string) $item['date_published'] : (isset($item['date_modified']) ? (string) $item['date_modified'] : ''),
+                        'date'  => (string) ($item['date_published'] ?? ($item['date_modified'] ?? '')),
                     );
                 }
             }
@@ -363,7 +363,12 @@ final class SEOProStats_Search_Updates {
             return $out;
         }
         $atom = $xml->children('http://www.w3.org/2005/Atom');
-        $list = isset($atom->entry) ? $atom->entry : (isset($xml->entry) ? $xml->entry : array());
+        $list = array();
+        if (isset($atom->entry)) {
+            $list = $atom->entry;
+        } elseif (isset($xml->entry)) {
+            $list = $xml->entry;
+        }
         foreach ($list as $entry) {
             $url = '';
             foreach ($entry->link as $link) {

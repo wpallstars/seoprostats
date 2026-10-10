@@ -56,7 +56,7 @@ final class SEOProStats_Page_Cache {
      * @param string $option Option name.
      * @param mixed  $value  Settings saved.
      */
-    public static function settings_added($option, $value) {
+    public static function settings_added($option, $value) { // NOSONAR: add_option_{$option} passes the option name first.
         self::settings_saved(array(), $value);
     }
 
@@ -108,8 +108,9 @@ final class SEOProStats_Page_Cache {
         $new = is_array($new) ? $new : array();
         $defaults = SEOProStats_Settings::defaults();
         foreach (self::TRACKER_SETTINGS as $key) {
-            $before = array_key_exists($key, $old) ? $old[$key] : (isset($defaults[$key]) ? $defaults[$key] : null);
-            $after  = array_key_exists($key, $new) ? $new[$key] : (isset($defaults[$key]) ? $defaults[$key] : null);
+            $default = $defaults[$key] ?? null;
+            $before  = array_key_exists($key, $old) ? $old[$key] : $default;
+            $after   = array_key_exists($key, $new) ? $new[$key] : $default;
             if ($before !== $after) {
                 self::purge('settings');
                 return;

@@ -28,6 +28,9 @@ final class SEOProStats_Connections {
     /** Every source's connection (autoload off). */
     const OPTION = 'seoprostats_connections';
 
+    /** SEOProStats_Search_Import's file, loaded on connecting and reading status. */
+    const IMPORT_FILE = 'includes/stats/class-seoprostats-search-import.php';
+
     /** Sources: key => class, in includes/stats/sources/. */
     const SOURCES = array(
         'search-console' => 'SEOProStats_Source_Search_Console',
@@ -87,7 +90,7 @@ final class SEOProStats_Connections {
             $reset += array('through' => null, 'back' => null, 'first' => null, 'final' => null, 'checked' => null, 'pairs_from' => null, 'pairs_to' => null, 'pairs_queue' => null);
         }
         self::update_state($source, $reset);
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        require_once SEOPROSTATS_DIR . self::IMPORT_FILE;
         SEOProStats_Search_Import::schedule();
         // The first import a few seconds from now, not on this request.
         wp_schedule_single_event(time() + 5, SEOProStats_Search_Import::HOOK, array('more'));
@@ -107,7 +110,7 @@ final class SEOProStats_Connections {
         if (!$class) {
             return new WP_Error('seoprostats_source_unknown', __('Unknown source.', 'seoprostats'), array('status' => 404));
         }
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        require_once SEOPROSTATS_DIR . self::IMPORT_FILE;
         // A Google sign-in's access is revoked with Google, not only forgotten.
         $credentials = self::get($source) ? self::credentials($source) : null;
         if (is_array($credentials) && method_exists($class, 'revoke')) {
@@ -142,7 +145,7 @@ final class SEOProStats_Connections {
     public static function status($source) {
         $class = self::source_class($source);
         $conn  = self::get($source);
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+        require_once SEOPROSTATS_DIR . self::IMPORT_FILE;
         $out = array(
             'source'    => $source,
             'name'      => $class ? $class::NAME : $source,
@@ -162,6 +165,10 @@ final class SEOProStats_Connections {
         $next     = wp_next_scheduled(SEOProStats_Search_Import::HOOK, array('more'));
         $next     = $next ? $next : wp_next_scheduled(SEOProStats_Search_Import::HOOK);
         $coverage = SEOProStats_Search_Import::coverage((int) $class::ENGINE);
+        $left     = 0;
+        if (!empty($state['pairs_from'])) {
+            $left = isset($state['pairs_queue']) && is_array($state['pairs_queue']) ? count($state['pairs_queue']) : null;
+        }
         return $out + array(
             'method'       => isset($conn['settings']['method']) ? (string) $conn['settings']['method'] : 'key',
             'account'      => isset($conn['settings']['account']) ? (string) $conn['settings']['account'] : '',
@@ -175,7 +182,7 @@ final class SEOProStats_Connections {
                 'complete' => $through !== '' && $back !== '' && $back <= $first,
             ),
             // Pages whose queries are still to import (a source that gives them page by page); null: none due.
-            'pages_left'    => !empty($state['pairs_from']) ? (isset($state['pairs_queue']) && is_array($state['pairs_queue']) ? count($state['pairs_queue']) : null) : 0,
+            'pages_left'    => $left,
             'final_through' => isset($state['final']) ? (string) $state['final'] : '',
             'checked'       => isset($state['checked']) ? (int) $state['checked'] : 0,
             'last_run'      => isset($state['last_run']) ? (int) $state['last_run'] : 0,

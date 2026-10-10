@@ -314,8 +314,14 @@ final class SEOProStats_Opportunities {
             $value   = isset($own[$b]) ? $own[$b] : self::DEFAULT_CURVE[$b];
             $ctr[$b] = round($b > 1 ? min($value, $ctr[$b - 1]) : $value, 4);
         }
+        $source = 'mixed';
+        if (!$own) {
+            $source = 'default';
+        } elseif (count($own) === 20) {
+            $source = 'site';
+        }
         return array(
-            'source' => !$own ? 'default' : (count($own) === 20 ? 'site' : 'mixed'),
+            'source' => $source,
             'ctr'    => $ctr,
         );
     }

@@ -52,6 +52,9 @@ final class SEOProStats_Audit {
     /** Progress, per data set (autoload off): cursor (post ID), plugin, since (read all again from), version (facts written), last (cron run), links (links read from). */
     const OPTION = 'seoprostats_audit';
 
+    /** SEOProStats_Links's file, loaded when facts are read or written. */
+    const LINKS_FILE = '/class-seoprostats-links.php';
+
     /** Posts read per cron run at most, and its seconds. */
     const BATCH  = 200;
     const BUDGET = 20;
@@ -321,7 +324,7 @@ final class SEOProStats_Audit {
         if (!$facts) {
             return 0;
         }
-        require_once __DIR__ . '/class-seoprostats-links.php';
+        require_once __DIR__ . self::LINKS_FILE;
         $ids   = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($facts));
         $table = SEOProStats_Schema::table('page_facts');
         $now   = time();
@@ -386,7 +389,7 @@ final class SEOProStats_Audit {
         if (!$post_ids) {
             return 0;
         }
-        require_once __DIR__ . '/class-seoprostats-links.php';
+        require_once __DIR__ . self::LINKS_FILE;
         $holders = implode(', ', array_fill(0, count($post_ids), '%d'));
         $args    = array_merge(array(SEOProStats_Schema::table('page_facts')), $post_ids);
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its post_id key; $holders holds only placeholders.
@@ -434,13 +437,16 @@ final class SEOProStats_Audit {
      * @return array<string,mixed>
      */
     public static function facts(array $text, $path) {
-        require_once __DIR__ . '/class-seoprostats-links.php';
+        require_once __DIR__ . self::LINKS_FILE;
         $html = (string) preg_replace('/\[\/?[a-zA-Z][^\[\]]*\]/', ' ', isset($text['content']) ? (string) $text['content'] : '');
         if (strlen($html) > SEOProStats_Coverage::MAX_TEXT) {
             $html = function_exists('mb_strcut') ? mb_strcut($html, 0, SEOProStats_Coverage::MAX_TEXT, 'UTF-8') : substr($html, 0, SEOProStats_Coverage::MAX_TEXT);
         }
         $title     = self::line(isset($text['title']) ? (string) $text['title'] : '');
-        $seo_title = empty($text['seo_title_vars']) ? self::line(isset($text['seo_title']) ? (string) $text['seo_title'] : '') : '';
+        $seo_title = '';
+        if (empty($text['seo_title_vars']) && isset($text['seo_title'])) {
+            $seo_title = self::line((string) $text['seo_title']);
+        }
         $shown     = $seo_title !== '' ? $seo_title : $title;
         $desc      = self::line(isset($text['description']) ? (string) $text['description'] : '');
         if ($desc === '') {
@@ -911,8 +917,9 @@ final class SEOProStats_Audit {
                 $n = isset($facts['images_no_alt']) ? (int) $facts['images_no_alt'] : 0;
                 /* translators: %s: number of images */
                 return sprintf(_n('%s image without alt text', '%s images without alt text', $n, 'seoprostats'), $num('images_no_alt'));
+            default:
+                return (string) $finding;
         }
-        return (string) $finding;
     }
 
     /**

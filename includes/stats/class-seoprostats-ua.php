@@ -83,7 +83,7 @@ final class SEOProStats_UA {
             }
         }
 
-        list($result['os'], $result['os_ver']) = self::os($ua);
+        list($result['os'], $result['os_ver']) = self::system($ua);
         $result['device'] = self::device($ua, $result['os']);
 
         self::$cache[$ua] = $result;
@@ -96,7 +96,7 @@ final class SEOProStats_UA {
      * @param string $ua User agent.
      * @return array{0:string,1:int}
      */
-    private static function os($ua) {
+    private static function system($ua) {
         if (preg_match('~(?:iPhone|iPad|iPod).*? OS (\d+)_~', $ua, $m)) {
             return array('iOS', (int) $m[1]);
         }
