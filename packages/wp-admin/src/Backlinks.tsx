@@ -4,21 +4,23 @@
  * that sent visits and reads their links to it (SEOProStats_Backlinks), so
  * a link from a site that never sent a visit is not here.
  *
- * Four lists: live links (newest first), the sites linking (most visits
- * first), the site's pages linked to (most sites first) and the links lost
- * in the period. The period counts new and lost links and the sites'
- * visits; filters and the engine do not apply. Choosing one of the site's
- * pages opens it in Rankings.
+ * Five lists: live links (newest first), the sites linking (most visits
+ * first), the site's pages linked to (most sites first), the links lost
+ * in the period, and the referring pages link exports named (Settings →
+ * Import → Links) with their check. The period counts new and lost links
+ * and the sites' visits; filters and the engine do not apply. Choosing one
+ * of the site's pages opens it in Rankings.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  */
 
 import { useState } from 'react';
+import { addQueryArgs } from '@wordpress/url';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextareaControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { BACKLINK_SOURCES, formatNumber, type BacklinkDecision, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
-import { downloadDisavow, errorMessage, mergeDisavow, saveBacklinkDecision, scopeKey, shareAccess, useBacklinkReview, useBacklinks } from './api';
+import { BACKLINK_SOURCES, formatNumber, type BacklinkDecision, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkReportedRow, type BacklinkReportedState, type BacklinkRow, type BacklinkSource, type BacklinksAnswer } from '@seoprostats/core';
+import { checkBacklinks, downloadDisavow, errorMessage, mergeDisavow, saveBacklinkDecision, scopeKey, shareAccess, useBacklinkReview, useBacklinks } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import { longLabel } from './dates';
@@ -36,6 +38,7 @@ export function backlinkKindName(kind: BacklinkKind): string {
 		domains: __('Sites linking', 'seoprostats'),
 		pages: __('Pages linked to', 'seoprostats'),
 		lost: __('Lost links', 'seoprostats'),
+		reported: __('Reported pages', 'seoprostats'),
 	};
 	return names[kind];
 }
@@ -46,10 +49,14 @@ function count(kind: BacklinkKind, totals: BacklinksAnswer['totals']): number {
 }
 
 /** The tiles, which pick the list: sites first. */
-const TILE_ORDER: readonly BacklinkKind[] = ['domains', 'links', 'pages', 'lost'];
+const TILE_ORDER: readonly BacklinkKind[] = ['domains', 'links', 'pages', 'lost', 'reported'];
 
 /** Under a tile's figure: what is new in the period. */
 function tileFoot(kind: BacklinkKind, totals: BacklinksAnswer['totals']): string {
+	if (kind === 'reported') {
+		/* translators: %s: number of reported pages opened by the check. */
+		return sprintf(__('%s checked', 'seoprostats'), number(totals.reported_checked));
+	}
 	if (kind === 'domains') {
 		/* translators: %s: number of sites first linking in the period. */
 		return sprintf(__('%s new in the period', 'seoprostats'), number(totals.new_domains));
@@ -75,7 +82,9 @@ type BacklinksProps = SearchReportProps & {
 
 export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 	const kind: BacklinkKind = state.backlinks ?? 'links';
-	const [source, setSource] = useState<(typeof BACKLINK_SOURCES)[number] | ''>('');
+	// In the address, so the Import tab's history links straight to an export's results.
+	const source: BacklinkSource | '' = state.found ?? '';
+	const setSource = (value: string) => update({ found: (value || undefined) as BacklinkSource | undefined });
 	const [review, setReview] = useState(false);
 	// Back to the first rows when the period or list change.
 	const scope = scopeKey(state.range, state.from, state.to, kind, source);
@@ -123,12 +132,14 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 				{answer && <p className="spst-note spst-opportunities__intro">{intro(answer)}</p>}
 				{answer && !rows.length && (
 					<div className="spst-empty">
-						<p>{empty(shown, answer)}</p>
+						<p>{empty(shown, answer, source)}</p>
 					</div>
 				)}
 				{rows.length > 0 && shown === 'domains' && <DomainsTable rows={rows as BacklinkDomainRow[]} refreshing={query.isFetching} />}
 				{rows.length > 0 && shown === 'pages' && <PagesTable rows={rows as BacklinkPageRow[]} open={open} refreshing={query.isFetching} />}
 				{rows.length > 0 && (shown === 'links' || shown === 'lost') && <LinksTable rows={rows as BacklinkRow[]} kind={shown} open={open} refreshing={query.isFetching} />}
+				{rows.length > 0 && shown === 'reported' && <ReportedTable rows={rows as BacklinkReportedRow[]} refreshing={query.isFetching} />}
+				{answer && <CheckNow answer={answer} />}
 				{answer && <Notes answer={answer} />}
 				{answer && answer.total > PER_PAGE && (
 					<nav className="spst-changes__pager" aria-label={__('Pages of the backlinks list', 'seoprostats')}>
@@ -212,7 +223,12 @@ function intro(answer: BacklinksAnswer): string {
 	);
 }
 
-function empty(kind: BacklinkKind, answer: BacklinksAnswer): string {
+function empty(kind: BacklinkKind, answer: BacklinksAnswer, source: string): string {
+	if (kind === 'reported') {
+		return source
+			? __('No page an export of this source named.', 'seoprostats')
+			: __('No link export imported yet: import one in Settings → Import → Links.', 'seoprostats');
+	}
 	if (!answer.read.enabled) {
 		return __('The check is off: turn on “Check pages that send visitors for links” in Settings → Data.', 'seoprostats');
 	}
@@ -223,7 +239,9 @@ function empty(kind: BacklinkKind, answer: BacklinksAnswer): string {
 		return __('No link was lost in the period.', 'seoprostats');
 	}
 	if (answer.read.checked < answer.read.pages) {
-		return __('No link to this site found yet; the rest of the pages that sent visits are checked in the daily run.', 'seoprostats');
+		return answer.read.next
+			? __('No link to this site found yet; the pages a link export named are being opened, a batch a minute (see Reported pages).', 'seoprostats')
+			: __('No link to this site found yet; the rest of the pages that sent visits are checked in the daily run.', 'seoprostats');
 	}
 	return __('The pages that sent visits do not link to this site (the visits came from a link elsewhere, or one the browser did not name).', 'seoprostats');
 }
@@ -252,6 +270,26 @@ function Notes({ answer }: Readonly<{ answer: BacklinksAnswer }>) {
 			number(answer.rules.misses)
 		),
 	];
+	if (answer.totals.reported) {
+		notes.push(
+			sprintf(
+				/* translators: 1: pages link exports named, 2: their sites, 3: of those, the pages opened. */
+				__('Link exports named %1$s referring pages on %2$s sites; %3$s opened so far. Search Console names the page linking, not the page it links to, so its links show here once their page is opened; links an export reported are dated from the export, not marked new.', 'seoprostats'),
+				number(answer.totals.reported),
+				number(answer.totals.reported_domains),
+				number(answer.totals.reported_checked)
+			)
+		);
+	}
+	if (answer.read.next) {
+		notes.push(
+			sprintf(
+				/* translators: %s: time of the next catch-up check. */
+				__('Catching up: the next batch of reported pages opens at %s.', 'seoprostats'),
+				new Date(answer.read.next).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' })
+			)
+		);
+	}
 	return (
 		<div className="spst-note">
 			{notes.map((note) => (
@@ -405,6 +443,120 @@ function PagesTable({ rows, open, refreshing }: Readonly<{ rows: BacklinkPageRow
 							<td className="num">{number(row.links)}</td>
 							<td className="num">{number(row.new)}</td>
 							<td>{day(row.first_seen)}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</TableScroll>
+	);
+}
+
+/**
+ * The owner's Check now (live data), and where link exports are imported.
+ * The check opens pages for up to 20 seconds; the catch-up carries on.
+ */
+function CheckNow({ answer }: Readonly<{ answer: BacklinksAnswer }>) {
+	const data = useDataSet();
+	const [busy, setBusy] = useState(false);
+	const [message, setMessage] = useState<{ status: 'success' | 'error'; text: string } | null>(null);
+	if (!boot.canManage || shareAccess.token || data !== 'live') {
+		return null;
+	}
+	const importUrl = boot.settingsUrl ? addQueryArgs(boot.settingsUrl, { tab: 'import' }) : '';
+	async function check() {
+		setBusy(true);
+		setMessage(null);
+		try {
+			const done = await checkBacklinks();
+			setMessage({
+				status: 'success',
+				text:
+					sprintf(
+						/* translators: 1: links found new, 2: links lost. */
+						__('Checked: %1$s new links, %2$s lost.', 'seoprostats'),
+						number(done.links_new),
+						number(done.links_lost)
+					) +
+					(done.waiting
+						? ' ' +
+							sprintf(
+								/* translators: %s: reported pages not opened yet. */
+								_n('%s reported page waits; it opens in the background.', '%s reported pages wait; they open in the background, a batch a minute.', done.waiting, 'seoprostats'),
+								number(done.waiting)
+							)
+						: ''),
+			});
+		} catch (caught) {
+			setMessage({ status: 'error', text: errorMessage(caught, __('The check could not run.', 'seoprostats')) });
+		} finally {
+			setBusy(false);
+		}
+	}
+	const pending = answer.totals.reported - answer.totals.reported_checked;
+	return (
+		<div className="spst-backlinks__actions">
+			<p>
+				<Button variant="secondary" isBusy={busy} disabled={busy} onClick={() => void check()}>
+					{__('Check now', 'seoprostats')}
+				</Button>{' '}
+				{importUrl && <a href={importUrl}>{__('Import a link export', 'seoprostats')}</a>}
+			</p>
+			{!message && pending > 0 && !answer.read.enabled && (
+				<Notice status="warning" isDismissible={false} className="spst-notice">
+					{__('Reported pages are opened only while “Check pages that send visitors for links” is on in Settings → Data; Check now opens a batch once.', 'seoprostats')}
+				</Notice>
+			)}
+			{message && (
+				<Notice status={message.status} isDismissible={false} className="spst-notice">
+					{message.text}
+				</Notice>
+			)}
+		</div>
+	);
+}
+
+/** A reported page's check, in words. */
+function stateLabel(state: BacklinkReportedState, links: number): string {
+	switch (state) {
+		case 'links':
+			/* translators: %s: links to this site on the page. */
+			return sprintf(_n('%s link to this site', '%s links to this site', links, 'seoprostats'), number(links));
+		case 'none':
+			return __('No link to this site seen', 'seoprostats');
+		case 'error':
+			return __('Could not be opened; tried again later', 'seoprostats');
+		case 'gone':
+			return __('Gone', 'seoprostats');
+		default:
+			return __('Not checked yet', 'seoprostats');
+	}
+}
+
+function ReportedTable({ rows, refreshing }: Readonly<{ rows: BacklinkReportedRow[]; refreshing: boolean }>) {
+	return (
+		<TableScroll label={backlinkKindName('reported')}>
+			<table className={`widefat striped spst-table${refreshing ? ' is-refreshing' : ''}`}>
+				<thead>
+					<tr>
+						<th scope="col">{__('Linking page', 'seoprostats')}</th>
+						<th scope="col">{__('Site', 'seoprostats')}</th>
+						<th scope="col">{__('Check', 'seoprostats')}</th>
+						<th scope="col">{__('Reported', 'seoprostats')}</th>
+						<th scope="col">{__('Checked', 'seoprostats')}</th>
+						<th scope="col">{__('Found by', 'seoprostats')}</th>
+					</tr>
+				</thead>
+				<tbody>
+					{rows.map((row) => (
+						<tr key={row.source}>
+							<td>
+								<SourceLink url={row.source} />
+							</td>
+							<td>{row.host}</td>
+							<td>{stateLabel(row.state, row.links)}</td>
+							<td>{day(row.reported)}</td>
+							<td>{day(row.checked)}</td>
+							<td>{foundLabel(row.found)}</td>
 						</tr>
 					))}
 				</tbody>

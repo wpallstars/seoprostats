@@ -40,8 +40,8 @@ if (!defined('ABSPATH')) {
 
 final class SEOProStats_Backlinks {
 
-    /** Lists of the report. */
-    const KINDS = array('links', 'domains', 'pages', 'lost');
+    /** Lists of the report: reported is the referring pages link exports named, checked or not. */
+    const KINDS = array('links', 'domains', 'pages', 'lost', 'reported');
 
     /** A link's status: on its page at the last check, or lost. */
     const LINK_LIVE = 1;
@@ -72,6 +72,13 @@ final class SEOProStats_Backlinks {
         'generic'   => 256,
         'verified'  => 512,
     );
+
+    /** The FOUND bits of outside lists (DataForSEO and every export): dataforseo to generic. */
+    const EXPORTS = 510;
+
+    /** Cron hook: the catch-up check, every CATCH_UP seconds while pages an export named wait for their first check. */
+    const CHECK_HOOK = 'seoprostats_backlinks_check';
+    const CATCH_UP   = 60;
 
     /** Progress, per data set (autoload off): upto, last, pages, checked, errors, version. */
     const OPTION = 'seoprostats_backlinks';
@@ -130,6 +137,72 @@ final class SEOProStats_Backlinks {
         self::changes($events);
         self::save_run($out);
         return self::state() + $out;
+    }
+
+    /**
+     * run() under a five-minute lease, so the daily run, the catch-up and
+     * Check now never open the same pages at once; then the catch-up is
+     * scheduled while pages an export named wait for their first check.
+     *
+     * @param int  $budget Seconds.
+     * @param bool $force  Run though the setting is off (Check now, WP-CLI).
+     * @param bool $all    Open every referring page now (WP-CLI --all).
+     * @return array<string,mixed>|null run()'s answer, or null while another run holds the lease.
+     */
+    public static function run_locked($budget = self::BUDGET, $force = false, $all = false) {
+        $lock = SEOProStats_Schema::option(self::OPTION . '_lock');
+        $held = (int) get_option($lock, 0);
+        if ($held && $held < time() - 300) {
+            delete_option($lock);
+        }
+        if (!add_option($lock, time(), '', false)) {
+            return null;
+        }
+        try {
+            $done = self::run($budget, $force, $all);
+        } finally {
+            delete_option($lock);
+        }
+        self::schedule_catch_up();
+        return $done;
+    }
+
+    /**
+     * Cron (CHECK_HOOK): one more run while pages an export named wait for
+     * their first check; it schedules the next itself.
+     */
+    public static function catch_up() {
+        if (self::run_locked() === null) {
+            // Another run holds the lease: try again after it.
+            self::schedule_catch_up();
+        }
+    }
+
+    /**
+     * Schedule the catch-up a minute from now while the check is on and
+     * pages an export named wait for their first check (live data only).
+     *
+     * @return bool Whether it is scheduled.
+     */
+    public static function schedule_catch_up() {
+        if (wp_next_scheduled(self::CHECK_HOOK)) {
+            return true;
+        }
+        if (!self::may_run(false) || !self::waiting()) {
+            return false;
+        }
+        return (bool) wp_schedule_single_event(time() + self::CATCH_UP, self::CHECK_HOOK);
+    }
+
+    /**
+     * Pages an export named that were never opened, by the path_checked key.
+     *
+     * @return int
+     */
+    public static function waiting() {
+        global $wpdb;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, the path_id = 0, checked = 0 range of its path_checked key.
+        return (int) $wpdb->get_var($wpdb->prepare('SELECT COUNT(*) FROM %i WHERE path_id = 0 AND checked = 0 AND found & %d', SEOProStats_Schema::table('links'), self::EXPORTS));
     }
 
     /**
@@ -321,7 +394,7 @@ final class SEOProStats_Backlinks {
     private static function due($before) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table, by its path_checked key in its order.
-        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, last_seen, found, providers FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
+        return (array) $wpdb->get_results($wpdb->prepare('SELECT id, source_host_id, source_url_id, status, checked, first_seen, last_seen, found, providers FROM %i WHERE path_id = 0 AND checked < %d ORDER BY checked LIMIT %d', SEOProStats_Schema::table('links'), (int) $before, self::BATCH), ARRAY_A);
     }
 
     /**
@@ -352,8 +425,10 @@ final class SEOProStats_Backlinks {
         $redirects = array();
         $got   = $url !== '' ? self::fetch($url, $redirects) : new WP_Error('seoprostats_backlinks_url', 'No address.');
         if (is_wp_error($got)) {
-            // A failed request says nothing about the links.
-            self::touch((int) $page['id']);
+            // A failed request says nothing about the links; a referring
+            // page's misses count its failed opens in a row.
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
+            $wpdb->query($wpdb->prepare('UPDATE %i SET checked = %d, misses = LEAST(misses + 1, 255) WHERE id = %d', $table, $now, (int) $page['id']));
             return 'error';
         }
         $by   = self::known_links($table, (int) $page['source_url_id']);
@@ -373,7 +448,7 @@ final class SEOProStats_Backlinks {
             $status = self::PAGE_GONE;
         }
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its primary key.
-        $wpdb->update($table, array('status' => $status, 'checked' => $now), array('id' => (int) $page['id']), array('%d', '%d'), array('%d'));
+        $wpdb->update($table, array('status' => $status, 'checked' => $now, 'misses' => 0), array('id' => (int) $page['id']), array('%d', '%d', '%d'), array('%d'));
         return $gone ? 'gone' : 'ok';
     }
 
@@ -445,6 +520,7 @@ final class SEOProStats_Backlinks {
         $ids     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_keys($links));
         $anchors = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, array_column($links, 'anchor'));
         $found   = self::page_found($page);
+        $since   = self::discovered($page, $now);
         $seen    = array();
         foreach ($links as $path => $link) {
             $path_id = self::dict_id($ids, $path);
@@ -453,12 +529,31 @@ final class SEOProStats_Backlinks {
             }
             $seen[$path_id] = true;
             $was            = isset($by[$path_id]) ? $by[$path_id] : null;
-            self::keep_link($page, $url, $path_id, self::dict_id($anchors, $link['anchor']), (int) $link['rel'], $found, $now);
-            if (!$was || (int) $was['status'] !== self::LINK_LIVE) {
+            self::keep_link($page, $url, $path_id, self::dict_id($anchors, $link['anchor']), (int) $link['rel'], $found, $now, $since ? $since : $now);
+            // A link an export reported was already there: found, not new.
+            if (!$since && (!$was || (int) $was['status'] !== self::LINK_LIVE)) {
                 $events['new'][$host][] = array('from' => $url, 'to' => $path, 'anchor' => $link['anchor']);
             }
         }
         return $seen;
+    }
+
+    /**
+     * When the links found on the first check of a page an export named
+     * were there already: the export's dates (first seen, else last seen),
+     * else now. 0 for a page checked before or known only from visits,
+     * whose links found now are new.
+     *
+     * @param array<string,string> $page Its row (checked, found, first_seen, last_seen).
+     * @param int                  $now  Unix seconds.
+     * @return int Unix seconds, or 0.
+     */
+    private static function discovered(array $page, $now) {
+        if ((int) $page['checked'] > 0 || !((int) $page['found'] & self::EXPORTS)) {
+            return 0;
+        }
+        $since = (int) $page['first_seen'] > 0 ? (int) $page['first_seen'] : (int) $page['last_seen'];
+        return $since > 0 && $since <= $now ? $since : $now;
     }
 
     /**
@@ -494,8 +589,9 @@ final class SEOProStats_Backlinks {
      * @param int                  $rel       REL bits.
      * @param int                  $found     FOUND bits.
      * @param int                  $now       Unix seconds.
+     * @param int                  $first     First seen, when new (now, or an export's date).
      */
-    private static function keep_link(array $page, $url, $path_id, $anchor_id, $rel, $found, $now) {
+    private static function keep_link(array $page, $url, $path_id, $anchor_id, $rel, $found, $now, $first) {
         global $wpdb;
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- our own table by its unique key.
         $wpdb->query($wpdb->prepare(
@@ -509,7 +605,7 @@ final class SEOProStats_Backlinks {
             $rel,
             $found,
             self::LINK_LIVE,
-            $now,
+            $first,
             $now,
             $now,
             self::LINK_LIVE
@@ -886,6 +982,8 @@ final class SEOProStats_Backlinks {
         $pages     = self::linked_pages($live, $links, $texts);
         $domains   = self::domains($sites, $lost, $range);
         $targets   = self::targets($pages);
+        require_once __DIR__ . '/class-seoprostats-backlinks-reported.php';
+        $reported  = SEOProStats_Backlinks_Reported::read($live, $source);
         $new_sites = 0;
         foreach ($sites as $site) {
             $new_sites += $site['first'] >= $from && $site['first'] < $to ? 1 : 0;
@@ -901,6 +999,10 @@ final class SEOProStats_Backlinks {
                 })),
                 'new_domains' => $new_sites,
                 'lost'        => count($lost),
+                // Referring pages link exports named, their sites, and how many were opened.
+                'reported'         => count($reported['rows']),
+                'reported_domains' => $reported['domains'],
+                'reported_checked' => $reported['checked'],
             ),
             'read'   => self::coverage(),
             'rules'  => array(
@@ -912,8 +1014,9 @@ final class SEOProStats_Backlinks {
             'lists'  => array(
                 'links'   => $links,
                 'domains' => $domains,
-                'pages'   => $targets,
-                'lost'    => $lost_rows,
+                'pages'    => $targets,
+                'lost'     => $lost_rows,
+                'reported' => $reported['rows'],
             ),
         );
     }
@@ -1143,12 +1246,15 @@ final class SEOProStats_Backlinks {
         $row   = $wpdb->get_row($wpdb->prepare('SELECT COUNT(*) AS pages, SUM(checked > 0) AS checked FROM %i WHERE path_id = 0', SEOProStats_Schema::table('links')), ARRAY_A);
         $state = self::state();
         $live  = SEOProStats_Schema::set() === 'live';
+        $next  = $live ? wp_next_scheduled(self::CHECK_HOOK) : false;
         return array(
             'enabled' => !$live || SEOProStats_Statistics::backlinks(),
             'pages'   => is_array($row) ? (int) $row['pages'] : 0,
             'checked' => is_array($row) ? (int) $row['checked'] : 0,
             'last'    => $state['last'] ? (string) wp_date('c', $state['last']) : null,
             'errors'  => $state['errors'],
+            // The catch-up's next run while pages an export named wait for their first check.
+            'next'    => $next ? (string) wp_date('c', (int) $next) : null,
         );
     }
 
@@ -1247,8 +1353,14 @@ final class SEOProStats_Backlinks {
      */
     public static function reset() {
         require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
         SEOProStats_Backlinks_Import::reset();
+        SEOProStats_Backlinks_History::reset();
         delete_option(SEOProStats_Schema::option(self::OPTION));
+        delete_option(SEOProStats_Schema::option(self::OPTION . '_lock'));
+        if (SEOProStats_Schema::set() === 'live') {
+            wp_clear_scheduled_hook(self::CHECK_HOOK);
+        }
     }
 
     /**

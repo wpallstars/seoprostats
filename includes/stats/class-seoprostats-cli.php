@@ -1717,7 +1717,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * ## OPTIONS
      *
      * [<kind>]
-     * : links (live links, newest first), domains (the sites linking), pages (the site's pages linked to), lost (links lost in the period), or check (check the pages now).
+     * : links (live links, newest first), domains (the sites linking), pages (the site's pages linked to), lost (links lost in the period), reported (the referring pages link exports named, and their check), check (check the pages now), import (a CSV export) or imports (the exports imported).
      * ---
      * default: links
      * options:
@@ -1725,8 +1725,10 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *   - domains
      *   - pages
      *   - lost
+     *   - reported
      *   - check
      *   - import
+     *   - imports
      *   - review
      *   - disavow
      * ---
@@ -1780,6 +1782,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *     wp seoprostats backlinks lost --range=12mo
      *     wp seoprostats backlinks check
      *     wp seoprostats backlinks check --all
+     *     wp seoprostats backlinks reported --source=gsc
+     *     wp seoprostats backlinks import links.csv
+     *     wp seoprostats backlinks imports
      *     wp seoprostats backlinks --data=demo --format=json
      *
      * @param string[]             $args  Positional arguments.
@@ -1800,7 +1805,27 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
             $this->backlinks_check($assoc);
             return;
         }
+        if ($kind === 'imports') {
+            $this->backlinks_imports($assoc);
+            return;
+        }
         $this->backlinks_report($kind, $assoc);
+    }
+
+    /**
+     * wp seoprostats backlinks imports: the link export imports, newest first.
+     *
+     * @param array<string,string> $assoc Options (format).
+     */
+    private function backlinks_imports(array $assoc) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+        $rows = SEOProStats_Backlinks_History::out();
+        if (!$rows) {
+            WP_CLI::line(__('No link exports imported.', 'seoprostats'));
+            return;
+        }
+        $fields = array('id', 'started', 'user', 'via', 'name', 'bytes', 'source', 'status', 'total', 'accepted', 'skipped', 'file');
+        WP_CLI\Utils\format_items($this->format($assoc), $rows, $fields);
     }
 
     /**
@@ -1873,6 +1898,8 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         if (is_wp_error($job)) {
             WP_CLI::error($job->get_error_message());
         }
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+        SEOProStats_Backlinks_History::add($job, (string) $args[1], (string) $args[1], 'cli');
         do {
             $job = SEOProStats_Backlinks_Import::run(20);
             WP_CLI::log(sprintf('%d/%d', $job['done'], $job['total']));
@@ -1892,7 +1919,11 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         if (!SEOProStats_Schema::maybe_upgrade()) {
             WP_CLI::error(__('The tables could not be made.', 'seoprostats'));
         }
-        $done = SEOProStats_Backlinks::run(120, true, !empty($assoc['all']));
+        $done = SEOProStats_Backlinks::run_locked(120, true, !empty($assoc['all']));
+        if ($done === null) {
+            WP_CLI::error(__('A check is running already (the daily run or the catch-up after an import); try again in a few minutes.', 'seoprostats'));
+            return;
+        }
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($done, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
             return;
@@ -1925,6 +1956,8 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         WP_CLI::log(sprintf(__('Referring sites: %1$d. Live links: %2$d. New in the period: %3$d. Lost in the period: %4$d.', 'seoprostats'), $t['domains'], $t['links'], $t['new'], $t['lost']));
         /* translators: 1: referring pages checked, 2: referring pages known */
         WP_CLI::log(sprintf(__('Referring pages checked: %1$d of %2$d.', 'seoprostats'), $read['checked'], $read['pages']) . ($read['enabled'] ? '' : ' ' . __('The check is off (Settings → Data).', 'seoprostats')));
+        /* translators: 1: referring pages link exports named, 2: their sites, 3: of those pages, the ones checked */
+        WP_CLI::log(sprintf(__('Reported by link exports: %1$d pages from %2$d sites, %3$d checked.', 'seoprostats'), $t['reported'], $t['reported_domains'], $t['reported_checked']) . ($read['next'] ? ' ' . __('Catching up: the next check is within minutes.', 'seoprostats') : ''));
         if (!$answer['rows']) {
             WP_CLI::line(__('No backlinks.', 'seoprostats'));
             return;
@@ -1944,6 +1977,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * @return array<string,mixed>
      */
     private static function backlink_row($kind, array $row) {
+        if ($kind === 'reported') {
+            return array('source' => $row['source'], 'state' => $row['state'], 'links' => $row['links'], 'reported' => substr((string) $row['reported'], 0, 10), 'checked' => substr((string) $row['checked'], 0, 10), 'found' => implode(' ', $row['found']));
+        }
         $first = substr((string) $row['first_seen'], 0, 10);
         if ($kind === 'domains') {
             return array('host' => $row['host'], 'links' => $row['links'], 'followed' => $row['followed'], 'pages' => $row['pages'], 'new' => $row['new'], 'lost' => $row['lost'], 'visits' => $row['visits'], 'first_seen' => $first);

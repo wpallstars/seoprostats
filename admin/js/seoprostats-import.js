@@ -28,13 +28,32 @@
 	var linksForm = root.querySelector('[data-spst-links-form]');
 	var linksStatus = root.querySelector('[data-spst-links-status]');
 	var linksProgress = root.querySelector('[data-spst-links-progress]');
+	// Whether this page saw the links import run: once it ends, the tab is drawn again with the import in the history.
+	var linksWatched = false;
+	function linksText(job) {
+		if (job.status === 'running') {
+			/* translators: 1: rows done, 2: rows in all */
+			return sprintf(__('Importing: %1$s of %2$s rows.', 'seoprostats'), number(job.done), number(job.total));
+		}
+		if (job.status === 'error') {
+			return __('The last import stopped: a row could not be written. Import the file again; rows already written are kept once.', 'seoprostats');
+		}
+		/* translators: 1: rows kept, 2: rows skipped */
+		return sprintf(__('Last import done: %1$s rows kept, %2$s skipped.', 'seoprostats'), number(job.accepted), number(job.skipped));
+	}
 	function showLinks(job) {
-		linksStatus.textContent = job.status + ': ' + number(job.done) + '/' + number(job.total) + ' · ' + number(job.accepted) + ' ' + __('accepted', 'seoprostats') + ' · ' + number(job.skipped) + ' ' + __('skipped', 'seoprostats');
+		linksStatus.hidden = false;
+		linksStatus.textContent = linksText(job);
+		linksProgress.hidden = job.status !== 'running';
 		linksProgress.max = Math.max(1, job.total);
 		linksProgress.value = job.done;
 		linksForm.querySelector('button').disabled = job.status === 'running';
 		if (job.status === 'running') {
+			linksWatched = true;
 			window.setTimeout(pollLinks, 5000);
+		} else if (linksWatched || job.history) {
+			speak(linksStatus.textContent);
+			window.setTimeout(function () { window.location.reload(); }, 1500);
 		}
 	}
 	function pollLinks() {

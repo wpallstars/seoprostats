@@ -96,6 +96,10 @@ final class SEOProStats_Backlinks_Import {
         if ($job['status'] !== 'running') {
             wp_clear_scheduled_hook(SEOProStats_Collection::BACKLINK_IMPORT_HOOK);
             self::clear_chunks();
+            require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+            SEOProStats_Backlinks_History::finish($job);
+            // The pages it named are opened within minutes, not a page a day.
+            SEOProStats_Backlinks::schedule_catch_up();
         }
         return $job;
     }

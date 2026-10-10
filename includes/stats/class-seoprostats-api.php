@@ -420,7 +420,7 @@ final class SEOProStats_API {
             'callback' => array(__CLASS__, 'backlinks'),
             'args'     => $base + array(
                 'kind'   => array(
-                    'description' => __('Backlinks: links (pages of other sites linking to the site\'s pages now, newest first), domains (the sites linking, with their visits in the period), pages (the site\'s pages they link to) or lost (links lost in the period). New and lost are counted in the period.', 'seoprostats'),
+                    'description' => __('Backlinks: links (pages of other sites linking to the site\'s pages now, newest first), domains (the sites linking, with their visits in the period), pages (the site\'s pages they link to), lost (links lost in the period) or reported (the referring pages link exports named, and their check). New and lost are counted in the period.', 'seoprostats'),
                     'type'        => 'string',
                     'enum'        => SEOProStats_Backlinks::KINDS,
                     'default'     => 'links',
@@ -537,6 +537,23 @@ final class SEOProStats_API {
                 'permission_callback' => $settings,
                 'callback' => array(__CLASS__, 'backlinks_import_status'),
             ),
+        ));
+        register_rest_route($ns, '/backlinks/imports', array(
+            'methods' => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlinks_imports'),
+        ));
+        register_rest_route($ns, '/backlinks/imports/(?P<id>\d+)/file', array(
+            'methods' => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlinks_import_file'),
+            'args' => array('id' => array('type' => 'integer', 'minimum' => 1, 'required' => true)),
+        ));
+        add_filter('rest_pre_serve_request', array(__CLASS__, 'serve_import_file'), 10, 4);
+        register_rest_route($ns, '/backlinks/check', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlinks_check'),
         ));
         $source   = '/connections/(?P<source>[a-z0-9-]+)';
         register_rest_route($ns, '/connections', array(
@@ -1974,20 +1991,70 @@ final class SEOProStats_API {
                 // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose -- the temporary upload stream.
                 fclose($stream);
             }
+            $kept = array((string) $file['tmp_name'], isset($file['name']) ? (string) $file['name'] : '', 'upload');
         } else {
             $rows = $request->get_param('rows');
             if (!is_array($rows) || count($rows) > SEOProStats_Backlinks_Import::MAX_ROWS || strlen($request->get_body()) > SEOProStats_Backlinks_Import::MAX_BYTES) {
                 return new WP_Error('seoprostats_links_rows', __('Supply up to 100,000 JSON rows or a CSV file.', 'seoprostats'), array('status' => 400));
             }
-            $job = SEOProStats_Backlinks_Import::start(array_values($rows), $source);
+            $job  = SEOProStats_Backlinks_Import::start(array_values($rows), $source);
+            $kept = array('', 'rows.json', 'rest');
         }
-        return is_wp_error($job) ? $job : new WP_REST_Response($job, 202);
+        if (is_wp_error($job)) {
+            return $job;
+        }
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+        $entry = SEOProStats_Backlinks_History::add($job, $kept[0], $kept[1], $kept[2]);
+        return new WP_REST_Response($job + array('history' => (int) $entry['id']), 202);
     }
 
     /** Import progress (cron does the work). @param WP_REST_Request $request Request. @return WP_REST_Response */
     public static function backlinks_import_status($request) {
         require_once __DIR__ . '/class-seoprostats-backlinks-import.php';
         return new WP_REST_Response(SEOProStats_Backlinks_Import::status());
+    }
+
+    /** The link export imports, newest first. @param WP_REST_Request $request Request. @return WP_REST_Response */
+    public static function backlinks_imports($request) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+        return new WP_REST_Response(array('imports' => SEOProStats_Backlinks_History::out()));
+    }
+
+    /** The file served by serve_import_file() (never in a response body). @var string */
+    private static $import_file = '';
+
+    /** An import's uploaded file, as it was uploaded. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlinks_import_file($request) {
+        require_once __DIR__ . '/class-seoprostats-backlinks-history.php';
+        $file = SEOProStats_Backlinks_History::file((int) $request->get_param('id'));
+        if ($file === null) {
+            return new WP_Error('seoprostats_links_file', __('That import\'s file is no longer kept.', 'seoprostats'), array('status' => 404));
+        }
+        self::$import_file = $file['path'];
+        $name = str_replace(array('"', '\\'), '', $file['name']);
+        return new WP_REST_Response(null, 200, array('Content-Type' => 'text/csv; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="' . $name . '"', 'Content-Length' => (string) filesize($file['path']), 'Cache-Control' => 'no-store', 'X-Content-Type-Options' => 'nosniff'));
+    }
+
+    /** Send the kept file as it is, not JSON. @param bool $served Served. @param WP_HTTP_Response $result Response. @param WP_REST_Request $request Request. @param WP_REST_Server $server Server. @return bool */
+    public static function serve_import_file($served, $result, $request, $server) {
+        if ($served || self::$import_file === '' || $result->get_status() !== 200 || strpos($request->get_route(), '/' . SEOProStats_Collection::REST_NAMESPACE . '/backlinks/imports/') !== 0) {
+            return $served;
+        }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- the owner's own upload, kept in our folder, sent as the attachment.
+        readfile(self::$import_file);
+        return true;
+    }
+
+    /** Check now: open the referring pages due for up to 20 seconds, then carry on in cron while an export's pages wait. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlinks_check($request) {
+        if (SEOProStats_Schema::set() !== 'live' || !SEOProStats_Schema::maybe_upgrade()) {
+            return new WP_Error('seoprostats_backlinks_check', __('Check the live data only.', 'seoprostats'), array('status' => 409));
+        }
+        $done = SEOProStats_Backlinks::run_locked(SEOProStats_Backlinks::BUDGET, true);
+        if ($done === null) {
+            return new WP_Error('seoprostats_backlinks_busy', __('A check is running already; it carries on by itself.', 'seoprostats'), array('status' => 409));
+        }
+        return new WP_REST_Response($done + array('waiting' => SEOProStats_Backlinks::waiting()));
     }
 
     /**

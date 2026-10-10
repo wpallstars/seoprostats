@@ -78,7 +78,7 @@ final class SEOProStats_Import_Tab {
         $version = file_exists(SEOPROSTATS_DIR . self::JS_FILE) ? (string) filemtime(SEOPROSTATS_DIR . self::JS_FILE) : SEOPROSTATS_VERSION;
         wp_enqueue_script('seoprostats-import', SEOPROSTATS_URL . self::JS_FILE, array('seoprostats-admin', 'wp-api-fetch', 'wp-i18n', 'wp-a11y'), $version, true);
         wp_set_script_translations('seoprostats-import', 'seoprostats');
-        wp_add_inline_style('seoprostats-admin', '.spst-import{padding:16px 20px;min-width:0}.spst-import h3{margin:0 0 4px;font-size:14px}.spst-import h4{margin:16px 0 4px;font-size:13px}.spst-import .form-table th{width:180px;padding-block:8px}.spst-import .form-table td{padding-block:8px}.spst-import__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.spst-import__message:empty,.spst-import__plan:empty{display:none}.spst-import__plan{margin-top:12px;border-top:1px solid #dcdcde;padding-top:4px}.spst-import__scroll{position:relative;margin-top:8px;overflow-x:auto}.spst-import__scroll table{max-width:760px}.spst-import__steps{margin:8px 0 0 1.5em}.spst-import__steps li{margin-bottom:8px;max-width:72em}.spst-import progress{width:100%;max-width:480px;height:16px}.spst-import fieldset{margin-top:16px}.spst-import fieldset legend{font-weight:600}.spst-import fieldset label{display:block;margin:4px 0}.spst-import code{overflow-wrap:anywhere}.spst-import ul.spst-import__list{list-style:disc;margin:4px 0 0 1.5em}.spst-import td.num,.spst-import th.num{text-align:end;white-space:nowrap}.spst-import__scroll table.spst-import__settings{max-width:960px}.spst-import__settings th,.spst-import__settings td{vertical-align:top}.spst-import__settings thead th{white-space:nowrap}.spst-import__settings td.spst-import__setting{min-width:14em}.spst-import__setting label,.spst-import__setting strong{display:block;font-weight:600}.spst-import__setting .description{display:block;margin-top:2px}.spst-import__settings tr.is-kept td{color:var(--spst-muted,#646970)}');
+        wp_add_inline_style('seoprostats-admin', '.spst-import{padding:16px 20px;min-width:0}.spst-import h3{margin:0 0 4px;font-size:14px}.spst-import h4{margin:16px 0 4px;font-size:13px}.spst-import .form-table th{width:180px;padding-block:8px}.spst-import .form-table td{padding-block:8px}.spst-import__actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}.spst-import__message:empty,.spst-import__plan:empty{display:none}.spst-import__plan{margin-top:12px;border-top:1px solid #dcdcde;padding-top:4px}.spst-import__scroll{position:relative;margin-top:8px;overflow-x:auto}.spst-import__scroll table{max-width:760px}.spst-import__steps{margin:8px 0 0 1.5em}.spst-import__steps li{margin-bottom:8px;max-width:72em}.spst-import progress{width:100%;max-width:480px;height:16px}.spst-import fieldset{margin-top:16px}.spst-import fieldset legend{font-weight:600}.spst-import fieldset label{display:block;margin:4px 0}.spst-import code{overflow-wrap:anywhere}.spst-import ul.spst-import__list{list-style:disc;margin:4px 0 0 1.5em}.spst-import td.num,.spst-import th.num{text-align:end;white-space:nowrap}.spst-import__scroll table.spst-import__settings{max-width:960px}.spst-import__settings th,.spst-import__settings td{vertical-align:top}.spst-import__settings thead th{white-space:nowrap}.spst-import__settings td.spst-import__setting{min-width:14em}.spst-import__setting label,.spst-import__setting strong{display:block;font-weight:600}.spst-import__setting .description{display:block;margin-top:2px}.spst-import__settings tr.is-kept td{color:var(--spst-muted,#646970)}.spst-import__scroll table.spst-import__history{max-width:none}.spst-import__history td{vertical-align:top}.spst-import__history .button{margin-top:4px}.spst-import__file{overflow-wrap:anywhere;font-weight:600}');
     }
 
     /**
@@ -124,11 +124,21 @@ final class SEOProStats_Import_Tab {
     /** Upload an export without creating a public media-library attachment. */
     private static function render_links() {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-import.php';
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks-history.php';
         $job = SEOProStats_Backlinks_Import::status();
         ?>
         <section class="spst-card spst-import" data-spst-links>
             <h3><?php esc_html_e('Links', 'seoprostats'); ?></h3>
-            <p><?php esc_html_e('Import a CSV from Search Console, Ahrefs, Semrush, Majestic, Moz or Bing, or a generic source URL / target URL export. Up to 100,000 rows and 50 MB. It carries on in cron; exports never mark missing links lost. Checking the referring pages remains opt-in in Settings → Data.', 'seoprostats'); ?></p>
+            <p><?php esc_html_e('Import a CSV from Search Console, Ahrefs, Semrush, Majestic, Moz or Bing, or a generic source URL / target URL export. Up to 100,000 rows and 50 MB. It carries on in the background; exports never mark missing links lost.', 'seoprostats'); ?></p>
+            <p class="description">
+                <?php
+                echo esc_html(
+                    SEOProStats_Statistics::backlinks()
+                        ? __('Search Console names the page linking, not the page it links to: each page an export names is opened to read its links to this site, a page every few seconds, starting a minute after the import. Until then it is listed under Search → Backlinks → Reported.', 'seoprostats')
+                        : __('Checking pages for links is off (Settings → Data → Check pages that send visitors for links), so the pages an export names stay unchecked under Search → Backlinks → Reported, and exports without the page linked to add no links.', 'seoprostats')
+                );
+                ?>
+            </p>
             <form data-spst-links-form>
                 <label for="spst-links-file"><?php esc_html_e('Links CSV', 'seoprostats'); ?></label>
                 <input id="spst-links-file" type="file" accept=".csv,text/csv" required>
@@ -141,10 +151,163 @@ final class SEOProStats_Import_Tab {
                 </select>
                 <button class="button button-primary" type="submit"><?php esc_html_e('Import links', 'seoprostats'); ?></button>
             </form>
-            <p data-spst-links-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"><?php echo esc_html((string) $job['status'] . ': ' . (int) $job['done'] . '/' . (int) $job['total']); ?></p>
-            <progress data-spst-links-progress max="<?php echo esc_attr((string) max(1, $job['total'])); ?>" value="<?php echo esc_attr((string) $job['done']); ?>"></progress>
+            <p data-spst-links-status role="status" data-status="<?php echo esc_attr((string) $job['status']); ?>"<?php echo $job['status'] === 'idle' ? ' hidden' : ''; ?>><?php echo esc_html(self::links_status($job)); ?></p>
+            <progress data-spst-links-progress max="<?php echo esc_attr((string) max(1, $job['total'])); ?>" value="<?php echo esc_attr((string) $job['done']); ?>"<?php echo $job['status'] === 'running' ? '' : ' hidden'; ?>></progress>
+            <?php self::render_links_history(SEOProStats_Backlinks_History::out()); ?>
         </section>
         <?php
+    }
+
+    /**
+     * The links import's progress in words.
+     *
+     * @param array<string,mixed> $job SEOProStats_Backlinks_Import::status().
+     * @return string
+     */
+    private static function links_status(array $job) {
+        if ($job['status'] === 'running') {
+            /* translators: 1: rows done, 2: rows in all */
+            return sprintf(__('Importing: %1$s of %2$s rows.', 'seoprostats'), number_format_i18n((int) $job['done']), number_format_i18n((int) $job['total']));
+        }
+        if ($job['status'] === 'error') {
+            return __('The last import stopped: a row could not be written. Import the file again; rows already written are kept once.', 'seoprostats');
+        }
+        /* translators: 1: rows kept, 2: rows skipped */
+        return $job['status'] === 'done' ? sprintf(__('Last import done: %1$s rows kept, %2$s skipped.', 'seoprostats'), number_format_i18n((int) $job['accepted']), number_format_i18n((int) $job['skipped'])) : '';
+    }
+
+    /**
+     * The link exports imported: when, who, the file (to download again),
+     * the rows and where to see them.
+     *
+     * @param array<int,array<string,mixed>> $imports SEOProStats_Backlinks_History::out().
+     */
+    private static function render_links_history(array $imports) {
+        if (!$imports) {
+            return;
+        }
+        ?>
+        <h4><?php esc_html_e('Imported', 'seoprostats'); ?></h4>
+        <div class="spst-import__scroll">
+            <table class="widefat striped spst-import__history">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php esc_html_e('When', 'seoprostats'); ?></th>
+                        <th scope="col"><?php esc_html_e('File', 'seoprostats'); ?></th>
+                        <th scope="col"><?php esc_html_e('Source', 'seoprostats'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Rows', 'seoprostats'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Kept', 'seoprostats'); ?></th>
+                        <th scope="col" class="num"><?php esc_html_e('Skipped', 'seoprostats'); ?></th>
+                        <th scope="col"><?php esc_html_e('Status', 'seoprostats'); ?></th>
+                        <th scope="col"><?php esc_html_e('Results', 'seoprostats'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($imports as $import) : ?>
+                        <tr>
+                            <td>
+                                <?php echo esc_html((string) wp_date((string) get_option('date_format') . ' ' . (string) get_option('time_format'), (int) strtotime((string) $import['started']))); ?>
+                                <br><span class="description"><?php echo esc_html(trim((string) $import['user'] . ' · ' . self::via_label((string) $import['via']), ' ·')); ?></span>
+                            </td>
+                            <td>
+                                <span class="spst-import__file"><?php echo esc_html((string) $import['name']); ?></span>
+                                <br><span class="description"><?php echo esc_html($import['file'] ? (string) size_format((int) $import['bytes']) : __('File not kept', 'seoprostats')); ?></span>
+                                <?php if ($import['file']) : ?>
+                                    <br><a class="button button-small" href="<?php echo esc_url(self::links_file_url((int) $import['id'])); ?>" download="<?php echo esc_attr((string) $import['name']); ?>">
+                                        <?php esc_html_e('Download', 'seoprostats'); ?>
+                                        <span class="screen-reader-text"><?php echo esc_html((string) $import['name']); ?></span>
+                                    </a>
+                                <?php endif; ?>
+                            </td>
+                            <td><?php echo esc_html(self::links_source_label((string) $import['source'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['total'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['accepted'])); ?></td>
+                            <td class="num"><?php echo esc_html(number_format_i18n((int) $import['skipped'])); ?></td>
+                            <td><?php echo esc_html(self::links_status_label($import)); ?></td>
+                            <td>
+                                <?php if ((int) $import['accepted'] > 0) : ?>
+                                    <a href="<?php echo esc_url(self::backlinks_url((string) $import['source'])); ?>"><?php esc_html_e('See in Search → Backlinks', 'seoprostats'); ?></a>
+                                <?php else : ?>
+                                    —
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <p class="description"><?php esc_html_e('The last 20 imports are listed; their files are kept for download (up to 200 MB in all), readable only by administrators here. Rows that name the same link again are merged, so results are by source, not by file.', 'seoprostats'); ?></p>
+        <?php
+    }
+
+    /**
+     * An import's status, in words.
+     *
+     * @param array<string,mixed> $import SEOProStats_Backlinks_History::out() entry.
+     * @return string
+     */
+    private static function links_status_label(array $import) {
+        if ($import['status'] === 'running') {
+            /* translators: 1: rows done, 2: rows in all */
+            return sprintf(__('Importing: %1$s of %2$s', 'seoprostats'), number_format_i18n((int) $import['done']), number_format_i18n((int) $import['total']));
+        }
+        return $import['status'] === 'done' ? __('Done', 'seoprostats') : __('Stopped', 'seoprostats');
+    }
+
+    /**
+     * How an import came in, in words.
+     *
+     * @param string $via upload, cli or rest.
+     * @return string
+     */
+    private static function via_label($via) {
+        $labels = array(
+            'upload' => __('uploaded here', 'seoprostats'),
+            'cli'    => 'WP-CLI',
+            'rest'   => __('REST API rows', 'seoprostats'),
+        );
+        return isset($labels[$via]) ? $labels[$via] : $via;
+    }
+
+    /**
+     * An export source's name.
+     *
+     * @param string $source SEOProStats_Backlinks_Import::SOURCES.
+     * @return string
+     */
+    private static function links_source_label($source) {
+        $labels = array(
+            'gsc'     => 'Search Console',
+            'ahrefs'  => 'Ahrefs',
+            'semrush' => 'Semrush',
+            'majestic' => 'Majestic',
+            'moz'     => 'Moz',
+            'bing'    => 'Bing',
+            'generic' => __('Source URL / target URL', 'seoprostats'),
+        );
+        return isset($labels[$source]) ? $labels[$source] : $source;
+    }
+
+    /**
+     * Download an import's file again (the owner's REST route, with the
+     * REST nonce for the signed-in person).
+     *
+     * @param int $id Entry id.
+     * @return string Unescaped URL.
+     */
+    private static function links_file_url($id) {
+        return add_query_arg('_wpnonce', wp_create_nonce('wp_rest'), rest_url(SEOProStats_Collection::REST_NAMESPACE . '/backlinks/imports/' . $id . '/file'));
+    }
+
+    /**
+     * Search → Backlinks → Reported, of one source.
+     *
+     * @param string $source Export source.
+     * @return string Unescaped URL.
+     */
+    private static function backlinks_url($source) {
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-dashboard.php';
+        return admin_url('admin.php?page=' . SEOProStats_Dashboard::SLUG) . '#/search?report=backlinks&backlinks=reported' . ($source !== '' ? '&found=' . rawurlencode($source) : '');
     }
 
     /**

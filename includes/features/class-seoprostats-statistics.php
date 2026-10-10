@@ -298,7 +298,7 @@ final class SEOProStats_Statistics extends SEOProStats_Feature {
                 'default'     => true,
                 'tab'         => 'data',
                 'label'       => __('Check pages that send visitors for links', 'seoprostats'),
-                'description' => __('Once a day the site opens the pages of other sites that sent visitors (the address the browser gave, often only the other site\'s home page), at most for 20 seconds, and keeps the links on them to this site, with their text, so Search → Backlinks lists them and new and lost links show on the timeline. Each page is checked again weekly. The request names SEO Pro Stats and this site, and sends nothing about visitors. Off: no page is opened.', 'seoprostats'),
+                'description' => __('Once a day the site opens the pages of other sites that sent visitors (the address the browser gave, often only the other site\'s home page), at most for 20 seconds, and keeps the links on them to this site, with their text, so Search → Backlinks lists them and new and lost links show on the timeline. After a link export import (Settings → Import → Links), the pages it named are opened a batch a minute until each was opened once. Each page is checked again weekly. The request names SEO Pro Stats and this site, and sends nothing about visitors. Off: no page is opened.', 'seoprostats'),
             ),
             'inspections'             => array(
                 'type'        => 'int',
