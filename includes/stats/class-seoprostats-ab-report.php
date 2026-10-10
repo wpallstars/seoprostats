@@ -36,7 +36,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_AB_Report {
+/**
+ * A/B test reports: per-variant numbers, comparisons and verdicts.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") The registry, measurement and statistics share one test's numbers; each step is a small private helper.
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") The measurement's reads and the statistics belong to one report.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each read, comparison and verdict readable.
+ * @SuppressWarnings("PHPMD.TooManyPublicMethods") REST, WP-CLI, abilities and the query engine call these entry points; the statistics are public for checking.
+ */
+final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI, abilities and the dashboard; private helpers decompose its measurement.
 
     /** Fewest visits each side of a comparison needs before a call. */
     const MIN_VISITS = 100;
@@ -235,17 +243,7 @@ final class SEOProStats_AB_Report {
      * @return array<string,mixed>
      */
     private static function shape(array $row) {
-        $variants = json_decode((string) $row['variants'], true);
-        $list     = array();
-        foreach (is_array($variants) ? $variants : array() as $variant) {
-            if (is_array($variant) && isset($variant['slug']) && is_string($variant['slug'])) {
-                $list[] = array(
-                    'slug'   => $variant['slug'],
-                    'label'  => isset($variant['label']) ? (string) $variant['label'] : $variant['slug'],
-                    'weight' => isset($variant['weight']) ? (int) $variant['weight'] : SEOProStats_AB_Tests::WEIGHT,
-                );
-            }
-        }
+        $list   = self::shape_variants((string) $row['variants']);
         $goals  = json_decode((string) $row['goals'], true);
         $status = array_search((int) $row['status'], SEOProStats_AB_Tests::STATUSES, true);
         $time   = static function ($ts) {
@@ -268,6 +266,28 @@ final class SEOProStats_AB_Report {
             'from'     => (int) $row['started'] ? (int) $row['started'] : (int) $row['created'],
             'to'       => (int) $row['ended'] ? (int) $row['ended'] : 0,
         );
+    }
+
+    /**
+     * A registry row's variants as answers show them: those with a slug,
+     * labelled by their slug and weighted WEIGHT when not given.
+     *
+     * @param string $json The variants column.
+     * @return array<int,array{slug:string,label:string,weight:int}>
+     */
+    private static function shape_variants($json) {
+        $variants = json_decode($json, true);
+        $list     = array();
+        foreach (is_array($variants) ? $variants : array() as $variant) {
+            if (is_array($variant) && isset($variant['slug']) && is_string($variant['slug'])) {
+                $list[] = array(
+                    'slug'   => $variant['slug'],
+                    'label'  => isset($variant['label']) ? (string) $variant['label'] : $variant['slug'],
+                    'weight' => isset($variant['weight']) ? (int) $variant['weight'] : SEOProStats_AB_Tests::WEIGHT,
+                );
+            }
+        }
+        return $list;
     }
 
     /**
@@ -358,128 +378,31 @@ final class SEOProStats_AB_Report {
      * @return array<string,mixed>
      */
     private static function measure(array $test, array $filters, $full = false) {
-        global $wpdb;
-        $from  = (int) $test['from'];
-        $to    = $test['to'] ? (int) $test['to'] : time();
-        $range = array(
-            'key'   => 'custom',
-            'start' => (new DateTimeImmutable('@' . $from))->setTimezone(wp_timezone()),
-            'end'   => (new DateTimeImmutable('@' . $to))->setTimezone(wp_timezone()),
-            'from'  => $from,
-            'to'    => $to,
-        );
+        $range    = self::test_range($test);
+        $from     = $range['from'];
+        $to       = $range['to'];
         $days     = $test['started'] !== null ? max(0, (int) floor(($to - $from) / DAY_IN_SECONDS)) : 0;
         $compiled = SEOProStats_Query::compile($filters, $range);
         $goals    = self::goals($test['goals']);
         $control  = $test['variants'] ? $test['variants'][0]['slug'] : '';
-        $primary  = $goals
-            ? array('kind' => 'goal', 'id' => $goals[0]['id'], 'name' => $goals[0]['name'])
-            : array('kind' => 'clicks', 'id' => '', 'name' => __('Clicked inside the variant', 'seoprostats'));
+        $primary  = self::primary_metric($goals);
 
-        $by     = array();
-        $mixed  = array('visits' => 0, 'share' => 0);
-        $exp    = self::exposures_sql($test['id'], $range);
-        if ($exp !== null) {
-            list($sql, $args) = $exp;
-            $where            = $compiled['where'];
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: ab_exposures by index `test_day`, visits by primary key; $sql and $where hold only placeholders and fixed SQL.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT IF(a.n > 1, 0, a.v) AS bucket, COUNT(*) AS visits, COUNT(DISTINCT s.day, s.visitor) AS visitors, COALESCE(SUM(a.loads), 0) AS loads, COALESCE(SUM(a.clicks), 0) AS clicks, COALESCE(SUM(a.clicks > 0), 0) AS clicked, COALESCE(SUM(s.pageviews <= 1 AND s.events = 0), 0) AS bounces, COALESCE(SUM(s.engaged_ms), 0) AS engaged_ms FROM ($sql) a INNER JOIN %i s ON s.id = a.sid WHERE 1 = 1$where GROUP BY bucket", array_merge($args, array(SEOProStats_Schema::table('sessions')), $compiled['args'])), ARRAY_A);
-            foreach ((array) $rows as $row) {
-                $by[(int) $row['bucket']] = $row;
-            }
-        }
+        $exp   = self::exposures_sql($test['id'], $range);
+        $by    = $exp !== null ? self::visit_rows($exp, $compiled) : array();
         $slugs = self::slugs(array_keys($by));
-        $total = 0;
-        foreach ($by as $row) {
-            $total += (int) $row['visits'];
-        }
-        if (isset($by[0])) {
-            $mixed = array('visits' => (int) $by[0]['visits'], 'share' => $total ? round((int) $by[0]['visits'] / $total, 4) : 0);
-        }
+        list($total, $mixed) = self::visit_totals($by);
 
         // Goals reached after the test was seen, per variant.
-        $reached = array();
-        $money   = array();
-        foreach ($full ? $goals : array_slice($goals, 0, 1) as $goal) {
-            list($reached[$goal['id']], $money[$goal['id']]) = $exp !== null ? self::goal_counts($exp, $goal, $compiled, $full) : array(array(), array());
-        }
+        $reached = self::goals_reached($full ? $goals : array_slice($goals, 0, 1), $exp, $compiled, $full);
 
         $variants = array();
         foreach ($test['variants'] as $variant) {
-            $id  = array_search($variant['slug'], $slugs, true);
-            $row = $id !== false && isset($by[$id]) ? $by[$id] : array();
-            $n   = isset($row['visits']) ? (int) $row['visits'] : 0;
-            $out = array(
-                'slug'    => $variant['slug'],
-                'label'   => $variant['label'],
-                'weight'  => $variant['weight'],
-                'control' => $variant['slug'] === $control,
-                'winner'  => $variant['slug'] === $test['winner'],
-                'visits'  => $n,
-                'share'   => $total ? round($n / $total, 4) : 0,
-            );
-            if ($full) {
-                $loads              = isset($row['loads']) ? (int) $row['loads'] : 0;
-                $out['visitors']    = isset($row['visitors']) ? (int) $row['visitors'] : 0;
-                $out['pageviews']   = $loads;
-                $out['clicks']      = isset($row['clicks']) ? (int) $row['clicks'] : 0;
-                $out['clicked']     = isset($row['clicked']) ? (int) $row['clicked'] : 0;
-                $out['click_rate']  = $n ? round($out['clicked'] / $n, 4) : 0;
-                $out['bounce_rate'] = $n ? round((int) $row['bounces'] / $n, 4) : 0;
-                $out['engaged_time'] = $n ? (int) round((int) $row['engaged_ms'] / $n / 1000) : 0;
-                $out['goals']       = array();
-                foreach ($goals as $goal) {
-                    $hit            = $id !== false && isset($reached[$goal['id']][$id]) ? $reached[$goal['id']][$id] : array('visits' => 0, 'completions' => 0);
-                    $out['goals'][] = array(
-                        'id'          => $goal['id'],
-                        'name'        => $goal['name'],
-                        'conversions' => (int) $hit['visits'],
-                        'completions' => (int) $hit['completions'],
-                        'rate'        => $n ? round($hit['visits'] / $n, 4) : 0,
-                        'revenue'     => $id !== false && isset($money[$goal['id']][$id]) ? $money[$goal['id']][$id] : array(),
-                    );
-                }
-            }
-            if ($goals) {
-                $first = $id !== false && isset($reached[$goals[0]['id']][$id]) ? (int) $reached[$goals[0]['id']][$id]['visits'] : 0;
-            } else {
-                $first = isset($row['clicked']) ? (int) $row['clicked'] : 0;
-            }
-            $out['primary'] = array('conversions' => $first, 'rate' => $n ? round($first / $n, 4) : 0);
-            $variants[]     = $out;
+            $id         = array_search($variant['slug'], $slugs, true);
+            $row        = $id !== false && isset($by[$id]) ? $by[$id] : array();
+            $variant   += array('control' => $variant['slug'] === $control, 'winner' => $variant['slug'] === $test['winner']);
+            $variants[] = self::variant_numbers($variant, $row, $id, $total, $goals, $reached, $full);
         }
-
-        // Compare each variant with the control.
-        $base = null;
-        foreach ($variants as $v) {
-            if ($v['control']) {
-                $base = $v;
-            }
-        }
-        foreach ($variants as $i => $v) {
-            $v['primary'] += self::compare($base, $v, $days);
-            if ($base !== null && isset($v['goals'], $base['goals'])) {
-                $goal_rows = array();
-                foreach ($v['goals'] as $g => $goal) {
-                    $c = $base['goals'][$g];
-                    if ($v['control']) {
-                        $goal_rows[] = $goal + array('uplift' => null, 'interval' => null, 'probability' => null);
-                        continue;
-                    }
-                    $probability = null;
-                    if ($base['visits'] && $v['visits']) {
-                        $probability = round(self::prob_beat($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']), 4);
-                    }
-                    $goal_rows[] = $goal + array(
-                        'uplift'      => self::uplift($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
-                        'interval'    => self::interval($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
-                        'probability' => $probability,
-                    );
-                }
-                $v['goals'] = $goal_rows;
-            }
-            $variants[$i] = $v;
-        }
+        $variants = self::compared($variants, $days);
         list($verdict, $leader) = self::verdict($variants, $total, $primary);
 
         return array(
@@ -492,6 +415,251 @@ final class SEOProStats_AB_Report {
             'leader'   => $leader,
             'verdict'  => $verdict,
         );
+    }
+
+    /**
+     * All visits that saw a test, and those that saw more than one of its
+     * variants (row 0) with their share.
+     *
+     * @param array<int,array<string,mixed>> $by Visit rows by variant id (0: mixed).
+     * @return array{0:int,1:array{visits:int,share:float|int}} Total visits, and mixed.
+     */
+    private static function visit_totals(array $by) {
+        $mixed = array('visits' => 0, 'share' => 0);
+        $total = 0;
+        foreach ($by as $row) {
+            $total += (int) $row['visits'];
+        }
+        if (isset($by[0])) {
+            $mixed = array('visits' => (int) $by[0]['visits'], 'share' => $total ? round((int) $by[0]['visits'] / $total, 4) : 0);
+        }
+        return array($total, $mixed);
+    }
+
+    /**
+     * A test's period as a custom range: from its start (or creation) to
+     * its end, or now while it runs.
+     *
+     * @param array<string,mixed> $test From registry().
+     * @return array{key:string,start:DateTimeImmutable,end:DateTimeImmutable,from:int,to:int}
+     */
+    private static function test_range(array $test) {
+        $from = (int) $test['from'];
+        $to   = $test['to'] ? (int) $test['to'] : time();
+        return array(
+            'key'   => 'custom',
+            'start' => (new DateTimeImmutable('@' . $from))->setTimezone(wp_timezone()),
+            'end'   => (new DateTimeImmutable('@' . $to))->setTimezone(wp_timezone()),
+            'from'  => $from,
+            'to'    => $to,
+        );
+    }
+
+    /**
+     * The primary metric: the test's first goal, else clicks inside the
+     * variant.
+     *
+     * @param array<int,array{id:string,name:string,kind:string,match:string}> $goals From goals().
+     * @return array{kind:string,id:string,name:string}
+     */
+    private static function primary_metric(array $goals) {
+        return $goals
+            ? array('kind' => 'goal', 'id' => $goals[0]['id'], 'name' => $goals[0]['name'])
+            : array('kind' => 'clicks', 'id' => '', 'name' => __('Clicked inside the variant', 'seoprostats'));
+    }
+
+    /**
+     * The visits that saw a test, by variant's dictionary id (0: saw more
+     * than one): visits, visitors, loads, clicks, clicked, bounces and
+     * engaged time.
+     *
+     * @param array{0:string,1:array<int,mixed>} $exp      From exposures_sql().
+     * @param array<string,mixed>                $compiled From SEOProStats_Query::compile().
+     * @return array<int,array<string,mixed>>
+     */
+    private static function visit_rows(array $exp, array $compiled) {
+        global $wpdb;
+        list($sql, $args) = $exp;
+        $where            = $compiled['where'];
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables: ab_exposures by index `test_day`, visits by primary key; $sql and $where hold only placeholders and fixed SQL.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT IF(a.n > 1, 0, a.v) AS bucket, COUNT(*) AS visits, COUNT(DISTINCT s.day, s.visitor) AS visitors, COALESCE(SUM(a.loads), 0) AS loads, COALESCE(SUM(a.clicks), 0) AS clicks, COALESCE(SUM(a.clicks > 0), 0) AS clicked, COALESCE(SUM(s.pageviews <= 1 AND s.events = 0), 0) AS bounces, COALESCE(SUM(s.engaged_ms), 0) AS engaged_ms FROM ($sql) a INNER JOIN %i s ON s.id = a.sid WHERE 1 = 1$where GROUP BY bucket", array_merge($args, array(SEOProStats_Schema::table('sessions')), $compiled['args'])), ARRAY_A);
+        $by   = array();
+        foreach ((array) $rows as $row) {
+            $by[(int) $row['bucket']] = $row;
+        }
+        return $by;
+    }
+
+    /**
+     * Each goal's conversions and revenue per variant (none without
+     * exposures).
+     *
+     * @param array<int,array<string,mixed>>          $goals    The goals measured.
+     * @param array{0:string,1:array<int,mixed>}|null $exp      From exposures_sql().
+     * @param array<string,mixed>                     $compiled From SEOProStats_Query::compile().
+     * @param bool                                    $full     Whether to add revenue.
+     * @return array{0:array<string,array<int,array{visits:int,completions:int}>>,1:array<string,array<int,array<int,array<string,mixed>>>>} By goal id: counts; revenue.
+     */
+    private static function goals_reached(array $goals, $exp, array $compiled, $full) {
+        $reached = array();
+        $money   = array();
+        foreach ($goals as $goal) {
+            $counts               = $exp !== null ? self::goal_counts($exp, $goal, $compiled, $full) : array(array(), array());
+            $reached[$goal['id']] = $counts[0];
+            $money[$goal['id']]   = $counts[1];
+        }
+        return array($reached, $money);
+    }
+
+    /**
+     * One variant's numbers: visits and share, with $full the visit
+     * metrics and every goal, and the primary metric's conversions.
+     *
+     * @param array<string,mixed>                          $variant The variant (slug, label, weight), and whether it is the control and the winner.
+     * @param array<string,mixed>                          $row     Its visits (from visit_rows(); empty for none).
+     * @param int|false                                    $id      Its dictionary id (false: never seen).
+     * @param int                                          $total   Visits that saw the test.
+     * @param array<int,array<string,mixed>>               $goals   From goals().
+     * @param array{0:array<string,mixed>,1:array<string,mixed>} $reached From goals_reached().
+     * @param bool                                         $full    Every goal and the visit metrics.
+     * @return array<string,mixed>
+     */
+    private static function variant_numbers(array $variant, array $row, $id, $total, array $goals, array $reached, $full) {
+        $n   = isset($row['visits']) ? (int) $row['visits'] : 0;
+        $out = array(
+            'slug'    => $variant['slug'],
+            'label'   => $variant['label'],
+            'weight'  => $variant['weight'],
+            'control' => $variant['control'],
+            'winner'  => $variant['winner'],
+            'visits'  => $n,
+            'share'   => $total ? round($n / $total, 4) : 0,
+        );
+        if ($full) {
+            $out         += self::visit_metrics($row, $n);
+            $out['goals'] = self::variant_goals($goals, $reached, $id, $n);
+        }
+        $first          = self::primary_conversions($goals, $reached[0], $row, $id);
+        $out['primary'] = array('conversions' => $first, 'rate' => $n ? round($first / $n, 4) : 0);
+        return $out;
+    }
+
+    /**
+     * A variant's visit metrics: visitors, page views, clicks, visits with
+     * a click, and click, bounce and engaged rates.
+     *
+     * @param array<string,mixed> $row Its visits (empty for none).
+     * @param int                 $n   Its visits.
+     * @return array<string,int|float>
+     */
+    private static function visit_metrics(array $row, $n) {
+        $clicked = isset($row['clicked']) ? (int) $row['clicked'] : 0;
+        return array(
+            'visitors'     => isset($row['visitors']) ? (int) $row['visitors'] : 0,
+            'pageviews'    => isset($row['loads']) ? (int) $row['loads'] : 0,
+            'clicks'       => isset($row['clicks']) ? (int) $row['clicks'] : 0,
+            'clicked'      => $clicked,
+            'click_rate'   => $n ? round($clicked / $n, 4) : 0,
+            'bounce_rate'  => $n ? round((int) $row['bounces'] / $n, 4) : 0,
+            'engaged_time' => $n ? (int) round((int) $row['engaged_ms'] / $n / 1000) : 0,
+        );
+    }
+
+    /**
+     * A variant's conversions, completions, rate and revenue for every goal.
+     *
+     * @param array<int,array<string,mixed>>                     $goals   From goals().
+     * @param array{0:array<string,mixed>,1:array<string,mixed>} $reached From goals_reached().
+     * @param int|false                                          $id      Its dictionary id (false: never seen).
+     * @param int                                                $n       Its visits.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function variant_goals(array $goals, array $reached, $id, $n) {
+        list($counts, $money) = $reached;
+        $out = array();
+        foreach ($goals as $goal) {
+            $hit   = $id !== false && isset($counts[$goal['id']][$id]) ? $counts[$goal['id']][$id] : array('visits' => 0, 'completions' => 0);
+            $out[] = array(
+                'id'          => $goal['id'],
+                'name'        => $goal['name'],
+                'conversions' => (int) $hit['visits'],
+                'completions' => (int) $hit['completions'],
+                'rate'        => $n ? round($hit['visits'] / $n, 4) : 0,
+                'revenue'     => $id !== false && isset($money[$goal['id']][$id]) ? $money[$goal['id']][$id] : array(),
+            );
+        }
+        return $out;
+    }
+
+    /**
+     * A variant's conversions on the primary metric: visits that reached
+     * the first goal, else visits with a click inside it.
+     *
+     * @param array<int,array<string,mixed>> $goals  From goals().
+     * @param array<string,mixed>            $counts Conversions by goal id, then variant id.
+     * @param array<string,mixed>            $row    Its visits (empty for none).
+     * @param int|false                      $id     Its dictionary id (false: never seen).
+     * @return int
+     */
+    private static function primary_conversions(array $goals, array $counts, array $row, $id) {
+        if (!$goals) {
+            return isset($row['clicked']) ? (int) $row['clicked'] : 0;
+        }
+        return $id !== false && isset($counts[$goals[0]['id']][$id]) ? (int) $counts[$goals[0]['id']][$id]['visits'] : 0;
+    }
+
+    /**
+     * The variants with each compared with the control: on the primary
+     * metric, and (full view) on every goal.
+     *
+     * @param array<int,array<string,mixed>> $variants From variant_numbers().
+     * @param int                            $days     Days the test has run.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function compared(array $variants, $days) {
+        $base = null;
+        foreach ($variants as $v) {
+            if ($v['control']) {
+                $base = $v;
+            }
+        }
+        foreach ($variants as $i => $v) {
+            $v['primary'] += self::compare($base, $v, $days);
+            if ($base !== null && isset($v['goals'], $base['goals'])) {
+                $v['goals'] = self::goal_comparisons($base, $v);
+            }
+            $variants[$i] = $v;
+        }
+        return $variants;
+    }
+
+    /**
+     * A variant's goals each compared with the control's: uplift, its
+     * interval and the probability to beat it (none for the control).
+     *
+     * @param array<string,mixed> $base The control's numbers.
+     * @param array<string,mixed> $v    The variant's.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function goal_comparisons(array $base, array $v) {
+        $goal_rows = array();
+        foreach ($v['goals'] as $g => $goal) {
+            $c = $base['goals'][$g];
+            if ($v['control']) {
+                $goal_rows[] = $goal + array('uplift' => null, 'interval' => null, 'probability' => null);
+                continue;
+            }
+            $probability = null;
+            if ($base['visits'] && $v['visits']) {
+                $probability = round(self::prob_beat($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']), 4);
+            }
+            $goal_rows[] = $goal + array(
+                'uplift'      => self::uplift($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
+                'interval'    => self::interval($c['conversions'], $base['visits'], $goal['conversions'], $v['visits']),
+                'probability' => $probability,
+            );
+        }
+        return $goal_rows;
     }
 
     /**
@@ -657,6 +825,63 @@ final class SEOProStats_AB_Report {
         $others = array_values(array_filter($variants, static function ($v) {
             return !$v['control'];
         }));
+        $better = array_values(array_filter($others, static function ($v) {
+            return $v['primary']['verdict'] === 'better';
+        }));
+        usort($better, static function ($a, $b) {
+            return (float) $b['primary']['probability'] <=> (float) $a['primary']['probability'];
+        });
+        $code   = self::verdict_code($visits, $others, $better);
+        $leader = self::verdict_leader($code, $variants, $better);
+        $text   = self::verdict_text($code, $others, (array) $leader, $primary);
+        return array(
+            array('code' => $code, 'text' => $text),
+            $leader && $code !== 'no_data' ? array('slug' => (string) $leader['slug'], 'label' => (string) $leader['label']) : null,
+        );
+    }
+
+    /**
+     * The test's verdict code: no_data (no visits, or one variant), winner
+     * (some variant better), too_early (every other too early), control
+     * (every other worse), else unclear.
+     *
+     * @param int                            $visits Visits that saw the test.
+     * @param array<int,array<string,mixed>> $others The variants but the control.
+     * @param array<int,array<string,mixed>> $better Those better than the control.
+     * @return string
+     */
+    private static function verdict_code($visits, array $others, array $better) {
+        if (!$visits || !$others) {
+            return 'no_data';
+        }
+        if ($better) {
+            return 'winner';
+        }
+        $count = static function ($verdict) use ($others) {
+            return count(array_filter($others, static function ($v) use ($verdict) {
+                return $v['primary']['verdict'] === $verdict;
+            }));
+        };
+        if ($count('too_early') === count($others)) {
+            return 'too_early';
+        }
+        return $count('worse') === count($others) ? 'control' : 'unclear';
+    }
+
+    /**
+     * The test's leader for a verdict: the most likely better variant for
+     * winner, the control for control, else the one with the highest rate
+     * (with visits).
+     *
+     * @param string                         $code     From verdict_code().
+     * @param array<int,array<string,mixed>> $variants Variants with their comparisons.
+     * @param array<int,array<string,mixed>> $better   Those better than the control, most likely first.
+     * @return array<string,mixed>|null
+     */
+    private static function verdict_leader($code, array $variants, array $better) {
+        if ($code === 'winner') {
+            return $better[0];
+        }
         $leader = null;
         $best   = -1.0;
         foreach ($variants as $v) {
@@ -665,49 +890,42 @@ final class SEOProStats_AB_Report {
                 $leader = $v;
             }
         }
-        $better = array_values(array_filter($others, static function ($v) {
-            return $v['primary']['verdict'] === 'better';
-        }));
-        usort($better, static function ($a, $b) {
-            return (float) $b['primary']['probability'] <=> (float) $a['primary']['probability'];
-        });
-        $early = count(array_filter($others, static function ($v) {
-            return $v['primary']['verdict'] === 'too_early';
-        }));
-        $worse = count(array_filter($others, static function ($v) {
-            return $v['primary']['verdict'] === 'worse';
-        }));
-
-        if (!$visits || !$others) {
-            $code = 'no_data';
-            $text = $others ? __('No visits have seen this test yet.', 'seoprostats') : __('This test has only one variant.', 'seoprostats');
-        } elseif ($better) {
-            $leader = $better[0];
-            $code   = 'winner';
-            /* translators: 1: variant label, 2: probability to beat the control, such as 97%, 3: the metric, such as Purchase */
-            $text = sprintf(__('%1$s does better: a %2$s chance to beat the control on %3$s.', 'seoprostats'), $leader['label'], self::percent((float) $leader['primary']['probability']), $primary['name']);
-        } elseif ($early === count($others)) {
-            $code = 'too_early';
-            /* translators: 1: visits each variant needs, 2: conversions needed, 3: days */
-            $text = sprintf(__('Too early to call: each variant needs %1$d visits, %2$d conversions between it and the control, and the test %3$d days.', 'seoprostats'), self::MIN_VISITS, self::MIN_CONVERSIONS, self::MIN_DAYS);
-        } elseif ($worse === count($others)) {
+        if ($code === 'control') {
             foreach ($variants as $v) {
                 if ($v['control']) {
                     $leader = $v;
                 }
             }
-            $code = 'control';
-            /* translators: %s: the metric, such as Purchase */
-            $text = sprintf(__('The control does best on %s: every other variant does worse.', 'seoprostats'), $primary['name']);
-        } else {
-            $code = 'unclear';
-            /* translators: %s: the metric, such as Purchase */
-            $text = sprintf(__('No clear difference on %s yet: keep the test running, or end it if the difference is too small to matter.', 'seoprostats'), $primary['name']);
         }
-        return array(
-            array('code' => $code, 'text' => $text),
-            $leader && $code !== 'no_data' ? array('slug' => (string) $leader['slug'], 'label' => (string) $leader['label']) : null,
-        );
+        return $leader;
+    }
+
+    /**
+     * The verdict in words.
+     *
+     * @param string                         $code    From verdict_code().
+     * @param array<int,array<string,mixed>> $others  The variants but the control.
+     * @param array<string,mixed>            $leader  From verdict_leader() (empty for none; a winner always has one).
+     * @param array<string,string>           $primary The primary metric.
+     * @return string
+     */
+    private static function verdict_text($code, array $others, array $leader, array $primary) {
+        switch ($code) {
+            case 'no_data':
+                return $others ? __('No visits have seen this test yet.', 'seoprostats') : __('This test has only one variant.', 'seoprostats');
+            case 'winner':
+                /* translators: 1: variant label, 2: probability to beat the control, such as 97%, 3: the metric, such as Purchase */
+                return sprintf(__('%1$s does better: a %2$s chance to beat the control on %3$s.', 'seoprostats'), $leader['label'], self::percent((float) $leader['primary']['probability']), $primary['name']);
+            case 'too_early':
+                /* translators: 1: visits each variant needs, 2: conversions needed, 3: days */
+                return sprintf(__('Too early to call: each variant needs %1$d visits, %2$d conversions between it and the control, and the test %3$d days.', 'seoprostats'), self::MIN_VISITS, self::MIN_CONVERSIONS, self::MIN_DAYS);
+            case 'control':
+                /* translators: %s: the metric, such as Purchase */
+                return sprintf(__('The control does best on %s: every other variant does worse.', 'seoprostats'), $primary['name']);
+            default:
+                /* translators: %s: the metric, such as Purchase */
+                return sprintf(__('No clear difference on %s yet: keep the test running, or end it if the difference is too small to matter.', 'seoprostats'), $primary['name']);
+        }
     }
 
     /**
