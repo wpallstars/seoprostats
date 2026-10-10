@@ -572,40 +572,18 @@ final class SEOProStats_Query {
                 if ($single) {
                     $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], SEOProStats_Rollup::country_value($filter['values'][0]));
                 }
-                $values = array_map('strtoupper', $filter['values']);
-                if (in_array($filter['op'], array('is', 'is_not'), true)) {
-                    $holders = implode(', ', array_fill(0, count($values), '%s'));
-                    $where[] = "s.%i " . ($negate ? 'NOT IN' : 'IN') . " ($holders)";
-                    $args    = array_merge($args, array($column), $values);
-                } else {
-                    $likes   = array_map(array(__CLASS__, 'like'), array_fill(0, count($values), $filter['op']), $values);
-                    $where[] = '(' . implode(' OR ', array_fill(0, count($likes), 's.%i LIKE %s')) . ')';
-                    foreach ($likes as $like) {
-                        array_push($args, $column, $like);
-                    }
-                }
+                $condition = self::compile_text($filter, $column);
+                $where[]   = $condition['where'];
+                $args      = array_merge($args, $condition['args']);
                 continue;
             }
 
             if ($kind === 'variant') {
-                // Visits that saw the variant (also those that saw others of its test).
-                $pairs = self::variant_pairs($filter);
-                if (!$pairs) {
-                    if (!$negate) {
-                        $where[] = '1 = 0';
-                    }
-                    continue;
+                $condition = self::compile_variant($filter, $range);
+                if ($condition['where'] !== '') {
+                    $where[] = $condition['where'];
                 }
-                list($first, $last) = self::fact_window($range);
-                $days               = array((string) wp_date('Y-m-d', $first), (string) wp_date('Y-m-d', $last));
-                $ors                = array();
-                $sub                = array(SEOProStats_Schema::table('ab_exposures'));
-                foreach ($pairs as $pair) {
-                    $ors[] = '(x.test_id = %d AND x.day >= %s AND x.day <= %s AND x.variant_id = %d)';
-                    $sub   = array_merge($sub, array($pair[0]), $days, array($pair[1]));
-                }
-                $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . ' (SELECT x.session_id FROM %i x WHERE ' . implode(' OR ', $ors) . ')';
-                $args    = array_merge($args, $sub);
+                $args = array_merge($args, $condition['args']);
                 continue;
             }
 
@@ -653,6 +631,57 @@ final class SEOProStats_Query {
             'args'    => $args,
             'pages'   => $pages,
             'summary' => $summary,
+        );
+    }
+
+    /**
+     * Append a country-text condition without changing placeholder order.
+     *
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @param string $column Visit column.
+     * @return array{where:string,args:array<mixed>} Condition and its placeholder arguments.
+     */
+    private static function compile_text(array $filter, $column) {
+        $values = array_map('strtoupper', $filter['values']);
+        if (in_array($filter['op'], array('is', 'is_not'), true)) {
+            $holders = implode(', ', array_fill(0, count($values), '%s'));
+            return array(
+                'where' => "s.%i " . ($filter['op'] === 'is_not' ? 'NOT IN' : 'IN') . " ($holders)",
+                'args'  => array_merge(array($column), $values),
+            );
+        }
+        $likes = array_map(array(__CLASS__, 'like'), array_fill(0, count($values), $filter['op']), $values);
+        $args  = array();
+        foreach ($likes as $like) {
+            array_push($args, $column, $like);
+        }
+        return array('where' => '(' . implode(' OR ', array_fill(0, count($likes), 's.%i LIKE %s')) . ')', 'args' => $args);
+    }
+
+    /**
+     * Append visits that saw a variant, including others of the same test.
+     *
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @param array<string,mixed> $range From range().
+     * @return array{where:string,args:array<int,mixed>} Condition and its placeholder arguments.
+     */
+    private static function compile_variant(array $filter, array $range) {
+        $negate = $filter['op'] === 'is_not';
+        $pairs  = self::variant_pairs($filter);
+        if (!$pairs) {
+            return array('where' => $negate ? '' : '1 = 0', 'args' => array());
+        }
+        list($first, $last) = self::fact_window($range);
+        $days               = array((string) wp_date('Y-m-d', $first), (string) wp_date('Y-m-d', $last));
+        $ors                = array();
+        $sub                = array(SEOProStats_Schema::table('ab_exposures'));
+        foreach ($pairs as $pair) {
+            $ors[] = '(x.test_id = %d AND x.day >= %s AND x.day <= %s AND x.variant_id = %d)';
+            $sub   = array_merge($sub, array($pair[0]), $days, array($pair[1]));
+        }
+        return array(
+            'where' => 's.id ' . ($negate ? 'NOT IN' : 'IN') . ' (SELECT x.session_id FROM %i x WHERE ' . implode(' OR ', $ors) . ')',
+            'args'  => $sub,
         );
     }
 
