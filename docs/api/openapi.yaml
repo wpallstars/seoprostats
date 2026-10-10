@@ -2107,6 +2107,90 @@ paths:
         '409':
           description: Another import is running or live storage is unavailable.
 
+  /backlinks/imports:
+    get:
+      operationId: listBacklinkImports
+      summary: The link export imports, newest first (administrators).
+      description: |
+        Each import is recorded when staged and updated when it ends: who,
+        how (upload, WP-CLI or REST rows), the file's name, size and
+        SHA-256, the source and the row counts. The last 20 are kept;
+        uploaded files are kept for download up to 200 MB in all, oldest
+        dropped first (the entry stays). Rows naming the same link again
+        are merged, so results are by source: `/backlinks?kind=reported&source=`.
+      responses:
+        '200':
+          description: The imports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [imports]
+                properties:
+                  imports:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BacklinkImportEntry'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /backlinks/imports/{id}/file:
+    get:
+      operationId: downloadBacklinkImportFile
+      summary: Download an import's file as it was uploaded (administrators).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: The file, as an attachment (never cached).
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: No such import, or its file is no longer kept.
+
+  /backlinks/check:
+    post:
+      operationId: checkBacklinks
+      summary: Check now — open the referring pages due for up to 20 seconds (administrators, live data).
+      description: |
+        Runs though the setting is off. While pages a link export named
+        wait for their first check, the catch-up carries on in cron, a run
+        a minute, until each was opened (only while the setting is on).
+      responses:
+        '200':
+          description: The run's counts, with the pages still waiting.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [links_new, links_lost, more, waiting]
+                properties:
+                  links_new:
+                    type: integer
+                  links_lost:
+                    type: integer
+                  more:
+                    type: boolean
+                    description: Pages were left for the next run.
+                  waiting:
+                    type: integer
+                    description: Pages a link export named never opened yet.
+                additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Not the live data, or a check is running already.
+
   /backlinks:
     get:
       operationId: getBacklinks
@@ -2126,13 +2210,21 @@ paths:
         referring site and day) on `/markers`. CSV exports can add referring
         pages and links too; see `/backlinks/import`. Missing rows in a newer
         sample never mark a link lost. Imported pages are rechecked weekly
-        even after a first miss, while checking is on.
+        even after a first miss, while checking is on. After an import,
+        the pages it named are opened by a catch-up run every minute
+        (`read.next`) until each was opened once; links found on that
+        first check are dated from the export and are not new changes.
 
         - `links`: live links, newest first.
         - `domains`: the sites linking, with their visits in the period,
           most visits first.
         - `pages`: the site's pages linked to, most sites first.
         - `lost`: links lost in the period, newest first.
+        - `reported`: the referring pages link exports named, newest report
+          first, with their check (`state`) and the live links found on
+          each. Search Console exports name the page linking but not the
+          page linked to, so their links show under `links` only once the
+          page is opened.
 
         The period counts `new` and `lost`, and the sites' visits; filters
         do not apply.
@@ -6681,7 +6773,7 @@ components:
 
     BacklinkKind:
       type: string
-      enum: [links, domains, pages, lost]
+      enum: [links, domains, pages, lost, reported]
       default: links
 
     BacklinkDecision:
@@ -6825,6 +6917,12 @@ components:
           description: Valid rows processed, including known links and referring-page candidates.
         skipped:
           type: integer
+        started:
+          type: integer
+          description: Unix seconds the job was staged; ties it to its import history entry.
+        history:
+          type: integer
+          description: POST only; the import history entry's id.
 
     BacklinkDomainRow:
       type: object
@@ -6885,8 +6983,8 @@ components:
               $ref: '#/components/schemas/BacklinkKind'
             totals:
               type: object
-              required: [domains, links, pages, new, new_domains, lost]
-              description: Live links, the sites and pages they join, and the links (and sites) new and lost in the period.
+              required: [domains, links, pages, new, new_domains, lost, reported, reported_domains, reported_checked]
+              description: Live links, the sites and pages they join, the links (and sites) new and lost in the period, and the referring pages link exports named (their sites, and how many were opened).
               properties:
                 domains:
                   type: integer
@@ -6900,9 +6998,15 @@ components:
                   type: integer
                 lost:
                   type: integer
+                reported:
+                  type: integer
+                reported_domains:
+                  type: integer
+                reported_checked:
+                  type: integer
             read:
               type: object
-              required: [enabled, pages, checked, last, errors]
+              required: [enabled, pages, checked, last, errors, next]
               properties:
                 enabled:
                   type: boolean
@@ -6919,6 +7023,10 @@ components:
                 errors:
                   type: integer
                   description: Pages that could not be opened in the last run.
+                next:
+                  type: [string, 'null']
+                  format: date-time
+                  description: The catch-up's next run, while pages a link export named wait for their first check (live data).
             rules:
               type: object
               required: [recheck_days, misses, budget, max_rows]
@@ -6941,10 +7049,94 @@ components:
                   - $ref: '#/components/schemas/BacklinkRow'
                   - $ref: '#/components/schemas/BacklinkDomainRow'
                   - $ref: '#/components/schemas/BacklinkPageRow'
+                  - $ref: '#/components/schemas/BacklinkReportedRow'
             total:
               type: integer
             more:
               type: boolean
+
+    BacklinkReportedRow:
+      type: object
+      description: A referring page a link export named (reported), and its check.
+      required: [source, host, found, state, links, reported, checked, providers]
+      properties:
+        source:
+          type: string
+          description: The page linking, as the export gave it.
+        host:
+          type: string
+        found:
+          type: array
+          items:
+            type: string
+        state:
+          type: string
+          enum: [unchecked, links, none, error, gone]
+          description: Not opened yet; links to the site found; none seen; could not be opened (tried again); gone (404 or 410).
+        links:
+          type: integer
+          description: Live links to the site found on it.
+        reported:
+          type: [string, 'null']
+          format: date-time
+          description: The export's newest date for it.
+        checked:
+          type: [string, 'null']
+          format: date-time
+        providers:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              authority:
+                type: [integer, 'null']
+              last_seen:
+                type: [string, 'null']
+                format: date-time
+
+    BacklinkImportEntry:
+      type: object
+      description: One link export import, newest first; at most 20 kept, their files up to 200 MB in all.
+      required: [id, started, finished, user, via, name, bytes, sha256, file, source, status, total, done, accepted, skipped]
+      properties:
+        id:
+          type: integer
+        started:
+          type: string
+          format: date-time
+        finished:
+          type: [string, 'null']
+          format: date-time
+        user:
+          type: string
+          description: Display name of who imported it; empty for cron or a removed user.
+        via:
+          type: string
+          enum: [upload, cli, rest]
+        name:
+          type: string
+          description: The file's name as uploaded (rows.json for JSON rows).
+        bytes:
+          type: integer
+        sha256:
+          type: string
+          description: Of the kept file; empty when none was kept.
+        file:
+          type: boolean
+          description: Whether the file is kept to download again (/backlinks/imports/{id}/file).
+        source:
+          type: string
+        status:
+          type: string
+          enum: [running, done, error]
+        total:
+          type: integer
+        done:
+          type: integer
+        accepted:
+          type: integer
+        skipped:
+          type: integer
 
     SearchEngine:
       type: string

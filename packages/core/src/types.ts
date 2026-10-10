@@ -1372,11 +1372,30 @@ export interface IndexationAnswer extends Answer, SearchEngineAnswer {
 	more: boolean;
 }
 
-/** Backlinks lists: live links, the sites linking, the site's pages linked to, links lost in the period. */
-export const BACKLINK_KINDS = ['links', 'domains', 'pages', 'lost'] as const;
+/** Backlinks lists: live links, the sites linking, the site's pages linked to, links lost in the period, the referring pages link exports named. */
+export const BACKLINK_KINDS = ['links', 'domains', 'pages', 'lost', 'reported'] as const;
 export type BacklinkKind = (typeof BACKLINK_KINDS)[number];
 
 export const BACKLINK_SOURCES = ['referrer', 'dataforseo', 'gsc', 'ahrefs', 'semrush', 'majestic', 'moz', 'bing', 'generic', 'verified'] as const;
+export type BacklinkSource = (typeof BACKLINK_SOURCES)[number];
+
+/** A reported page's check: not opened yet, links to the site, none seen, could not be opened, or gone. */
+export type BacklinkReportedState = 'unchecked' | 'links' | 'none' | 'error' | 'gone';
+
+/** A referring page a link export named. */
+export interface BacklinkReportedRow {
+	/** The page linking (as the export gave it). */
+	source: string;
+	host: string;
+	found: string[];
+	state: BacklinkReportedState;
+	/** Live links to the site found on it. */
+	links: number;
+	/** ISO times: the export's newest date for it, and its last check. */
+	reported: string | null;
+	checked: string | null;
+	providers: Record<string, { authority: number | null; last_seen: string | null }>;
+}
 
 /** A link's rel words kept. */
 export type BacklinkRel = 'nofollow' | 'sponsored' | 'ugc';
@@ -1433,11 +1452,11 @@ export interface BacklinkPageRow {
 export interface BacklinksAnswer extends Answer {
 	range: Range;
 	kind: BacklinkKind;
-	totals: { domains: number; links: number; pages: number; new: number; new_domains: number; lost: number };
-	/** Referring pages known and checked, the last run, failed requests then, and whether the check is on. */
-	read: { enabled: boolean; pages: number; checked: number; last: string | null; errors: number };
+	totals: { domains: number; links: number; pages: number; new: number; new_domains: number; lost: number; reported: number; reported_domains: number; reported_checked: number };
+	/** Referring pages known and checked, the last run, failed requests then, whether the check is on, and the catch-up's next run. */
+	read: { enabled: boolean; pages: number; checked: number; last: string | null; errors: number; next?: string | null };
 	rules: { recheck_days: number; misses: number; budget: number; max_rows: number };
-	rows: (BacklinkRow | BacklinkDomainRow | BacklinkPageRow)[];
+	rows: (BacklinkRow | BacklinkDomainRow | BacklinkPageRow | BacklinkReportedRow)[];
 	total: number;
 	more: boolean;
 }

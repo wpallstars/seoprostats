@@ -366,6 +366,13 @@ export async function saveBacklinkDecision(decision: BacklinkDecision, data: Dat
 	return answer;
 }
 
+/** Check now: open the referring pages due (live data only, the owner's); the catch-up carries on in cron. */
+export async function checkBacklinks() {
+	const answer = await send<{ links_new: number; links_lost: number; more: boolean; waiting: number }>('backlinks/check', 'POST');
+	await queryClient.invalidateQueries({ queryKey: ['backlinks'] });
+	return answer;
+}
+
 export async function mergeDisavow(text: string, data: DataSet) {
 	const answer = await send<{ entries: number }>('backlinks/disavow/merge', 'POST', { text, data });
 	await queryClient.invalidateQueries({ queryKey: ['backlink-review'] });

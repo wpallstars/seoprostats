@@ -613,7 +613,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/backlinks', array(
             'label'               => __('Backlinks', 'seoprostats'),
-            'description'         => __('Pages of other sites that link to the site\'s pages, found without an outside service: once a day the site opens the pages that sent visits (Referral channel; the other site\'s home page when the browser gave only its address) and reads their links to the site, with anchor text and rel (nofollow, sponsored, ugc). Each page is checked again weekly; a link missing on two checks in a row, or on a page that is gone, is lost. Four lists. links: live links, newest first, each with source (the page linking), host, page (the site\'s page it links to), anchor, rel, first_seen, last_seen and new (first found in the period). domains: the sites linking, with links, followed (without nofollow, sponsored or ugc), pages, new and lost in the period, and their visits in the period, most visits first. pages: the site\'s pages linked to, with domains and links, most domains first. lost: links lost in the period, with lost. totals counts each; read says how many referring pages were checked, the last run and whether the check is on. Links from sites that never sent a visit are not found. New and lost links are also changes on the timeline (seoprostats/markers).', 'seoprostats'),
+            'description'         => __('Pages of other sites that link to the site\'s pages, found without an outside service: once a day the site opens the pages that sent visits (Referral channel; the other site\'s home page when the browser gave only its address) and reads their links to the site, with anchor text and rel (nofollow, sponsored, ugc). Each page is checked again weekly; a link missing on two checks in a row, or on a page that is gone, is lost. Four lists. links: live links, newest first, each with source (the page linking), host, page (the site\'s page it links to), anchor, rel, first_seen, last_seen and new (first found in the period). domains: the sites linking, with links, followed (without nofollow, sponsored or ugc), pages, new and lost in the period, and their visits in the period, most visits first. pages: the site\'s pages linked to, with domains and links, most domains first. lost: links lost in the period, with lost. reported: the referring pages link exports named (Settings → Import → Links; Search Console names the linking page, not the page linked to), with state (unchecked, links, none, error or gone), links (live links found on it), reported (the export\'s date) and checked; after an import the check catches up every minute until each was opened. totals counts each (reported, reported_domains, reported_checked); read says how many referring pages were checked, the last run, next (the catch-up\'s next run) and whether the check is on. source keeps only what one source found (gsc, ahrefs, referrer, verified and so on). Links an export did not name, from sites that never sent a visit, are not found. New links (not those an export reported first) and lost links are also changes on the timeline (seoprostats/markers).', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -625,6 +625,12 @@ final class SEOProStats_Abilities {
                         'enum'        => SEOProStats_Backlinks::KINDS,
                         'default'     => 'links',
                         'description' => __('Which list.', 'seoprostats'),
+                    ),
+                    'source' => array(
+                        'type'        => 'string',
+                        'enum'        => array_merge(array(''), array_keys(SEOProStats_Backlinks::FOUND)),
+                        'default'     => '',
+                        'description' => __('Only what this source found ("" for all).', 'seoprostats'),
                     ),
                     'range'  => array(
                         'type'        => 'string',
@@ -1878,13 +1884,14 @@ final class SEOProStats_Abilities {
      */
     public static function backlinks($input = null) {
         $input = is_array($input) ? $input : array();
-        $req   = SEOProStats_Query::request(array_diff_key($input, array('kind' => 1)) + array('range' => '30d', 'limit' => 25));
+        $req   = SEOProStats_Query::request(array_diff_key($input, array('kind' => 1, 'source' => 1)) + array('range' => '30d', 'limit' => 25));
         if (is_wp_error($req)) {
             return $req;
         }
-        $kind = isset($input['kind']) ? (string) $input['kind'] : 'links';
-        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind) {
-            return SEOProStats_Backlinks::report((array) $req, $kind);
+        $kind   = isset($input['kind']) ? (string) $input['kind'] : 'links';
+        $source = isset($input['source']) ? (string) $input['source'] : '';
+        return SEOProStats_API::on_data(self::data($input), static function () use ($req, $kind, $source) {
+            return SEOProStats_Backlinks::report(array('source' => $source) + (array) $req, $kind);
         });
     }
 
