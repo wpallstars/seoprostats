@@ -1756,8 +1756,9 @@ and an exact page get the same addresses and editor links as Clicks.
 
 Opportunities (`SEOProStats_Opportunities`) read the same days of one
 engine, with the same cut, page filters, `ignored` and cache key, and say where search
-effort pays. The period is also cut to its newest 91 days (`MAX_DAYS`;
-the answer gives `days` and `cut`), so a year never reads every pair.
+effort pays. The period is also cut to its newest 366 days (`MAX_DAYS`;
+the answer gives `days` and `cut`): every period up to a year is read
+whole, as search demand is seasonal, and all time never reads every pair.
 Thresholds are constants scaled by the days read (`rules` in the answer).
 
 - **Expected CTR** is the site's own: clicks ÷ impressions of `gsc_pairs`
@@ -1775,7 +1776,12 @@ Thresholds are constants scaled by the days read (`rules` in the answer).
 - **Losing clicks** (`decay`): `gsc_pages` sums for the period and the
   earlier one of the same length (previous, or a year earlier with
   `compare=year`); pages that lost at least 20% of their clicks and a
-  minimum, most lost first. For the rows shown, `gsc_pairs` (by
+  minimum, most lost first. The earlier period holds only days with
+  search data (`decay_periods()`): where it would start before the first,
+  both are shortened from the newest end to the longest pair that fits
+  (at least `DECAY_MIN_DAYS`; `compare.cut`, and the queue's `decay`), as
+  Search Console keeps 16 months, so a year's previous year is mostly
+  empty and would read as no loss. For the rows shown, `gsc_pairs` (by
   `path_day`) gives the queries that lost most, and the cause: `gone` (no
   impressions now), `position` (a place and a tenth lower or more), else
   whichever fell more of impressions (`demand`) and CTR (`ctr`), with a
@@ -1829,7 +1835,7 @@ SEO Framework (the same meta as the change log's `SEO_META`)
 (`seoprostats_focus_keywords` adds others); without one the report is the
 same less `focus`. The one-page report (`GET /coverage`, by `page` or
 `post`) reads that page's queries by `path_day` (the 200 with most
-impressions, newest 91 days) and its post once; the cache key adds the
+impressions, newest 366 days) and its post once; the cache key adds the
 post's modified time. Nothing runs on visitor pages.
 
 Content (`SEOProStats_Content`) joins search with what its visits did, per
