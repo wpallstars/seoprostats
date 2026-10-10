@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: SEOProStats_Processor and SEOProStats_Changes split their long functions (batch flattening, visits, facts, A/B exposures, session, fact and page writes; product, coupon, plugin and theme changes, the change list and its labels) into named private helpers. Each was compared before and after on generated batches and changes: same queries, rows and labels. No queries, REST answers, WP-CLI output or stored data changed (GH#160).
+
 = 1.2.0 =
 * New: Search → Backlinks → Review (GH#147), explained weighted signals and local keep/disavow/undecided decisions by domain or source URL with user/time. Schema v22 adds indexed link_reviews and facts retained from existing page checks. Google-format UTF-8 disavow export, validated prior-list merge, dashboard download, REST review/merge/text routes, CLI review/disavow and seoprostats/backlink-review ability. Bounded indexed reads, isolated demo decisions and uninstall cleanup through the table registry. No automatic submission; guidance covers manual-action risk, replacement uploads, URL-prefix properties and Bing's removed tool.
 * Fixed: readme.txt's External services list IndexNow with the services that are off by default (it read as the one on by default), its 1.1.0 entry names the Read Me fix, and it is back under WordPress.org's 10 KB (GH#194).
