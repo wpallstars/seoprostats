@@ -37,6 +37,48 @@ final class SEOProStats_CLI {
     }
 
     /**
+     * Read notification status or queue and send this site's page addresses.
+     *
+     * ## OPTIONS
+     *
+     * [<action>]
+     * : status (default) or send. Sending needs --user with an administrator.
+     *
+     * [<url>...]
+     * : This site's addresses to send. The hourly allowance still applies.
+     *
+     * @param string[] $args Arguments.
+     * @param array $assoc Options.
+     */
+    public function indexnow($args, $assoc) {
+        unset($assoc);
+        require_once __DIR__ . '/class-seoprostats-indexnow.php';
+        $action = $args[0] ?? 'status';
+        if ($action === 'send') {
+            if (!SEOProStats_Settings::can_change()) {
+                WP_CLI::error('Use --user with an administrator to send notifications.');
+            }
+            if (!SEOProStats_IndexNow::enabled()) {
+                WP_CLI::error('Enable IndexNow under Settings → Data first.');
+            }
+            $urls = array_slice($args, 1);
+            if (!$urls || count($urls) > SEOProStats_IndexNow::LIMIT) {
+                WP_CLI::error('Provide between 1 and 10,000 page addresses.');
+            }
+            foreach ($urls as $url) {
+                if (SEOProStats_IndexNow::url($url) === '') {
+                    WP_CLI::error('Every address must be an HTTP(S) page on this site, without credentials or fragments.');
+                }
+            }
+            SEOProStats_IndexNow::enqueue($urls);
+            SEOProStats_IndexNow::run();
+        } elseif ($action !== 'status') {
+            WP_CLI::error('Use status or send.');
+        }
+        WP_CLI::line((string) wp_json_encode(SEOProStats_IndexNow::status(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    }
+
+    /**
      * Manage private report links (use --user with an administrator).
      *
      * ## OPTIONS

@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* New: opt-in IndexNow change notifications (GH#150), Settings → Data. A virtual public key file, changed and old page addresses queued from the live change log, one batch in minute cron, at most one attempt per URL per hour. Last 100 receipts retained without autoload, meta.indexnow on submitted changes, timeline display and Connections error/status card. GET /indexnow and wp seoprostats indexnow status|send; uninstall removes key, queue, logs and retry events. Received (200/202) is not proof of indexing; Google does not participate.
+
 = 1.1.0 =
 * Developers: simplified nested conditionals and shared repeated literals in migration adapters, search sources, admin screens and the shop-test fixture; the fast collector's validated local config path has an inline security-scanner reason. No queries, public interfaces or collection work changed (GH#160).
 * Fixed: disconnecting a search source while its import runs in the background no longer brings the connection back. The running import kept its own cached copy of the connections and wrote it back with its progress, saved credentials included; after a sign-in's disconnect that showed Connected with a failed import (HTTP 401). Writes now read the connections from the database again (SEOProStats_Connections::all_fresh()), and a running import stops between days or pages once the source is disconnected (still_connected()).

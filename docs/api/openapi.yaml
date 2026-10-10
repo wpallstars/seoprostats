@@ -2483,6 +2483,46 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /indexnow:
+    get:
+      operationId: getIndexNow
+      summary: Stored IndexNow notification status; requires permission to change settings.
+      description: Never submits URLs. Received (200 or 202) does not mean indexed. Google does not participate.
+      responses:
+        '200':
+          description: Notification status and the last 100 submission receipts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, endpoint, key_url, queued, last, log, error]
+                properties:
+                  enabled:
+                    type: boolean
+                  endpoint:
+                    type: string
+                    format: uri
+                  key_url:
+                    type: string
+                    description: Public verification address, or empty while off or not yet generated.
+                  queued:
+                    type: integer
+                  error:
+                    type: string
+                  last:
+                    nullable: true
+                    allOf:
+                      - $ref: '#/components/schemas/IndexNowReceipt'
+                  log:
+                    type: array
+                    maxItems: 100
+                    items:
+                      $ref: '#/components/schemas/IndexNowReceipt'
+        '401':
+          $ref: '#/components/responses/Forbidden'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /connections:
     get:
       operationId: listConnections
@@ -3147,6 +3187,21 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    IndexNowReceipt:
+      type: object
+      required: [time, count, code, sent]
+      properties:
+        time:
+          type: integer
+          description: Unix submission time.
+        count:
+          type: integer
+        code:
+          type: integer
+          description: HTTP response code; zero for a transport error.
+        sent:
+          type: boolean
+          description: The service received the batch (200 or 202), not proof of indexing.
     ShareInput:
       type: object
       description: Administrator share fields. Creation needs views; updates merge omitted fields with the current share. Secrets never appear in list/update responses.
