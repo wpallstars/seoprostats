@@ -536,14 +536,17 @@ final class SEOProStats_Audit {
     // The report.
 
     /**
-     * The audit report: pages with findings, most impressions first.
+     * The audit report: pages with findings, most impressions first
+     * unless sorted otherwise.
      *
      * @param array<string,mixed> $req     From SEOProStats_Query::request() (range, filters, limit, offset).
      * @param string              $engine  google or bing.
      * @param string              $finding Only pages with this finding; '' for all.
+     * @param string              $sort    One of SEOProStats_Search::SORTS; '' for impressions.
+     * @param string              $order   asc or desc; '' for the sort's natural order.
      * @return array<string,mixed>|WP_Error
      */
-    public static function report(array $req, $engine = 'google', $finding = '') {
+    public static function report(array $req, $engine = 'google', $finding = '', $sort = '', $order = '') {
         self::load();
         self::first_read();
         $finding = (string) $finding;
@@ -551,10 +554,12 @@ final class SEOProStats_Audit {
             /* translators: %s: list of findings */
             return new WP_Error('seoprostats_audit_finding', sprintf(__('The finding is one of: %s.', 'seoprostats'), implode(', ', self::FINDINGS)), array('status' => 400));
         }
+        $sort   = in_array($sort, SEOProStats_Search::SORTS, true) ? (string) $sort : SEOProStats_Search::SORTS[0];
+        $by     = array('sort' => $sort, 'order' => SEOProStats_Search::sort_order($sort, $order));
         $engine = SEOProStats_Search::engine_name($engine);
         $live   = SEOProStats_Schema::set() === 'live';
-        $answer = SEOProStats_Query::cached('audit', $req + array('engine' => $engine, 'finding' => $finding, 'imports' => SEOProStats_Search::version(), 'facts' => self::state()['version'], 'inspections' => SEOProStats_Inspections::state()['version']), static function () use ($req, $engine, $finding) {
-            return self::build($req, $engine, $finding);
+        $answer = SEOProStats_Query::cached('audit', $req + array('engine' => $engine, 'finding' => $finding) + $by + array('imports' => SEOProStats_Search::version(), 'facts' => self::state()['version'], 'inspections' => SEOProStats_Inspections::state()['version']), static function () use ($req, $engine, $finding, $by) {
+            return self::build($req, $engine, $finding, $by);
         });
         $answer['connected'] = !$live || SEOProStats_Search::connected($engine);
         // Editor links depend on the viewer, so they are added outside the shared cache.
@@ -568,12 +573,13 @@ final class SEOProStats_Audit {
     /**
      * The shared part of the answer (cached).
      *
-     * @param array<string,mixed> $req     Request.
-     * @param string              $name    Engine name.
-     * @param string              $finding Finding asked for, or ''.
+     * @param array<string,mixed>             $req     Request.
+     * @param string                          $name    Engine name.
+     * @param string                          $finding Finding asked for, or ''.
+     * @param array{sort:string,order:string} $by      The sort (SEOProStats_Search::SORTS) and its order (asc or desc).
      * @return array<string,mixed>
      */
-    private static function build(array $req, $name, $finding) {
+    private static function build(array $req, $name, $finding, array $by) {
         $engine  = SEOProStats_Search::ENGINES[$name];
         $bounds  = SEOProStats_Search::bounds($engine);
         $range   = SEOProStats_Query::range($req);
@@ -604,6 +610,8 @@ final class SEOProStats_Audit {
             'first'   => $bounds['from'],
             'ignored' => array_values(array_unique($ignored)),
             'finding' => $finding,
+            'sort'    => $by['sort'],
+            'order'   => $by['order'],
             'rules'   => $rules,
             'checked' => self::checked(),
             'plugin'  => SEOProStats_Schema::set() === 'demo' ? 'demo' : SEOProStats_Coverage::seo_plugin(),
@@ -635,8 +643,10 @@ final class SEOProStats_Audit {
                 $list[] = array('path_id' => (int) $path_id, 'row' => $row, 'findings' => $found, 'sum' => $sum);
             }
         }
-        usort($list, static function ($a, $b) {
-            return array($b['sum']['i'], $b['sum']['c'], count($b['findings']), $a['path_id']) <=> array($a['sum']['i'], $a['sum']['c'], count($a['findings']), $b['path_id']);
+        // The sort, then most impressions, clicks and findings first.
+        usort($list, static function ($a, $b) use ($by) {
+            return SEOProStats_Search::compare(SEOProStats_Search::sort_value($a['sum'], $by['sort']), SEOProStats_Search::sort_value($b['sum'], $by['sort']), $by['order'])
+                ?: array($b['sum']['i'], $b['sum']['c'], count($b['findings']), $a['path_id']) <=> array($a['sum']['i'], $a['sum']['c'], count($a['findings']), $b['path_id']);
         });
         $answer['total'] = count($list);
         $answer['more']  = $offset + $limit < count($list);

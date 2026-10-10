@@ -205,7 +205,7 @@ type PlanProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Plan({ state, update, open, onEngines }: PlanProps) {
+export function Plan({ state, update, open, onEngines }: Readonly<PlanProps>) {
 	const status: QueueFilter = state.status ?? 'open';
 	const goal = state.goal ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
@@ -322,7 +322,7 @@ export function Plan({ state, update, open, onEngines }: PlanProps) {
 }
 
 /** Notes under the list: pages left out, the period read, where value comes from. */
-function Notes({ answer }: { answer: QueueAnswer }) {
+function Notes({ answer }: Readonly<{ answer: QueueAnswer }>) {
 	const notes: string[] = [];
 	if (answer.left_out > 0) {
 		notes.push(
@@ -389,7 +389,7 @@ interface ItemTableProps {
 	showExperiments: () => void;
 }
 
-function ItemTable({ answer, items, offset, state, goal, open, refreshing, onError, showExperiments }: ItemTableProps) {
+function ItemTable({ answer, items, offset, state, goal, open, refreshing, onError, showExperiments }: Readonly<ItemTableProps>) {
 	const [shown, setShown] = useState<string | null>(null);
 	return (
 		<TableScroll label={__('Plan', 'seoprostats')}>
@@ -462,7 +462,7 @@ function ItemTable({ answer, items, offset, state, goal, open, refreshing, onErr
 }
 
 /** An item's state, who acted and, when done, its experiment. */
-function StateCell({ item, showExperiments }: { item: QueueItem; showExperiments: () => void }) {
+function StateCell({ item, showExperiments }: Readonly<{ item: QueueItem; showExperiments: () => void }>) {
 	const exp = item.experiment;
 	let result = '';
 	if (exp) {
@@ -528,7 +528,7 @@ function useAct({ item, state, goal, onError }: ActProps) {
 	return { busy, act };
 }
 
-function Actions(props: ActProps) {
+function Actions(props: Readonly<ActProps>) {
 	const { item } = props;
 	const { busy, act } = useAct(props);
 	const done = () => {
@@ -578,7 +578,7 @@ function Actions(props: ActProps) {
 const place = (value: number | null | undefined) => (value === null || value === undefined ? '–' : decimal(value));
 
 /** A refresh item's facts: how proposals are chosen, the content, conversions and the searches lost most. */
-function RefreshFacts({ answer, item }: { answer: QueueAnswer; item: QueueItem }) {
+function RefreshFacts({ answer, item }: Readonly<{ answer: QueueAnswer; item: QueueItem }>) {
 	const f = item.figures;
 	const rules = answer.rules.refresh;
 	return (
@@ -638,7 +638,7 @@ function RefreshFacts({ answer, item }: { answer: QueueAnswer; item: QueueItem }
 }
 
 /** The score's parts, the item's figures, and (administrators) its effort and note. */
-function Detail({ answer, item, state, goal, onError }: { answer: QueueAnswer } & ActProps) {
+function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: QueueAnswer } & ActProps>) {
 	const { busy, act } = useAct({ item, state, goal, onError });
 	const [note, setNote] = useState(item.note);
 	const p = item.parts;

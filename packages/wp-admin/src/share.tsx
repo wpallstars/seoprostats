@@ -76,7 +76,7 @@ function readableAccent(hex: string, dark: boolean): string {
 }
 
 /** The section's changes as a dated list: printed under the chart, whose markers paper cannot hover. */
-function PrintedChanges({ state }: { state: ViewState }) {
+function PrintedChanges({ state }: Readonly<{ state: ViewState }>) {
     const markers = useMarkers(state, state.view === 'search' ? (state.page ?? '') : '');
     const title = useId();
     const list = markers.data?.markers ?? [];
@@ -111,7 +111,7 @@ function PrintedChanges({ state }: { state: ViewState }) {
 const ignore = () => undefined;
 
 /** A section's report: the dashboard tab it was made from (Search without the owner's Plan and Experiments). */
-function SectionBody(props: { state: ViewState; update: (patch: Partial<ViewState>) => void }) {
+function SectionBody(props: Readonly<{ state: ViewState; update: (patch: Partial<ViewState>) => void }>) {
     switch (props.state.view) {
         case 'search':
             return <Search {...props} shared />;
@@ -130,7 +130,7 @@ function SectionBody(props: { state: ViewState; update: (patch: Partial<ViewStat
     }
 }
 
-function Report({ share }: { share: Opened }) {
+function Report({ share }: Readonly<{ share: Opened }>) {
     const [index, setIndex] = useState(0);
     const [state, setState] = useState<ViewState>(share.views[0]!);
     const [mode, setMode] = useState(share.branding.mode);

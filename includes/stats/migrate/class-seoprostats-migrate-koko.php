@@ -145,7 +145,12 @@ final class SEOProStats_Migrate_Koko extends SEOProStats_Migrate_Source {
         global $wpdb;
         $table = self::table('post_stats');
         $cols  = self::columns($table);
-        $post  = in_array('post_id', $cols, true) ? 'post_id' : (in_array('id', $cols, true) ? 'id' : '');
+        $post  = '';
+        if (in_array('post_id', $cols, true)) {
+            $post = 'post_id';
+        } elseif (in_array('id', $cols, true)) {
+            $post = 'id';
+        }
         if ($post === '' || !in_array('visitors', $cols, true) || !in_array('pageviews', $cols, true)) {
             return array();
         }

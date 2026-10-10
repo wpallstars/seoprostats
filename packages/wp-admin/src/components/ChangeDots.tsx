@@ -26,7 +26,7 @@ interface Props {
 	onPick?: (pick: MarkerPick) => void;
 }
 
-export function ChangeDots({ markers, from, to, when, onPick }: Props) {
+export function ChangeDots({ markers, from, to, when, onPick }: Readonly<Props>) {
 	if (!markers.length) {
 		return null;
 	}

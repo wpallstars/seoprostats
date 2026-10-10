@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -117,7 +117,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.0.0 =
-* First release: cookie-free statistics, goals, funnels, purchases, clicks and the change log; Google Search Console and Bing Webmaster Tools with rankings, opportunities, audit, backlinks, plan, experiments and A/B tests; imports from eight statistics plugins; shared reports; REST API, WP-CLI and abilities.
+= 1.1.0 =
+* New: Sign in with Google for Search Console, with no Google Cloud setup; backlink CSV imports from Search Console and backlink tools.
+* Changed: Search tables sort by any figure's header, most impressions first by default.
+* Fixed: disconnecting a search source during an import, report filters ending in a backslash, screen reader row labels, and PHP warnings in edge cases.
 
 Every change: changelog.txt.

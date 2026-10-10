@@ -53,7 +53,7 @@ type IndexationProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Indexation({ state, update, open }: IndexationProps) {
+export function Indexation({ state, update, open }: Readonly<IndexationProps>) {
 	const kind: IndexationKind = state.index ?? 'pages';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the filters, engine or list change.
@@ -162,7 +162,7 @@ function empty(kind: IndexationKind, answer: IndexationAnswer): string {
 }
 
 /** Notes under the list: what was read, the window and the rules. */
-function Notes({ answer }: { answer: IndexationAnswer }) {
+function Notes({ answer }: Readonly<{ answer: IndexationAnswer }>) {
 	const notes: string[] = [];
 	if (answer.through) {
 		notes.push(
@@ -228,7 +228,7 @@ function Notes({ answer }: { answer: IndexationAnswer }) {
 	);
 }
 
-function RowsTable({ rows, kind, open, refreshing, google }: { rows: IndexationRow[]; kind: IndexationKind; open: IndexationProps['open']; refreshing: boolean; google: boolean }) {
+function RowsTable({ rows, kind, open, refreshing, google }: Readonly<{ rows: IndexationRow[]; kind: IndexationKind; open: IndexationProps['open']; refreshing: boolean; google: boolean }>) {
 	return (
 		<TableScroll label={indexationName(kind)}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>

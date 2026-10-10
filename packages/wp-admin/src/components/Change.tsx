@@ -24,7 +24,7 @@ interface Props {
 	previous?: string;
 }
 
-export function Change({ metric, better, change, places, previous }: Props) {
+export function Change({ metric, better, change, places, previous }: Readonly<Props>) {
 	// A position falling from 8 to 5 is 3 places climbed.
 	const value = places && typeof change === 'number' ? -change : change;
 	const text = places ? formatPlaces(value, locale) : formatChange(value, locale);

@@ -26,11 +26,14 @@ import {
 	formatDecimal,
 	formatNumber,
 	formatPercent,
+	SEARCH_SORTS,
+	tableSort,
 	type AuditAnswer,
 	type AuditFinding,
 	type AuditRow,
 	singleEngine,
 	type SearchEngine,
+	type SearchSort,
 } from '@seoprostats/core';
 import { errorMessage, useAudit } from './api';
 import { locale } from './boot';
@@ -41,6 +44,7 @@ import { longLabel } from './dates';
 import { PeriodLine } from './Overview';
 import { PageCell } from './Opportunities';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
+import { SortHeader, type TableSortProps } from './components/SortHeader';
 import { TableScroll } from './components/TableScroll';
 
 const PER_PAGE = 25;
@@ -130,15 +134,17 @@ type AuditProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Audit({ state, update, open, onEngines }: AuditProps) {
+export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) {
 	const finding: AuditFinding | '' = state.finding ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
-	// Back to the first rows when the period, filters, engine or finding change.
-	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, finding]);
+	// Most impressions first unless a header was chosen.
+	const by = tableSort(SEARCH_SORTS, state.sort, state.order);
+	// Back to the first rows when the period, filters, engine, finding or order change.
+	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, finding, by]);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
-	const query = useAudit(state, finding, PER_PAGE, offset);
+	const query = useAudit(state, finding, PER_PAGE, offset, by);
 	const answer = query.data;
 	useReportEngines(answer, onEngines);
 	const rows = answer?.rows ?? [];
@@ -193,7 +199,7 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 					{answer && answer.checked.pages > 0 && (
 						<p className="spst-note spst-opportunities__intro">
 							{__(
-								'What WordPress says about each published page: its title and description (from the SEO plugin, else the post), headings, length, images, and whether it asks not to be indexed or names another page as canonical. Pages with most search impressions come first, so the fixes that matter most are at the top; each finding is also in Plan, weighed by search and conversions.',
+								'What WordPress says about each published page: its title and description (from the SEO plugin, else the post), headings, length, images, and whether it asks not to be indexed or names another page as canonical. Pages with most search impressions come first, so the fixes that matter most are at the top (a column’s header sorts by it instead); each finding is also in Plan, weighed by search and conversions.',
 								'seoprostats'
 							)}
 						</p>
@@ -209,7 +215,9 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 							</p>
 						</div>
 					)}
-					{rows.length > 0 && <AuditTable rows={rows} open={open} refreshing={query.isFetching} />}
+					{rows.length > 0 && answer && (
+						<AuditTable rows={rows} {...tableSort(SEARCH_SORTS, answer.sort, answer.order)} onSort={(sort, order) => update({ sort, order })} open={open} refreshing={query.isFetching} />
+					)}
 					{answer && answer.checked.pages > 0 && <Notes answer={answer} />}
 					{answer && answer.total > PER_PAGE && (
 						<nav className="spst-changes__pager" aria-label={__('Pages of the audit', 'seoprostats')}>
@@ -243,7 +251,7 @@ export function Audit({ state, update, open, onEngines }: AuditProps) {
 }
 
 /** Notes under the list: what was read and when, and the rules. */
-function Notes({ answer }: { answer: AuditAnswer }) {
+function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 	const r = answer.rules;
 	const notes: string[] = [];
 	const plugin = pluginName(answer.plugin);
@@ -309,7 +317,14 @@ function Notes({ answer }: { answer: AuditAnswer }) {
 	);
 }
 
-function AuditTable({ rows, open, refreshing }: { rows: AuditRow[]; open: AuditProps['open']; refreshing: boolean }) {
+interface AuditTableProps extends TableSortProps<SearchSort> {
+	rows: AuditRow[];
+	open: AuditProps['open'];
+	refreshing: boolean;
+}
+
+function AuditTable({ rows, open, refreshing, sort, order, onSort }: Readonly<AuditTableProps>) {
+	const header = (column: SearchSort, label: string) => <SortHeader column={column} label={label} sort={sort} order={order} onSort={onSort} />;
 	return (
 		<TableScroll label={__('Content audit', 'seoprostats')}>
 			<table className={`widefat striped spst-table spst-decay spst-audit${refreshing ? ' is-refreshing' : ''}`}>
@@ -319,18 +334,10 @@ function AuditTable({ rows, open, refreshing }: { rows: AuditRow[]; open: AuditP
 						<th scope="col" className="spst-audit__findings">
 							{__('Findings', 'seoprostats')}
 						</th>
-						<th scope="col" className="num">
-							{__('Impressions', 'seoprostats')}
-						</th>
-						<th scope="col" className="num">
-							{__('Clicks', 'seoprostats')}
-						</th>
-						<th scope="col" className="num">
-							{__('CTR', 'seoprostats')}
-						</th>
-						<th scope="col" className="num">
-							{__('Position', 'seoprostats')}
-						</th>
+						{header('impressions', __('Impressions', 'seoprostats'))}
+						{header('clicks', __('Clicks', 'seoprostats'))}
+						{header('ctr', __('CTR', 'seoprostats'))}
+						{header('position', __('Position', 'seoprostats'))}
 					</tr>
 				</thead>
 				<tbody>

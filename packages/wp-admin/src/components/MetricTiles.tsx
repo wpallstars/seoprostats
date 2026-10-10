@@ -20,7 +20,7 @@ interface Props {
 	loading: boolean;
 }
 
-export function MetricTiles({ stats, series, selected, onSelect, loading }: Props) {
+export function MetricTiles({ stats, series, selected, onSelect, loading }: Readonly<Props>) {
 	return (
 		<div className="spst-tiles" role="group" aria-label={__('Chart a metric', 'seoprostats')}>
 			{CHART_METRICS.map((key) => {

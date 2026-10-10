@@ -52,7 +52,7 @@ function indexnowLabel(change: Marker): string {
 	return `${__('IndexNow', 'seoprostats')}: ${receipt.code === 200 || receipt.code === 202 ? __('Received, not proof of indexing', 'seoprostats') : __('Not accepted', 'seoprostats')} (HTTP ${receipt.code})`;
 }
 
-export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Props) {
+export function ChangesTable({ rows, refreshing = false, onPage, onDelete, onExperiment, timeOnly = false }: Readonly<Props>) {
 	const actions = boot.canManage && (!!onDelete || !!onExperiment);
 	// A shared report does not say who made a change.
 	const who = !shareAccess.token;

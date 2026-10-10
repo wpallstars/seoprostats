@@ -34,6 +34,12 @@ final class SEOProStats_Dashboard {
     /** Dashboard widget id. */
     const WIDGET = 'seoprostats_widget';
 
+    /** Admin page address prefix. */
+    private const PAGE_URL = 'admin.php?page=';
+
+    /** Built entries, relative to the plugin directory. */
+    private const BUILD_DIR = 'assets/build/';
+
     /**
      * Register hooks (admin requests only).
      */
@@ -110,7 +116,7 @@ final class SEOProStats_Dashboard {
      * @return string
      */
     public static function url($view = 'overview') {
-        return admin_url('admin.php?page=' . self::SLUG . '#/' . $view);
+        return admin_url(self::PAGE_URL . self::SLUG . '#/' . $view);
     }
 
     /**
@@ -158,9 +164,9 @@ final class SEOProStats_Dashboard {
         unset($sections['overview']);
         foreach ($sections as $view => $title) {
             // A slug that is an address, with no callback, is a plain link.
-            add_submenu_page(self::SLUG, $title, $title, SEOProStats_API::CAP, 'admin.php?page=' . self::SLUG . '#/' . $view);
+            add_submenu_page(self::SLUG, $title, $title, SEOProStats_API::CAP, self::PAGE_URL . self::SLUG . '#/' . $view);
         }
-        add_submenu_page(self::SLUG, __('Shared reports', 'seoprostats'), __('Shared reports', 'seoprostats'), 'manage_options', 'admin.php?page=' . self::SLUG . '#/shares');
+        add_submenu_page(self::SLUG, __('Shared reports', 'seoprostats'), __('Shared reports', 'seoprostats'), 'manage_options', self::PAGE_URL . self::SLUG . '#/shares');
     }
 
     /**
@@ -257,7 +263,7 @@ final class SEOProStats_Dashboard {
      * @return bool Whether it was enqueued.
      */
     public static function enqueue_entry($name, $boot = null, array $extra = array()) {
-        $asset_file = SEOPROSTATS_DIR . 'assets/build/' . $name . '.asset.php';
+        $asset_file = SEOPROSTATS_DIR . self::BUILD_DIR . $name . '.asset.php';
         if (!is_readable($asset_file)) {
             return false;
         }
@@ -273,14 +279,14 @@ final class SEOProStats_Dashboard {
             $deps = array_values(array_unique(array_merge($deps, array('react'))));
         }
 
-        wp_enqueue_script($handle, SEOPROSTATS_URL . 'assets/build/' . $name . '.js', $deps, $version, true);
+        wp_enqueue_script($handle, SEOPROSTATS_URL . self::BUILD_DIR . $name . '.js', $deps, $version, true);
         if ($shim) {
             wp_add_inline_script($handle, self::jsx_runtime_shim(), 'before');
         }
         wp_add_inline_script($handle, 'window.seoprostatsBoot = ' . wp_json_encode($boot === null ? self::boot($name) : $boot) . ';', 'before');
         wp_set_script_translations($handle, 'seoprostats');
 
-        $style = 'assets/build/' . $name . (is_rtl() ? '-rtl' : '') . '.css';
+        $style = self::BUILD_DIR . $name . (is_rtl() ? '-rtl' : '') . '.css';
         if (is_readable(SEOPROSTATS_DIR . $style)) {
             wp_enqueue_style($handle, SEOPROSTATS_URL . $style, array('wp-components'), $version);
         }

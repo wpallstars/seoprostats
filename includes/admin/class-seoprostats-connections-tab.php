@@ -29,6 +29,9 @@ final class SEOProStats_Connections_Tab {
     /** The connections class's file, loaded only where needed. */
     const CONNECTIONS_FILE = 'includes/stats/class-seoprostats-connections.php';
 
+    /** Property field's id suffix, shared by its input and label. */
+    private const PROPERTY_SUFFIX = '-property';
+
     /**
      * The pages for the setup steps, as Google's and Microsoft's own
      * documentation links them (the Search Console API's page is its API
@@ -306,8 +309,8 @@ final class SEOProStats_Connections_Tab {
             <textarea id="<?php echo esc_attr($id . '-key'); ?>" rows="6" data-spst-field="key" autocomplete="off" spellcheck="false" placeholder="{&quot;type&quot;: &quot;service_account&quot;, …}"></textarea>
         </p>
         <p>
-            <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
-            <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
+            <label for="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>"><strong><?php esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
+            <input type="text" class="regular-text" id="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
             <span class="description"><?php esc_html_e('Leave empty to use the property for this site; a domain property (sc-domain:) is chosen before an address one.', 'seoprostats'); ?></span>
         </p>
         <div class="spst-connection__actions">
@@ -344,8 +347,8 @@ final class SEOProStats_Connections_Tab {
             <input type="password" class="regular-text" id="<?php echo esc_attr($id . '-key'); ?>" data-spst-field="key" autocomplete="off" spellcheck="false">
         </p>
         <p>
-            <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php esc_html_e('Site', 'seoprostats'); ?></strong></label><br>
-            <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
+            <label for="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>"><strong><?php esc_html_e('Site', 'seoprostats'); ?></strong></label><br>
+            <input type="text" class="regular-text" id="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>" data-spst-field="property" autocomplete="off" placeholder="<?php esc_attr_e('Found from the site\'s address', 'seoprostats'); ?>">
             <span class="description"><?php esc_html_e('Leave empty to use this site.', 'seoprostats'); ?></span>
         </p>
         <div class="spst-connection__actions">
@@ -582,8 +585,8 @@ final class SEOProStats_Connections_Tab {
                 ?>
             </summary>
             <p>
-                <label for="<?php echo esc_attr($id . '-property'); ?>"><strong><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
-                <input type="text" class="regular-text" id="<?php echo esc_attr($id . '-property'); ?>" data-spst-field="property" autocomplete="off" value="<?php echo esc_attr((string) $status['property']); ?>">
+                <label for="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>"><strong><?php $bing ? esc_html_e('Site', 'seoprostats') : esc_html_e('Property', 'seoprostats'); ?></strong></label><br>
+                <input type="text" class="regular-text" id="<?php echo esc_attr($id . self::PROPERTY_SUFFIX); ?>" data-spst-field="property" autocomplete="off" value="<?php echo esc_attr((string) $status['property']); ?>">
                 <span class="description"><?php $bing ? esc_html_e('Another site starts the import again from the beginning.', 'seoprostats') : esc_html_e('Another property starts the import again from the beginning.', 'seoprostats'); ?></span>
             </p>
             <p>

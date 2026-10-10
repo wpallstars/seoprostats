@@ -93,7 +93,7 @@ type TargetsProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
 
-export function Targets({ state, update, open, onEngines }: TargetsProps) {
+export function Targets({ state, update, open, onEngines }: Readonly<TargetsProps>) {
 	const status: TargetFilter = state.targets ?? 'all';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first rows when the period, engine or status change.
@@ -201,7 +201,7 @@ export function Targets({ state, update, open, onEngines }: TargetsProps) {
 }
 
 /** Notes under the list: the counts by state, the period read and the queue's rules. */
-function Notes({ answer }: { answer: TargetsAnswer }) {
+function Notes({ answer }: Readonly<{ answer: TargetsAnswer }>) {
 	const notes: string[] = [];
 	const c = answer.counts;
 	notes.push(
@@ -249,7 +249,7 @@ interface RowsTableProps {
 	onError: (message: string) => void;
 }
 
-function RowsTable({ rows, compared, open, refreshing, onError }: RowsTableProps) {
+function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsTableProps>) {
 	const data = useDataSet();
 	const [busy, setBusy] = useState('');
 	const remove = async (row: TargetRow) => {
@@ -350,7 +350,7 @@ function RowsTable({ rows, compared, open, refreshing, onError }: RowsTableProps
 }
 
 /** Import a list as text: the result, with the rows skipped and why. */
-function ImportForm({ onClose }: { onClose: () => void }) {
+function ImportForm({ onClose }: Readonly<{ onClose: () => void }>) {
 	const data = useDataSet();
 	const [text, setText] = useState('');
 	const [replace, setReplace] = useState(false);

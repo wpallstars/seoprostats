@@ -134,7 +134,7 @@ function useShown(clientId: string, winner: string, variants: BlockInstance[]): 
 	return resolved;
 }
 
-function VariantRow({ testClientId, block, index, count, total, shown }: { testClientId: string; block: BlockInstance; index: number; count: number; total: number; shown: boolean }) {
+function VariantRow({ testClientId, block, index, count, total, shown }: Readonly<{ testClientId: string; block: BlockInstance; index: number; count: number; total: number; shown: boolean }>) {
 	const v = variantAttributes(block);
 	const label = variantLabel(block, index);
 	const share = total > 0 ? Math.round((v.weight / total) * 100) : 0;
@@ -210,7 +210,7 @@ function VariantRow({ testClientId, block, index, count, total, shown }: { testC
 	);
 }
 
-export function TestEdit({ clientId, attributes, setAttributes }: EditProps<TestAttributes>) {
+export function TestEdit({ clientId, attributes, setAttributes }: Readonly<EditProps<TestAttributes>>) {
 	const variants = useVariants(clientId);
 	useIds(clientId, attributes, setAttributes, variants);
 	const shown = useShown(clientId, attributes.winner, variants);

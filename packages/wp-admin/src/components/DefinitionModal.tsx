@@ -23,7 +23,7 @@ interface Props {
 }
 
 // Components come from WordPress itself (6.2 and later): only props it has.
-export function DefinitionModal({ title, onClose, onSave, canSave, children, wide = false }: Props) {
+export function DefinitionModal({ title, onClose, onSave, canSave, children, wide = false }: Readonly<Props>) {
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState('');
 

@@ -57,7 +57,7 @@ function isMissing(row: LinksRow): row is LinksMissingRow {
 	return 'to' in row;
 }
 
-export function Links({ state, update, open }: LinksProps) {
+export function Links({ state, update, open }: Readonly<LinksProps>) {
 	const kind: LinksKind = state.links ?? 'orphans';
 	const goal = state.goal ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
@@ -167,7 +167,7 @@ function empty(kind: LinksKind, answer: LinksAnswer): string {
 }
 
 /** Notes under the list: what was read, and the rules. */
-function Notes({ answer }: { answer: LinksAnswer }) {
+function Notes({ answer }: Readonly<{ answer: LinksAnswer }>) {
 	const r = answer.rules;
 	const notes: string[] = [];
 	notes.push(
@@ -206,7 +206,7 @@ function Notes({ answer }: { answer: LinksAnswer }) {
 	);
 }
 
-function PageTable({ rows, kind, goal, open, refreshing }: { rows: LinksPageRow[]; kind: LinksKind; goal: boolean; open: LinksProps['open']; refreshing: boolean }) {
+function PageTable({ rows, kind, goal, open, refreshing }: Readonly<{ rows: LinksPageRow[]; kind: LinksKind; goal: boolean; open: LinksProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={linksName(kind)}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>
@@ -266,7 +266,7 @@ function PageTable({ rows, kind, goal, open, refreshing }: { rows: LinksPageRow[
 	);
 }
 
-function MissingTable({ rows, open, refreshing }: { rows: LinksMissingRow[]; open: LinksProps['open']; refreshing: boolean }) {
+function MissingTable({ rows, open, refreshing }: Readonly<{ rows: LinksMissingRow[]; open: LinksProps['open']; refreshing: boolean }>) {
 	return (
 		<TableScroll label={linksName('missing')}>
 			<table className={`widefat striped spst-table spst-decay${refreshing ? ' is-refreshing' : ''}`}>
