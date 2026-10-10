@@ -1470,7 +1470,7 @@ final class SEOProStats_Demo {
             'indexingState'  => $indexing,
             'pageFetchState' => self::fetch_state($robots, $crawled),
             'crawledAs'      => 'MOBILE',
-            'sitemap'        => array(home_url(strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0 ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml')),
+            'sitemap'        => array(self::sitemap($path)),
             'referringUrls'  => $path === '/' ? array() : array(home_url('/')),
         );
         if ($crawled) {
@@ -1490,6 +1490,18 @@ final class SEOProStats_Demo {
             $result['richResultsResult'] = self::rich_results($rich_type, $issues);
         }
         return $result;
+    }
+
+    /**
+     * The sitemap a demo inspection says lists the page: the index for
+     * category and author archives, the posts and pages sitemap otherwise.
+     *
+     * @param string $path Page path.
+     * @return string
+     */
+    private static function sitemap($path) {
+        $archive = strpos($path, '/category/') === 0 || strpos($path, '/author/') === 0;
+        return home_url($archive ? '/wp-sitemap.xml' : '/wp-sitemap-posts-page-1.xml');
     }
 
     /**
