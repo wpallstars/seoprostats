@@ -123,6 +123,7 @@ Use **Support** on the settings screen, or ask aidevops.
 * New: on Search → Backlinks → Reported pages, a page's link count opens its links: the page of this site each links to, its text and rel.
 * Changed: the period menu is in groups (Days, Weeks, Calendar); Last 30 and 90 days leave the menu, and the default is named Last 13 weeks.
 * Changed: Edit links open the editor in a new tab, so the report stays open.
+* Fixed: Search → Plan and the search reports read the chosen period up to a year, not only its newest 91 days.
 * Fixed: in light mode, lighter admin colour schemes keep their colour at a readable contrast.
 
 Every change: changelog.txt.
