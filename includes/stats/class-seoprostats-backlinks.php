@@ -300,8 +300,8 @@ final class SEOProStats_Backlinks {
         // A source-only export led us to this page; target-specific exports
         // retain their bits on the exact link, never on every link of its page.
         if (is_array($providers)) {
-            foreach ($providers as $source => $facts) {
-                if (!empty($facts['candidate']) && isset(self::FOUND[$source])) {
+            foreach ($providers as $source => $provider) {
+                if (!empty($provider['candidate']) && isset(self::FOUND[$source])) {
                     $found |= self::FOUND[$source];
                 }
             }
