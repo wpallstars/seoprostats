@@ -359,6 +359,7 @@
 	background: var(--spst-hover);
 	color: var(--spst-text);
 }
+
 @media (width <= 480px) {
 	.spst-report {
 		padding: 12px;
@@ -373,6 +374,7 @@
 @page {
 	margin: 14mm 12mm;
 }
+
 @media print {
 	.spst-share,
 	.spst-share-dark {
