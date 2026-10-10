@@ -44,7 +44,18 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Processor {
+/**
+ * One processing lifecycle owns buffer checkpoints and ordered fact writes.
+ * Keeping its private stages together avoids exposing partially processed batches.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity")
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength")
+ * @SuppressWarnings("PHPMD.TooManyMethods")
+ */
+final class SEOProStats_Processor { // NOSONAR: single processing lifecycle facade; private stages preserve checkpoint and write ordering.
+
+    /** Fixed placeholder for a binary key supplied as hex. */
+    private const HEX_PLACEHOLDER = 'UNHEX(%s)';
 
     /** Progress (autoload off): file being read, offset, last run. */
     const STATE_OPTION = SEOProStats_Collection::PROCESS_OPTION;
@@ -81,14 +92,7 @@ final class SEOProStats_Processor {
         if (!SEOProStats_Schema::is_current()) {
             return $totals;
         }
-        foreach (array('ua', 'channels', 'dict') as $part) {
-            require_once SEOPROSTATS_DIR . "includes/stats/class-seoprostats-$part.php";
-        }
-        self::$tz        = wp_timezone();
-        self::$own_hosts = array();
-        foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
-            self::$own_hosts[self::bare_host((string) $host)] = true;
-        }
+        self::initialize();
 
         while (SEOProStats_Feature::more_time($start, self::BUDGET)) {
             $file = self::current_file();
@@ -107,23 +111,34 @@ final class SEOProStats_Processor {
                 $totals['lines'] += count($lines);
             }
 
-            if ($next === null) {
-                // End of the file: finished with it.
-                wp_delete_file($file);
-                $state['file']   = '';
-                $state['offset'] = 0;
-                // With no other taken file left, every hit received before
-                // this one was taken is processed (SEOProStats_Rollup::clear()).
-                if (!glob(SEOProStats_Collection::dir() . '/processing-*.php') && preg_match('/^processing-(\d+)-/', basename($file), $m)) {
-                    $state['clear'] = max(isset($state['clear']) ? (int) $state['clear'] : 0, (int) $m[1]);
-                }
-            } else {
-                $state['offset'] = $next;
-            }
-            $state['last'] = time();
-            update_option(self::STATE_OPTION, $state, false);
+            self::checkpoint($file, $state, $next);
         }
         return $totals;
+    }
+
+    /**
+     * Save progress only after the batch's ordered writes finish.
+     *
+     * @param string              $file  Taken file.
+     * @param array<string,mixed> $state Progress before reading.
+     * @param int|null            $next  Next byte offset, or EOF.
+     */
+    private static function checkpoint($file, array $state, $next) {
+        if ($next === null) {
+            // End of the file: finished with it.
+            wp_delete_file($file);
+            $state['file']   = '';
+            $state['offset'] = 0;
+            // With no other taken file left, every hit received before
+            // this one was taken is processed (SEOProStats_Rollup::clear()).
+            if (!glob(SEOProStats_Collection::dir() . '/processing-*.php') && preg_match('/^processing-(\d+)-/', basename($file), $m)) {
+                $state['clear'] = max(isset($state['clear']) ? (int) $state['clear'] : 0, (int) $m[1]);
+            }
+        } else {
+            $state['offset'] = $next;
+        }
+        $state['last'] = time();
+        update_option(self::STATE_OPTION, $state, false);
     }
 
     /**
@@ -135,6 +150,18 @@ final class SEOProStats_Processor {
      * @return array{pageviews:int,events:int,clicks:int,bots:int,skipped:int}
      */
     public static function ingest(array $lines) {
+        self::initialize();
+        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
+        foreach (array_chunk($lines, self::BATCH) as $batch) {
+            foreach (self::process($batch) as $key => $count) {
+                $done[$key] += $count;
+            }
+        }
+        return $done;
+    }
+
+    /** Load the shared processing context before the first batch. */
+    private static function initialize() {
         foreach (array('ua', 'channels', 'dict') as $part) {
             require_once SEOPROSTATS_DIR . "includes/stats/class-seoprostats-$part.php";
         }
@@ -143,13 +170,6 @@ final class SEOProStats_Processor {
         foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
             self::$own_hosts[self::bare_host((string) $host)] = true;
         }
-        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
-        foreach (array_chunk($lines, self::BATCH) as $batch) {
-            foreach (self::process($batch) as $key => $count) {
-                $done[$key] += $count;
-            }
-        }
-        return $done;
     }
 
     /**
@@ -224,17 +244,28 @@ final class SEOProStats_Processor {
         $count = 0;
         while ($count < $max && ($raw = fgets($handle)) !== false) {
             $count++;
-            if ($raw === '' || $raw[0] !== '{') {
-                continue; // The guard line, or a torn write.
-            }
-            $line = json_decode($raw, true);
-            if (is_array($line) && isset($line['ts'], $line['v'], $line['e']) && is_array($line['e'])) {
+            $line = self::decode_line($raw);
+            if ($line !== null) {
                 $lines[] = $line;
             }
         }
         $next = feof($handle) ? null : ftell($handle);
         fclose($handle); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
         return array($lines, $next === false ? null : $next);
+    }
+
+    /**
+     * Decode a complete collector line, excluding guards and torn writes.
+     *
+     * @param string $raw Buffer line.
+     * @return array<string,mixed>|null
+     */
+    private static function decode_line($raw) {
+        if ($raw === '' || $raw[0] !== '{') {
+            return null;
+        }
+        $line = json_decode($raw, true);
+        return is_array($line) && isset($line['ts'], $line['v'], $line['e']) && is_array($line['e']) ? $line : null;
     }
 
     /**
@@ -387,7 +418,7 @@ final class SEOProStats_Processor {
         if ($visitors) {
             foreach (array_chunk(array_keys($visitors), SEOProStats_Dict::CHUNK) as $chunk) {
                 $d = implode(', ', array_fill(0, count($days), '%s'));
-                $v = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+                $v = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its (day, visitor) index; fixed placeholders.
                 $rows = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(skey)) AS skey, LOWER(HEX(visitor)) AS visitor, started, ended, pageviews + events AS n FROM %i WHERE day IN ($d) AND visitor IN ($v)", array_merge(array(SEOProStats_Schema::table('sessions')), array_keys($days), $chunk)));
                 foreach ((array) $rows as $row) {
@@ -763,7 +794,7 @@ final class SEOProStats_Processor {
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
             $wpdb->query($wpdb->prepare("INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen, login) VALUES $groups ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended)), login = GREATEST(login, VALUES(login))", $args));
 
-            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(skey)) AS k FROM %i WHERE skey IN ($holders)", array_merge(array($table), array_map('strval', array_keys($chunk)))));
             foreach ((array) $found as $row) {
@@ -816,7 +847,7 @@ final class SEOProStats_Processor {
                 return (bool) $h['props'];
             });
             if ($with_props) {
-                $holders = implode(', ', array_fill(0, count($with_props), 'UNHEX(%s)'));
+                $holders = implode(', ', array_fill(0, count($with_props), self::HEX_PLACEHOLDER));
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
                 $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_column($with_props, 'pkey'))));
                 $by    = array();
@@ -843,7 +874,7 @@ final class SEOProStats_Processor {
             }
         }
         if ($missing) {
-            $holders = implode(', ', array_fill(0, count($missing), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($missing), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT path_id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', array_keys($missing)))));
             foreach ((array) $found as $row) {
@@ -925,7 +956,7 @@ final class SEOProStats_Processor {
         if (!$eng) {
             return array();
         }
-        $holders = implode(', ', array_fill(0, count($eng), 'UNHEX(%s)'));
+        $holders = implode(', ', array_fill(0, count($eng), self::HEX_PLACEHOLDER));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
         return array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT DISTINCT session_id FROM %i WHERE pkey IN ($holders)", array_merge(array($table), array_map('strval', array_keys($eng))))));
     }
@@ -984,7 +1015,7 @@ final class SEOProStats_Processor {
         }
         $pages = array();
         foreach (array_chunk(array_values(array_unique(array_column($clicks, 'pkey'))), SEOProStats_Dict::CHUNK) as $chunk) {
-            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(pkey)) AS k, session_id, seq, path_id FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', $chunk))));
             foreach ((array) $found as $row) {

@@ -27,7 +27,14 @@ if (!defined('ABSPATH')) {
  *     wp seoprostats breakdown page --range=7d --filter=channel:is:organic_search
  *     wp seoprostats doctor
  */
-final class SEOProStats_CLI {
+final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command facade; private steps preserve its compatible command surface.
+
+    private const CHANGE_PERCENT_FORMAT = '%+.1f%%';
+    private const PERCENT_FORMAT = '%.1f%%';
+    private const CONNECTIONS_PATH = 'includes/stats/class-seoprostats-connections.php';
+    private const SEARCH_IMPORT_PATH = 'includes/stats/class-seoprostats-search-import.php';
+    private const CONFIG_PATH = '/config.php';
+    private const DATA_OFF = 'off (SEO Pro Stats → Settings → Data)';
 
     /**
      * WP-CLI makes this only to run one of these commands.
@@ -185,7 +192,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function stats($args, $assoc) {
+    public function stats($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $req    = $this->request($assoc);
         $answer = $this->on_data($assoc, static function () use ($req) {
             return SEOProStats_Query::stats($req);
@@ -200,7 +207,7 @@ final class SEOProStats_CLI {
             if (isset($answer['compare'])) {
                 $item['compare'] = $answer['compare']['metrics'][$metric];
                 $change          = $answer['compare']['change'][$metric];
-                $item['change']  = $change === null ? '' : sprintf('%+.1f%%', $change * 100);
+                $item['change']  = $change === null ? '' : sprintf(self::CHANGE_PERCENT_FORMAT, $change * 100);
             }
             $items[] = $item;
         }
@@ -252,7 +259,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function timeseries($args, $assoc) {
+    public function timeseries($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $req    = $this->request($assoc);
         $answer = $this->on_data($assoc, static function () use ($req) {
             return SEOProStats_Query::timeseries($req);
@@ -461,7 +468,7 @@ final class SEOProStats_CLI {
                 'revenue'         => self::money_text($goal['revenue']),
             );
             if (isset($goal['change'])) {
-                $item['change'] = $goal['change']['visits'] === null ? '' : sprintf('%+.1f%%', $goal['change']['visits'] * 100);
+                $item['change'] = $goal['change']['visits'] === null ? '' : sprintf(self::CHANGE_PERCENT_FORMAT, $goal['change']['visits'] * 100);
             }
             $items[] = $item;
         }
@@ -569,7 +576,7 @@ final class SEOProStats_CLI {
         foreach ($answer['funnels'] as $funnel) {
             WP_CLI::log('');
             /* translators: 1: funnel name, 2: id, 3: completed visits, 4: visits that started it, 5: percentage */
-            WP_CLI::log(sprintf(__('%1$s (%2$s): %3$d of %4$d visits completed it (%5$s).', 'seoprostats'), $funnel['name'], $funnel['id'], $funnel['completed'], $funnel['entered'], sprintf('%.1f%%', $funnel['completion_rate'] * 100)));
+            WP_CLI::log(sprintf(__('%1$s (%2$s): %3$d of %4$d visits completed it (%5$s).', 'seoprostats'), $funnel['name'], $funnel['id'], $funnel['completed'], $funnel['entered'], sprintf(self::PERCENT_FORMAT, $funnel['completion_rate'] * 100)));
             WP_CLI\Utils\format_items($this->format($assoc), $funnel['steps'], array('name', 'kind', 'match', 'visits', 'rate', 'step_rate', 'dropped'));
         }
     }
@@ -743,7 +750,7 @@ final class SEOProStats_CLI {
         $this->range_line($answer['range']);
         $totals = $answer['totals'];
         /* translators: 1: clicks, 2: dead clicks, 3: percentage, 4: outbound, 5: affiliate, 6: file links, 7: form submits, 8: visits */
-        WP_CLI::log(sprintf(__('%1$d clicks, %2$d dead (%3$s); %4$d outbound, %5$d affiliate, %6$d file links; %7$d forms sent; in %8$d visits.', 'seoprostats'), $totals['clicks'], $totals['dead'], sprintf('%.1f%%', $totals['dead_rate'] * 100), $totals['outbound'], $totals['affiliate'], $totals['downloads'], $totals['forms'], $totals['visits']));
+        WP_CLI::log(sprintf(__('%1$d clicks, %2$d dead (%3$s); %4$d outbound, %5$d affiliate, %6$d file links; %7$d forms sent; in %8$d visits.', 'seoprostats'), $totals['clicks'], $totals['dead'], sprintf(self::PERCENT_FORMAT, $totals['dead_rate'] * 100), $totals['outbound'], $totals['affiliate'], $totals['downloads'], $totals['forms'], $totals['visits']));
         if ($page !== '') {
             $info = $answer['page_info'];
             /* translators: %s: page path. */
@@ -762,7 +769,7 @@ final class SEOProStats_CLI {
         if (isset($answer['compare'])) {
             $change = $answer['compare']['change']['clicks'];
             /* translators: 1: clicks in the other period, 2: change */
-            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s).', 'seoprostats'), $answer['compare']['totals']['clicks'], $change === null ? '–' : sprintf('%+.1f%%', $change * 100)));
+            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s).', 'seoprostats'), $answer['compare']['totals']['clicks'], $change === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change * 100)));
         }
         if (!$answer['rows']) {
             WP_CLI::line(__('No clicks of this kind in this range.', 'seoprostats'));
@@ -933,12 +940,12 @@ final class SEOProStats_CLI {
         }
         $totals = $answer['totals'];
         /* translators: 1: clicks, 2: impressions, 3: CTR, 4: average position */
-        WP_CLI::log(sprintf(__('%1$d clicks, %2$d impressions, CTR %3$s, average position %4$s.', 'seoprostats'), $totals['clicks'], $totals['impressions'], sprintf('%.1f%%', $totals['ctr'] * 100), $totals['impressions'] ? sprintf('%.1f', $totals['position']) : '–'));
+        WP_CLI::log(sprintf(__('%1$d clicks, %2$d impressions, CTR %3$s, average position %4$s.', 'seoprostats'), $totals['clicks'], $totals['impressions'], sprintf(self::PERCENT_FORMAT, $totals['ctr'] * 100), $totals['impressions'] ? sprintf('%.1f', $totals['position']) : '–'));
         if (isset($answer['compare'])) {
             $then   = $answer['compare']['totals'];
             $change = $answer['compare']['change'];
             /* translators: 1: clicks, 2: change, 3: impressions, 4: change, 5: position, 6: change in places (lower is better) */
-            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s), %3$d impressions (%4$s), position %5$s (%6$s places).', 'seoprostats'), $then['clicks'], $change['clicks'] === null ? '–' : sprintf('%+.1f%%', $change['clicks'] * 100), $then['impressions'], $change['impressions'] === null ? '–' : sprintf('%+.1f%%', $change['impressions'] * 100), $then['impressions'] ? sprintf('%.1f', $then['position']) : '–', $change['position'] === null ? '–' : sprintf('%+.1f', $change['position'])));
+            WP_CLI::log(sprintf(__('Compared: %1$d clicks (%2$s), %3$d impressions (%4$s), position %5$s (%6$s places).', 'seoprostats'), $then['clicks'], $change['clicks'] === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change['clicks'] * 100), $then['impressions'], $change['impressions'] === null ? '–' : sprintf(self::CHANGE_PERCENT_FORMAT, $change['impressions'] * 100), $then['impressions'] ? sprintf('%.1f', $then['position']) : '–', $change['position'] === null ? '–' : sprintf('%+.1f', $change['position'])));
         }
         if (!$answer['rows']) {
             WP_CLI::line(__('No search data of this kind in this range.', 'seoprostats'));
@@ -946,8 +953,8 @@ final class SEOProStats_CLI {
         }
         $rows = array();
         foreach ($answer['rows'] as $row) {
-            $row['ctr']   = sprintf('%.1f%%', $row['ctr'] * 100);
-            $row['share'] = sprintf('%.1f%%', $row['share'] * 100);
+            $row['ctr']   = sprintf(self::PERCENT_FORMAT, $row['ctr'] * 100);
+            $row['share'] = sprintf(self::PERCENT_FORMAT, $row['share'] * 100);
             $rows[]       = $row;
         }
         $first = array(
@@ -1097,7 +1104,7 @@ final class SEOProStats_CLI {
             return;
         }
         $pct  = static function ($value) {
-            return sprintf('%.1f%%', (float) $value * 100);
+            return sprintf(self::PERCENT_FORMAT, (float) $value * 100);
         };
         $rows = array();
         foreach ($answer['rows'] as $row) {
@@ -2259,7 +2266,7 @@ final class SEOProStats_CLI {
      */
     public function coverage($args, $assoc) {
         $target = isset($args[0]) ? trim((string) $args[0]) : '';
-        $post   = preg_match('/^[0-9]+$/', $target) ? (int) $target : 0;
+        $post   = preg_match('/^\d+$/', $target) ? (int) $target : 0;
         $page   = $post ? '' : $target;
         $req    = $this->request($assoc + array('range' => '90d', 'compare' => 'none'));
         $answer = $this->on_data($assoc, static function () use ($req, $page, $post) {
@@ -2281,7 +2288,7 @@ final class SEOProStats_CLI {
         }
         $totals = $answer['totals'];
         /* translators: 1: queries, 2: share of impressions covered, 3: queries not covered, 4: questions */
-        WP_CLI::log(sprintf(__('%1$d queries; %2$s of impressions on queries the page covers; %3$d not covered; %4$d questions.', 'seoprostats'), $totals['queries'], sprintf('%.1f%%', $totals['covered'] * 100), $totals['missing'], $totals['questions']));
+        WP_CLI::log(sprintf(__('%1$d queries; %2$s of impressions on queries the page covers; %3$d not covered; %4$d questions.', 'seoprostats'), $totals['queries'], sprintf(self::PERCENT_FORMAT, $totals['covered'] * 100), $totals['missing'], $totals['questions']));
         foreach ($answer['focus'] as $focus) {
             /* translators: 1: focus keyword, 2: SEO plugin, 3: match, 4: impressions */
             WP_CLI::log(sprintf(__('Focus keyword "%1$s" (%2$s): %3$s on the page, %4$d impressions.', 'seoprostats'), $focus['keyword'], $focus['source'], $focus['match'], $focus['impressions']));
@@ -2401,7 +2408,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function content($args, $assoc) {
+    public function content($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : '';
         $order  = isset($assoc['order']) ? (string) $assoc['order'] : '';
         $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
@@ -2436,7 +2443,7 @@ final class SEOProStats_CLI {
             return;
         }
         $pct  = static function ($value) {
-            return sprintf('%.1f%%', (float) $value * 100);
+            return sprintf(self::PERCENT_FORMAT, (float) $value * 100);
         };
         $rows = array();
         foreach ($answer['rows'] as $row) {
@@ -2944,7 +2951,7 @@ final class SEOProStats_CLI {
                 }
             }
             $p                  = $v['primary'];
-            $row['uplift']      = $p['uplift'] === null ? '' : sprintf('%+.1f%%', $p['uplift'] * 100);
+            $row['uplift']      = $p['uplift'] === null ? '' : sprintf(self::CHANGE_PERCENT_FORMAT, $p['uplift'] * 100);
             $row['interval']    = $p['interval'] === null ? '' : sprintf('%+.1f%% to %+.1f%%', $p['interval'][0] * 100, $p['interval'][1] * 100);
             $row['beats']       = $p['probability'] === null ? '' : self::percent_text($p['probability']);
             $row['verdict']     = $p['verdict'];
@@ -2969,7 +2976,7 @@ final class SEOProStats_CLI {
      * @return string
      */
     private static function percent_text($rate) {
-        return sprintf('%.1f%%', (float) $rate * 100);
+        return sprintf(self::PERCENT_FORMAT, (float) $rate * 100);
     }
 
     /**
@@ -3374,7 +3381,7 @@ final class SEOProStats_CLI {
         if ($effect === null) {
             return '–';
         }
-        return $metric === 'position' ? SEOProStats_Experiments::places_text($effect) : sprintf('%+.1f%%', $effect * 100);
+        return $metric === 'position' ? SEOProStats_Experiments::places_text($effect) : sprintf(self::CHANGE_PERCENT_FORMAT, $effect * 100);
     }
 
     /**
@@ -3488,7 +3495,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function realtime($args, $assoc) {
+    public function realtime($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $answer = $this->on_data($assoc, array('SEOProStats_Query', 'realtime'));
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -3547,7 +3554,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function rollup($args, $assoc) {
+    public function rollup($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $this->need_tables();
         $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
         $to   = isset($assoc['to']) ? (string) $assoc['to'] : '';
@@ -4453,7 +4460,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function doctor($args, $assoc) {
+    public function doctor($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $checks = self::checks();
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($checks, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -4479,12 +4486,29 @@ final class SEOProStats_CLI {
      * @return array<int,array{check:string,status:string,detail:string}>
      */
     public static function checks() {
-        global $wpdb;
         $out = array();
         $add = static function ($check, $ok, $detail, $fail = 'fail') use (&$out) {
             $out[] = array('check' => $check, 'status' => $ok ? 'ok' : $fail, 'detail' => $detail);
         };
+        self::check_tables($add);
+        $dir = SEOProStats_Collection::dir();
+        self::check_collector($add, $dir);
+        self::check_daily_jobs($add);
+        self::check_connections($add);
+        self::check_processing($add, $dir);
+        self::check_summaries($add);
+        self::check_page_caches($add);
+        self::check_purchases($add);
+        return $out;
+    }
 
+    /**
+     * Check the schema and its tables.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_tables(callable $add) {
+        global $wpdb;
         $version = (int) get_option(SEOProStats_Schema::OPTION, 0);
         $add('tables', SEOProStats_Schema::is_current(), sprintf('version %d of %d', $version, SEOProStats_Schema::VERSION));
         $missing = array();
@@ -4496,10 +4520,17 @@ final class SEOProStats_CLI {
             }
         }
         $add('table rows', !$missing, $missing ? 'missing: ' . implode(', ', $missing) : 'all ' . count(SEOProStats_Schema::names()) . ' present');
+    }
 
-        $dir = SEOProStats_Collection::dir();
+    /**
+     * Check collector files, salt, endpoint and minute jobs.
+     *
+     * @param callable $add Append a check.
+     * @param string   $dir Collector directory.
+     */
+    private static function check_collector(callable $add, $dir) {
         $add('collector folder', is_dir($dir) && wp_is_writable($dir), $dir);
-        $add('collector config', is_file($dir . '/config.php'), is_file($dir . '/config.php') ? 'written ' . human_time_diff((int) filemtime($dir . '/config.php')) . ' ago' : 'not written yet (an admin page or the hourly job writes it)');
+        $add('collector config', is_file($dir . self::CONFIG_PATH), is_file($dir . self::CONFIG_PATH) ? 'written ' . human_time_diff((int) filemtime($dir . self::CONFIG_PATH)) . ' ago' : 'not written yet (an admin page or the hourly job writes it)');
 
         $salts = get_option(SEOProStats_Collection::SALTS_OPTION, array());
         $today = wp_date('Y-m-d');
@@ -4513,6 +4544,14 @@ final class SEOProStats_CLI {
             $next = wp_next_scheduled($hook);
             $add('cron ' . $hook, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
         }
+    }
+
+    /**
+     * Check daily outside-data jobs in their original order.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_daily_jobs(callable $add) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         $updates = SEOProStats_Search_Updates::state();
         $next    = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
@@ -4520,19 +4559,29 @@ final class SEOProStats_CLI {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
         $backlinks = SEOProStats_Backlinks::state();
         if (!SEOProStats_Statistics::backlinks()) {
-            $add('backlinks check', true, 'off (SEO Pro Stats → Settings → Data)');
+            $add('backlinks check', true, self::DATA_OFF);
         } else {
             $add('backlinks check', true, $backlinks['last'] ? 'last run ' . human_time_diff($backlinks['last']) . ' ago: ' . $backlinks['checked'] . ' page(s) opened, ' . $backlinks['errors'] . ' could not be opened' : 'not run yet');
         }
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-inspections.php';
         $inspections = SEOProStats_Inspections::progress();
         if ($inspections['daily'] < 1) {
-            $add('google url inspection', true, 'off (SEO Pro Stats → Settings → Data)');
+            $add('google url inspection', true, self::DATA_OFF);
         } else {
             $add('google url inspection', $inspections['error'] === null, ($inspections['last'] ? 'last run ' . human_time_diff((int) strtotime((string) $inspections['last'])) . ' ago' : 'not run yet (needs Search Console)') . ', ' . $inspections['used'] . ' of ' . $inspections['daily'] . ' today' . ($inspections['error'] !== null ? '; stopped: ' . $inspections['error'] : ''), 'warn');
         }
+        self::check_search_updates($add, $updates);
+    }
+
+    /**
+     * Check the search update feed results.
+     *
+     * @param callable $add Append a check.
+     * @param array    $updates Feed state.
+     */
+    private static function check_search_updates(callable $add, array $updates) {
         if (!SEOProStats_Statistics::search_updates()) {
-            $add('search engine updates', true, 'off (SEO Pro Stats → Settings → Data)');
+            $add('search engine updates', true, self::DATA_OFF);
         } else {
             $failed = array();
             foreach ($updates['sources'] as $source) {
@@ -4543,8 +4592,16 @@ final class SEOProStats_CLI {
             $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
             $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
         }
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+    }
+
+    /**
+     * Check connected sources and the cron override.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_connections(callable $add) {
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_PATH;
+        require_once SEOPROSTATS_DIR . self::SEARCH_IMPORT_PATH;
         foreach (SEOProStats_Connections::statuses() as $source) {
             if (empty($source['connected'])) {
                 $add(strtolower($source['name']), true, 'not connected (SEO Pro Stats → Settings → Connections)');
@@ -4563,7 +4620,15 @@ final class SEOProStats_CLI {
         if (defined('DISABLE_WP_CRON') && DISABLE_WP_CRON) {
             $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');
         }
+    }
 
+    /**
+     * Check buffered hits and the last processing run.
+     *
+     * @param callable $add Append a check.
+     * @param string   $dir Collector directory.
+     */
+    private static function check_processing(callable $add, $dir) {
         $waiting = 0;
         foreach (array_merge(array($dir . '/buffer.php'), (array) glob($dir . '/processing-*.php')) as $file) {
             $waiting += is_string($file) && is_file($file) ? (int) filesize($file) : 0;
@@ -4572,13 +4637,27 @@ final class SEOProStats_CLI {
         $last      = is_array($processed) && isset($processed['last']) ? (int) $processed['last'] : 0;
         $stale     = $waiting > 0 && $last > 0 && $last < time() - 10 * MINUTE_IN_SECONDS;
         $add('processing', !$stale, sprintf('%s waiting; last run %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never'), 'warn');
+    }
 
+    /**
+     * Check daily summary progress.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_summaries(callable $add) {
         // A day is summarised from 01:00 the next day; a day later is behind.
         $through = SEOProStats_Rollup::through();
         $behind  = $through !== '' ? $through < wp_date('Y-m-d', time() - 2 * DAY_IN_SECONDS) : SEOProStats_Rollup::due() !== null;
         $state   = SEOProStats_Rollup::state();
         $add('daily summaries', !$behind, sprintf('through %s; pruned %s', $through !== '' ? $through : 'none yet', isset($state['pruned']) ? (string) $state['pruned'] : 'never'), 'warn');
+    }
 
+    /**
+     * Check the optional page cache integration.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_page_caches(callable $add) {
         if (class_exists('SEOProStats_Page_Cache')) {
             $cache  = SEOProStats_Page_Cache::state();
             $purged = isset($cache['purged']) ? (int) $cache['purged'] : 0;
@@ -4589,7 +4668,14 @@ final class SEOProStats_CLI {
             }
             $add('page caches', true, $detail);
         }
+    }
 
+    /**
+     * Check purchase collection and renewal capacity.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_purchases(callable $add) {
         $shops = array_keys(array_filter(array(
             'WooCommerce' => class_exists('WooCommerce'),
             'Easy Digital Downloads' => function_exists('edd_get_order'),
@@ -4609,7 +4695,6 @@ final class SEOProStats_CLI {
             $full = $purchases['renewal_receipts'] >= SEOProStats_Purchases::KEEP_RENEWAL_IDS;
             $add('renewals', !$full, ($renewals ? implode('; ', $renewals) : 'none recorded') . '; last 400 days; EDD Recurring not verified' . ($full ? '; receipt capacity reached: new renewals are not counted' : ''), 'warn');
         }
-        return $out;
     }
 
     /**
