@@ -315,14 +315,16 @@ final class SEOProStats_Queue {
         $items   = array();
         if ($days > 0) {
             foreach ($found as $kind => $answer) {
+                // Losing clicks may read fewer days than the rest (SEOProStats_Opportunities::decay_answer()).
+                $read = $answer['days'] > 0 ? (int) $answer['days'] : $days;
                 foreach ($answer['rows'] as $row) {
                     if ($kind === 'overlap' && (int) $row['potential'] < 1) {
                         // No page's CTR is better than the others': nothing to win by choosing one.
                         continue;
                     }
                     $item = $kind === 'decay' && isset($facts[(int) $row['path_id']])
-                        ? self::refresh_item($engine, $row, $facts[(int) $row['path_id']], $days, $value)
-                        : self::item($kind, $engine, $row, $days, $curve, $value);
+                        ? self::refresh_item($engine, $row, $facts[(int) $row['path_id']], $read, $value)
+                        : self::item($kind, $engine, $row, $read, $curve, $value);
                     if (!isset($items[$item['key']])) {
                         $items[$item['key']] = $item;
                     }
@@ -379,6 +381,7 @@ final class SEOProStats_Queue {
                 'range'     => $head['range'],
                 'days'      => $days,
                 'cut'       => (bool) $head['cut'],
+                'decay'     => self::decay_period($found['decay']),
                 'through'   => $head['through'],
                 'connected' => (bool) $head['connected'],
                 'ignored'   => $head['ignored'],
@@ -420,6 +423,25 @@ final class SEOProStats_Queue {
             ),
             'items'   => $items,
             'running' => $running,
+        );
+    }
+
+    /**
+     * The periods losing clicks were compared in when they were shortened
+     * so the earlier one holds only days with search data; null when they
+     * were not (losing clicks read the queue's period).
+     *
+     * @param array<string,mixed> $decay The Opportunities answer of kind decay.
+     * @return array{range:array<string,string>,days:int,compare:array<string,string>}|null
+     */
+    private static function decay_period(array $decay) {
+        if (empty($decay['compare']['cut'])) {
+            return null;
+        }
+        return array(
+            'range'   => $decay['range'],
+            'days'    => (int) $decay['days'],
+            'compare' => $decay['compare']['range'],
         );
     }
 
