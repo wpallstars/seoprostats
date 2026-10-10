@@ -27,7 +27,14 @@ if (!defined('ABSPATH')) {
  *     wp seoprostats breakdown page --range=7d --filter=channel:is:organic_search
  *     wp seoprostats doctor
  */
-final class SEOProStats_CLI {
+final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command facade; private steps preserve its compatible command surface.
+
+    private const CHANGE_PERCENT_FORMAT = '%+.1f%%';
+    private const PERCENT_FORMAT = '%.1f%%';
+    private const CONNECTIONS_PATH = 'includes/stats/class-seoprostats-connections.php';
+    private const SEARCH_IMPORT_PATH = 'includes/stats/class-seoprostats-search-import.php';
+    private const CONFIG_PATH = '/config.php';
+    private const DATA_OFF = 'off (SEO Pro Stats → Settings → Data)';
 
     /**
      * WP-CLI makes this only to run one of these commands.
@@ -185,7 +192,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function stats($args, $assoc) {
+    public function stats($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $req    = $this->request($assoc);
         $answer = $this->on_data($assoc, static function () use ($req) {
             return SEOProStats_Query::stats($req);
@@ -252,7 +259,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function timeseries($args, $assoc) {
+    public function timeseries($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $req    = $this->request($assoc);
         $answer = $this->on_data($assoc, static function () use ($req) {
             return SEOProStats_Query::timeseries($req);
@@ -2215,7 +2222,7 @@ final class SEOProStats_CLI {
      */
     public function coverage($args, $assoc) {
         $target = isset($args[0]) ? trim((string) $args[0]) : '';
-        $post   = preg_match('/^[0-9]+$/', $target) ? (int) $target : 0;
+        $post   = preg_match('/^\d+$/', $target) ? (int) $target : 0;
         $page   = $post ? '' : $target;
         $req    = $this->request($assoc + array('range' => '90d', 'compare' => 'none'));
         $answer = $this->on_data($assoc, static function () use ($req, $page, $post) {
@@ -2357,7 +2364,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function content($args, $assoc) {
+    public function content($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : '';
         $order  = isset($assoc['order']) ? (string) $assoc['order'] : '';
         $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
@@ -3444,7 +3451,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function realtime($args, $assoc) {
+    public function realtime($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $answer = $this->on_data($assoc, array('SEOProStats_Query', 'realtime'));
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -3503,7 +3510,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function rollup($args, $assoc) {
+    public function rollup($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $this->need_tables();
         $from = isset($assoc['from']) ? (string) $assoc['from'] : '';
         $to   = isset($assoc['to']) ? (string) $assoc['to'] : '';
@@ -4409,7 +4416,7 @@ final class SEOProStats_CLI {
      * @param string[]             $args  Positional arguments.
      * @param array<string,string> $assoc Options.
      */
-    public function doctor($args, $assoc) {
+    public function doctor($args, $assoc) { // NOSONAR: WP-CLI passes positional arguments even when this command uses only options.
         $checks = self::checks();
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($checks, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -4435,12 +4442,29 @@ final class SEOProStats_CLI {
      * @return array<int,array{check:string,status:string,detail:string}>
      */
     public static function checks() {
-        global $wpdb;
         $out = array();
         $add = static function ($check, $ok, $detail, $fail = 'fail') use (&$out) {
             $out[] = array('check' => $check, 'status' => $ok ? 'ok' : $fail, 'detail' => $detail);
         };
+        self::check_tables($add);
+        $dir = SEOProStats_Collection::dir();
+        self::check_collector($add, $dir);
+        self::check_daily_jobs($add);
+        self::check_connections($add);
+        self::check_processing($add, $dir);
+        self::check_summaries($add);
+        self::check_page_caches($add);
+        self::check_purchases($add);
+        return $out;
+    }
 
+    /**
+     * Check the schema and its tables.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_tables(callable $add) {
+        global $wpdb;
         $version = (int) get_option(SEOProStats_Schema::OPTION, 0);
         $add('tables', SEOProStats_Schema::is_current(), sprintf('version %d of %d', $version, SEOProStats_Schema::VERSION));
         $missing = array();
@@ -4453,7 +4477,15 @@ final class SEOProStats_CLI {
         }
         $add('table rows', !$missing, $missing ? 'missing: ' . implode(', ', $missing) : 'all ' . count(SEOProStats_Schema::names()) . ' present');
 
-        $dir = SEOProStats_Collection::dir();
+    }
+
+    /**
+     * Check collector files, salt, endpoint and minute jobs.
+     *
+     * @param callable $add Append a check.
+     * @param string   $dir Collector directory.
+     */
+    private static function check_collector(callable $add, $dir) {
         $add('collector folder', is_dir($dir) && wp_is_writable($dir), $dir);
         $add('collector config', is_file($dir . '/config.php'), is_file($dir . '/config.php') ? 'written ' . human_time_diff((int) filemtime($dir . '/config.php')) . ' ago' : 'not written yet (an admin page or the hourly job writes it)');
 
@@ -4469,6 +4501,14 @@ final class SEOProStats_CLI {
             $next = wp_next_scheduled($hook);
             $add('cron ' . $hook, (bool) $next, $next ? 'next in ' . human_time_diff($next) : 'not scheduled (an admin page schedules it)');
         }
+    }
+
+    /**
+     * Check daily outside-data jobs in their original order.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_daily_jobs(callable $add) {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-updates.php';
         $updates = SEOProStats_Search_Updates::state();
         $next    = wp_next_scheduled(SEOProStats_Collection::DAILY_HOOK);
@@ -4487,6 +4527,16 @@ final class SEOProStats_CLI {
         } else {
             $add('google url inspection', $inspections['error'] === null, ($inspections['last'] ? 'last run ' . human_time_diff((int) strtotime((string) $inspections['last'])) . ' ago' : 'not run yet (needs Search Console)') . ', ' . $inspections['used'] . ' of ' . $inspections['daily'] . ' today' . ($inspections['error'] !== null ? '; stopped: ' . $inspections['error'] : ''), 'warn');
         }
+        self::check_search_updates($add, $updates);
+    }
+
+    /**
+     * Check the search update feed results.
+     *
+     * @param callable $add Append a check.
+     * @param array    $updates Feed state.
+     */
+    private static function check_search_updates(callable $add, array $updates) {
         if (!SEOProStats_Statistics::search_updates()) {
             $add('search engine updates', true, 'off (SEO Pro Stats → Settings → Data)');
         } else {
@@ -4499,8 +4549,16 @@ final class SEOProStats_CLI {
             $when = $updates['last'] ? 'fetched ' . human_time_diff($updates['last']) . ' ago' : 'not fetched yet';
             $add('search engine updates', !$failed, $failed ? $when . '; asked again tomorrow: ' . implode('; ', $failed) : $when . ($updates['last'] ? ' from ' . count($updates['sources']) . ' source(s)' : ''), 'warn');
         }
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-connections.php';
-        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-search-import.php';
+    }
+
+    /**
+     * Check connected sources and the cron override.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_connections(callable $add) {
+        require_once SEOPROSTATS_DIR . self::CONNECTIONS_PATH;
+        require_once SEOPROSTATS_DIR . self::SEARCH_IMPORT_PATH;
         foreach (SEOProStats_Connections::statuses() as $source) {
             if (empty($source['connected'])) {
                 $add(strtolower($source['name']), true, 'not connected (SEO Pro Stats → Settings → Connections)');
@@ -4520,6 +4578,15 @@ final class SEOProStats_CLI {
             $add('WP-Cron', false, 'DISABLE_WP_CRON is set: run wp cron event run --due-now every minute from the system cron', 'warn');
         }
 
+    }
+
+    /**
+     * Check buffered hits and the last processing run.
+     *
+     * @param callable $add Append a check.
+     * @param string   $dir Collector directory.
+     */
+    private static function check_processing(callable $add, $dir) {
         $waiting = 0;
         foreach (array_merge(array($dir . '/buffer.php'), (array) glob($dir . '/processing-*.php')) as $file) {
             $waiting += is_string($file) && is_file($file) ? (int) filesize($file) : 0;
@@ -4529,12 +4596,28 @@ final class SEOProStats_CLI {
         $stale     = $waiting > 0 && $last > 0 && $last < time() - 10 * MINUTE_IN_SECONDS;
         $add('processing', !$stale, sprintf('%s waiting; last run %s', size_format($waiting), $last ? human_time_diff($last) . ' ago' : 'never'), 'warn');
 
+    }
+
+    /**
+     * Check daily summary progress.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_summaries(callable $add) {
         // A day is summarised from 01:00 the next day; a day later is behind.
         $through = SEOProStats_Rollup::through();
         $behind  = $through !== '' ? $through < wp_date('Y-m-d', time() - 2 * DAY_IN_SECONDS) : SEOProStats_Rollup::due() !== null;
         $state   = SEOProStats_Rollup::state();
         $add('daily summaries', !$behind, sprintf('through %s; pruned %s', $through !== '' ? $through : 'none yet', isset($state['pruned']) ? (string) $state['pruned'] : 'never'), 'warn');
 
+    }
+
+    /**
+     * Check the optional page cache integration.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_page_caches(callable $add) {
         if (class_exists('SEOProStats_Page_Cache')) {
             $cache  = SEOProStats_Page_Cache::state();
             $purged = isset($cache['purged']) ? (int) $cache['purged'] : 0;
@@ -4546,6 +4629,14 @@ final class SEOProStats_CLI {
             $add('page caches', true, $detail);
         }
 
+    }
+
+    /**
+     * Check purchase collection and renewal capacity.
+     *
+     * @param callable $add Append a check.
+     */
+    private static function check_purchases(callable $add) {
         $shops = array_keys(array_filter(array(
             'WooCommerce' => class_exists('WooCommerce'),
             'Easy Digital Downloads' => function_exists('edd_get_order'),
@@ -4565,7 +4656,6 @@ final class SEOProStats_CLI {
             $full = $purchases['renewal_receipts'] >= SEOProStats_Purchases::KEEP_RENEWAL_IDS;
             $add('renewals', !$full, ($renewals ? implode('; ', $renewals) : 'none recorded') . '; last 400 days; EDD Recurring not verified' . ($full ? '; receipt capacity reached: new renewals are not counted' : ''), 'warn');
         }
-        return $out;
     }
 
     /**

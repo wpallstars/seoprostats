@@ -44,7 +44,18 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Processor {
+/**
+ * One processing lifecycle owns buffer checkpoints and ordered fact writes.
+ * Keeping its private stages together avoids exposing partially processed batches.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity")
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength")
+ * @SuppressWarnings("PHPMD.TooManyMethods")
+ */
+final class SEOProStats_Processor { // NOSONAR: single processing lifecycle facade; private stages preserve checkpoint and write ordering.
+
+    /** Fixed placeholder for a binary key supplied as hex. */
+    private const HEX_PLACEHOLDER = 'UNHEX(%s)';
 
     /** Progress (autoload off): file being read, offset, last run. */
     const STATE_OPTION = SEOProStats_Collection::PROCESS_OPTION;
@@ -81,14 +92,7 @@ final class SEOProStats_Processor {
         if (!SEOProStats_Schema::is_current()) {
             return $totals;
         }
-        foreach (array('ua', 'channels', 'dict') as $part) {
-            require_once SEOPROSTATS_DIR . "includes/stats/class-seoprostats-$part.php";
-        }
-        self::$tz        = wp_timezone();
-        self::$own_hosts = array();
-        foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
-            self::$own_hosts[self::bare_host((string) $host)] = true;
-        }
+        self::initialize();
 
         while (SEOProStats_Feature::more_time($start, self::BUDGET)) {
             $file = self::current_file();
@@ -107,6 +111,19 @@ final class SEOProStats_Processor {
                 $totals['lines'] += count($lines);
             }
 
+            self::checkpoint($file, $state, $next);
+        }
+        return $totals;
+    }
+
+    /**
+     * Save progress only after the batch's ordered writes finish.
+     *
+     * @param string              $file  Taken file.
+     * @param array<string,mixed> $state Progress before reading.
+     * @param int|null            $next  Next byte offset, or EOF.
+     */
+    private static function checkpoint($file, array $state, $next) {
             if ($next === null) {
                 // End of the file: finished with it.
                 wp_delete_file($file);
@@ -122,8 +139,6 @@ final class SEOProStats_Processor {
             }
             $state['last'] = time();
             update_option(self::STATE_OPTION, $state, false);
-        }
-        return $totals;
     }
 
     /**
@@ -135,6 +150,18 @@ final class SEOProStats_Processor {
      * @return array{pageviews:int,events:int,clicks:int,bots:int,skipped:int}
      */
     public static function ingest(array $lines) {
+        self::initialize();
+        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
+        foreach (array_chunk($lines, self::BATCH) as $batch) {
+            foreach (self::process($batch) as $key => $count) {
+                $done[$key] += $count;
+            }
+        }
+        return $done;
+    }
+
+    /** Load the shared processing context before the first batch. */
+    private static function initialize() {
         foreach (array('ua', 'channels', 'dict') as $part) {
             require_once SEOPROSTATS_DIR . "includes/stats/class-seoprostats-$part.php";
         }
@@ -143,13 +170,6 @@ final class SEOProStats_Processor {
         foreach ((array) SEOProStats_Collection::config()['hosts'] as $host) {
             self::$own_hosts[self::bare_host((string) $host)] = true;
         }
-        $done = array('pageviews' => 0, 'events' => 0, 'clicks' => 0, 'bots' => 0, 'skipped' => 0);
-        foreach (array_chunk($lines, self::BATCH) as $batch) {
-            foreach (self::process($batch) as $key => $count) {
-                $done[$key] += $count;
-            }
-        }
-        return $done;
     }
 
     /**
@@ -224,17 +244,28 @@ final class SEOProStats_Processor {
         $count = 0;
         while ($count < $max && ($raw = fgets($handle)) !== false) {
             $count++;
-            if ($raw === '' || $raw[0] !== '{') {
-                continue; // The guard line, or a torn write.
-            }
-            $line = json_decode($raw, true);
-            if (is_array($line) && isset($line['ts'], $line['v'], $line['e']) && is_array($line['e'])) {
+            $line = self::decode_line($raw);
+            if ($line !== null) {
                 $lines[] = $line;
             }
         }
         $next = feof($handle) ? null : ftell($handle);
         fclose($handle); // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
         return array($lines, $next === false ? null : $next);
+    }
+
+    /**
+     * Decode a complete collector line, excluding guards and torn writes.
+     *
+     * @param string $raw Buffer line.
+     * @return array<string,mixed>|null
+     */
+    private static function decode_line($raw) {
+        if ($raw === '' || $raw[0] !== '{') {
+            return null;
+        }
+        $line = json_decode($raw, true);
+        return is_array($line) && isset($line['ts'], $line['v'], $line['e']) && is_array($line['e']) ? $line : null;
     }
 
     /**

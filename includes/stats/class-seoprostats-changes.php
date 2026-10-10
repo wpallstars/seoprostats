@@ -30,7 +30,15 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Changes {
+/**
+ * Stable WordPress hook and change-log facade; private helpers isolate each operation.
+ *
+ * @SuppressWarnings(PHPMD.ExcessiveClassComplexity) Hook families share request-local deduplication and snapshots; procedural branches are separated into helpers.
+ * @SuppressWarnings(PHPMD.ExcessiveClassLength) Keeping the public hook facade and its private implementation together preserves the single-file loading contract.
+ * @SuppressWarnings(PHPMD.TooManyMethods) Named private operations keep hook implementations simple without changing the public facade.
+ * @SuppressWarnings(PHPMD.TooManyPublicMethods) Public methods are existing WordPress callbacks and change-log API entry points.
+ */
+final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade stays intact; private helpers separate its operations within the single-file loading contract.
 
     /**
      * Kinds of change: code (the table's kind column) => name and group.
@@ -276,21 +284,7 @@ final class SEOProStats_Changes {
         if (!isset(self::KINDS[$kind]) || (defined('WP_IMPORTING') && WP_IMPORTING)) {
             return false;
         }
-        $row = array(
-            'ts'          => isset($change['ts']) ? (int) $change['ts'] : time(),
-            'kind'        => (int) $kind,
-            'path'        => isset($change['path']) ? (string) $change['path'] : '',
-            'object_type' => isset($change['object_type']) ? substr((string) $change['object_type'], 0, 20) : '',
-            'object_id'   => isset($change['object_id']) ? max(0, (int) $change['object_id']) : 0,
-            // Keep a moved page's full address for notification; write() alone
-            // applies the display column's length limit.
-            'old'         => (int) $kind === 3 ? (string) ($change['old'] ?? '') : self::short(isset($change['old']) ? $change['old'] : ''),
-            'new'         => self::short(isset($change['new']) ? $change['new'] : ''),
-            'meta'        => isset($change['meta']) && is_array($change['meta']) ? $change['meta'] : array(),
-            'source'      => isset($change['source']) ? (int) $change['source'] : self::source(),
-            // Only people who edit the site: a customer whose order took the last item is not named.
-            'user_id'     => isset($change['user_id']) ? (int) $change['user_id'] : (current_user_can('edit_posts') ? get_current_user_id() : 0),
-        );
+        $row = self::record_object($kind, $change) + self::record_values($kind, $change);
         $key = md5(implode("\0", array($row['kind'], $row['object_type'], $row['object_id'], $row['path'], $row['old'], $row['new']))); // NOSONAR nosemgrep: a duplicate check within one request, not security.
         if (isset(self::$done[$key])) {
             return false;
@@ -322,6 +316,69 @@ final class SEOProStats_Changes {
         } finally {
             SEOProStats_Schema::use_set($before);
         }
+    }
+
+    /**
+     * Normalize a change's time and object before reading its values.
+     *
+     * @param int                 $kind   Kind code.
+     * @param array<string,mixed> $change Input change.
+     * @return array<string,mixed>
+     */
+    private static function record_object($kind, array $change) {
+        return array(
+            'ts'          => isset($change['ts']) ? (int) $change['ts'] : time(),
+            'kind'        => (int) $kind,
+            'path'        => isset($change['path']) ? (string) $change['path'] : '',
+            'object_type' => isset($change['object_type']) ? substr((string) $change['object_type'], 0, 20) : '',
+            'object_id'   => isset($change['object_id']) ? max(0, (int) $change['object_id']) : 0,
+        );
+    }
+
+    /**
+     * Normalize values and attribution in their original evaluation order.
+     *
+     * @param int                 $kind   Code from KINDS.
+     * @param array<string,mixed> $change Input change.
+     * @return array<string,mixed>
+     */
+    private static function record_values($kind, array $change) {
+        return array(
+            'old'     => self::record_old($kind, $change),
+            'new'     => self::short(isset($change['new']) ? $change['new'] : ''),
+            'meta'    => isset($change['meta']) && is_array($change['meta']) ? $change['meta'] : array(),
+            'source'  => isset($change['source']) ? (int) $change['source'] : self::source(),
+            'user_id' => self::record_user($change),
+        );
+    }
+
+    /**
+     * The old value: a moved page keeps its full address for notification;
+     * write() alone applies the display column's length limit.
+     *
+     * @param int                 $kind   Code from KINDS.
+     * @param array<string,mixed> $change Input change.
+     * @return string
+     */
+    private static function record_old($kind, array $change) {
+        if ((int) $kind === 3) {
+            return (string) ($change['old'] ?? '');
+        }
+        return self::short(isset($change['old']) ? $change['old'] : '');
+    }
+
+    /**
+     * Attribute only site editors, unless the caller supplies a user.
+     *
+     * @param array<string,mixed> $change Input change.
+     * @return int
+     */
+    private static function record_user(array $change) {
+        if (isset($change['user_id'])) {
+            return (int) $change['user_id'];
+        }
+        // A customer whose order took the last item is not named.
+        return current_user_can('edit_posts') ? get_current_user_id() : 0;
     }
 
     /**
@@ -485,12 +542,31 @@ final class SEOProStats_Changes {
      * @param WP_Post $before  The post before.
      */
     public static function post($post_id, $after, $before) {
+        unset($post_id); // WordPress's post_updated callback requires this positional argument.
         if (!$after instanceof WP_Post || !$before instanceof WP_Post || $after->post_status !== 'publish' || $before->post_status !== 'publish' || !self::is_public($after)) {
             return;
         }
         $ts   = time();
         $path = self::post_path($after);
         $was  = self::path_before($before);
+        self::post_identity($before, $after, $was, $path, $ts);
+        if ($before->post_content === $after->post_content) {
+            return;
+        }
+        self::post_words($before, $after, $path, $ts);
+        self::post_links($before, $after, $path, $ts);
+    }
+
+    /**
+     * Record address and title before content changes.
+     *
+     * @param WP_Post $before Post before.
+     * @param WP_Post $after  Post now.
+     * @param string  $was    Previous path.
+     * @param string  $path   Current path.
+     * @param int     $ts     Shared timestamp.
+     */
+    private static function post_identity(WP_Post $before, WP_Post $after, $was, $path, $ts) {
         if ($was !== '' && $path !== '' && $was !== $path) {
             self::record(3, self::about($after, $path) + array(
                 'ts'   => $ts,
@@ -505,9 +581,17 @@ final class SEOProStats_Changes {
                 'new' => $after->post_title,
             ));
         }
-        if ($before->post_content === $after->post_content) {
-            return;
-        }
+    }
+
+    /**
+     * Record word changes before examining links.
+     *
+     * @param WP_Post $before Post before.
+     * @param WP_Post $after  Post now.
+     * @param string  $path   Current path.
+     * @param int     $ts     Shared timestamp.
+     */
+    private static function post_words(WP_Post $before, WP_Post $after, $path, $ts) {
         $words = self::word_change($before->post_content, $after->post_content);
         if ($words['added'] || $words['removed']) {
             self::record(5, self::about($after, $path, $words) + array(
@@ -516,6 +600,17 @@ final class SEOProStats_Changes {
                 'new' => (string) $words['after'],
             ));
         }
+    }
+
+    /**
+     * Record internal links followed by external hosts.
+     *
+     * @param WP_Post $before Post before.
+     * @param WP_Post $after  Post now.
+     * @param string  $path   Current path.
+     * @param int     $ts     Shared timestamp.
+     */
+    private static function post_links(WP_Post $before, WP_Post $after, $path, $ts) {
         $then = self::links($before->post_content);
         $now  = self::links($after->post_content);
         $diff = self::link_change($then['internal'], $now['internal']);
@@ -699,17 +794,8 @@ final class SEOProStats_Changes {
         }
         $site = SEOProStats_Collection::hosts();
         foreach ($matches as $match) {
-            $tags = new WP_HTML_Tag_Processor($match[0]);
-            if (!$tags->next_tag(array('tag_name' => 'a'))) {
-                continue;
-            }
-            $href = $tags->get_attribute('href');
-            $href = is_string($href) ? trim($href) : '';
-            if ($href === '' || $href[0] === '#' || $href[0] === '?') {
-                continue;
-            }
-            $scheme = wp_parse_url($href, PHP_URL_SCHEME);
-            if (is_string($scheme) && !in_array(strtolower($scheme), array('http', 'https'), true)) {
+            $href = self::link_href($match[0]);
+            if ($href === '') {
                 continue;
             }
             $host = strtolower((string) wp_parse_url(strpos($href, '//') === 0 ? 'https:' . $href : $href, PHP_URL_HOST));
@@ -726,6 +812,29 @@ final class SEOProStats_Changes {
         $hosts = array_keys($hosts);
         sort($hosts);
         return array('internal' => $internal, 'counts' => $counts, 'hosts' => array_map('strval', $hosts));
+    }
+
+    /**
+     * Read an anchor's usable HTTP(S) or relative destination.
+     *
+     * @param string $html Anchor markup.
+     * @return string Empty for ignored links.
+     */
+    private static function link_href($html) {
+        $tags = new WP_HTML_Tag_Processor($html);
+        if (!$tags->next_tag(array('tag_name' => 'a'))) {
+            return '';
+        }
+        $href = $tags->get_attribute('href');
+        $href = is_string($href) ? trim($href) : '';
+        if ($href === '' || $href[0] === '#' || $href[0] === '?') {
+            return '';
+        }
+        $scheme = wp_parse_url($href, PHP_URL_SCHEME);
+        if (is_string($scheme) && !in_array(strtolower($scheme), array('http', 'https'), true)) {
+            return '';
+        }
+        return $href;
     }
 
     /**
@@ -861,6 +970,20 @@ final class SEOProStats_Changes {
             return;
         }
         list($kind, $read) = self::SEO_META[$key];
+        self::record_meta_change($post, $key, $read, $kind, $old, $new);
+    }
+
+    /**
+     * Record SEO text or an established EDD price after consuming its snapshot.
+     *
+     * @param WP_Post $post Post.
+     * @param string  $key  Meta key.
+     * @param string  $read Value format.
+     * @param int     $kind Kind code.
+     * @param string  $old  Previous value.
+     * @param string  $new  Current value.
+     */
+    private static function record_meta_change(WP_Post $post, $key, $read, $kind, $old, $new) {
         $meta = array('field' => $key);
         if ($read === 'price') {
             // Easy Digital Downloads: a price set for the first time is not a change.
@@ -892,24 +1015,22 @@ final class SEOProStats_Changes {
             return implode(', ', $value);
         }
         $value = is_scalar($value) ? trim((string) $value) : '';
-        switch ($read) {
-            case 'yoast_index':
-                return $value === '1' ? 'noindex' : ($value === '2' ? 'index' : '');
-            case 'yoast_follow':
-            case 'tsf_follow':
-                return $value === '1' ? 'nofollow' : '';
-            case 'yes_noindex':
-                return $value === 'yes' ? 'noindex' : '';
-            case 'yes_nofollow':
-                return $value === 'yes' ? 'nofollow' : '';
-            case 'tsf_index':
-                return $value === '1' ? 'noindex' : ($value === '-1' ? 'index' : '');
-            case 'list':
-                $list = maybe_unserialize($value);
-                return is_array($list) ? self::meta_text('', $list) : $value;
-            default:
-                return $value;
+        $rules = array(
+            'yoast_index'  => array('1' => 'noindex', '2' => 'index'),
+            'yoast_follow' => array('1' => 'nofollow'),
+            'tsf_follow'   => array('1' => 'nofollow'),
+            'yes_noindex'  => array('yes' => 'noindex'),
+            'yes_nofollow' => array('yes' => 'nofollow'),
+            'tsf_index'    => array('1' => 'noindex', '-1' => 'index'),
+        );
+        if (isset($rules[$read])) {
+            return isset($rules[$read][$value]) ? $rules[$read][$value] : '';
         }
+        if ($read === 'list') {
+            $list = maybe_unserialize($value);
+            return is_array($list) ? self::meta_text('', $list) : $value;
+        }
+        return $value;
     }
 
     // ------------------------------------------------------------------

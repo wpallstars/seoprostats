@@ -41,7 +41,20 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Inspections {
+/**
+ * Facade shared by cron, CLI, reports and demo data for one inspection lifecycle.
+ * Keeping these entry points together preserves their quota, lock and storage contract.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") The facade coordinates the complete inspection lifecycle; procedural steps are private helpers.
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") Normalization and report field maps belong to the same stored inspection contract.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep lifecycle procedures independently readable.
+ * @SuppressWarnings("PHPMD.TooManyPublicMethods") Existing cron, CLI, report and demo entry points are compatibility contracts.
+ * @SuppressWarnings("PHPMD.CouplingBetweenObjects") The facade integrates existing dictionary, search, indexation and timeline services.
+ */
+final class SEOProStats_Inspections { // NOSONAR: a compatibility facade for cron, CLI, reports and demo data; private helpers decompose its procedures.
+
+    /** Remove the optional www host prefix when comparing site addresses. */
+    private const WWW_PREFIX = '/^www\./i';
 
     /** Search Console's source key (SEOProStats_Connections::SOURCES). */
     const SOURCE = 'search-console';
@@ -200,8 +213,28 @@ final class SEOProStats_Inspections {
      * @return array<string,mixed>
      */
     public static function sitemap_row(array $one) {
+        return array(
+            'path'       => isset($one['path']) ? esc_url_raw((string) $one['path']) : '',
+            'type'       => isset($one['type']) ? sanitize_key((string) $one['type']) : '',
+            'index'      => !empty($one['isSitemapsIndex']),
+            'pending'    => !empty($one['isPending']),
+            'submitted'  => self::sitemap_time($one, 'lastSubmitted'),
+            'downloaded' => self::sitemap_time($one, 'lastDownloaded'),
+            'errors'     => self::integer_field($one, 'errors'),
+            'warnings'   => self::integer_field($one, 'warnings'),
+            'contents'   => self::sitemap_contents($one),
+        );
+    }
+
+    /**
+     * Keep submitted counts only; Google's indexed count is deprecated.
+     *
+     * @param array<string,mixed> $one Sitemap response.
+     * @return array<int,array{type:string,submitted:int}>
+     */
+    private static function sitemap_contents(array $one) {
         $contents = array();
-        foreach (isset($one['contents']) && is_array($one['contents']) ? $one['contents'] : array() as $content) {
+        foreach (self::array_field($one, 'contents') as $content) {
             if (is_array($content)) {
                 // indexed is deprecated: not kept.
                 $contents[] = array(
@@ -210,21 +243,19 @@ final class SEOProStats_Inspections {
                 );
             }
         }
-        $time = static function ($key) use ($one) {
-            $ts = isset($one[$key]) ? strtotime((string) $one[$key]) : false;
-            return $ts ? (int) $ts : 0;
-        };
-        return array(
-            'path'       => isset($one['path']) ? esc_url_raw((string) $one['path']) : '',
-            'type'       => isset($one['type']) ? sanitize_key((string) $one['type']) : '',
-            'index'      => !empty($one['isSitemapsIndex']),
-            'pending'    => !empty($one['isPending']),
-            'submitted'  => $time('lastSubmitted'),
-            'downloaded' => $time('lastDownloaded'),
-            'errors'     => isset($one['errors']) ? (int) $one['errors'] : 0,
-            'warnings'   => isset($one['warnings']) ? (int) $one['warnings'] : 0,
-            'contents'   => $contents,
-        );
+        return $contents;
+    }
+
+    /**
+     * Convert an optional sitemap timestamp, including Google's empty values.
+     *
+     * @param array<string,mixed> $one Sitemap response.
+     * @param string $key Timestamp field.
+     * @return int
+     */
+    private static function sitemap_time(array $one, $key) {
+        $ts = isset($one[$key]) ? strtotime((string) $one[$key]) : false;
+        return $ts ? (int) $ts : 0;
     }
 
     /**
@@ -252,41 +283,97 @@ final class SEOProStats_Inspections {
             return $out;
         }
         $pages = $pages === null ? self::due($out['left']) : array_slice($pages, 0, $out['left'], true);
+        return self::inspect_pages($pages, $class, $token, $property, $budget, $start, $out);
+    }
+
+    /**
+     * Inspect the selected pages, counting each attempt before its remote request.
+     *
+     * @param array<int,string> $pages Selected paths.
+     * @param string $class Source class.
+     * @param string $token Access token.
+     * @param string $property Search property.
+     * @param int $budget Seconds available.
+     * @param float $start Run start.
+     * @param array{inspected:int,failed:int,left:int,daily:int,used:int,more:bool,error:string|null} $out Progress.
+     * @return array{inspected:int,failed:int,left:int,daily:int,used:int,more:bool,error:string|null}
+     */
+    private static function inspect_pages(array $pages, $class, $token, $property, $budget, $start, array $out) {
         $done  = 0;
         foreach ($pages as $path_id => $path) {
-            if ($done > 0 && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+            if (self::budget_expired($done, $budget, $start)) {
                 break;
             }
-            if (self::used() >= $daily) {
+            if (self::used() >= $out['daily']) {
                 break;
             }
             ++$done;
             self::count_one();
-            $url    = self::url((string) $path);
-            $result = $url === '' ? new WP_Error('seoprostats_inspect_url', __('Not an address on this site.', 'seoprostats'), array('status' => 400)) : $class::inspect($token, $property, $url);
-            if (is_wp_error($result)) {
-                $data   = $result->get_error_data();
-                $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
-                // An address Google will not inspect (not in the property, not valid): kept as tried, and the run goes on.
-                if ($status === 400 || $status === 404) {
-                    self::store((int) $path_id, (string) $path, array(), time(), $result->get_error_message());
-                    ++$out['failed'];
-                    continue;
-                }
-                $out['error'] = $result->get_error_message();
-                self::save(array('last' => time(), 'error' => $out['error'], 'error_at' => time(), 'version' => time()));
+            $result = self::inspect_path($class, $token, $property, (string) $path);
+            if (!self::keep_inspection((int) $path_id, (string) $path, $result, $out)) {
                 break;
             }
-            self::store((int) $path_id, (string) $path, $result, time());
-            ++$out['inspected'];
         }
         $out['used'] = self::used();
-        $out['left'] = max(0, $daily - $out['used']);
+        $out['left'] = max(0, $out['daily'] - $out['used']);
         $out['more'] = $done < count($pages) || ($pages && $out['left'] < 1);
         if ($out['error'] === null) {
             self::save(array('last' => time(), 'error' => null, 'error_at' => null, 'version' => time()));
         }
         return $out;
+    }
+
+    /**
+     * Check the budget only after at least one attempt.
+     *
+     * @param int $done Attempts made.
+     * @param int $budget Seconds available.
+     * @param float $start Run start.
+     * @return bool
+     */
+    private static function budget_expired($done, $budget, $start) {
+        return $done > 0 && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget);
+    }
+
+    /**
+     * Ask Google only for a valid local path.
+     *
+     * @param string $class Source class.
+     * @param string $token Access token.
+     * @param string $property Search property.
+     * @param string $path Page path.
+     * @return array<string,mixed>|WP_Error
+     */
+    private static function inspect_path($class, $token, $property, $path) {
+        $url = self::url($path);
+        return $url === '' ? new WP_Error('seoprostats_inspect_url', __('Not an address on this site.', 'seoprostats'), array('status' => 400)) : $class::inspect($token, $property, $url);
+    }
+
+    /**
+     * Store page-specific failures; stop on quota, access or server failures.
+     *
+     * @param int $path_id Path id.
+     * @param string $path Page path.
+     * @param array<string,mixed>|WP_Error $result Inspection response.
+     * @param array<string,mixed> $out Run counters, updated in place.
+     * @return bool Whether to continue.
+     */
+    private static function keep_inspection($path_id, $path, $result, array &$out) {
+        if (!is_wp_error($result)) {
+            self::store($path_id, $path, $result, time());
+            ++$out['inspected'];
+            return true;
+        }
+        $data   = $result->get_error_data();
+        $status = is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
+        if ($status === 400 || $status === 404) {
+            self::store($path_id, $path, array(), time(), $result->get_error_message());
+            ++$out['failed'];
+            return true;
+        }
+        $out['error'] = $result->get_error_message();
+        self::save(array('last' => time(), 'error' => $out['error'], 'error_at' => time(), 'version' => time()));
+        return false;
     }
 
     /**
