@@ -390,11 +390,11 @@ export const SORT_ORDERS = ['desc', 'asc'] as const;
 export type SortOrder = (typeof SORT_ORDERS)[number];
 
 /** Columns whose first click sorts lowest first (a lower position is better); the others sort most first. */
-const ASCENDING_SORTS: readonly string[] = ['position'];
+const ASCENDING_SORTS: ReadonlySet<string> = new Set(['position']);
 
 /** A column's natural order: its first click; a second click reverses it. */
 export function naturalOrder(sort: string): SortOrder {
-	return ASCENDING_SORTS.includes(sort) ? 'asc' : 'desc';
+	return ASCENDING_SORTS.has(sort) ? 'asc' : 'desc';
 }
 
 /**

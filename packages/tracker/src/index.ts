@@ -85,7 +85,7 @@ const PAGE_QUERY = ['ref', 'source', 'p', 'page_id', 'cat', 'tag', 'post_type', 
 const CLICK_IDS = ['gclid', 'gbraid', 'wbraid', 'dclid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'li_fat_id', 'yclid', '_ga', '_gl', 'mc_cid', 'mc_eid', '_hsenc', '_hsmi', 'igshid'];
 
 /** Links to files of these kinds count as downloads. */
-const FILE_TYPES = /\.(?:pdf|zipx?|rar|7z|gz|tgz|bz2|xz|tar|dmg|pkg|exe|msi|apk|iso|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|txt|epub|mp3|m4a|wav|ogg|flac|mp4|m4v|mov|avi|wmv|webm|mkv)$/i;
+const FILE_TYPES = /\.(?:pdf|zipx?|rar|7z|gz|tgz|bz2|xz|tar|dmg|pkg|exe|msi|apk|iso|docx?|xlsx?|pptx?|od[tsp]|rtf|csv|txt|epub|mp3|m4a|wav|ogg|flac|mp4|m4v|mov|avi|wmv|webm|mkv)$/i; // NOSONAR: a flat list of extensions anchored at the end (no nesting or backtracking); one regex is the smallest form in the tracker.
 
 /** Most hits, and bytes, per request (the collector takes 50 and 16 KB). */
 const BATCH_HITS = 25;
@@ -133,12 +133,12 @@ const pageProps = attr('data-props');
 /** data-ctx: what WordPress knew about the page as loaded (SEOProStats_Tracker::context()), sent with its pageview only. */
 const pageContext = attr('data-ctx');
 
-const queued = (win.seoprostats && win.seoprostats.q) || [];
+const queued = (win.seoprostats && win.seoprostats.q) || []; // NOSONAR: the tracker builds for ES2018, where ?. compiles to longer code.
 const allowed = PAGE_QUERY.concat((cfg.q || []).map((key) => String(key).toLowerCase()));
 const own = (cfg.h || []).map((host) => String(host).toLowerCase()).concat(loc.hostname.toLowerCase());
 /** Paths matching any of a list of globs (* matches any characters). */
 const globs = (list?: string[]): RegExp[] =>
-	(list || []).map((glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$'));
+	(list || []).map((glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')); // NOSONAR: a plain string is shorter than String.raw in the built tracker.
 const skipPaths = globs(cfg.x);
 const affiliatePaths = globs(cfg.a);
 
@@ -180,9 +180,9 @@ function pagePath(): string {
 	const keep: string[] = [];
 	new URLSearchParams(loc.search).forEach((value, key) => {
 		const name = key.toLowerCase();
-		if (CLICK_IDS.indexOf(name) >= 0) {
+		if (CLICK_IDS.includes(name)) {
 			keep.push(name + '=1');
-		} else if (name.indexOf('utm_') === 0 || allowed.indexOf(name) >= 0) {
+		} else if (name.startsWith('utm_') || allowed.includes(name)) {
 			keep.push(encodeURIComponent(name) + '=' + encodeURIComponent(value));
 		}
 	});
@@ -209,7 +209,7 @@ function timeZone(): string {
 
 function send(hits: Hit[]): void {
 	const body = JSON.stringify({ h: loc.hostname.toLowerCase(), e: hits });
-	if (nav.sendBeacon && nav.sendBeacon(cfg.u, new Blob([body], { type: 'text/plain' }))) {
+	if (nav.sendBeacon && nav.sendBeacon(cfg.u, new Blob([body], { type: 'text/plain' }))) { // NOSONAR: the tracker builds for ES2018, where ?. compiles to longer code.
 		return;
 	}
 	fetch(cfg.u, { method: 'POST', body, keepalive: true, credentials: 'omit', headers: { 'Content-Type': 'text/plain' } }).catch(() => undefined);
@@ -245,7 +245,7 @@ function push(hit: Hit): void {
 		return;
 	}
 	queue.push(hit);
-	if (timer === undefined) {
+	if (timer === undefined) { // NOSONAR: the tracker builds for ES2018, where ??= compiles to longer code.
 		timer = setTimeout(flush, 0);
 	}
 }
@@ -298,7 +298,7 @@ function startPage(referrer: string, props?: unknown, context?: unknown): void {
 		hit.x = context;
 	}
 	// The A/B test variants this page shows (up to 20).
-	const ab = Array.from(doc.querySelectorAll(AB), (el) => el.getAttribute('data-spst-ab')).slice(0, 20);
+	const ab = Array.from(doc.querySelectorAll<HTMLElement>(AB), (el) => el.dataset.spstAb).slice(0, 20);
 	if (ab.length) {
 		hit.ab = ab;
 	}
@@ -334,17 +334,17 @@ function cleanProps(props: unknown): Record<string, Scalar> | null {
 }
 
 function event(name: unknown, options?: EventOptions): void {
-	const label = String(name || '').trim().slice(0, 120);
+	const label = String(name || '').trim().slice(0, 120); // NOSONAR: page code may pass any value; the label is its text, as before.
 	if (!label) {
 		return;
 	}
 	const hit: Hit = { t: 'e', p: pageId, n: label };
-	const props = cleanProps(options && options.props);
+	const props = cleanProps(options && options.props); // NOSONAR: the tracker builds for ES2018, where ?. compiles to longer code.
 	if (props) {
 		hit.d = props;
 	}
-	const revenue = options && options.revenue;
-	if (revenue && isFinite(Number(revenue.amount)) && /^[A-Za-z]{3}$/.test(String(revenue.currency))) {
+	const revenue = options && options.revenue; // NOSONAR: the tracker builds for ES2018, where ?. compiles to longer code.
+	if (revenue && isFinite(Number(revenue.amount)) && /^[A-Za-z]{3}$/.test(String(revenue.currency))) { // NOSONAR: the argument is already a number, so the global is the same test and shorter in the built tracker.
 		hit.rv = { a: Number(revenue.amount), c: String(revenue.currency).toUpperCase() };
 	}
 	push(hit);
@@ -364,11 +364,14 @@ function target(href: string): { to: string; flags: number } {
 	if (!/^https?:$/.test(url.protocol)) {
 		return { to: '', flags: 0 };
 	}
-	const away = own.indexOf(url.hostname.toLowerCase()) < 0;
-	return {
-		to: away ? url.origin + url.pathname : url.pathname,
-		flags: (away ? OUTBOUND : affiliatePaths.some((path) => path.test(url.pathname)) ? AFFILIATE : 0) | (FILE_TYPES.test(url.pathname) ? DOWNLOAD : 0),
-	};
+	const away = !own.includes(url.hostname.toLowerCase());
+	let flags = FILE_TYPES.test(url.pathname) ? DOWNLOAD : 0;
+	if (away) {
+		flags |= OUTBOUND;
+	} else if (affiliatePaths.some((path) => path.test(url.pathname))) {
+		flags |= AFFILIATE;
+	}
+	return { to: away ? url.origin + url.pathname : url.pathname, flags };
 }
 
 /** The thing someone meant to click: made to be clicked, an image, or shown with a pointer. Never a form field. */
@@ -397,24 +400,21 @@ function selector(el: Element): string {
 	return (el.tagName.toLowerCase() + (name(id) ? '#' + id : '') + (classes.length ? '.' + classes.join('.') : '')).slice(0, 120);
 }
 
+/** What an element says: its label, value or text, alt or title, or its image's alt. */
+function says(el: Element): string {
+	const image = el.querySelector('img[alt]');
+	return el.getAttribute('aria-label') || (el instanceof HTMLInputElement ? el.value : (el as HTMLElement).innerText) || el.getAttribute('alt') || el.getAttribute('title') || (image && image.getAttribute('alt')) || ''; // NOSONAR: the tracker builds for ES2018, where ?. compiles to longer code.
+}
+
 /** Visible text (or the name given) of up to 60 characters, emails and long numbers masked; '' under data-sps-mask. */
 function text(el: Element, name?: string): string {
 	if (el.closest('[data-sps-mask]')) {
 		return '';
 	}
-	const image = el.querySelector('img[alt]');
-	const label =
-		name !== undefined
-			? name
-			: el.getAttribute('aria-label') ||
-				(el instanceof HTMLInputElement ? el.value : (el as HTMLElement).innerText) ||
-				el.getAttribute('alt') ||
-				el.getAttribute('title') ||
-				(image && image.getAttribute('alt')) ||
-				'';
+	const label = name !== undefined ? name : says(el); // NOSONAR: the tracker builds for ES2018, where ?? compiles to longer code.
 	return String(label)
 		.replace(/\s+/g, ' ')
-		.replace(/[^\s@]+@[^\s@]+/g, '…@…')
+		.replace(/[^\s@]+@[^\s@]+/g, '…@…') // NOSONAR: backtracking stays inside one run of text without spaces, once per click, in the visitor's own browser.
 		.replace(/\+?\d(?:[\s().-]?\d){5,}/g, '#')
 		.trim()
 		.slice(0, 60);
@@ -445,7 +445,7 @@ function settle(leaving: boolean): void {
 }
 
 /** Clicks: data-sps-event elements, outbound, affiliate and file links, and (autocapture) what was clicked. */
-function clicked(e: MouseEvent): void {
+function clicked(e: MouseEvent): void { // NOSONAR: one function on purpose: the tracker loads on every page, and splitting it adds bytes.
 	if ((e.type === 'auxclick' && e.button !== 1) || !(e.target instanceof Element)) {
 		return;
 	}
@@ -455,7 +455,7 @@ function clicked(e: MouseEvent): void {
 		// data-sps-prop-plan="pro" becomes the property plan.
 		const props: Record<string, Scalar> = {};
 		for (const [key, value] of Object.entries(tagged.dataset)) {
-			if (key.indexOf('spsProp') === 0 && key.length > 7 && value !== undefined) {
+			if (key.startsWith('spsProp') && key.length > 7 && value !== undefined) {
 				props[key.charAt(7).toLowerCase() + key.slice(8)] = value;
 			}
 		}
@@ -480,7 +480,7 @@ function clicked(e: MouseEvent): void {
 			event('Affiliate link', url);
 		} else if (to.flags & OUTBOUND) {
 			event('Outbound link', url);
-		} else if (to.flags & DOWNLOAD || (to.to[0] === '/' && link.hasAttribute('download'))) {
+		} else if (to.flags & DOWNLOAD || (to.to[0] === '/' && link.hasAttribute('download'))) { // NOSONAR: one character compared; shorter than startsWith in the built tracker.
 			to.flags |= DOWNLOAD;
 			event('File download', url);
 		}
@@ -491,9 +491,9 @@ function clicked(e: MouseEvent): void {
 	if (el && pageId) {
 		const hit: Hit = { t: 'c', p: pageId, s: selector(el), l: text(el), h: to.to, f: to.flags };
 		// Inside an A/B test variant: which one.
-		const test = el.closest(AB);
+		const test = el.closest<HTMLElement>(AB);
 		if (test) {
-			hit.ab = test.getAttribute('data-spst-ab');
+			hit.ab = test.dataset.spstAb;
 		}
 		// A link that leaves the page reacts by itself; anything else may do nothing.
 		const leaves = link && to.to && !/^#|^javascript:/i.test(link.getAttribute('href') || '');
