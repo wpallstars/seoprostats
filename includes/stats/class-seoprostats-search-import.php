@@ -693,7 +693,7 @@ final class SEOProStats_Search_Import {
         $pages  = 0;
         $days   = array();
         while ($queue) {
-            if (($pages > 0 || $ran) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
+            if (!self::more_pairs($pages, $ran, $start, $budget)) {
                 break;
             }
             $step = self::pairs_step($source, $ready, $range, (string) $queue[0], $import);
@@ -717,6 +717,21 @@ final class SEOProStats_Search_Import {
             self::finish($import, self::DONE, $days ? $days : $range, $rows);
         }
         return array($import, $rows, $pages);
+    }
+
+    /**
+     * Whether there is time for another page: the run's first page goes at
+     * once unless days were imported first; any other page waits for time
+     * left in the budget.
+     *
+     * @param int   $pages  Pages imported in this run.
+     * @param bool  $ran    Whether the run imported days first.
+     * @param float $start  microtime(true) of the run.
+     * @param int   $budget Seconds (0: no limit).
+     * @return bool
+     */
+    private static function more_pairs($pages, $ran, $start, $budget) {
+        return !($pages > 0 || $ran) || $budget <= 0 || SEOProStats_Feature::more_time($start, $budget);
     }
 
     /**
@@ -1130,6 +1145,17 @@ final class SEOProStats_Search_Import {
         if ($kind === 'pairs') {
             return array(self::dict_id($ids['path'], $row['path']), self::dict_id($ids['query'], $row['query']));
         }
+        return self::total_keys($row);
+    }
+
+    /**
+     * A totals row's keys: the device's code (0: unknown) and the country
+     * (alpha-3, lower case; '' when not one).
+     *
+     * @param array<string,mixed> $row The source's row (keys: device, country).
+     * @return array{0:int,1:string}
+     */
+    private static function total_keys(array $row) {
         $device  = strtoupper(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
         $country = strtolower(isset($row['keys'][1]) ? (string) $row['keys'][1] : '');
         return array(

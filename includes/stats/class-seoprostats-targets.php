@@ -822,9 +822,7 @@ final class SEOProStats_Targets {
      * @return array{0:int,1:int}|WP_Error Added, updated.
      */
     private static function save_valid(array $valid, array $existing, $code, $now, array &$skipped) {
-        $queries = $valid ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
-        $paths   = array_filter(array_column($valid, 'page'));
-        $path_id = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_values($paths)) : array();
+        list($queries, $path_id) = self::valid_ids($valid);
         $room    = self::MAX_TARGETS - count($existing);
         $added   = 0;
         $updated = 0;
@@ -852,6 +850,20 @@ final class SEOProStats_Targets {
             }
         }
         return array($added, $updated);
+    }
+
+    /**
+     * Dictionary ids of the valid rows' queries and of their pages (made
+     * when new).
+     *
+     * @param array<string,array<string,mixed>> $valid check_rows()'s valid rows.
+     * @return array{0:array<string,int>,1:array<string,int>} Query ids and path ids by text.
+     */
+    private static function valid_ids(array $valid) {
+        $queries = $valid ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, array_keys($valid)) : array();
+        $paths   = array_filter(array_column($valid, 'page'));
+        $path_id = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, array_values($paths)) : array();
+        return array($queries, $path_id);
     }
 
     /**

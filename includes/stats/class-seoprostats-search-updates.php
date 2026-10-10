@@ -246,26 +246,37 @@ final class SEOProStats_Search_Updates {
      * @return array<string,mixed>|null
      */
     private static function google_entry(array $incident) {
-        if (empty($incident['id']) || empty($incident['begin'])) {
-            return null;
-        }
-        $id      = (string) $incident['id'];
-        $started = strtotime((string) $incident['begin']);
-        if (!preg_match('/^[A-Za-z0-9_-]{1,100}$/', $id) || !$started) {
+        $started = self::google_start($incident);
+        if (!$started) {
             return null;
         }
         $ended = !empty($incident['end']) ? (int) strtotime((string) $incident['end']) : 0;
         $title = isset($incident['external_desc']) ? self::text($incident['external_desc']) : '';
         $uri   = isset($incident['uri']) ? (string) $incident['uri'] : '';
         return array(
-            'id'      => $id,
+            'id'      => (string) $incident['id'],
             'title'   => $title !== '' ? $title : __('Google Search incident', 'seoprostats'),
             'type'    => self::type($title, self::google_product($incident)),
-            'started' => (int) $started,
+            'started' => $started,
             'ended'   => $ended > $started ? $ended : 0,
             'url'     => preg_match('#^incidents/[A-Za-z0-9_-]+$#', $uri) ? self::GOOGLE_BASE . $uri : self::GOOGLE_BASE,
             'span'    => true,
         );
+    }
+
+    /**
+     * A Google incident's start (Unix time), or 0 without a usable id
+     * and start.
+     *
+     * @param array<string,mixed> $incident Incident.
+     * @return int
+     */
+    private static function google_start(array $incident) {
+        if (empty($incident['id']) || empty($incident['begin'])) {
+            return 0;
+        }
+        $started = strtotime((string) $incident['begin']);
+        return preg_match('/^[A-Za-z0-9_-]{1,100}$/', (string) $incident['id']) && $started ? (int) $started : 0;
     }
 
     /**

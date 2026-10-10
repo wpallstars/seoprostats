@@ -45,6 +45,12 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/**
+ * Where search effort pays: five kinds of opportunity in one report.
+ *
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") The five kinds share the period, engine, page filter and rules; their reads belong to one report.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private steps keep each kind's reads and rows readable.
+ */
 final class SEOProStats_Opportunities { // NOSONAR: one report with five kinds of opportunity; private helpers decompose each kind's reads and rows.
 
     /** Kinds of opportunity. */
