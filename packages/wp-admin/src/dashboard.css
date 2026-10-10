@@ -1281,6 +1281,25 @@ code.spst-meta {
 	gap: 4px;
 }
 
+/*
+ * A row's actions: one column of buttons that fill the cell. The cell is as
+ * narrow as the widest label, and a table column has one width, so every
+ * button in the column is that width, its label centred.
+ */
+.spst-plan__actions-cell {
+	width: 1%;
+}
+
+.spst-plan__buttons {
+	display: grid;
+	gap: 4px;
+}
+
+.spst-plan__buttons .components-button {
+	justify-content: center;
+	white-space: nowrap;
+}
+
 .spst-plan__parts p {
 	margin: 0;
 	font-weight: 600;
