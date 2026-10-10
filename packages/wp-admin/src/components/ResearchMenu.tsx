@@ -20,7 +20,7 @@ export function ResearchMenu({ query }: Readonly<{ query: string }>) {
 		forum: __('Forum questions', 'seoprostats'),
 	};
 	return (
-		<DropdownMenu label={sprintf(/* translators: %s: query. */ __('Research “%s”', 'seoprostats'), query)} text={__('Research', 'seoprostats')} icon={null}>
+		<DropdownMenu label={sprintf(/* translators: %s: query. */ __('Research “%s”', 'seoprostats'), query)} text={__('Research', 'seoprostats')} icon={null} popoverProps={{ flip: true, shift: true, resize: false }}>
 			{() => (
 				<div style={{ width: 'min(320px, calc(100vw - 48px))', maxHeight: 'min(60vh, 480px)', overflowY: 'auto' }}>
 					{RESEARCH_ENGINES.map((engine) => (

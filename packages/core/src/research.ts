@@ -21,7 +21,10 @@ export function researchUrl(engine: ResearchEngine, query: string): string {
 
 /** The first lexical word is an explicit, predictable URL-word seed. */
 export function researchLinks(engine: ResearchEngine, text: string, site: string): ResearchLink[] {
-	const query = text.replace(/[\u0000-\u001f\u007f"“”]/g, ' ').trim();
+	const query = Array.from(text, (character) => {
+		const code = character.charCodeAt(0);
+		return code < 32 || code === 127 ? ' ' : character;
+	}).join('').replace(/["“”]/g, ' ').trim();
 	if (!query) return [];
 	const phrase = `"${query}"`;
 	const word = query.match(/[\p{L}\p{N}]+/u)?.[0] ?? '';
