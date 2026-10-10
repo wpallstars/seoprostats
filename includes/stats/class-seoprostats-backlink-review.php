@@ -319,6 +319,12 @@ final class SEOProStats_Backlink_Review {
             $add('redirects', 10, __('Observed referring-page redirect chain; inspect its destination.', 'seoprostats'));
         }
         foreach ((array) $link['providers'] as $provider) {
+            if (isset($provider['authority']) && is_numeric($provider['authority']) && $provider['authority'] >= 0 && $provider['authority'] <= 10) {
+                $add('low_authority', 5, __('Provider reports authority of 10/100 or less. New legitimate sites can score low; this is not a spam score and providers differ.', 'seoprostats'));
+                break;
+            }
+        }
+        foreach ((array) $link['providers'] as $provider) {
             if (isset($provider['spam_score']) && is_numeric($provider['spam_score']) && $provider['spam_score'] >= 50 && $provider['spam_score'] <= 100) {
                 $add('provider_spam', 25, __('Provider reports a spam score of at least 50/100; not a Google verdict.', 'seoprostats'));
                 break;
