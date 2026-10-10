@@ -2,6 +2,9 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Developers: Experiments, the A/B test blocks and the A/B report split their long functions into named private helpers: an experiment's start and pages, list reads, measurement goal, comparison group and noise band, and checked fields; a test's goals, renewed ids, saved rows and times, the winner's checks and timeline markers; and a report's variants, visits, goal counts, comparisons and verdict. Tests saved, rendered and picked, experiments recorded, listed and decided, and the demo data's reports gave the same answers, stored data and markers before and after (GH#160, GH#207).
+
 = 1.4.2 =
 * Fixed: page rows show Edit for posts of custom post types whose permalinks have no base (a plugin or theme removes it), which `url_to_postid()` does not find: a path that names no post that way is matched by its last part to a published post of any viewable post type whose own permalink has that path. Term archives (category, tag and custom taxonomy pages) get Edit too, to the term's edit screen, for people who may edit the term; their rows in the REST API carry `term_id` and `taxonomy` (GH#231).
 * New: when WP-Cron is turned off (DISABLE_WP_CRON) and no server cron job runs WordPress's scheduled jobs, so new visits wait uncounted, the Statistics and Settings screens say so once the jobs are 15 minutes late (an error past an hour), with the commands for a cron job in the hosting control panel: php …/wp-cron.php, wp cron event run --due-now, or the wp-cron.php address. It goes away when the jobs run. A plugin cannot add the server's cron job itself. The seoprostats_schedule_notice filter hides it (GH#235).
