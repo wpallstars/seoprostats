@@ -204,7 +204,11 @@ score = potential clicks per 28 days × value × confidence ÷ effort
   of its pages' CTRs, so an overlap no page does better on is no item;
   audit: the page's impressions × the site's expected CTR at its position
   × the finding's share, from 1 for noindex and canonical to 0.02 for
-  several H1s or images without alt text), scaled to 28 days.
+  several H1s or images without alt text), scaled to 28 days. The queue
+  reads the chosen period, up to a year (seasonal sites see the year's
+  searches); decay and refresh items are scaled by the days losing
+  clicks compared, which are fewer when the earlier period would start
+  before the first search day (the answer's `decay`).
 - **Value** is how well visits from search to the page convert against
   the site: the page's conversion rate of the Content report's goal
   (smoothed toward the site's rate with 20 visits) ÷ the site's rate, from
@@ -585,7 +589,7 @@ Built (GH#81), schema v13 (`SEOProStats_Targets`):
   updated; `replace` deletes those not in the import. At most 5,000 rows
   and 1 MB.
 - Report: per target, for the period (cut at the newest search day, to
-  its newest 91 days), the query's clicks, impressions, CTR and position
+  its newest 366 days), the query's clicks, impressions, CTR and position
   on any page, the page search shows most for it (`shown`, with its share
   of the impressions), and the page meant for it with its own figures, as
   a state: `ranking` (the page meant for it is the one shown most, or
@@ -640,7 +644,7 @@ As built (`SEOProStats_Loop`):
   `start_date`, `end_date`). `wp seoprostats loop --format=toon` writes it
   as an aidevops export file.
 - `params`: the period (30 days by default, cut at the newest search day
-  and to its newest 91 days, as the queue), engine, goal, page filters and
+  and to its newest 366 days, as the queue), engine, goal, page filters and
   data set, to pass back with `POST /queue/{key}`.
 
 Nothing is stored. The export is one grouped read of `gsc_pairs` by its

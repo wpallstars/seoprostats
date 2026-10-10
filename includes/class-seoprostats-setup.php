@@ -209,6 +209,9 @@ final class SEOProStats_Setup {
         // Light, dark or system colours on the plugin's screens, per person (hooks only).
         require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-admin-theme.php';
         SEOProStats_Admin_Theme::init();
+        // Last named dashboard period, per person (hooks only).
+        require_once SEOPROSTATS_DIR . 'includes/admin/class-seoprostats-admin-period.php';
+        SEOProStats_Admin_Period::init();
         self::page_cache();
     }
 
