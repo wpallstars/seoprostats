@@ -440,38 +440,21 @@ final class SEOProStats_Search_Import {
      * @return array{0:int,1:int}|WP_Error imports.id (0: none started) and rows written.
      */
     private static function import_appearances($source, array $ready, array $range, array &$queue, $start, $budget) {
-        list($class, $token, $property) = $ready;
-        list($from, $to) = $range;
         $import = 0;
         $rows   = 0;
         $days   = array();
         while ($queue && ($budget === 0 || SEOProStats_Feature::more_time($start, $budget))) {
-            if (self::disconnected($source, $import)) {
+            $step = self::appearance_step($source, $ready, $range, (string) $queue[0], $import);
+            if ($step === null) {
                 break;
             }
-            $value = (string) $queue[0];
-            $data  = $class::appearances($token, $property, $from, $to, $value);
-            if (is_wp_error($data)) {
+            if (is_wp_error($step)) {
                 if ($import) {
-                    self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
+                    self::finish($import, self::FAILED, $days, $rows, $step->get_error_message());
                 }
-                return $data;
+                return $step;
             }
-            if (!$import) {
-                // Disconnected during the request above: start no import.
-                if (self::disconnected($source, 0)) {
-                    break;
-                }
-                $import = self::start($source, $property, $from);
-                if (!$import) {
-                    return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
-                }
-            }
-            $added = self::replace_appearance($value, $data, $from, $to, $import);
-            if (is_wp_error($added)) {
-                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
-                return $added;
-            }
+            list($data, $added) = $step;
             $rows += $added;
             $days  = self::days_in($days, array_map('strval', array_column(array_column($data, 'keys'), 0)), $range);
             array_shift($queue);
@@ -481,6 +464,41 @@ final class SEOProStats_Search_Import {
             self::finish($import, self::DONE, $days ? $days : $range, $rows);
         }
         return array($import, $rows);
+    }
+
+    /**
+     * Import one queued appearance, starting the run's import before its
+     * first rows are written.
+     *
+     * @param string                            $source Source key.
+     * @param array{0:string,1:string,2:string} $ready  Source class, token and property.
+     * @param array{0:string,1:string}          $range  First and last day.
+     * @param string                            $value  The appearance.
+     * @param int                               $import imports.id, 0 until started; set when started.
+     * @return array{0:array<int,array<string,mixed>>,1:int}|WP_Error|null The source's rows and rows written; null when disconnected.
+     */
+    private static function appearance_step($source, array $ready, array $range, $value, &$import) {
+        list($class, $token, $property) = $ready;
+        list($from, $to) = $range;
+        if (self::disconnected($source, $import)) {
+            return null;
+        }
+        $data = $class::appearances($token, $property, $from, $to, $value);
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        if (!$import) {
+            // Disconnected during the request above: start no import.
+            if (self::disconnected($source, 0)) {
+                return null;
+            }
+            $import = self::start($source, $property, $from);
+            if (!$import) {
+                return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
+            }
+        }
+        $added = self::replace_appearance($value, $data, $from, $to, $import);
+        return is_wp_error($added) ? $added : array($data, $added);
     }
 
     /**
@@ -670,8 +688,6 @@ final class SEOProStats_Search_Import {
      * @return array{0:int,1:int,2:int}|WP_Error imports.id (0: none started), rows written, pages imported.
      */
     private static function import_pairs($source, array $ready, array $range, array &$queue, $start, $budget, $ran) {
-        list($class, $token, $property) = $ready;
-        list($from, $to) = $range;
         $import = 0;
         $rows   = 0;
         $pages  = 0;
@@ -680,26 +696,17 @@ final class SEOProStats_Search_Import {
             if (($pages > 0 || $ran) && $budget > 0 && !SEOProStats_Feature::more_time($start, $budget)) {
                 break;
             }
-            if (self::disconnected($source, $import)) {
+            $step = self::pairs_step($source, $ready, $range, (string) $queue[0], $import);
+            if ($step === null) {
                 break;
             }
-            if (!$import) {
-                $import = self::start($source, $property, $from);
-                if (!$import) {
-                    return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
+            if (is_wp_error($step)) {
+                if ($import) {
+                    self::finish($import, self::FAILED, $days, $rows, $step->get_error_message());
                 }
+                return $step;
             }
-            $url  = (string) $queue[0];
-            $data = $class::page_pairs($token, $property, $url, $from, $to);
-            if (is_wp_error($data)) {
-                self::finish($import, self::FAILED, $days, $rows, $data->get_error_message());
-                return $data;
-            }
-            $added = self::replace_pairs((int) $class::ENGINE, $url, $data, $from, $to, $import);
-            if (is_wp_error($added)) {
-                self::finish($import, self::FAILED, $days, $rows, $added->get_error_message());
-                return $added;
-            }
+            list($data, $added) = $step;
             $rows += $added;
             $days  = array_values(array_unique(array_merge($days, array_map('strval', array_keys($data)))));
             $pages++;
@@ -710,6 +717,37 @@ final class SEOProStats_Search_Import {
             self::finish($import, self::DONE, $days ? $days : $range, $rows);
         }
         return array($import, $rows, $pages);
+    }
+
+    /**
+     * Import one queued page's queries, starting the run's import before
+     * its first request.
+     *
+     * @param string                            $source Source key.
+     * @param array{0:string,1:string,2:string} $ready  Source class, token and property.
+     * @param array{0:string,1:string}          $range  First and last day.
+     * @param string                            $url    The page's address.
+     * @param int                               $import imports.id, 0 until started; set when started.
+     * @return array{0:array<string,array<int,array<string,mixed>>>,1:int}|WP_Error|null The source's rows by day and rows written; null when disconnected.
+     */
+    private static function pairs_step($source, array $ready, array $range, $url, &$import) {
+        list($class, $token, $property) = $ready;
+        list($from, $to) = $range;
+        if (self::disconnected($source, $import)) {
+            return null;
+        }
+        if (!$import) {
+            $import = self::start($source, $property, $from);
+            if (!$import) {
+                return new WP_Error('seoprostats_import_row', __('The import could not be recorded in the database.', 'seoprostats'));
+            }
+        }
+        $data = $class::page_pairs($token, $property, $url, $from, $to);
+        if (is_wp_error($data)) {
+            return $data;
+        }
+        $added = self::replace_pairs((int) $class::ENGINE, $url, $data, $from, $to, $import);
+        return is_wp_error($added) ? $added : array($data, $added);
     }
 
     /**
