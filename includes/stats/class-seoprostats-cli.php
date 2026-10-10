@@ -2264,7 +2264,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * ---
      *
      * [<what>...]
-     * : For import: the file (- for standard input); with --from=seo-plugin, the suggested searches to import (every new one when left out). For delete: the searches.
+     * : For import: the file (- for standard input); with --from=seo-plugin (or suggest --import), the suggested searches to import (every new one when left out). For delete: the searches.
      *
      * [--from=<from>]
      * : For import: seo-plugin imports the SEO plugin's focus keywords instead of a file.
@@ -2275,6 +2275,9 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      *
      * [--all-keywords]
      * : For suggest and import --from=seo-plugin: every focus keyword of a page, not only its main one.
+     *
+     * [--import]
+     * : For suggest: import the new suggestions (or the searches named), as import --from=seo-plugin does.
      *
      * [--only-new]
      * : For import: add new searches only; searches already listed are skipped and left as they are.
@@ -2368,6 +2371,10 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
         }
         if ($action === 'import') {
             $this->targets_import($what, $assoc);
+            return;
+        }
+        if ($action === 'suggest' && !empty($assoc['import'])) {
+            $this->targets_import($what, array('from' => 'seo-plugin') + $assoc);
             return;
         }
         if ($action === 'suggest') {
