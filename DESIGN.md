@@ -154,7 +154,7 @@ row, and every disabled control with a line saying why. The private link
 shows in a success notice with a full-width read-only address, Copy and
 Open (new window).
 
-- **Primary (`#2271b1`)**: the admin colour scheme's accent (`--spst-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's.
+- **Primary (`#2271b1`)**: the admin colour scheme's accent (`--spst-accent`); the chart's line, selected tiles and tabs, links. The hex is the default scheme's. Every scheme keeps its hue, at a brightness that reads at 4.5:1: in light mode its luminance is lowered to at most 0.15 (`color(from accent xyz-d65 …)`, x, y and z scaled together, so hue and saturation stay), which reads at 4.6:1 or more on `#f0f0f0` and behind white labels. Modern and Ectoplasm are under the cap and unchanged; Sunrise `#ad631e` becomes `#a05b1b`, Default `#007cba` `#0072ac`. On the plugin's screens the capped colour replaces `--wp-admin-theme-color` and its darker tones (0.12, 0.096) inside `body`, so WordPress's buttons, fields and components take it too; classic schemes' link hover and focus (`#0096dd`, 3.3:1) become `#005e8e`. The Dashboard widget and editor panel cap `--spst-accent` the same way. Older browsers keep the scheme's colour.
 - **Secondary (`#50575e`)**: muted text, axis labels, captions (`--spst-muted`).
 - **Tertiary (`#007017`)**: a change for the better (`--spst-good`).
 - **Neutral (`#f6f7f7`)**: row and button hover (`--spst-hover`).
@@ -166,7 +166,7 @@ Open (new window).
 
 ### Colour mode
 
-The Statistics and Settings screens have a per-person colour mode: **Light** (default, WordPress's own colours), **Dark** or **System** (follows `prefers-color-scheme` live). An icon button right of **Buy me a coffee** (sun, moon, or a half-filled circle for System) opens a three-item `menuitemradio` menu with a tick on the chosen mode; arrows, Home, End and Escape work, and the change is announced. The choice is user meta (`seoprostats_admin_theme`), like the admin colour scheme. A `<head>` script sets `spst-theme-{mode}` and, when dark, `spst-dark` on `<html>` before first paint; every dark rule waits for `html.spst-dark` (`admin/css/seoprostats-theme.css`), so Light is untouched WordPress. Only the plugin's screens load it.
+The Statistics and Settings screens have a per-person colour mode: **Light** (default, WordPress's own colours), **Dark** or **System** (follows `prefers-color-scheme` live). An icon button right of **Buy me a coffee** (sun, moon, or a half-filled circle for System) opens a three-item `menuitemradio` menu with a tick on the chosen mode; arrows, Home, End and Escape work, and the change is announced. The choice is user meta (`seoprostats_admin_theme`), like the admin colour scheme. A `<head>` script sets `spst-theme-{mode}` and, when dark, `spst-dark` on `<html>` before first paint; every dark rule waits for `html.spst-dark` (`admin/css/seoprostats-theme.css`), so Light is WordPress's own, apart from the scheme colour's brightness (Primary, above). Only the plugin's screens load it.
 
 Dark palette (WordPress admin greys, `--spst-ui-*`, defined once):
 
