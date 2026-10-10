@@ -1048,6 +1048,22 @@ final class SEOProStats_Search_Import {
      * @return array<string,array<string,array<int,int|string>>> Kind => key => [keys…, clicks, impressions, pos_impr].
      */
     public static function rows(array $data) {
+        $ids = self::text_ids($data);
+        $out = array_fill_keys(array_keys(self::TABLES), array());
+        foreach (array_keys(self::TABLES) as $kind) {
+            $out[$kind] = self::kind_rows($kind, isset($data[$kind]) ? $data[$kind] : array(), $ids);
+        }
+        return $out;
+    }
+
+    /**
+     * Mark the rows' paths and queries, then look up the dictionary ids
+     * of their paths, queries and search appearances (in that order).
+     *
+     * @param array<string,array<int,array<string,mixed>>> $data Kind => the source's rows; changed by mark_paths() and mark_queries().
+     * @return array<string,array<string,int>> path, query and appearance: text => dictionary id.
+     */
+    private static function text_ids(array &$data) {
         $paths   = self::mark_paths($data);
         $queries = self::mark_queries($data);
         $ids     = array(
@@ -1056,24 +1072,34 @@ final class SEOProStats_Search_Import {
         );
         $appearances       = isset($data['appearance']) ? array_map('strval', array_column(array_column($data['appearance'], 'keys'), 0)) : array();
         $ids['appearance'] = $appearances ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, $appearances) : array();
+        return $ids;
+    }
 
-        $out = array_fill_keys(array_keys(self::TABLES), array());
-        foreach (array_keys(self::TABLES) as $kind) {
-            foreach (isset($data[$kind]) ? $data[$kind] : array() as $row) {
-                $keys = self::row_keys($kind, $row, $ids);
-                if (in_array(0, array_slice($keys, 0, $kind === 'totals' ? 0 : 2), true)) {
-                    continue;
-                }
-                $id  = implode("\t", $keys);
-                $add = self::row_sums($row);
-                if (!isset($out[$kind][$id])) {
-                    $out[$kind][$id] = array_merge($keys, array(0, 0, 0));
-                }
-                $n                        = count($keys);
-                $out[$kind][$id][$n]     += $add[0];
-                $out[$kind][$id][$n + 1] += $add[1];
-                $out[$kind][$id][$n + 2] += $add[2];
+    /**
+     * One kind's rows as table rows: rows with a text without an id left
+     * out, rows with the same keys added together.
+     *
+     * @param string                              $kind A key of TABLES.
+     * @param array<int,array<string,mixed>>      $rows The source's rows of that kind.
+     * @param array<string,array<string,int>>     $ids  From text_ids().
+     * @return array<string,array<int,int|string>> Key => [keys…, clicks, impressions, pos_impr].
+     */
+    private static function kind_rows($kind, array $rows, array $ids) {
+        $out = array();
+        foreach ($rows as $row) {
+            $keys = self::row_keys($kind, $row, $ids);
+            if (in_array(0, array_slice($keys, 0, $kind === 'totals' ? 0 : 2), true)) {
+                continue;
             }
+            $id  = implode("\t", $keys);
+            $add = self::row_sums($row);
+            if (!isset($out[$id])) {
+                $out[$id] = array_merge($keys, array(0, 0, 0));
+            }
+            $n                 = count($keys);
+            $out[$id][$n]     += $add[0];
+            $out[$id][$n + 1] += $add[1];
+            $out[$id][$n + 2] += $add[2];
         }
         return $out;
     }
