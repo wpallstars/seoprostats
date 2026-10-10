@@ -19,8 +19,17 @@ export function ResearchMenu({ query }: Readonly<{ query: string }>) {
 		site: __('This site’s pages', 'seoprostats'),
 		forum: __('Forum questions', 'seoprostats'),
 	};
+	/* translators: a button that opens a menu of searches; the ellipsis shows it opens a menu. */
+	const more = __('Research…', 'seoprostats');
 	return (
-		<DropdownMenu label={sprintf(/* translators: %s: query. */ __('Research “%s”', 'seoprostats'), query)} text={__('Research', 'seoprostats')} icon={null} popoverProps={{ flip: true, shift: true, resize: false }}>
+		<DropdownMenu
+			className="spst-research"
+			label={sprintf(/* translators: %s: query. */ __('Research “%s”', 'seoprostats'), query)}
+			text={more}
+			icon={null}
+			toggleProps={{ variant: 'link', className: 'spst-research__toggle' }}
+			popoverProps={{ flip: true, shift: true, resize: false }}
+		>
 			{() => (
 				<div style={{ width: 'min(320px, calc(100vw - 48px))', maxHeight: 'min(60vh, 480px)', overflowY: 'auto' }}>
 					{RESEARCH_ENGINES.map((engine) => (
