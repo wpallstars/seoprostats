@@ -138,7 +138,7 @@ const allowed = PAGE_QUERY.concat((cfg.q || []).map((key) => String(key).toLower
 const own = (cfg.h || []).map((host) => String(host).toLowerCase()).concat(loc.hostname.toLowerCase());
 /** Paths matching any of a list of globs (* matches any characters). */
 const globs = (list?: string[]): RegExp[] =>
-	(list || []).map((glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')); // NOSONAR: a plain string is shorter than String.raw in the built tracker.
+	(list || []).map((glob) => new RegExp('^' + String(glob).split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$')); // NOSONAR nosemgrep: a plain string is shorter than String.raw in the built tracker; the site owner's path globs, with every special character escaped, not visitor input.
 const skipPaths = globs(cfg.x);
 const affiliatePaths = globs(cfg.a);
 
