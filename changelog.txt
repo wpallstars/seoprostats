@@ -2,6 +2,10 @@
 
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
+= Unreleased =
+* Changed: the dashboard opens on Last 91 days instead of Last 30 days, so the previous period meets the same weekdays. Links and bookmarks that name a period keep it (GH#220).
+* Changed: on Search, Last 30 days, Last 90 days and Last 12 months keep their length and end on the newest day with search data, as the whole-week periods already did, instead of losing the 3 or 4 days not imported yet: Last 30 days now holds 30 days, compared with the 30 before. This week, month and year are still cut there (GH#220).
+
 = 1.4.0 =
 * New: dark mode for the Statistics and Settings screens. The sun or moon button right of Buy me a coffee chooses Light (the default), Dark or System, which follows the computer as it changes; each person's choice is kept in their user meta, as WordPress keeps the admin colour scheme, and saved through admin-ajax with a nonce. A few lines in the screen's head set the mode before anything is drawn, so nothing flashes, and only the plugin's screens load the dark styles (admin/css/seoprostats-theme.css). The palette is WordPress's admin greys in one set of variables, read by the plugin's colour tokens and WordPress components' theme variables; primary buttons keep the admin colour scheme's colour and accent text uses a lighter mix of it. Charts and their change markers redraw in the new colours at once. Uninstall removes the choice (GH#214).
 * Changed: loading placeholders are drawn from the text colour instead of fixed light greys, so they read on light and dark screens and shared reports alike. A loading table shows a header and rows of labels and figures under one sweep, the main chart shows faint grid lines and a soft area until it draws, and with reduced motion they stay still. Shared reports' dark mode also gives chart tooltips a raised panel with an edge and lighter change marker colours (GH#214).
