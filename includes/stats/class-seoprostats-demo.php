@@ -412,10 +412,13 @@ final class SEOProStats_Demo {
         array('https://news.ycombinator.com/', '/blog/privacy-friendly-analytics/', 'Privacy-friendly analytics without cookies', 1, 22, 0),
         array('https://example.org/speed-guide/', '/blog/speed-up-wordpress/', 'speed up WordPress', 0, 4, 0),
         array('https://example.org/speed-guide/', '/', '[image]', 0, 4, 0),
+        array('https://spam-links.example.click/list/', '/pricing/', 'casino payday loans pills', 0, 3, 0),
+        array('https://spam-links.example.click/list/', '/features/', 'buy cheap pills', 0, 3, 0),
+        array('https://short-lived.example.tk/list/', '/pricing/', 'casino', 0, 5, 2),
     );
 
     /** Backlinks made by this version of the demo; older ones are made again. */
-    const BACKLINKS_VERSION = 1;
+    const BACKLINKS_VERSION = 2;
 
     /**
      * Google's URL Inspection of demo pages (SEOProStats_Inspections), as
@@ -1236,8 +1239,9 @@ final class SEOProStats_Demo {
                 'anchor'     => $link[2],
                 'rel'        => (int) $link[3],
                 'first_seen' => $now - (int) $link[4] * DAY_IN_SECONDS,
-                'last_seen'  => $lost ? $lost - 7 * DAY_IN_SECONDS : $now - DAY_IN_SECONDS,
+                'last_seen'  => $lost ? max($now - (int) $link[4] * DAY_IN_SECONDS, $lost - 7 * DAY_IN_SECONDS) : $now - DAY_IN_SECONDS,
                 'lost'       => $lost,
+                'facts'      => strpos($link[0], 'spam-links.example.click') !== false ? array('outbound' => 300, 'language' => 'zz', 'link_list' => true) : array(),
             );
         }
         SEOProStats_Backlinks::write_links($links);

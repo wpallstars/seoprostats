@@ -1933,6 +1933,114 @@ paths:
         '404':
           $ref: '#/components/responses/NoDemo'
 
+  /backlinks/review:
+    get:
+      operationId: getBacklinkReview
+      summary: Explain backlink review signals and local owner decisions (administrators).
+      description: Bounded live/lost backlink samples; lost links use the selected period. Missing facts add nothing. Previous decisions remain visible outside the sample. Scores are hints, not proof.
+      parameters:
+        - $ref: '#/components/parameters/data'
+        - $ref: '#/components/parameters/range'
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+        - $ref: '#/components/parameters/offset'
+      responses:
+        '200':
+          description: Sites ordered by descending score, with anchors, reasons and decisions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinkReviewAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: decideBacklinkReview
+      summary: Save a local domain or source URL decision with user and time (administrators).
+      description: Keep suppresses future flags. Domain disavow covers its URLs; a URL keep does not override it. Nothing is submitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scope, target, decision]
+              properties:
+                scope: { type: string, enum: [domain, url] }
+                target: { type: string, description: 'ASCII domain name or exact HTTP(S) source URL, up to 2048 characters; no credentials or control characters.' }
+                decision: { type: string, enum: [keep, disavow, undecided] }
+                data: { type: string, enum: [live, demo], default: live }
+      responses:
+        '200':
+          description: Stored owner decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacklinkDecision'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /backlinks/disavow.txt:
+    get:
+      operationId: exportBacklinkDisavow
+      summary: Download a Google-format disavow text attachment (administrators).
+      description: UTF-8, grouped domains then unchanged URLs, with site/date/count comment headers. At most 100000 lines and 2 MB including comments. Never truncated or uploaded. Manual upload replaces the old list and requires a URL-prefix property; Bing no longer supports disavow. Most sites never need it.
+      parameters:
+        - $ref: '#/components/parameters/data'
+      responses:
+        '200':
+          description: Plain text, not a JSON string. Attachment filename is disavow.txt; Cache-Control is no-store.
+          content:
+            text/plain:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /backlinks/disavow/merge:
+    post:
+      operationId: mergeBacklinkDisavow
+      summary: Retain a prior disavow list locally (administrators).
+      description: Validate UTF-8, every entry, 2048-character URL length and combined export line/byte limits before any write. Imported decisions are labelled. A conflicting existing keep/undecided decision rejects the whole merge without writes; every entry in a successful merge is retained. No external submission.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, maxLength: 2097152 }
+                data: { type: string, enum: [live, demo], default: live }
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                data: { type: string, enum: [live, demo], default: live }
+      responses:
+        '200':
+          description: Unique prior entries retained, without overriding explicit decisions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries]
+                properties:
+                  entries: { type: integer, minimum: 0 }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /backlinks/import:
     get:
       operationId: getBacklinkImport
@@ -6575,6 +6683,59 @@ components:
       enum: [links, domains, pages, lost]
       default: links
 
+    BacklinkDecision:
+      type: object
+      required: [scope, target, decision, imported, user_id, reviewed]
+      properties:
+        scope: { type: string, enum: [domain, url] }
+        target: { type: string }
+        decision: { type: string, enum: [keep, disavow, undecided] }
+        imported: { type: boolean }
+        user_id: { type: integer, minimum: 0 }
+        reviewed: { type: integer, minimum: 0, description: 'Unix seconds, zero if no decision yet.' }
+    BacklinkSignal:
+      type: object
+      required: [signal, weight, reason]
+      properties:
+        signal: { type: string }
+        weight: { type: integer, minimum: 0, maximum: 100 }
+        reason: { type: string }
+    BacklinkReviewAnswer:
+      type: object
+      required: [rows, total, more, max_rows, signals_are_proof]
+      properties:
+        total: { type: integer }
+        more: { type: boolean }
+        max_rows: { type: integer, description: 'Bound of each live/lost backlink sample.' }
+        signals_are_proof: { type: boolean, enum: [false] }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [host, score, reasons, decision, links, url_decisions]
+            properties:
+              host: { type: string }
+              score: { type: integer, minimum: 0, maximum: 100 }
+              reasons:
+                type: array
+                items: { $ref: '#/components/schemas/BacklinkSignal' }
+              decision: { $ref: '#/components/schemas/BacklinkDecision' }
+              url_decisions:
+                type: array
+                items: { $ref: '#/components/schemas/BacklinkDecision' }
+              links:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/BacklinkRow'
+                    - type: object
+                      required: [score, reasons, decision]
+                      properties:
+                        score: { type: integer, minimum: 0, maximum: 100 }
+                        reasons:
+                          type: array
+                          items: { $ref: '#/components/schemas/BacklinkSignal' }
+                        decision: { $ref: '#/components/schemas/BacklinkDecision' }
     BacklinkRow:
       type: object
       description: A link from a page of another site to one of the site's pages (links and lost).
@@ -6626,6 +6787,20 @@ components:
               last_seen:
                 type: [string, 'null']
                 format: date-time
+              spam_score:
+                type: integer
+                minimum: 0
+                maximum: 100
+                description: Optional observed spam score; never derived from authority.
+        facts:
+          type: object
+          description: Facts from an existing local page check; absent facts remain unknown.
+          properties:
+            outbound: { type: integer, minimum: 0 }
+            language: { type: string }
+            script: { type: string }
+            link_list: { type: boolean }
+            redirects: { type: integer, minimum: 0 }
         lost:
           type: [string, 'null']
           format: date-time

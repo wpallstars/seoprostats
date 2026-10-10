@@ -18,6 +18,8 @@ import {
 	type AuditAnswer,
 	type AuditFinding,
 	type BacklinkKind,
+	type BacklinkDecision,
+	type BacklinkReviewAnswer,
 	type BacklinksAnswer,
 	type BreakdownAnswer,
 	type ChangesAnswer,
@@ -350,6 +352,37 @@ export function useBacklinks(scope: SearchScope, kind: BacklinkKind, limit = 25,
 		placeholderData: keepPreviousData,
 		enabled,
 	});
+}
+
+export function useBacklinkReview(scope: SearchScope, offset: number) {
+	const { data, enabled } = useReportData();
+	const args = withData({ ...apiArgs({ ...scope, compare: 'none', filters: [] }), limit: 25, offset }, data);
+	return useQuery({ queryKey: ['backlink-review', args], queryFn: () => get<BacklinkReviewAnswer>('backlinks/review', args), enabled: enabled && boot.canManage && !shareAccess.token });
+}
+
+export async function saveBacklinkDecision(decision: BacklinkDecision, data: DataSet) {
+	const answer = await send<BacklinkDecision>('backlinks/review', 'POST', { scope: decision.scope, target: decision.target, decision: decision.decision, data });
+	await queryClient.invalidateQueries({ queryKey: ['backlink-review'] });
+	return answer;
+}
+
+export async function mergeDisavow(text: string, data: DataSet) {
+	const answer = await send<{ entries: number }>('backlinks/disavow/merge', 'POST', { text, data });
+	await queryClient.invalidateQueries({ queryKey: ['backlink-review'] });
+	return answer;
+}
+
+export async function downloadDisavow(data: DataSet) {
+	const response = await apiFetch({ path: addQueryArgs(`${NAMESPACE}/backlinks/disavow.txt`, { data }), parse: false });
+	const blob = await response.blob();
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = 'disavow.txt';
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** Search targets: each with its position, clicks and the page that ranks; filters do not apply (targets are searches). */

@@ -1395,7 +1395,8 @@ export interface BacklinkRow {
 	new: boolean;
 	authority: number;
 	/** Export scores are not comparable between providers; missing scores are null. */
-	providers: Record<string, { authority: number | null; last_seen: string | null }>;
+	providers: Record<string, { authority: number | null; last_seen: string | null; spam_score?: number }>;
+	facts?: { outbound?: number; language?: string; script?: string; redirects?: number; link_list?: boolean };
 	/** lost list: when it was lost. */
 	lost?: string | null;
 }
@@ -1434,6 +1435,29 @@ export interface BacklinksAnswer extends Answer {
 	rows: (BacklinkRow | BacklinkDomainRow | BacklinkPageRow)[];
 	total: number;
 	more: boolean;
+}
+
+export interface BacklinkDecision {
+	scope: 'domain' | 'url';
+	target: string;
+	decision: 'keep' | 'disavow' | 'undecided';
+	imported: boolean;
+	user_id: number;
+	reviewed: number;
+}
+
+export interface BacklinkSignal {
+	signal: string;
+	weight: number;
+	reason: string;
+}
+
+export interface BacklinkReviewAnswer {
+	rows: { host: string; score: number; reasons: BacklinkSignal[]; decision: BacklinkDecision; url_decisions: BacklinkDecision[]; links: (BacklinkRow & { score: number; reasons: BacklinkSignal[]; decision: BacklinkDecision })[] }[];
+	total: number;
+	more: boolean;
+	max_rows: number;
+	signals_are_proof: false;
 }
 
 /** A search target's status, as the site set it. */

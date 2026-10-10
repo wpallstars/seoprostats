@@ -592,6 +592,34 @@ and merge first/last dates and source bits. Source filtering is in memory over
 the existing indexed 5,000-row reads, before aggregation and pagination;
 cache keys include source and import progress invalidates the version.
 
+Backlink review (GH#147, schema v22) uses `SEOProStats_Backlink_Review`.
+`links.facts` retains outgoing-link counts, link-list density, declared language,
+predominant script and transport-provided redirect history from the existing
+weekly verifier, without extra requests. Only observed
+facts contribute; authority is not a spam score. Explained signals have fixed
+weights, counted once per site and capped at 100, with no automatic decision.
+The existing bounded live/lost reports supply link rows; lost uses the selected
+period. Missing provider facts are never inferred.
+
+`link_reviews` stores scope (domain/source URL), exact target, decision,
+imported provenance, user ID and Unix review time. SHA-256 rkey identifies the
+full target; decision_id indexes bounded reads and exports. Decisions outlive
+link loss, keep suppresses future flags, and exports ignore the current report
+period/sample. The schema registry creates/removes live and demo tables; no new
+option or cron job. Demo decisions are isolated from live decisions.
+
+Owner-only REST review GET/POST, merge POST (paste/upload), plain-text export GET,
+CLI review/disavow and backlink-review ability use the same helper. HTTP export
+uses a narrowly scoped rest_pre_serve_request filter so the attachment is not a
+JSON string; errors remain JSON. Validation precedes merge writes, combined
+output limits are checked, and transactional unique-key reads lock existing
+decisions. A conflicting Keep/Undecided entry rolls back the entire merge rather
+than silently dropping it or changing the decision; successful merges preserve
+all entries. CLI --merge preserves supplied entries in that export without
+writing decisions. Header lines count toward limits; no silent truncation or
+external submission. Google guidance and replacement-upload warnings are part of
+the dashboard. Weak signals never assert that a site is spam.
+
 The dashboard reads `GET /markers` with the chart's range and, when the
 reports are filtered to one page (`is`, `matches` or `contains` with one
 value), that page. `packages/charts/src/markers.ts` draws the lane under the

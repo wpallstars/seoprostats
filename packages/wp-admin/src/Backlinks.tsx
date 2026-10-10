@@ -15,11 +15,12 @@
  */
 
 import { useState } from 'react';
-import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
+import { Button, Card, CardBody, CardHeader, Notice, SelectControl, TextareaControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
-import { BACKLINK_SOURCES, formatNumber, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
-import { errorMessage, scopeKey, useBacklinks } from './api';
-import { locale } from './boot';
+import { BACKLINK_SOURCES, formatNumber, type BacklinkDecision, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
+import { downloadDisavow, errorMessage, mergeDisavow, saveBacklinkDecision, scopeKey, shareAccess, useBacklinkReview, useBacklinks } from './api';
+import { boot, locale } from './boot';
+import { useDataSet } from './data';
 import { longLabel } from './dates';
 import type { SearchPick, SearchReportProps } from './components/SearchSetup';
 import { TableScroll } from './components/TableScroll';
@@ -75,6 +76,7 @@ type BacklinksProps = SearchReportProps & {
 export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 	const kind: BacklinkKind = state.backlinks ?? 'links';
 	const [source, setSource] = useState<(typeof BACKLINK_SOURCES)[number] | ''>('');
+	const [review, setReview] = useState(false);
 	// Back to the first rows when the period or list change.
 	const scope = scopeKey(state.range, state.from, state.to, kind, source);
 	const [at, setAt] = useState({ scope, offset: 0 });
@@ -90,7 +92,9 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 		<Card className="spst-card is-wide spst-section" size="small">
 			<CardHeader className="spst-card__header">
 				<h2 className="spst-card__title">{__('Backlinks', 'seoprostats')}</h2>
+				{boot.canManage && !shareAccess.token && <Button variant="secondary" aria-pressed={review} onClick={() => setReview(!review)}>{review ? __('Back to links', 'seoprostats') : __('Review', 'seoprostats')}</Button>}
 			</CardHeader>
+			{review ? <CardBody><BacklinkReview state={state} /></CardBody> : <>
 			<div className="spst-tiles" role="group" aria-label={__('Show', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 				{TILE_ORDER.map((k) => (
 					<button
@@ -146,8 +150,52 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 					</nav>
 				)}
 			</CardBody>
+			</>}
 		</Card>
 	);
+}
+
+/** Owner-only local decisions. A score never selects disavow automatically. */
+function BacklinkReview({ state }: Readonly<{ state: SearchReportProps['state'] }>) {
+	const data = useDataSet();
+	const scope = JSON.stringify([data, state.range, state.from, state.to]);
+	const [at, setAt] = useState({ scope, offset: 0 });
+	const offset = at.scope === scope ? at.offset : 0;
+	const query = useBacklinkReview(state, offset);
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState('');
+	const [notice, setNotice] = useState('');
+	const [text, setText] = useState('');
+	async function run(action: () => Promise<unknown>) {
+		setBusy(true);
+		setError('');
+		setNotice('');
+		try { await action(); } catch (caught) { setError(errorMessage(caught, __('The action could not finish.', 'seoprostats'))); } finally { setBusy(false); }
+	}
+	function decision(row: BacklinkDecision) {
+		return <SelectControl label={`${row.scope === 'domain' ? __('Site decision', 'seoprostats') : __('URL decision', 'seoprostats')}: ${row.target}`} value={row.decision} disabled={busy || query.isFetching} options={[{ value: 'undecided', label: __('Undecided', 'seoprostats') }, { value: 'keep', label: __('Keep — never flag again', 'seoprostats') }, { value: 'disavow', label: __('Disavow in local file', 'seoprostats') }]} onChange={(value) => { void run(async () => { await saveBacklinkDecision({ ...row, decision: value as BacklinkDecision['decision'] }, data); setNotice(__('Decision saved locally. Nothing was submitted.', 'seoprostats')); }); }} help={row.reviewed ? `${row.imported ? __('From prior list', 'seoprostats') : __('Reviewed', 'seoprostats')} · ${new Date(row.reviewed * 1000).toLocaleString()} · ${__('User', 'seoprostats')} ${row.user_id}` : undefined} />;
+	}
+	return <div>
+		<p>{__('Most sites never need to disavow links. Google recommends it only for many spammy or artificial links that caused, or are likely to cause, a manual action. These scores are review hints, not proof or a recommendation to disavow. Language and TLD alone are weak signals.', 'seoprostats')}</p>
+		<p>{__('Download and upload manually in Search Console’s Disavow Links tool for the matching URL-prefix property, not a Domain property. Every upload replaces the old list: merge your current file first. Bing removed its disavow tool and API in October 2023. Nothing here is sent to any engine. A domain decision covers every URL of that domain; a URL keep cannot override a disavowed domain.', 'seoprostats')}</p>
+		<TextareaControl label={__('Current disavow list (optional)', 'seoprostats')} value={text} onChange={setText} disabled={busy} help={__('UTF-8 .txt; at most 100,000 lines and 2 MB including export comments; URLs up to 2,048 characters.', 'seoprostats')} />
+		<label>{__('Or load a text file', 'seoprostats')} <input type="file" accept=".txt,text/plain" disabled={busy} onChange={(event) => { const file = event.target.files?.[0]; if (file) { void run(async () => { if (file.size > 2097152) { throw new Error(__('The list exceeds 2 MB.', 'seoprostats')); } const buffer = await file.arrayBuffer(); setText(new TextDecoder('utf-8', { fatal: true }).decode(buffer)); }); } }} /></label>
+		<p><Button variant="secondary" disabled={busy || !text.trim()} onClick={() => { void run(async () => { const result = await mergeDisavow(text, data); setNotice(sprintf(/* translators: %d: entries read from a prior file. */ __('%d prior entries read. Existing explicit decisions are kept.', 'seoprostats'), result.entries)); setText(''); }); }}>{__('Merge prior list locally', 'seoprostats')}</Button> <Button variant="secondary" disabled={busy || !!text.trim()} onClick={() => { void run(() => downloadDisavow(data)); }}>{__('Download disavow.txt', 'seoprostats')}</Button></p>
+		{(error || query.isError) && <Notice status="error" isDismissible={false}>{error || errorMessage(query.error, __('Review could not load.', 'seoprostats'))}</Notice>}
+		{notice && <Notice status="success" isDismissible={false}>{notice}</Notice>}
+		<p className="spst-note">{__('Sites are ordered by score. Each signal contributes its displayed weight once per site, capped at 100. Missing facts add nothing. Live and lost links use the bounded backlink sample and selected period; previous decisions remain visible even outside that sample.', 'seoprostats')}</p>
+		{query.data?.rows.map((site) => <section key={site.host}>
+			<h3>{site.host} — {site.score}/100</h3>
+			{decision(site.decision)}
+			<ul>{site.reasons.map((reason) => <li key={reason.signal}>{reason.reason} (+{reason.weight})</li>)}</ul>
+			<details><summary>{__('Links, anchors and URL decisions', 'seoprostats')} ({site.links.length})</summary>
+				{site.links.map((link) => <div key={`${link.source} ${link.page}`}><p><SourceLink url={link.source} /> → {link.page} · {link.anchor || '–'} · {link.score}/100</p><ul>{link.reasons.map((reason) => <li key={reason.signal}>{reason.reason} (+{reason.weight})</li>)}</ul>{decision(link.decision)}</div>)}
+				{site.url_decisions.filter((row) => !site.links.some((link) => link.source === row.target)).map((row) => <div key={row.target}>{decision(row)}</div>)}
+			</details>
+		</section>)}
+		{query.data && !query.data.rows.length && <p>{__('No backlinks or prior decisions in this sample.', 'seoprostats')}</p>}
+		<nav aria-label={__('Review pages', 'seoprostats')}><Button variant="secondary" disabled={busy || query.isFetching || offset === 0} onClick={() => setAt({ scope, offset: Math.max(0, offset - 25) })}>{__('Previous', 'seoprostats')}</Button> <Button variant="secondary" disabled={busy || query.isFetching || !query.data?.more} onClick={() => setAt({ scope, offset: offset + 25 })}>{__('Next', 'seoprostats')}</Button></nav>
+	</div>;
 }
 
 /** The totals in a sentence. */

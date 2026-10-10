@@ -164,6 +164,18 @@ Last, **Google's index** (Search Console only) shows the sitemaps submitted in S
 
 Search → Backlinks shows **How found** and a source filter. Each provider's score (0–100) and last-seen date are kept separately; scores from different tools are not comparable. The report filters its bounded 5,000-row window before counting and paging. Headers shared by several tools cannot identify a provider reliably: use `wp seoprostats backlinks import <file> --source=bing` (or `gsc`, `ahrefs`, `semrush`, `majestic`, `moz`, `generic`) to name it. `wp seoprostats backlinks --source=bing --format=json` reads it. Administrators can also `POST /seoprostats/v1/backlinks/import` with multipart field `file`, or JSON `rows` (objects with the same headers) and optional `source`; `GET` on that route reads progress. Staging stays out of the public media library and is removed as batches finish and on uninstall.
 
+#### Backlink review and disavow
+
+Administrators open **Search → Backlinks → Review** to inspect referring sites by explained score (0–100), with links and anchors. Each reason shows its weight. These are hints, not proof: unusual language, a TLD or a provider score alone is not a reason to disavow. Missing page/provider evidence adds nothing. Review uses the bounded live-link sample and links lost in the selected period, not a complete web crawl.
+
+Choose **Keep** (never flag that domain or source URL again), **Disavow in local file** or **Undecided**. Decisions keep the user and time, independently of whether the link later disappears. Domain decisions cover the whole domain; keeping one URL does not override a disavowed domain. Nothing is ever submitted automatically.
+
+**Most sites never need a disavow file.** Google recommends it only for many spammy, artificial or low-quality links that caused, or are likely to cause, a manual action. First try to have those links removed. If warranted, paste or load your current UTF-8 `.txt` and choose **Merge prior list locally**, then **Download disavow.txt**. Prior entries are labelled in Review. If a supplied entry conflicts with an existing Keep or Undecided decision, the whole merge fails without writing: resolve that decision explicitly or remove it from the supplied list. Every entry in a successful merge is preserved. CLI merge preserves all supplied entries in that particular export without changing local decisions. Invalid input or oversized output fails without truncation. Files have comment headers, grouped `domain:example.com` entries and exact source URLs; limits include comments: 100,000 lines, 2 MB and 2,048 characters per URL.
+
+Upload manually using Search Console's **Disavow Links** tool for the matching **URL-prefix property**. Domain properties are not supported, and a new upload **replaces the whole old list**. Bing removed its disavow tool and API in October 2023; no other engines are supported here.
+
+Interfaces (administrator access): `GET /seoprostats/v1/backlinks/review`; `POST` there with `scope` (`domain` or `url`), `target` and `decision`; `POST /backlinks/disavow/merge` with `text` or multipart `file`; `GET /backlinks/disavow.txt` returns a plain-text attachment. All accept `data=demo` for isolated demo decisions. CLI: `wp seoprostats backlinks review --user=admin --format=json`, or add `--scope=domain --target=example.com --decision=keep`; `wp seoprostats backlinks disavow --user=admin --merge=current-disavow.txt` prints the file. The `seoprostats/backlink-review` ability accepts `action=list|decide|merge|export`; export returns `{text}`. No external credentials or API calls are needed.
+
 #### Targets
 
 **Targets**, before Plan, lists the searches you chose to win and the page meant for each, highest priority first: its position, clicks and impressions on any page, the page search shows most for it, and whether that is the page meant for it (**Ranking with its page**), another page (**Another page ranks**), no page chosen yet, or not shown at all. Administrators **Import targets** by pasting a list: one search a row with its page (a path such as `/pricing/` or an address on this site), priority (0–100, or high, medium, low) and status (candidate, targeted, live, won, retired), as CSV or tab-separated text, JSON, or the aidevops search targets table. A row that cannot be read (no search, an address on another site, a priority or status it does not know, the same search twice) is skipped and listed with its reason, never guessed. Plan lists each open target (candidate, targeted, live) where another page ranks, and each with priority 70 or more in positions 4–20, weighted by its priority.
@@ -510,6 +522,7 @@ Deleting the plugin removes its settings, its connections and their encrypted ke
 
 ### Unreleased
 
+- New: explained backlink spam review, local domain/URL decisions with user and time, prior-list merge and Google disavow text download through the dashboard, REST, CLI and an ability. Nothing is submitted.
 - New: opt-in IndexNow page-change notifications, a virtual verification key, minute-cron batches with an hourly allowance, receipts on Changes and a status card under Connections; REST status and WP-CLI send/status.
 - New: query Research menus on four engines, and dated target research counts, monthly volumes and sortable/filterable Keyword Golden Ratio bands.
 

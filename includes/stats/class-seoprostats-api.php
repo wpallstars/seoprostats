@@ -496,6 +496,36 @@ final class SEOProStats_API {
         self::target_routes($read, $manage, $base, $engine);
         // Outside data sources (administrators who may change the settings).
         $settings = array(__CLASS__, 'can_change');
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        register_rest_route($ns, '/backlinks/review', array(
+            'methods' => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlink_review'),
+            'args' => $base + array('limit' => array('type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 25), 'offset' => self::args(true)['offset']),
+        ));
+        register_rest_route($ns, '/backlinks/review', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlink_review'),
+            'args' => $data + array(
+                'scope' => array('type' => 'string', 'enum' => array('domain', 'url'), 'required' => true),
+                'target' => array('type' => 'string', 'required' => true),
+                'decision' => array('type' => 'string', 'enum' => SEOProStats_Backlink_Review::DECISIONS, 'required' => true),
+            ),
+        ));
+        register_rest_route($ns, '/backlinks/disavow.txt', array(
+            'methods' => WP_REST_Server::READABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlink_disavow'),
+            'args' => $data,
+        ));
+        register_rest_route($ns, '/backlinks/disavow/merge', array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'permission_callback' => $settings,
+            'callback' => array(__CLASS__, 'backlink_merge'),
+            'args' => $data + array('text' => array('type' => 'string')),
+        ));
+        add_filter('rest_pre_serve_request', array(__CLASS__, 'serve_disavow'), 10, 4);
         register_rest_route($ns, '/backlinks/import', array(
             array(
                 'methods' => WP_REST_Server::CREATABLE,
@@ -1870,6 +1900,56 @@ final class SEOProStats_API {
             $req['source'] = $source;
             return SEOProStats_Backlinks::report($req, $kind);
         });
+    }
+
+    /** Local review read/write. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlink_review($request) {
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        if ($request->get_method() === 'GET') {
+            return self::report($request, array('SEOProStats_Backlink_Review', 'report'));
+        }
+        return rest_ensure_response(self::on_data((string) $request->get_param('data'), static function () use ($request) {
+            return SEOProStats_Backlink_Review::decide($request->get_params());
+        }));
+    }
+
+    /** Generate text; errors still use the normal JSON REST response. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlink_disavow($request) {
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        $text = self::on_data((string) $request->get_param('data'), array('SEOProStats_Backlink_Review', 'export'));
+        return is_wp_error($text) ? $text : new WP_REST_Response($text, 200, array('Content-Type' => 'text/plain; charset=UTF-8', 'Content-Disposition' => 'attachment; filename="disavow.txt"', 'Cache-Control' => 'no-store'));
+    }
+
+    /** Raw successful export only, never JSON-encoded or escaped text. @param bool $served Served. @param WP_HTTP_Response $result Response. @param WP_REST_Request $request Request. @param WP_REST_Server $server Server. @return bool */
+    public static function serve_disavow($served, $result, $request, $server) {
+        if (!$served && $request->get_route() === '/' . SEOProStats_Collection::REST_NAMESPACE . '/backlinks/disavow.txt' && $result->get_status() === 200 && is_string($result->get_data())) {
+            // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- validated UTF-8 plain-text attachment, not HTML.
+            echo $result->get_data();
+            return true;
+        }
+        return $served;
+    }
+
+    /** Retain pasted/uploaded prior entries locally. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
+    public static function backlink_merge($request) {
+        require_once __DIR__ . '/class-seoprostats-backlink-review.php';
+        $text = (string) $request->get_param('text');
+        $files = $request->get_file_params();
+        if (isset($files['file'])) {
+            $file = $files['file'];
+            if ($file['error'] !== UPLOAD_ERR_OK || $file['size'] > SEOProStats_Backlink_Review::MAX_BYTES || !is_uploaded_file($file['tmp_name'])) {
+                return new WP_Error('seoprostats_disavow_upload', __('Upload a text list of at most 2 MB.', 'seoprostats'), array('status' => 400));
+            }
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_get_contents_file_get_contents -- an authenticated local upload, bounded above, never a remote URL.
+            $got = file_get_contents($file['tmp_name']);
+            if ($got === false) {
+                return new WP_Error('seoprostats_disavow_upload', __('The list could not be read.', 'seoprostats'), array('status' => 400));
+            }
+            $text = $got;
+        }
+        return rest_ensure_response(self::on_data((string) $request->get_param('data'), static function () use ($text) {
+            return SEOProStats_Backlink_Review::merge($text);
+        }));
     }
 
     /** Start a links export import. @param WP_REST_Request $request Request. @return WP_REST_Response|WP_Error */
