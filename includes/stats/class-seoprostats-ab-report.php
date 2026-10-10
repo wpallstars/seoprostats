@@ -515,7 +515,7 @@ final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI,
      * One variant's numbers: visits and share, with $full the visit
      * metrics and every goal, and the primary metric's conversions.
      *
-     * @param array{slug:string,label:string,weight:int,control:bool,winner:bool} $variant The variant, and whether it is the control and the winner.
+     * @param array<string,mixed>                          $variant The variant (slug, label, weight), and whether it is the control and the winner.
      * @param array<string,mixed>                          $row     Its visits (from visit_rows(); empty for none).
      * @param int|false                                    $id      Its dictionary id (false: never seen).
      * @param int                                          $total   Visits that saw the test.
@@ -833,7 +833,7 @@ final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI,
         });
         $code   = self::verdict_code($visits, $others, $better);
         $leader = self::verdict_leader($code, $variants, $better);
-        $text   = self::verdict_text($code, $others, $leader, $primary);
+        $text   = self::verdict_text($code, $others, (array) $leader, $primary);
         return array(
             array('code' => $code, 'text' => $text),
             $leader && $code !== 'no_data' ? array('slug' => (string) $leader['slug'], 'label' => (string) $leader['label']) : null,
@@ -905,11 +905,11 @@ final class SEOProStats_AB_Report { // NOSONAR: one A/B report for REST, WP-CLI,
      *
      * @param string                         $code    From verdict_code().
      * @param array<int,array<string,mixed>> $others  The variants but the control.
-     * @param array<string,mixed>|null       $leader  From verdict_leader().
+     * @param array<string,mixed>            $leader  From verdict_leader() (empty for none; a winner always has one).
      * @param array<string,string>           $primary The primary metric.
      * @return string
      */
-    private static function verdict_text($code, array $others, $leader, array $primary) {
+    private static function verdict_text($code, array $others, array $leader, array $primary) {
         switch ($code) {
             case 'no_data':
                 return $others ? __('No visits have seen this test yet.', 'seoprostats') : __('This test has only one variant.', 'seoprostats');

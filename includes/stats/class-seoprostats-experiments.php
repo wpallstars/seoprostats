@@ -544,7 +544,7 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
      */
     private static function shape(array $row) {
         require_once __DIR__ . '/class-seoprostats-search.php';
-        $meta    = self::meta($row);
+        $meta     = self::meta($row);
         $metric   = self::code_name(self::METRICS, $row['metric'], 'clicks');
         $status   = self::code_name(self::STATUSES, $row['status'], 'running');
         $pages    = self::row_pages($row, $meta);
@@ -614,7 +614,7 @@ final class SEOProStats_Experiments { // NOSONAR: one experiment model for REST,
      *
      * @param array<string,mixed> $row    Table row.
      * @param array<string,mixed> $meta   Its meta.
-     * @param string              $status Its status.
+     * @param string|null         $status Its status.
      * @return array<string,mixed>|null
      */
     private static function shape_measured(array $row, array $meta, $status) {
