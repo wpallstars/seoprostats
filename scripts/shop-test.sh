@@ -27,6 +27,7 @@ STARTED=0
 FAILED=0
 SHOPS=()
 readonly UA='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36'
+readonly JSON_TYPE='Content-Type: application/json'
 
 die() {
 	local message="$1"
@@ -210,9 +211,9 @@ request() {
 }
 
 visit() {
-	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
+	request '/wp-json/seoprostats/v1/collect' 204 -H "$JSON_TYPE" \
 		--data '{"h":"127.0.0.1","e":[{"t":"pv","p":"1111222233334444","u":"/?utm_source=shop-test&utm_medium=email&utm_campaign=purchases"}]}'
-	request '/wp-json/seoprostats/v1/collect' 204 -H 'Content-Type: application/json' \
+	request '/wp-json/seoprostats/v1/collect' 204 -H "$JSON_TYPE" \
 		--data '{"h":"127.0.0.1","e":[{"t":"pv","p":"5555666677778888","u":"/checkout/"}]}'
 	wp_cli seoprostats process
 	return 0
@@ -226,9 +227,9 @@ woo() {
 		nonce="$(awk 'tolower($1)=="nonce:" {gsub("\r", "", $2); print $2}' "$TMP_DIR/headers")"
 		[[ -n "$nonce" ]] || die 'Store API did not send a Nonce'
 		request '/wp-json/wc/store/v1/cart/add-item' 201 -c "$TMP_DIR/cookies" -b "$TMP_DIR/cookies" \
-			-H "Nonce: $nonce" -H 'Content-Type: application/json' --data "{\"id\":$product,\"quantity\":2}"
+			-H "Nonce: $nonce" -H "$JSON_TYPE" --data "{\"id\":$product,\"quantity\":2}"
 		request '/wp-json/wc/store/v1/checkout' 200 -c "$TMP_DIR/cookies" -b "$TMP_DIR/cookies" \
-			-H "Nonce: $nonce" -H 'Content-Type: application/json' \
+			-H "Nonce: $nonce" -H "$JSON_TYPE" \
 			--data "{\"billing_address\":{\"first_name\":\"Shop\",\"last_name\":\"Test\",\"address_1\":\"1 Test Road\",\"city\":\"New York\",\"state\":\"NY\",\"postcode\":\"10001\",\"country\":\"US\",\"email\":\"shop@example.com\"},\"payment_method\":\"$method\"}"
 		order="$(jq -er '.order_id' "$TMP_DIR/response")"
 		[[ "$order" =~ ^[1-9][0-9]*$ ]] || die 'Store API did not return an order ID'
@@ -254,6 +255,7 @@ shop_requests() {
 			request "/?spst_test=edd_pay&order_id=$order" 200 -A 'ShopTest payment callback'
 			request "/?spst_test=edd_pay&order_id=$order" 200 -A 'ShopTest payment callback' ;;
 		fluent-cart) request '/?spst_test=fluentcart' 200 ;;
+		*) die "no requests for shop: $shop" ;;
 		esac
 	done
 	return 0

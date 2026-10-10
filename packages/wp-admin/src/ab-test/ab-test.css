@@ -16,7 +16,7 @@
 .spst-ab-test {
 	position: relative;
 	padding-top: 28px;
-	outline: 1px dashed rgba(var(--wp-admin-theme-color--rgb, 56, 88, 233), 0.6);
+	outline: 1px dashed rgba(var(--wp-admin-theme-color--rgb, 56, 88, 233), 0.6); /* stylelint-disable-line custom-property-pattern -- WordPress names this variable. */
 	outline-offset: 4px;
 }
 

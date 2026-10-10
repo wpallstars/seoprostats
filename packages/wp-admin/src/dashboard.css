@@ -6,7 +6,7 @@
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt
  */
 
-@import "./common.css";
+@import url("./common.css");
 
 .spst-app {
 	max-width: 1280px;
@@ -34,6 +34,7 @@
 	gap: 8px 12px;
 	margin-inline-start: auto;
 	padding-block: 4px;
+
 	/* The right edge lines up with the header's buttons. Narrower than
 	   about 1430px the controls take a row of their own, on the right. */
 	padding-inline: 8px 12px;
@@ -119,13 +120,13 @@
 
 .spst-live.is-active .spst-live__dot {
 	background: #00a32a;
-	box-shadow: 0 0 0 0 rgba(0, 163, 42, 0.5);
+	box-shadow: 0 0 0 0 rgb(0 163 42 / 50%);
 	animation: spst-pulse 2s ease-out infinite;
 }
 
 @keyframes spst-pulse {
 	to {
-		box-shadow: 0 0 0 8px rgba(0, 163, 42, 0);
+		box-shadow: 0 0 0 8px rgb(0 163 42 / 0%);
 	}
 }
 
@@ -360,6 +361,7 @@
 	top: 4px;
 	display: inline-flex;
 	align-items: center;
+
 	/* A lone dot sits in the middle of its circle. */
 	justify-content: center;
 	gap: 2px;
@@ -491,7 +493,7 @@
 	margin-top: 16px;
 }
 
-@media (min-width: 960px) {
+@media (width >= 960px) {
 	.spst-grid {
 		grid-template-columns: 1fr 1fr;
 	}
@@ -1005,7 +1007,7 @@ code.spst-meta {
 	font-weight: 400;
 }
 
-@media (max-width: 782px) {
+@media (width <= 782px) {
 	.spst-funnel__step {
 		grid-template-columns: 1fr;
 	}
@@ -1312,8 +1314,9 @@ code.spst-meta {
 }
 
 /* Editors (in a modal, outside .spst-app: WordPress colours only). */
+
 /* From WordPress's small breakpoint up; below it, its full-width sheet. */
-@media (min-width: 600px) {
+@media (width >= 600px) {
 	.spst-modal.components-modal__frame {
 		width: min(560px, calc(100vw - 32px));
 	}
@@ -1399,7 +1402,7 @@ code.spst-meta {
 .spst-share-sections__item.is-moving {
 	border-color: var(--spst-accent);
 	background: var(--spst-accent-soft);
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+	box-shadow: 0 2px 6px rgb(0 0 0 / 12%);
 }
 
 .spst-share-sections.is-dragging,
@@ -1430,7 +1433,7 @@ code.spst-meta {
 	border-radius: 2px;
 	background: none;
 	color: #50575e;
-	fill: currentColor;
+	fill: currentcolor;
 	cursor: grab;
 	touch-action: none;
 }
@@ -1510,12 +1513,12 @@ code.spst-meta {
 	padding: 0;
 	border: 0;
 	border-radius: 50%;
-	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%);
 	cursor: pointer;
 }
 
 .spst-share-accent__swatch[aria-pressed="true"] {
-	box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2), 0 0 0 2px #fff, 0 0 0 4px #1d2327;
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%), 0 0 0 2px #fff, 0 0 0 4px #1d2327;
 }
 
 .spst-share-accent__swatch:focus-visible {
@@ -1660,7 +1663,7 @@ code.spst-meta {
 	gap: 4px;
 }
 
-@media (max-width: 600px) {
+@media (width <= 600px) {
 	.spst-step-fields {
 		grid-template-columns: 1fr;
 	}

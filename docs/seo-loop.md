@@ -223,7 +223,7 @@ score = potential clicks per 28 days × value × confidence ÷ effort
 The answer gives each part, not only the score, so an agent can rank by
 its own rule.
 
-### Data
+### Queue data
 
 `queue` (schema v9), one row per item someone acted on:
 
@@ -250,7 +250,7 @@ item's metric, expected up (position: better), 28 days and a threshold of
 10% (position: one place), unless one is given. When that experiment is
 decided, the item shows the result.
 
-### Interfaces and place in the app
+### Queue interfaces and place in the app
 
 - REST: `GET /queue` (`range`, page filters, `engine`, `goal`, `status`,
   `limit`, `offset`), `POST /queue/{key}` (accept, done, dismiss,
@@ -342,7 +342,7 @@ Built (GH#77), schema v10:
   `offset`); WP-CLI `wp seoprostats audit [list|run]` (`run` reads a
   batch now); ability `seoprostats/audit`. Dashboard: Search → **Audit**,
   with a finding filter that counts pages per finding; Plan shows the
-  items as "Content audit: <finding>".
+  items as `Content audit: <finding>`.
 - Demo data: `PAGE_SEO` gives demo pages SEO titles, descriptions and
   extra markup: a missing and a long description, a long and a shared
   title, a shared description, an H1 in the text, an image without alt
@@ -393,7 +393,7 @@ Built (GH#78), schema v11:
   `limit`, `offset`); WP-CLI `wp seoprostats links [--kind=<kind>]
   [--goal=<id>]`; ability `seoprostats/links`. Dashboard: Search → Audit,
   **Internal links** under the findings, with a list switch that counts
-  each list; Plan shows the items as "Internal links: <list>".
+  each list; Plan shows the items as `Internal links: <list>`.
 - Demo data: `PAGE_LINKS` links the demo pages: the update post and the
   FAQ are orphans, the pricing page converts (Purchase) with two links
   in, and the features page, the rankings guide and the front page miss a
@@ -443,7 +443,7 @@ Built (GH#79), schema v12:
   [--days=<n>]` (`run` reads the sitemaps now); ability
   `seoprostats/indexation`. Dashboard: Search → Audit, **Indexation**
   under Internal links, with a list switch that counts each list; Plan
-  shows the items as "Indexation: <list>". Shared Search reports carry it.
+  shows the items as `Indexation: <list>`. Shared Search reports carry it.
 - Demo data: the indexing checklist page, published 45 days ago, has no
   search data; the sitemap has two category archives and an author page
   listed for 120 days with none, and a category listed 10 days ago, too
@@ -549,7 +549,7 @@ Built (GH#80), no schema change (`SEOProStats_Refresh`):
   one on a merge's other page: the loss stays in view.
 - Nothing changes content. `GET /queue`, `wp seoprostats queue` and the
   ability `seoprostats/queue` take `kind` (e.g. `refresh`); the CLI shows
-  the kind with its proposal. Dashboard: Plan shows "Refresh: <proposal>"
+  the kind with its proposal. Dashboard: Plan shows `Refresh: <proposal>`
   with the facts behind it; Opportunities → losing clicks shows which
   page overtook each query.
 - Demo data: the three losing pages get three proposals: the getting
@@ -609,7 +609,7 @@ Built (GH#81), schema v13 (`SEOProStats_Targets`):
   abilities `seoprostats/targets` (read) and `seoprostats/targets-import`.
   Writes need `manage_options`. Dashboard: Search → **Targets**, with a
   status switch, an import form and delete for administrators; Plan shows
-  "Search target: <finding>". Shared reports leave Targets out.
+  `Search target: <finding>`. Shared reports leave Targets out.
 - Demo data: nine targets: two shown with another page, three
   high-priority ones in striking distance (one with no page chosen), one
   won, one retired, one ranking as meant, one not shown yet.

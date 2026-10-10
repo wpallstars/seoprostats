@@ -1,169 +1,534 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
  * Additional terms (GPL-3.0 section 7(b)): ATTRIBUTION.txt */
-@import "./dashboard.css";
+@import url("./dashboard.css");
 
-.spst-share { margin: 0; font: 14px/1.5 system-ui, sans-serif; background: #fff; }
-.spst-report, .spst-share-unlock { padding: 24px; margin: auto; }
-.spst-share-unlock { max-width: 400px; }
-.spst-share .spst-report {
-    --spst-accent: var(--spst-share-accent);
-    --wp-admin-theme-color: var(--spst-share-accent);
-    --spst-background: #fff;
-    --spst-grid: rgba(127, 127, 127, 0.18);
-    color-scheme: light;
-    background: var(--spst-background);
-    min-height: 100vh;
-    box-sizing: border-box;
+.spst-share {
+	margin: 0;
+	font:
+		14px/1.5 system-ui,
+		sans-serif;
+	background: #fff;
 }
+
+.spst-report,
+.spst-share-unlock {
+	padding: 24px;
+	margin: auto;
+}
+
+.spst-share-unlock {
+	max-width: 400px;
+}
+
+.spst-share .spst-report {
+	--spst-accent: var(--spst-share-accent);
+	--wp-admin-theme-color: var(--spst-share-accent);
+	--spst-background: #fff;
+	--spst-grid: rgb(127 127 127 / 18%);
+
+	color-scheme: light;
+	background: var(--spst-background);
+	min-height: 100vh;
+	box-sizing: border-box;
+}
+
 .spst-share .spst-report.is-dark,
 .spst-share-dark .spst-modal {
-    color-scheme: dark;
-    --spst-text: #f0f0f1;
-    --spst-muted: #c3c4c7;
-    --spst-subtle: #c3c4c7;
-    --spst-border: #646970;
-    --spst-hover: #2c3338;
-    --spst-background: #1d2327;
-    --spst-good: #68de7c;
-    --spst-bad: #ff8085;
+	color-scheme: dark;
+
+	--spst-text: #f0f0f1;
+	--spst-muted: #c3c4c7;
+	--spst-subtle: #c3c4c7;
+	--spst-border: #646970;
+	--spst-hover: #2c3338;
+	--spst-background: #1d2327;
+	--spst-good: #68de7c;
+	--spst-bad: #ff8085;
 }
+
 /* The head: logo and title on the left, light or dark and print on the right. */
-.spst-share-head { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: center; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--spst-border); }
-.spst-share-head__brand { display: flex; align-items: center; gap: 16px; min-width: 0; color: var(--spst-text) !important; text-decoration: none; }
-.spst-share-head__brand img { max-width: 160px; max-height: 64px; object-fit: contain; }
-.spst-share-head__titles { display: grid; gap: 2px; min-width: 0; }
-.spst-share-head h1 { margin: 0; font-size: 24px; line-height: 1.25; color: var(--spst-text); }
-.spst-share-head__subtitle { color: var(--spst-muted); font-size: 14px; }
-.spst-share-head__tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spst-share-head {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 16px 24px;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--spst-border);
+}
+
+.spst-share-head__brand {
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	min-width: 0;
+	color: var(--spst-text) !important;
+	text-decoration: none;
+}
+
+.spst-share-head__brand img {
+	max-width: 160px;
+	max-height: 64px;
+	object-fit: contain;
+}
+
+.spst-share-head__titles {
+	display: grid;
+	gap: 2px;
+	min-width: 0;
+}
+
+.spst-share-head h1 {
+	margin: 0;
+	font-size: 24px;
+	line-height: 1.25;
+	color: var(--spst-text);
+}
+
+.spst-share-head__subtitle {
+	color: var(--spst-muted);
+	font-size: 14px;
+}
+
+.spst-share-head__tools {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+
 /* A click leaves no ring; the keyboard still shows where focus is. */
-.spst-share .components-button:focus:not(:focus-visible) { box-shadow: none; outline: none; }
-.spst-share .components-button.is-secondary:focus:not(:focus-visible) { box-shadow: inset 0 0 0 1px var(--spst-accent); }
-.spst-share-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
-.spst-share-note { margin: 0 0 16px; max-width: 72ch; color: var(--spst-text); white-space: pre-line; }
-.spst-share-locks { margin: 0 0 16px; color: var(--spst-muted); }
+.spst-share .components-button:focus:not(:focus-visible) {
+	box-shadow: none;
+	outline: none;
+}
+
+.spst-share .components-button.is-secondary:focus:not(:focus-visible) {
+	box-shadow: inset 0 0 0 1px var(--spst-accent);
+}
+
+.spst-share-nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 16px;
+}
+
+.spst-share-note {
+	margin: 0 0 16px;
+	max-width: 72ch;
+	color: var(--spst-text);
+	white-space: pre-line;
+}
+
+.spst-share-locks {
+	margin: 0 0 16px;
+	color: var(--spst-muted);
+}
+
 /* Changes as a dated list: for paper only (on screen, the chart's markers). */
-.spst-share-changes { display: none; }
-.spst-share-changes h2 { margin: 0 0 8px; font-size: 16px; }
-.spst-share-changes ol { margin: 0; padding: 0; list-style: none; }
-.spst-share-changes li { display: grid; grid-template-columns: 9.5em 8em 1fr; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--spst-border); break-inside: avoid; }
-.spst-share-changes time, .spst-share-changes__group { color: var(--spst-muted); }
-.spst-share-changes code { margin-inline-start: 8px; font-size: 12px; background: none; padding: 0; }
-.spst-share-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--spst-border); color: var(--spst-muted); }
-.spst-share-foot img { max-width: 120px; max-height: 48px; object-fit: contain; }
-.spst-share-foot p { margin: 0; }
-.spst-share-foot__credit { margin-inline-start: auto !important; font-size: 12px; }
-.spst-share a { color: var(--spst-accent); }
-.spst-share .components-card, .spst-share .spst-card { background: var(--spst-background); color: var(--spst-text); }
-.spst-share .components-button { color: var(--spst-accent); }
-.spst-share .components-button.is-primary { background: var(--spst-accent); color: #fff; }
-.spst-share .is-dark .components-button.is-primary { color: #1d2327; }
-.spst-share input, .spst-share select { background: var(--spst-background); color: var(--spst-text); max-width: 100%; }
-.spst-share .spst-chart-lane__marker, .spst-share .spst-change-dots { background: var(--spst-background); }
-.spst-share .widefat { border-collapse: collapse; width: 100%; color: var(--spst-text); }
-.spst-share .widefat th, .spst-share .widefat td { padding: 8px; text-align: start; border-bottom: 1px solid var(--spst-border); }
-.spst-share .striped tr:nth-child(odd) { background: var(--spst-hover); }
-.spst-share .screen-reader-text { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
-.spst-share .spst-changes-modal .spst-form__actions .is-secondary { display: none; }
-.spst-share .components-modal__frame { background: var(--spst-background, #fff); color: var(--spst-text); }
-.spst-share .components-select-control__input { background: var(--spst-background); color: var(--spst-text); }
-.spst-share-dark { background: #1d2327; }
+.spst-share-changes {
+	display: none;
+}
+
+.spst-share-changes h2 {
+	margin: 0 0 8px;
+	font-size: 16px;
+}
+
+.spst-share-changes ol {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.spst-share-changes li {
+	display: grid;
+	grid-template-columns: 9.5em 8em 1fr;
+	gap: 12px;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--spst-border);
+	break-inside: avoid;
+}
+
+.spst-share-changes time,
+.spst-share-changes__group {
+	color: var(--spst-muted);
+}
+
+.spst-share-changes code {
+	margin-inline-start: 8px;
+	font-size: 12px;
+	background: none;
+	padding: 0;
+}
+
+.spst-share-foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px 16px;
+	align-items: center;
+	margin-top: 32px;
+	padding-top: 16px;
+	border-top: 1px solid var(--spst-border);
+	color: var(--spst-muted);
+}
+
+.spst-share-foot img {
+	max-width: 120px;
+	max-height: 48px;
+	object-fit: contain;
+}
+
+.spst-share-foot p {
+	margin: 0;
+}
+
+.spst-share-foot__credit {
+	margin-inline-start: auto !important;
+	font-size: 12px;
+}
+
+.spst-share a {
+	color: var(--spst-accent);
+}
+
+.spst-share .components-card,
+.spst-share .spst-card {
+	background: var(--spst-background);
+	color: var(--spst-text);
+}
+
+.spst-share .components-button {
+	color: var(--spst-accent);
+}
+
+.spst-share .components-button.is-primary {
+	background: var(--spst-accent);
+	color: #fff;
+}
+
+.spst-share .is-dark .components-button.is-primary {
+	color: #1d2327;
+}
+
+.spst-share input,
+.spst-share select {
+	background: var(--spst-background);
+	color: var(--spst-text);
+	max-width: 100%;
+}
+
+.spst-share .spst-chart-lane__marker,
+.spst-share .spst-change-dots {
+	background: var(--spst-background);
+}
+
+.spst-share .widefat {
+	border-collapse: collapse;
+	width: 100%;
+	color: var(--spst-text);
+}
+
+.spst-share .widefat th,
+.spst-share .widefat td {
+	padding: 8px;
+	text-align: start;
+	border-bottom: 1px solid var(--spst-border);
+}
+
+.spst-share .striped tr:nth-child(odd) {
+	background: var(--spst-hover);
+}
+
+.spst-share .screen-reader-text {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+}
+
+.spst-share .spst-changes-modal .spst-form__actions .is-secondary {
+	display: none;
+}
+
+.spst-share .components-modal__frame {
+	background: var(--spst-background, #fff);
+	color: var(--spst-text);
+}
+
+.spst-share .components-select-control__input {
+	background: var(--spst-background);
+	color: var(--spst-text);
+}
+
+.spst-share-dark {
+	background: #1d2327;
+}
+
 /* Dialogs open outside the report: the same accent (set on the page). */
 .spst-share .spst-modal {
-    --spst-accent: var(--spst-share-accent, #2271b1);
-    --wp-admin-theme-color: var(--spst-share-accent, #2271b1);
-    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent, #2271b1) 88%, #000);
-    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent, #2271b1) 76%, #000);
+	--spst-accent: var(--spst-share-accent, #2271b1);
+	--wp-admin-theme-color: var(--spst-share-accent, #2271b1);
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent, #2271b1) 88%, #000);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent, #2271b1) 76%, #000);
 }
-.spst-share .spst-modal .components-button.is-primary { background: var(--spst-accent); color: #fff; }
-.spst-share-dark .spst-modal .components-button.is-primary { color: #1d2327; }
-.spst-print-dialog .spst-fieldset { display: grid; gap: 8px; }
+
+.spst-share .spst-modal .components-button.is-primary {
+	background: var(--spst-accent);
+	color: #fff;
+}
+
+.spst-share-dark .spst-modal .components-button.is-primary {
+	color: #1d2327;
+}
+
+.spst-print-dialog .spst-fieldset {
+	display: grid;
+	gap: 8px;
+}
+
 /* Getting ready to print: every tab of the chosen sections, one section after another. */
-.spst-share-preparing { margin-bottom: 16px; }
-.spst-share-preparing .components-notice { margin: 0; }
-.spst-share-print + .spst-share-print { margin-top: 32px; }
-.spst-share-print__title { margin: 0 0 12px; font-size: 20px; color: var(--spst-text); }
-.spst-print-tab + .spst-print-tab { margin-top: 16px; }
-.spst-print-tab__title { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--spst-muted); text-transform: none; }
+.spst-share-preparing {
+	margin-bottom: 16px;
+}
+
+.spst-share-preparing .components-notice {
+	margin: 0;
+}
+
+.spst-share-print + .spst-share-print {
+	margin-top: 32px;
+}
+
+.spst-share-print__title {
+	margin: 0 0 12px;
+	font-size: 20px;
+	color: var(--spst-text);
+}
+
+.spst-print-tab + .spst-print-tab {
+	margin-top: 16px;
+}
+
+.spst-print-tab__title {
+	margin: 0 0 8px;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--spst-muted);
+	text-transform: none;
+}
+
 /* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
 .spst-share .spst-report {
-    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
-    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 76%, #000);
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 76%, #000);
 }
+
 .spst-share .spst-report.is-dark {
-    --wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 85%, #fff);
-    --wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 70%, #fff);
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 85%, #fff);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 70%, #fff);
 }
-.spst-share .is-dark .components-button:not(.is-primary):hover:not(:disabled) { background: var(--spst-hover); }
+
+.spst-share .is-dark .components-button:not(.is-primary):hover:not(:disabled) {
+	background: var(--spst-hover);
+}
+
 /* Dark fields and notices: WordPress paints them white. */
-.spst-share .is-dark .components-input-control__container { background: var(--spst-background); color: var(--spst-text); }
+.spst-share .is-dark .components-input-control__container {
+	background: var(--spst-background);
+	color: var(--spst-text);
+}
+
 .spst-share .is-dark .components-input-control__container select,
-.spst-share .is-dark .components-input-control__container input { color: var(--spst-text); }
-.spst-share .is-dark .components-input-control__backdrop { border-color: var(--spst-border) !important; }
-.spst-share .is-dark .components-notice { background: var(--spst-hover); color: var(--spst-text); }
-@media (max-width: 480px) { .spst-report { padding: 12px; } .spst-share .spst-controls .components-base-control { min-width: 0; } }
+.spst-share .is-dark .components-input-control__container input {
+	color: var(--spst-text);
+}
+
+.spst-share .is-dark .components-input-control__backdrop {
+	border-color: var(--spst-border) !important;
+}
+
+.spst-share .is-dark .components-notice {
+	background: var(--spst-hover);
+	color: var(--spst-text);
+}
+
+@media (width <= 480px) {
+	.spst-report {
+		padding: 12px;
+	}
+
+	.spst-share .spst-controls .components-base-control {
+		min-width: 0;
+	}
+}
+
 /* Paper: light whatever the screen, darker greys for contrast, no controls, cards kept whole. */
-@page { margin: 14mm 12mm; }
+@page {
+	margin: 14mm 12mm;
+}
+
 @media print {
-    .spst-share, .spst-share-dark { background: #fff !important; }
-    .spst-share .spst-report,
-    .spst-share .spst-report.is-dark {
-        color-scheme: light;
-        --spst-text: #000;
-        --spst-muted: #2c3338;
-        --spst-subtle: #3c434a;
-        --spst-border: #8c8f94;
-        --spst-hover: #f6f7f7;
-        --spst-background: #fff;
-        --spst-grid: rgba(0, 0, 0, 0.25);
-        --spst-good: #00701f;
-        --spst-bad: #b32d2e;
-        min-height: 0;
-        padding: 0;
-        color: #000;
-        background: #fff;
-    }
-    .spst-share .spst-toolbar,
-    .spst-share .spst-share-nav,
-    .spst-share .spst-share-head__tools,
-    .spst-share .spst-filter-add,
-    .spst-share .spst-subnav,
-    .spst-share .spst-engines,
-    .spst-share .spst-actions,
-    .spst-share-preparing,
-    .spst-share .spst-chip__remove,
-    .spst-share .spst-filters .components-button,
-    .spst-share form.spst-properties__event,
-    .spst-share .components-modal__screen-overlay,
-    .spst-share button.spst-clearable__clear { display: none !important; }
-    .spst-share-head { break-after: avoid; }
-    /* Each printed section starts a page. A panel of several tabs runs on across pages: a tab with a short list stays whole (its name with it), long tables break between rows. */
-    .spst-share-print + .spst-share-print { break-before: page; margin-top: 0; }
-    .spst-share-print__title { break-after: avoid; }
-    .spst-share .spst-card.is-print-all { break-inside: auto; }
-    /* A grid row keeps the height its card had before the page breaks moved its tabs down: stack the cards instead, so none runs into the next. */
-    .spst-share-print .spst-grid { display: block; }
-    .spst-share .spst-print-tab:has(.spst-rows) { break-inside: avoid; }
-    .spst-share .spst-print-tab__title { color: #2c3338; break-after: avoid; }
-    .spst-share-changes { display: block; margin-top: 24px; break-before: auto; }
-    .spst-share-changes h2, .spst-share h2, .spst-share h3 { break-after: avoid; }
-    .spst-share .spst-card, .spst-share .components-card, .spst-share .spst-summary { break-inside: avoid; box-shadow: none !important; border: 1px solid var(--spst-border); margin-bottom: 12px; }
-    .spst-share .spst-grid, .spst-share .spst-cards { gap: 12px; }
-    .spst-share table { break-inside: auto; }
-    .spst-share thead { display: table-header-group; }
-    .spst-share tr { break-inside: avoid; }
-    .spst-share .spst-table-scroll { overflow: visible !important; }
-    .spst-share a { color: #000; text-decoration: underline; }
-    .spst-share a.spst-share-head__brand { text-decoration: none; }
-    /* The chart was drawn for the screen's width: fit it to the page. The dated list replaces the changes lane. */
-    .spst-share .spst-chart__plot .uplot,
-    .spst-share .spst-chart__plot .u-wrap { width: 100% !important; height: auto !important; }
-    .spst-share .spst-chart__plot canvas { width: 100% !important; height: auto !important; }
-    .spst-share .spst-chart__plot { min-height: 0 !important; }
-    .spst-share .spst-chart__plot .u-over,
-    .spst-share .spst-chart__plot .u-under,
-    .spst-share .spst-chart-lane,
-    .spst-share .spst-chart-guide { display: none !important; }
-    .spst-share .striped tr:nth-child(odd) { background: #f6f7f7; }
-    .spst-share-foot { break-inside: avoid; color: #2c3338; }
+	.spst-share,
+	.spst-share-dark {
+		background: #fff !important;
+	}
+
+	.spst-share .spst-report,
+	.spst-share .spst-report.is-dark {
+		color-scheme: light;
+
+		--spst-text: #000;
+		--spst-muted: #2c3338;
+		--spst-subtle: #3c434a;
+		--spst-border: #8c8f94;
+		--spst-hover: #f6f7f7;
+		--spst-background: #fff;
+		--spst-grid: rgb(0 0 0 / 25%);
+		--spst-good: #00701f;
+		--spst-bad: #b32d2e;
+
+		min-height: 0;
+		padding: 0;
+		color: #000;
+		background: #fff;
+	}
+
+	.spst-share .spst-toolbar,
+	.spst-share .spst-share-nav,
+	.spst-share .spst-share-head__tools,
+	.spst-share .spst-filter-add,
+	.spst-share .spst-subnav,
+	.spst-share .spst-engines,
+	.spst-share .spst-actions,
+	.spst-share-preparing,
+	.spst-share .spst-chip__remove,
+	.spst-share .spst-filters .components-button,
+	.spst-share form.spst-properties__event,
+	.spst-share .components-modal__screen-overlay,
+	.spst-share button.spst-clearable__clear {
+		display: none !important;
+	}
+
+	.spst-share-head {
+		break-after: avoid;
+	}
+
+	/* Each printed section starts a page. A panel of several tabs runs on across pages: a tab with a short list stays whole (its name with it), long tables break between rows. */
+	.spst-share-print + .spst-share-print {
+		break-before: page;
+		margin-top: 0;
+	}
+
+	.spst-share-print__title {
+		break-after: avoid;
+	}
+
+	.spst-share .spst-card.is-print-all {
+		break-inside: auto;
+	}
+
+	/* A grid row keeps the height its card had before the page breaks moved its tabs down: stack the cards instead, so none runs into the next. */
+	.spst-share-print .spst-grid {
+		display: block;
+	}
+
+	.spst-share .spst-print-tab:has(.spst-rows) {
+		break-inside: avoid;
+	}
+
+	.spst-share .spst-print-tab__title {
+		color: #2c3338;
+		break-after: avoid;
+	}
+
+	.spst-share-changes {
+		display: block;
+		margin-top: 24px;
+		break-before: auto;
+	}
+
+	.spst-share-changes h2,
+	.spst-share h2,
+	.spst-share h3 {
+		break-after: avoid;
+	}
+
+	.spst-share .spst-card,
+	.spst-share .components-card,
+	.spst-share .spst-summary {
+		break-inside: avoid;
+		box-shadow: none !important;
+		border: 1px solid var(--spst-border);
+		margin-bottom: 12px;
+	}
+
+	.spst-share .spst-grid,
+	.spst-share .spst-cards {
+		gap: 12px;
+	}
+
+	.spst-share table {
+		break-inside: auto;
+	}
+
+	.spst-share thead {
+		display: table-header-group;
+	}
+
+	.spst-share tr {
+		break-inside: avoid;
+	}
+
+	.spst-share .spst-table-scroll {
+		overflow: visible !important;
+	}
+
+	.spst-share a {
+		color: #000;
+		text-decoration: underline;
+	}
+
+	.spst-share a.spst-share-head__brand {
+		text-decoration: none;
+	}
+
+	/* The chart was drawn for the screen's width: fit it to the page. The dated list replaces the changes lane. */
+	.spst-share .spst-chart__plot .uplot,
+	.spst-share .spst-chart__plot .u-wrap {
+		width: 100% !important;
+		height: auto !important;
+	}
+
+	.spst-share .spst-chart__plot canvas {
+		width: 100% !important;
+		height: auto !important;
+	}
+
+	.spst-share .spst-chart__plot {
+		min-height: 0 !important;
+	}
+
+	.spst-share .spst-chart__plot .u-over,
+	.spst-share .spst-chart__plot .u-under,
+	.spst-share .spst-chart-lane,
+	.spst-share .spst-chart-guide {
+		display: none !important;
+	}
+
+	.spst-share .striped tr:nth-child(odd) {
+		background: #f6f7f7;
+	}
+
+	.spst-share-foot {
+		break-inside: avoid;
+		color: #2c3338;
+	}
 }
