@@ -1035,7 +1035,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * impressions: a candidate to review, with each page's share and
      * whether the page with most impressions changed between the halves
      * of the period). The period is cut at the newest day with search data
-     * and to its newest 91 days.
+     * and to its newest 366 days.
      *
      * ## OPTIONS
      *
@@ -2231,7 +2231,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * page, the page search shows most for it, and its state: ranking (the
      * page meant for it), wrong_page (another page), no_page (none chosen)
      * or not_shown (no impressions). The period is cut at the newest day
-     * with search data and to its newest 91 days.
+     * with search data and to its newest 366 days.
      *
      * Import reads a list from a file (or - for standard input): CSV or
      * tab-separated text (a header row naming query, page, priority and
@@ -2583,7 +2583,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * heading, text, partial or none), the words it lacks and whether it
      * is a question; and the focus keywords of Rank Math, Yoast SEO,
      * SEOPress or All in One SEO when one is active. The period is cut at
-     * the newest day with search data and to its newest 91 days.
+     * the newest day with search data and to its newest 366 days.
      *
      * ## OPTIONS
      *
@@ -3475,7 +3475,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * : The goal whose conversions give a page its value; the first goal when left out.
      *
      * [--range=<range>]
-     * : The period the list is made from, as for stats (at most its newest 91 days are read).
+     * : The period the list is made from, as for stats (at most its newest 366 days are read).
      * ---
      * default: 90d
      * ---
@@ -3688,7 +3688,7 @@ final class SEOProStats_CLI { // NOSONAR: WP-CLI discovers the public command fa
      * : The goal whose conversions give a page its value in the queue; the first goal when left out.
      *
      * [--range=<range>]
-     * : The period, as for stats (at most its newest 91 days are read).
+     * : The period, as for stats (at most its newest 366 days are read).
      * ---
      * default: 30d
      * ---

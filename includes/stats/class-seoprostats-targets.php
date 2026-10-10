@@ -14,7 +14,7 @@
  * skipped and reported, never guessed.
  *
  * The report gives each target, for a period (cut at the newest search day
- * and to its newest 91 days): the query's clicks, impressions, CTR and
+ * and to its newest 366 days): the query's clicks, impressions, CTR and
  * position on any page, the page search shows most for it, and the page
  * meant for it with its own figures, as one state:
  *

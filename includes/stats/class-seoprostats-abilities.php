@@ -318,7 +318,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/opportunities', array(
             'label'               => __('Search opportunities', 'seoprostats'),
-            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing, or every engine added up with engine all): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page), missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer) or overlap (a query for which two or more pages each get at least 10% of the impressions, with each page\'s clicks, share and position and whether the page with most impressions changed between the halves of the period: a candidate to review, as two pages can both be right). Expected CTR is the site\'s own. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('Where search work pays, from Google Search Console (or Bing Webmaster Tools with engine bing, or every engine added up with engine all): striking (a page\'s query at position 4–20, with the clicks it could gain in the top three), ctr (a top-10 query whose CTR is well under the site\'s own at that position: improve its title and description), decay (pages losing clicks against the previous period, each with the likely cause, position, demand, ctr or gone, the queries that lost most, and the changes made to the page), missing (a top-20 query whose words its page does not have, or has only some of: the words missing, and whether it is a question to answer) or overlap (a query for which two or more pages each get at least 10% of the impressions, with each page\'s clicks, share and position and whether the page with most impressions changed between the halves of the period: a candidate to review, as two pages can both be right). Expected CTR is the site\'s own. Final days only; at most the newest 366 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -786,7 +786,7 @@ final class SEOProStats_Abilities {
         ));
         wp_register_ability('seoprostats/coverage', array(
             'label'               => __('Query coverage of a page', 'seoprostats'),
-            'description'         => __('The Google Search Console queries one page shows for (most impressions first, up to 200), each with how far the page\'s own words cover it: title (every word in the title or SEO title), heading, text, partial or none, the words missing, and whether it is a question. Also the focus keywords of Rank Math, Yoast SEO, SEOPress or All in One SEO when one is active, with their search figures. Queries the page does not cover are cheap wins: add the words, or answer the question in a heading. Works without any SEO plugin. Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('The Google Search Console queries one page shows for (most impressions first, up to 200), each with how far the page\'s own words cover it: title (every word in the title or SEO title), heading, text, partial or none, the words missing, and whether it is a question. Also the focus keywords of Rank Math, Yoast SEO, SEOPress or All in One SEO when one is active, with their search figures. Queries the page does not cover are cheap wins: add the words, or answer the question in a heading. Works without any SEO plugin. Final days only; at most the newest 366 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -959,7 +959,7 @@ final class SEOProStats_Abilities {
                         'type'        => 'string',
                         'enum'        => SEOProStats_Query::RANGES,
                         'default'     => SEOProStats_Loop::RANGE,
-                        'description' => __('The period, in the site time zone (at most its newest 91 days are read).', 'seoprostats'),
+                        'description' => __('The period, in the site time zone (at most its newest 366 days are read).', 'seoprostats'),
                     ),
                     'from'   => array(
                         'type'        => 'string',
@@ -1047,7 +1047,7 @@ final class SEOProStats_Abilities {
     private static function register_targets(array $data, array $engine) {
         wp_register_ability('seoprostats/targets', array(
             'label'               => __('Search targets', 'seoprostats'),
-            'description'         => __('The searches the site chose to win and the page meant for each (imported with seoprostats/targets-import), with how search treats them now: the query\'s clicks, impressions, CTR and position on any page, the page search shows most for it (shown) and the page meant for it (page) with its own figures, as a state: ranking (the page meant for it is the one shown most), wrong_page (another page is), no_page (none chosen yet) or not_shown (no impressions in the period). band is top (positions 1–3), striking (4–20) or beyond. Highest priority first. The decision queue lists open targets shown with the wrong page, and high-priority targets in striking distance (kind target). Final days only; at most the newest 91 days of the period are read.', 'seoprostats'),
+            'description'         => __('The searches the site chose to win and the page meant for each (imported with seoprostats/targets-import), with how search treats them now: the query\'s clicks, impressions, CTR and position on any page, the page search shows most for it (shown) and the page meant for it (page) with its own figures, as a state: ranking (the page meant for it is the one shown most), wrong_page (another page is), no_page (none chosen yet) or not_shown (no impressions in the period). band is top (positions 1–3), striking (4–20) or beyond. Highest priority first. The decision queue lists open targets shown with the wrong page, and high-priority targets in striking distance (kind target). Final days only; at most the newest 366 days of the period are read.', 'seoprostats'),
             'category'            => self::CATEGORY,
             'input_schema'        => array(
                 'type'                 => 'object',
@@ -1434,7 +1434,7 @@ final class SEOProStats_Abilities {
                 'type'        => 'string',
                 'enum'        => SEOProStats_Query::RANGES,
                 'default'     => '90d',
-                'description' => __('The period the list is made from, in the site time zone (at most its newest 91 days are read).', 'seoprostats'),
+                'description' => __('The period the list is made from, in the site time zone (at most its newest 366 days are read).', 'seoprostats'),
             ),
             'from'   => array(
                 'type'        => 'string',
