@@ -83,6 +83,8 @@ final class SEOProStats_Collection {
         add_action(self::IMPORT_HOOK, array(__CLASS__, 'search_import'));
         add_action(self::MIGRATE_HOOK, array(__CLASS__, 'migrate'));
         add_action(self::BACKLINK_IMPORT_HOOK, array(__CLASS__, 'backlinks_import'));
+        // SEOProStats_Backlinks::CHECK_HOOK (that class loads only when used).
+        add_action('seoprostats_backlinks_check', array(__CLASS__, 'backlinks_check'));
         add_action(self::MIGRATE_SCAN_HOOK, array(__CLASS__, 'migrate_scan'));
         add_action(self::CRON_HOOK, array(__CLASS__, 'migrate_scan_due'));
         // Plugins switched on, off or deleted: look for statistics plugins again.
@@ -164,7 +166,13 @@ final class SEOProStats_Collection {
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-indexation.php';
         SEOProStats_Indexation::read_sitemaps();
         require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
-        SEOProStats_Backlinks::run();
+        SEOProStats_Backlinks::run_locked();
+    }
+
+    /** Cron: the backlinks catch-up, while pages a link export named wait for their first check. */
+    public static function backlinks_check() {
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-backlinks.php';
+        SEOProStats_Backlinks::catch_up();
     }
 
     /**

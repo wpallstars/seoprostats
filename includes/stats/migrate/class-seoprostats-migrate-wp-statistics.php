@@ -52,7 +52,7 @@ if (!defined('ABSPATH')) {
 require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-channels.php';
 require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-processor.php';
 
-final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source {
+final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source { // NOSONAR: one import adapter implementing SEOProStats_Migrate_Source's contract; private helpers decompose its day reads and settings.
 
     const KEY   = 'wp-statistics';
     const NAME  = 'WP Statistics';
@@ -228,16 +228,48 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
         $keyed = in_array('page_id', self::columns(self::table('pages')), true);
         // phpcs:disable WordPress.DB.DirectDatabaseQuery -- another plugin's tables, one day by their date indexes, joined by visitor_id's index; only counts and addresses are read.
         $found = $wpdb->get_results($wpdb->prepare('SELECT %i AS id, uri, count FROM %i WHERE date = %s ORDER BY count DESC LIMIT %d', $keyed ? 'page_id' : 'count', self::table('pages'), $day, self::ROWS), ARRAY_A);
-        $seen  = array();
-        if ($detail && $keyed && self::has_columns('visitor_relationships', array('visitor_id', 'page_id'))) {
-            $counts = $wpdb->get_results($wpdb->prepare('SELECT r.page_id AS id, COUNT(DISTINCT r.visitor_id) AS n FROM %i v INNER JOIN %i r ON r.visitor_id = v.ID WHERE v.last_counter = %s GROUP BY r.page_id', self::table('visitor'), self::table('visitor_relationships'), $day), ARRAY_A);
-            foreach ((array) $counts as $row) {
-                $seen[(int) $row['id']] = (int) $row['n'];
-            }
-        }
         // phpcs:enable
+        $seen = $detail && $keyed ? self::page_visitors($day) : array();
+        $sums = self::page_sums((array) $found, $seen, $detail, $keyed);
+        $rows = array();
+        foreach ($sums as $path => $metrics) {
+            $rows[] = array('page', (string) $path, $metrics);
+        }
+        return $rows;
+    }
+
+    /**
+     * A day's visitors per page ID (each visitor row one visit).
+     *
+     * @param string $day Y-m-d.
+     * @return array<int,int> Page ID => visitors; none without its relationships table.
+     */
+    private static function page_visitors($day) {
+        global $wpdb;
+        $seen = array();
+        if (!self::has_columns('visitor_relationships', array('visitor_id', 'page_id'))) {
+            return $seen;
+        }
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- another plugin's tables, one day by the visitor table's date index, joined by visitor_id's index; only counts are read.
+        $counts = $wpdb->get_results($wpdb->prepare('SELECT r.page_id AS id, COUNT(DISTINCT r.visitor_id) AS n FROM %i v INNER JOIN %i r ON r.visitor_id = v.ID WHERE v.last_counter = %s GROUP BY r.page_id', self::table('visitor'), self::table('visitor_relationships'), $day), ARRAY_A);
+        foreach ((array) $counts as $row) {
+            $seen[(int) $row['id']] = (int) $row['n'];
+        }
+        return $seen;
+    }
+
+    /**
+     * Page rows summed by path, with visitors when the day has them.
+     *
+     * @param array<int,array<string,mixed>> $found  Rows: id, uri, count.
+     * @param array<int,int>                 $seen   page_visitors().
+     * @param bool                           $detail Whether the day has visitor rows.
+     * @param bool                           $keyed  Whether the pages table has page IDs.
+     * @return array<string,array<string,int>> Path => metrics.
+     */
+    private static function page_sums(array $found, array $seen, $detail, $keyed) {
         $sums = array();
-        foreach ((array) $found as $row) {
+        foreach ($found as $row) {
             $path = self::path((string) $row['uri']);
             if (!isset($sums[$path])) {
                 $sums[$path] = $detail && $seen ? array('visitors' => 0, 'visits' => 0, 'pageviews' => 0) : array('pageviews' => 0);
@@ -249,11 +281,7 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
                 $sums[$path]['visits']   += $n;
             }
         }
-        $rows = array();
-        foreach ($sums as $path => $metrics) {
-            $rows[] = array('page', (string) $path, $metrics);
-        }
-        return $rows;
+        return $sums;
     }
 
     /**
@@ -270,31 +298,13 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
         $cols    = self::columns($visitor);
         $paged   = in_array('page_id', self::columns($pages), true) && !array_diff(array('first_page', 'last_page'), $cols);
         $sums    = 'COUNT(*) AS visitors, COUNT(*) AS visits, COALESCE(SUM(v.hits), 0) AS pageviews, COALESCE(SUM(COALESCE(v.hits, 0) <= 1), 0) AS bounces';
-        $rows    = array();
-
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's tables, one day by the visitor table's date index, joined by primary key; $sums is fixed SQL. Only grouped names, addresses and counts are read, never its IP, user agent or user columns.
-        if ($paged) {
-            foreach (array('entry' => 'first_page', 'exit' => 'last_page') as $dimension => $column) {
-                $found = $wpdb->get_results($wpdb->prepare("SELECT p.uri AS v, $sums FROM %i v INNER JOIN %i p ON p.page_id = v.%i WHERE v.last_counter = %s GROUP BY p.uri ORDER BY visits DESC LIMIT %d", $visitor, $pages, $column, $day, self::ROWS), ARRAY_A);
-                foreach ((array) $found as $row) {
-                    $rows[] = array($dimension, self::path((string) $row['v']), self::metrics($row));
-                }
-            }
-        }
-
-        // Family names, as they are stored per visitor row.
-        $names = array('browser' => 'agent', 'os' => 'platform', 'device' => 'device', 'country' => 'location');
-        foreach ($names as $dimension => $column) {
-            if (!in_array($column, $cols, true)) {
-                continue;
-            }
-            $found = $wpdb->get_results($wpdb->prepare("SELECT v.%i AS v, $sums FROM %i v WHERE v.last_counter = %s GROUP BY v.%i ORDER BY visits DESC LIMIT %d", $column, $visitor, $day, $column, self::ROWS), ARRAY_A);
-            foreach ((array) $found as $row) {
-                $rows[] = array($dimension, self::value($dimension, (string) $row['v']), self::metrics($row));
-            }
-        }
+        $rows    = array_merge(
+            $paged ? self::end_rows($day, $sums) : array(),
+            self::name_rows($day, $sums, $cols)
+        );
 
         // Referrer with the first page (its campaign tags and the landing).
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's tables, one day by the visitor table's date index, joined by primary key; $sums is fixed SQL. Only grouped referrers, addresses and counts are read, never its IP, user agent or user columns.
         if ($paged) {
             $mixed = $wpdb->get_results($wpdb->prepare("SELECT v.referred AS r, COALESCE(p.uri, '') AS e, $sums FROM %i v LEFT JOIN %i p ON p.page_id = v.first_page WHERE v.last_counter = %s GROUP BY v.referred, p.uri ORDER BY visits DESC LIMIT %d", $visitor, $pages, $day, self::ROWS * 5), ARRAY_A);
         } else {
@@ -315,6 +325,52 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
     }
 
     /**
+     * A day's entry and exit pages, from visitor rows that keep them.
+     *
+     * @param string $day  Y-m-d.
+     * @param string $sums The sums' SQL.
+     * @return array<int,array{0:string,1:string,2:array<string,int>}>
+     */
+    private static function end_rows($day, $sums) {
+        global $wpdb;
+        $rows = array();
+        foreach (array('entry' => 'first_page', 'exit' => 'last_page') as $dimension => $column) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's tables, one day by the visitor table's date index, joined by primary key; $sums is fixed SQL. Only grouped addresses and counts are read.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT p.uri AS v, $sums FROM %i v INNER JOIN %i p ON p.page_id = v.%i WHERE v.last_counter = %s GROUP BY p.uri ORDER BY visits DESC LIMIT %d", self::table('visitor'), self::table('pages'), $column, $day, self::ROWS), ARRAY_A);
+            foreach ((array) $found as $row) {
+                $rows[] = array($dimension, self::path((string) $row['v']), self::metrics($row));
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * A day's family names, as they are stored per visitor row: browser,
+     * system, device and country.
+     *
+     * @param string   $day  Y-m-d.
+     * @param string   $sums The sums' SQL.
+     * @param string[] $cols Its visitor table's columns.
+     * @return array<int,array{0:string,1:int|string,2:array<string,int>}>
+     */
+    private static function name_rows($day, $sums, array $cols) {
+        global $wpdb;
+        $rows  = array();
+        $names = array('browser' => 'agent', 'os' => 'platform', 'device' => 'device', 'country' => 'location');
+        foreach ($names as $dimension => $column) {
+            if (!in_array($column, $cols, true)) {
+                continue;
+            }
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- another plugin's table, one day by its date index; $sums is fixed SQL. Only grouped names and counts are read, never its IP, user agent or user columns.
+            $found = $wpdb->get_results($wpdb->prepare("SELECT v.%i AS v, $sums FROM %i v WHERE v.last_counter = %s GROUP BY v.%i ORDER BY visits DESC LIMIT %d", $column, self::table('visitor'), $day, $column, self::ROWS), ARRAY_A);
+            foreach ((array) $found as $row) {
+                $rows[] = array($dimension, self::value($dimension, (string) $row['v']), self::metrics($row));
+            }
+        }
+        return $rows;
+    }
+
+    /**
      * {@inheritDoc}
      */
     public function settings() {
@@ -323,25 +379,9 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
         if (!is_array($wps)) {
             return $out;
         }
-        // Roles it leaves out: exclude_ and the role's name, lower case.
-        $roles = array();
-        $set   = false;
-        foreach (wp_roles()->get_names() as $role => $name) {
-            $option = 'exclude_' . str_replace(' ', '_', strtolower((string) $name));
-            if (array_key_exists($option, $wps)) {
-                $set = true;
-                if (!empty($wps[$option])) {
-                    $roles[] = (string) $role;
-                }
-            }
-        }
-        if ($set) {
-            $out[] = array(
-                'key'   => 'tracking_skip_roles',
-                'label' => 'Filtering & Exceptions',
-                'from'  => self::role_names($roles),
-                'value' => $roles,
-            );
+        $roles = self::roles_setting($wps);
+        if ($roles) {
+            $out[] = $roles;
         }
         $ips = self::ip_lines(isset($wps['exclude_ip']) ? (string) $wps['exclude_ip'] : '');
         if ($ips) {
@@ -362,27 +402,70 @@ final class SEOProStats_Migrate_WP_Statistics extends SEOProStats_Migrate_Source
                 'value' => true,
             );
         }
-        // Its purge keeps day totals, as ours does; only a choice other than its default is carried over.
-        if (isset($wps['schedule_dbmaint_days']) && (string) $wps['schedule_dbmaint_days'] !== '' && (int) $wps['schedule_dbmaint_days'] !== self::PURGE_DEFAULT) {
-            $days = (int) $wps['schedule_dbmaint_days'];
-            if ($days <= 0) {
-                $out[] = array(
-                    'key'   => 'retention',
-                    'label' => 'Purge Old Data Daily',
-                    'from'  => __('Off', 'seoprostats'),
-                    'value' => false,
-                );
-            } else {
-                $out[] = array(
-                    'key'   => 'retention_visits',
-                    'label' => 'Purge Old Data Daily',
-                    /* translators: %d: number of days. */
-                    'from'  => sprintf(_n('%d day', '%d days', $days, 'seoprostats'), $days),
-                    'value' => max(1, min(120, (int) round($days / 30.4375))),
-                );
-            }
+        $retention = self::retention_setting($wps);
+        if ($retention) {
+            $out[] = $retention;
         }
         return $out;
+    }
+
+    /**
+     * Roles it leaves out: exclude_ and the role's name, lower case.
+     *
+     * @param array<string,mixed> $wps Its settings.
+     * @return array{key:string,label:string,from:string,value:mixed}|null The setting; null when it has none of them.
+     */
+    private static function roles_setting(array $wps) {
+        $roles = array();
+        $set   = false;
+        foreach (wp_roles()->get_names() as $role => $name) {
+            $option = 'exclude_' . str_replace(' ', '_', strtolower((string) $name));
+            if (!array_key_exists($option, $wps)) {
+                continue;
+            }
+            $set = true;
+            if (!empty($wps[$option])) {
+                $roles[] = (string) $role;
+            }
+        }
+        if (!$set) {
+            return null;
+        }
+        return array(
+            'key'   => 'tracking_skip_roles',
+            'label' => 'Filtering & Exceptions',
+            'from'  => self::role_names($roles),
+            'value' => $roles,
+        );
+    }
+
+    /**
+     * Its purge keeps day totals, as ours does; only a choice other than
+     * its default is carried over.
+     *
+     * @param array<string,mixed> $wps Its settings.
+     * @return array{key:string,label:string,from:string,value:mixed}|null The setting; null for its default.
+     */
+    private static function retention_setting(array $wps) {
+        if (!isset($wps['schedule_dbmaint_days']) || (string) $wps['schedule_dbmaint_days'] === '' || (int) $wps['schedule_dbmaint_days'] === self::PURGE_DEFAULT) {
+            return null;
+        }
+        $days = (int) $wps['schedule_dbmaint_days'];
+        if ($days <= 0) {
+            return array(
+                'key'   => 'retention',
+                'label' => 'Purge Old Data Daily',
+                'from'  => __('Off', 'seoprostats'),
+                'value' => false,
+            );
+        }
+        return array(
+            'key'   => 'retention_visits',
+            'label' => 'Purge Old Data Daily',
+            /* translators: %d: number of days. */
+            'from'  => sprintf(_n('%d day', '%d days', $days, 'seoprostats'), $days),
+            'value' => max(1, min(120, (int) round($days / 30.4375))),
+        );
     }
 
     /**

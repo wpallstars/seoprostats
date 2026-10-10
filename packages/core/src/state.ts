@@ -15,6 +15,7 @@ import { parseFilter, serializeFilter, type Filter } from './filters';
 import {
 	AUDIT_FINDINGS,
 	BACKLINK_KINDS,
+	BACKLINK_SOURCES,
 	CHANGE_GROUPS,
 	CLICK_KINDS,
 	COMPARE_KEYS,
@@ -35,6 +36,7 @@ import {
 	singleEngine,
 	type AuditFinding,
 	type BacklinkKind,
+	type BacklinkSource,
 	type ChangeGroup,
 	type ClickKind,
 	type CompareKey,
@@ -79,6 +81,7 @@ export function shareView(state: ViewState): ViewState | null {
         delete view.goal;
         delete view.targets;
         delete view.backlinks;
+        delete view.found;
     }
     return view;
 }
@@ -127,6 +130,8 @@ export interface ViewState {
 	report?: SearchReport;
 	/** Search → Backlinks: the list shown (links when left out). */
 	backlinks?: BacklinkKind;
+	/** Search → Backlinks: only what this source found (every source when left out). */
+	found?: BacklinkSource;
 	/** Search → Targets: the targets shown (all when left out). */
 	targets?: TargetFilter;
 	/** Search → Audit: only pages with this finding (all when left out). */
@@ -160,7 +165,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'order', 'goal', 'status', 'targets', 'backlinks', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'order', 'goal', 'status', 'targets', 'backlinks', 'found', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -231,9 +236,12 @@ function searchReportParams(report: SearchReport, params: URLSearchParams, set: 
 		case 'targets':
 			set('targets', unlessDefault(oneOf(TARGET_FILTERS, params.get('targets'), 'all'), 'all'));
 			break;
-		case 'backlinks':
+		case 'backlinks': {
 			set('backlinks', unlessDefault(oneOf(BACKLINK_KINDS, params.get('backlinks'), 'links'), 'links'));
+			const found = params.get('found');
+			set('found', found !== null && (BACKLINK_SOURCES as readonly string[]).includes(found) ? (found as BacklinkSource) : undefined);
 			break;
+		}
 		case 'audit':
 			auditParams(params, set);
 			break;

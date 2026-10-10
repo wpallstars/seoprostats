@@ -557,7 +557,7 @@ day, with the links in `meta`). The report reads live links by
 `status_first` and lost ones by `lost` (each at most 5,000), and each
 referring site's visits from `daily` (dim source) by `dim_val_day`.
 `found` and `authority` leave room for a provider (GH#141). `GET
-/backlinks`, `wp seoprostats backlinks [links|domains|pages|lost|check]`
+/backlinks`, `wp seoprostats backlinks [links|domains|pages|lost|reported|check|import|imports]`
 and the `seoprostats/backlinks` ability read it; `check` runs the check
 now for two minutes, even when the setting is off. The dashboard shows it
 under Search → Backlinks (not in shared reports).
@@ -591,6 +591,47 @@ Exports never reset checked/misses/lost/status, never infer lost from absence,
 and merge first/last dates and source bits. Source filtering is in memory over
 the existing indexed 5,000-row reads, before aggregation and pagination;
 cache keys include source and import progress invalidates the version.
+
+Reported pages and catch-up (GH#213). Search Console's exports name the
+linking page only, so an import of hundreds of them added nothing visible
+until the daily 20-second run had opened each page, which took weeks. Now:
+
+- `kind=reported` (`SEOProStats_Backlinks_Reported`) lists the `path_id=0`
+  rows with an export bit (`EXPORTS`, dataforseo to generic), read by
+  `path_checked` (at most 5,000, never checked first), with each page's
+  check state (`unchecked`, `links`, `none`, `error`, `gone`), the live
+  links found on it, the export's date and the last check. Totals add
+  `reported`, `reported_domains` and `reported_checked`.
+- When an import ends, and after every locked run, cron
+  `seoprostats_backlinks_check` is scheduled a minute ahead while the
+  check is on and an export-named page was never opened (`waiting()`,
+  the `path_id=0, checked=0` range of `path_checked`); it reschedules
+  itself until none waits. `read.next` gives its next run.
+- The daily run, the catch-up and Check now (`POST /backlinks/check`,
+  owner, live data, runs though the setting is off) share a five-minute
+  option lease (`run_locked()`), so no page is opened twice at once.
+- Links found on the first check of an export-named page take the
+  export's first (else last) seen date and raise no `backlink_new`
+  change: the export said they were there already.
+- A failed open of a referring page counts in its `misses` (reset on a
+  successful open), so `reported` can tell an error from no link.
+
+Import history (`SEOProStats_Backlinks_History`, option
+`seoprostats_backlinks_imports` per data set, autoload off): each staged
+import (upload, WP-CLI or REST rows) records who, how, the file's name,
+size and SHA-256, the source and the row counts, updated when the job
+ends (matched by the job's `started`). The last 20 are kept. Uploaded and
+CLI files are copied to `wp-content/seoprostats/links-{blog id}/` under
+random names, with deny-all `.htaccess` and `index.php`; at most 200 MB of
+files are kept, oldest dropped first (the entry stays). `GET
+/backlinks/imports` lists them and `GET /backlinks/imports/{id}/file`
+(administrators, `no-store`, `nosniff`) sends a file back as it was
+uploaded; `wp seoprostats backlinks imports` lists them. Settings → Import
+→ Links shows the table with a Download button and a link to Search →
+Backlinks → Reported for the import's source (`#/search?report=backlinks&
+backlinks=reported&found=<source>`). Rows that name the same link again
+are merged, so results are by source, not by file. Reset and uninstall
+remove the entries, files and folder.
 
 Backlink review (GH#147, schema v22) uses `SEOProStats_Backlink_Review`.
 `links.facts` retains outgoing-link counts, link-list density, declared language,
@@ -1840,7 +1881,7 @@ in the future meets the same length of the other period.
   [--finding=<finding>]`, `run [--limit=<n>]`), `links [--kind=<kind>]
   [--goal=<id>]`, `indexation` (`list [--kind=<kind>] [--days=<n>]`,
   `run`), `inspect [<page>] [--run] [--sitemaps] [--verdict=<verdict>]
-  [--coverage=<state>] [--finding=<finding>]`, `backlinks [links|domains|pages|lost|check] [--all]`, `targets` (`list`, `import <file|->`, `delete <query>...`),
+  [--coverage=<state>] [--finding=<finding>]`, `backlinks [links|domains|pages|lost|reported|check|import|imports] [--all] [--source=<source>]`, `targets` (`list`, `import <file|->`, `delete <query>...`),
   `loop [--rows=<n>]` (`--format=toon` writes the export rows as an
   aidevops export file), `pages`,
   `annotate`, `import`, `export`, `process`, `rollup`, `prune`, `doctor`,
