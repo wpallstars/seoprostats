@@ -78,6 +78,9 @@ export function savePeriod(state: Pick<ViewState, 'range' | 'compare'>): void {
 	if (!period || state.range === 'custom' || state.range === 'realtime') {
 		return;
 	}
+	// Admin submenu links can change only the hash, without another PHP boot.
+	period.range = state.range;
+	period.compare = state.compare;
 	const body = new URLSearchParams({ action: period.action, nonce: period.nonce, range: state.range, compare: state.compare });
 	periodSave = periodSave.then(() => fetch(period.ajaxUrl, {
 		method: 'POST', credentials: 'same-origin', body, keepalive: true,
