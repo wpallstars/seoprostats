@@ -1,7 +1,7 @@
 {
   "schema": "aidevops.repo-metrics.v1",
   "schema_version": 1,
-  "generated_at": "2026-10-06T04:25:48Z",
+  "generated_at": "2026-10-10T23:02:08Z",
   "tool": {
     "name": "aidevops repo-metrics",
     "version": "1.0.0"
@@ -11,104 +11,123 @@
     "slug": "wpallstars/seoprostats"
   },
   "summary": {
-    "source_files": 64,
-    "code": 9948,
-    "comments": 2834,
-    "blanks": 1336,
-    "languages": 9,
-    "dependencies": 14
+    "source_files": 251,
+    "code": 100552,
+    "comments": 25767,
+    "blanks": 7049,
+    "languages": 11,
+    "dependencies": 1464
   },
   "languages": [
     {
-      "name": "Shell",
-      "files": 11,
-      "code": 3106,
-      "comments": 584,
-      "blanks": 301,
-      "percentage": 31.22,
-      "color": "#89e051"
-    },
-    {
       "name": "PHP",
-      "files": 17,
-      "code": 2972,
-      "comments": 2041,
-      "blanks": 380,
-      "percentage": 29.88,
+      "files": 92,
+      "code": 38988,
+      "comments": 22242,
+      "blanks": 3467,
+      "percentage": 38.77,
       "color": "#4F5D95"
     },
     {
-      "name": "Markdown",
-      "files": 15,
-      "code": 1701,
+      "name": "JSON",
+      "files": 9,
+      "code": 21523,
       "comments": 0,
-      "blanks": 400,
-      "percentage": 17.1,
-      "color": "#083fa1"
+      "blanks": 0,
+      "percentage": 21.4,
+      "color": "#292929"
     },
     {
-      "name": "CSS",
-      "files": 1,
-      "code": 697,
-      "comments": 36,
-      "blanks": 147,
-      "percentage": 7.01,
-      "color": "#563d7c"
-    },
-    {
-      "name": "SVG",
-      "files": 4,
-      "code": 641,
-      "comments": 26,
-      "blanks": 10,
-      "percentage": 6.44,
-      "color": "#6e7781"
+      "name": "TSX",
+      "files": 54,
+      "code": 11330,
+      "comments": 1158,
+      "blanks": 617,
+      "percentage": 11.27,
+      "color": "#3178c6"
     },
     {
       "name": "YAML",
       "files": 13,
-      "code": 531,
-      "comments": 101,
-      "blanks": 66,
-      "percentage": 5.34,
+      "code": 8338,
+      "comments": 81,
+      "blanks": 282,
+      "percentage": 8.29,
       "color": "#cb171e"
     },
     {
-      "name": "JavaScript",
-      "files": 1,
-      "code": 257,
+      "name": "Markdown",
+      "files": 20,
+      "code": 5368,
+      "comments": 0,
+      "blanks": 919,
+      "percentage": 5.34,
+      "color": "#083fa1"
+    },
+    {
+      "name": "TypeScript",
+      "files": 27,
+      "code": 4418,
+      "comments": 1017,
+      "blanks": 521,
+      "percentage": 4.39,
+      "color": "#3178c6"
+    },
+    {
+      "name": "Shell",
+      "files": 13,
+      "code": 3905,
+      "comments": 713,
+      "blanks": 358,
+      "percentage": 3.88,
+      "color": "#89e051"
+    },
+    {
+      "name": "CSS",
+      "files": 9,
+      "code": 3531,
+      "comments": 312,
+      "blanks": 730,
+      "percentage": 3.51,
+      "color": "#563d7c"
+    },
+    {
+      "name": "SVG",
+      "files": 6,
+      "code": 1595,
       "comments": 43,
-      "blanks": 30,
-      "percentage": 2.58,
+      "blanks": 12,
+      "percentage": 1.59,
+      "color": "#6e7781"
+    },
+    {
+      "name": "JavaScript",
+      "files": 6,
+      "code": 1538,
+      "comments": 194,
+      "blanks": 139,
+      "percentage": 1.53,
       "color": "#f1e05a"
     },
     {
-      "name": "JSON",
-      "files": 1,
-      "code": 35,
-      "comments": 0,
-      "blanks": 0,
-      "percentage": 0.35,
-      "color": "#292929"
-    },
-    {
       "name": "TOML",
-      "files": 1,
-      "code": 8,
-      "comments": 3,
-      "blanks": 2,
-      "percentage": 0.08,
+      "files": 2,
+      "code": 18,
+      "comments": 7,
+      "blanks": 4,
+      "percentage": 0.02,
       "color": "#9c4221"
     }
   ],
   "dependencies": {
-    "direct": 7,
-    "runtime": 0,
-    "dev": 7,
-    "locked": 14,
-    "total": 14,
+    "direct": 20,
+    "runtime": 4,
+    "dev": 16,
+    "locked": 1464,
+    "total": 1464,
     "ecosystems": [
-      "composer"
+      "composer",
+      "npm"
     ],
     "manifests": [
       {
@@ -136,6 +155,84 @@
           "szepeviktor/phpstan-wordpress",
           "wp-coding-standards/wpcs"
         ]
+      },
+      {
+        "path": "package.json",
+        "ecosystem": "npm",
+        "direct": 11,
+        "runtime": 2,
+        "dev": 9,
+        "locked": 1450,
+        "dependencies": [
+          "@tanstack/react-query",
+          "@types/react",
+          "@wordpress/api-fetch",
+          "@wordpress/components",
+          "@wordpress/element",
+          "@wordpress/i18n",
+          "@wordpress/scripts",
+          "@wordpress/url",
+          "esbuild",
+          "typescript",
+          "uplot"
+        ],
+        "dev_dependencies": [
+          "@types/react",
+          "@wordpress/api-fetch",
+          "@wordpress/components",
+          "@wordpress/element",
+          "@wordpress/i18n",
+          "@wordpress/scripts",
+          "@wordpress/url",
+          "esbuild",
+          "typescript"
+        ]
+      },
+      {
+        "path": "packages/charts/package.json",
+        "ecosystem": "npm",
+        "direct": 1,
+        "runtime": 1,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [
+          "uplot"
+        ],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/core/package.json",
+        "ecosystem": "npm",
+        "direct": 0,
+        "runtime": 0,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/tracker/package.json",
+        "ecosystem": "npm",
+        "direct": 0,
+        "runtime": 0,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [],
+        "dev_dependencies": []
+      },
+      {
+        "path": "packages/wp-admin/package.json",
+        "ecosystem": "npm",
+        "direct": 3,
+        "runtime": 3,
+        "dev": 0,
+        "locked": 0,
+        "dependencies": [
+          "@seoprostats/charts",
+          "@seoprostats/core",
+          "@tanstack/react-query"
+        ],
+        "dev_dependencies": []
       }
     ]
   },
