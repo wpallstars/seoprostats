@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.2
+Stable tag: 1.4.3
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -119,10 +119,10 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.4.2 =
-* Fixed: page rows show Edit for custom post types whose addresses have no base, and for category, tag and other term archives.
-* New: a notice when WP-Cron is turned off and no server cron job runs the scheduled jobs, with the commands to add one.
-* Fixed: dark mode follows the admin colour scheme; text stays readable on hover and focus.
-* Changed: Search → Plan's buttons line up in one column; the Research menu is a small link on the query's line.
+= 1.4.3 =
+* New: on Search → Backlinks → Reported pages, a page's link count opens its links: the page of this site each links to, its text and rel.
+* Changed: the period menu is in groups (Days, Weeks, Calendar); Last 30 and 90 days leave the menu, and the default is named Last 13 weeks.
+* Changed: Edit links open the editor in a new tab, so the report stays open.
+* Fixed: in light mode, lighter admin colour schemes keep their colour at a readable contrast.
 
 Every change: changelog.txt.
