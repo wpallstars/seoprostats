@@ -418,7 +418,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         if ($visitors) {
             foreach (array_chunk(array_keys($visitors), SEOProStats_Dict::CHUNK) as $chunk) {
                 $d = implode(', ', array_fill(0, count($days), '%s'));
-                $v = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+                $v = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its (day, visitor) index; fixed placeholders.
                 $rows = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(skey)) AS skey, LOWER(HEX(visitor)) AS visitor, started, ended, pageviews + events AS n FROM %i WHERE day IN ($d) AND visitor IN ($v)", array_merge(array(SEOProStats_Schema::table('sessions')), array_keys($days), $chunk)));
                 foreach ((array) $rows as $row) {
@@ -794,7 +794,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table; $groups holds only fixed placeholder groups, one per row.
             $wpdb->query($wpdb->prepare("INSERT INTO %i (skey, visitor, day, started, ended, entry_id, ref_host_id, ref_path_id, channel, utm_source_id, utm_medium_id, utm_campaign_id, utm_term_id, utm_content_id, country, lang_id, browser_id, browser_ver, os_id, os_ver, device, screen, login) VALUES $groups ON DUPLICATE KEY UPDATE ended = GREATEST(ended, VALUES(ended)), login = GREATEST(login, VALUES(login))", $args));
 
-            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(skey)) AS k FROM %i WHERE skey IN ($holders)", array_merge(array($table), array_map('strval', array_keys($chunk)))));
             foreach ((array) $found as $row) {
@@ -847,7 +847,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
                 return (bool) $h['props'];
             });
             if ($with_props) {
-                $holders = implode(', ', array_fill(0, count($with_props), 'UNHEX(%s)'));
+                $holders = implode(', ', array_fill(0, count($with_props), self::HEX_PLACEHOLDER));
                 // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
                 $found = $wpdb->get_results($wpdb->prepare("SELECT id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_column($with_props, 'pkey'))));
                 $by    = array();
@@ -874,7 +874,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
             }
         }
         if ($missing) {
-            $holders = implode(', ', array_fill(0, count($missing), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($missing), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT path_id, LOWER(HEX(pkey)) AS k FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', array_keys($missing)))));
             foreach ((array) $found as $row) {
@@ -956,7 +956,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         if (!$eng) {
             return array();
         }
-        $holders = implode(', ', array_fill(0, count($eng), 'UNHEX(%s)'));
+        $holders = implode(', ', array_fill(0, count($eng), self::HEX_PLACEHOLDER));
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
         return array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT DISTINCT session_id FROM %i WHERE pkey IN ($holders)", array_merge(array($table), array_map('strval', array_keys($eng))))));
     }
@@ -1015,7 +1015,7 @@ final class SEOProStats_Processor { // NOSONAR: single processing lifecycle faca
         }
         $pages = array();
         foreach (array_chunk(array_values(array_unique(array_column($clicks, 'pkey'))), SEOProStats_Dict::CHUNK) as $chunk) {
-            $holders = implode(', ', array_fill(0, count($chunk), 'UNHEX(%s)'));
+            $holders = implode(', ', array_fill(0, count($chunk), self::HEX_PLACEHOLDER));
             // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its unique key; fixed placeholders.
             $found = $wpdb->get_results($wpdb->prepare("SELECT LOWER(HEX(pkey)) AS k, session_id, seq, path_id FROM %i WHERE pkey IN ($holders)", array_merge(array(SEOProStats_Schema::table('pageviews')), array_map('strval', $chunk))));
             foreach ((array) $found as $row) {

@@ -247,6 +247,28 @@ final class SEOProStats_Inspections { // NOSONAR: a compatibility facade for cro
     }
 
     /**
+     * An optional whole-number field from a remote response.
+     *
+     * @param array<string,mixed> $one Response.
+     * @param string              $key Field.
+     * @return int
+     */
+    private static function integer_field(array $one, $key) {
+        return isset($one[$key]) ? (int) $one[$key] : 0;
+    }
+
+    /**
+     * An optional list field from a remote response.
+     *
+     * @param array<string,mixed> $one Response.
+     * @param string              $key Field.
+     * @return array<mixed>
+     */
+    private static function array_field(array $one, $key) {
+        return isset($one[$key]) && is_array($one[$key]) ? $one[$key] : array();
+    }
+
+    /**
      * Convert an optional sitemap timestamp, including Google's empty values.
      *
      * @param array<string,mixed> $one Sitemap response.
@@ -355,7 +377,8 @@ final class SEOProStats_Inspections { // NOSONAR: a compatibility facade for cro
      * @param int $path_id Path id.
      * @param string $path Page path.
      * @param array<string,mixed>|WP_Error $result Inspection response.
-     * @param array<string,mixed> $out Run counters, updated in place.
+     * @param array{inspected:int,failed:int,left:int,daily:int,used:int,more:bool,error:string|null} $out Run counters, updated in place.
+     * @param-out array{inspected:int,failed:int,left:int,daily:int,used:int,more:bool,error:string|null} $out
      * @return bool Whether to continue.
      */
     private static function keep_inspection($path_id, $path, $result, array &$out) {
@@ -661,7 +684,7 @@ final class SEOProStats_Inspections { // NOSONAR: a compatibility facade for cro
             if (!is_array($parts)) {
                 return (string) $url;
             }
-            $host = strtolower((string) preg_replace('/^www\./i', '', isset($parts['host']) ? (string) $parts['host'] : ''));
+            $host = strtolower((string) preg_replace(self::WWW_PREFIX, '', isset($parts['host']) ? (string) $parts['host'] : ''));
             $path = isset($parts['path']) && $parts['path'] !== '' ? rtrim((string) $parts['path'], '/') : '';
             return strtolower(isset($parts['scheme']) ? (string) $parts['scheme'] : '') . '://' . $host . $path . (isset($parts['query']) ? '?' . $parts['query'] : '');
         };
@@ -1232,8 +1255,8 @@ final class SEOProStats_Inspections { // NOSONAR: a compatibility facade for cro
      * @return bool
      */
     private static function on_site($url) {
-        $host = strtolower((string) preg_replace('/^www\./i', '', (string) wp_parse_url((string) $url, PHP_URL_HOST)));
-        $home = strtolower((string) preg_replace('/^www\./i', '', (string) wp_parse_url(home_url('/'), PHP_URL_HOST)));
+        $host = strtolower((string) preg_replace(self::WWW_PREFIX, '', (string) wp_parse_url((string) $url, PHP_URL_HOST)));
+        $home = strtolower((string) preg_replace(self::WWW_PREFIX, '', (string) wp_parse_url(home_url('/'), PHP_URL_HOST)));
         return $host !== '' && $host === $home;
     }
 

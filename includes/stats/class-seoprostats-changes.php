@@ -33,10 +33,10 @@ if (!defined('ABSPATH')) {
 /**
  * Stable WordPress hook and change-log facade; private helpers isolate each operation.
  *
- * @SuppressWarnings(PHPMD.ExcessiveClassComplexity) Hook families share request-local deduplication and snapshots; procedural branches are separated into helpers.
- * @SuppressWarnings(PHPMD.ExcessiveClassLength) Keeping the public hook facade and its private implementation together preserves the single-file loading contract.
- * @SuppressWarnings(PHPMD.TooManyMethods) Named private operations keep hook implementations simple without changing the public facade.
- * @SuppressWarnings(PHPMD.TooManyPublicMethods) Public methods are existing WordPress callbacks and change-log API entry points.
+ * @SuppressWarnings("PHPMD.ExcessiveClassComplexity") Hook families share request-local deduplication and snapshots; procedural branches are separated into helpers.
+ * @SuppressWarnings("PHPMD.ExcessiveClassLength") Keeping the public hook facade and its private implementation together preserves the single-file loading contract.
+ * @SuppressWarnings("PHPMD.TooManyMethods") Named private operations keep hook implementations simple without changing the public facade.
+ * @SuppressWarnings("PHPMD.TooManyPublicMethods") Public methods are existing WordPress callbacks and change-log API entry points.
  */
 final class SEOProStats_Changes { // NOSONAR: existing public hook/API facade stays intact; private helpers separate its operations within the single-file loading contract.
 
