@@ -259,15 +259,20 @@ function b64url(bytes) {
 	for (const byte of bytes) {
 		text += String.fromCodePoint(byte);
 	}
-	let out = btoa(text).replaceAll('+', '-').replaceAll('/', '_');
+	let out = swap(btoa(text), { '+': '-', '/': '_' });
 	while (out.endsWith('=')) {
 		out = out.slice(0, -1);
 	}
 	return out;
 }
 
+/** Swap single characters by a map (base64 ↔ base64url). */
+function swap(text, map) {
+	return Array.from(text, (c) => map[c] ?? c).join('');
+}
+
 function unb64url(text) {
-	const plain = atob(text.replaceAll('-', '+').replaceAll('_', '/') + '==='.slice((text.length + 3) % 4));
+	const plain = atob(swap(text, { '-': '+', _: '/' }) + '==='.slice((text.length + 3) % 4));
 	return Uint8Array.from(plain, (c) => c.codePointAt(0));
 }
 
