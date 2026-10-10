@@ -83,15 +83,20 @@ How changes are made and checked: `DEVELOPMENT.md`. Releases: `RELEASING.md`.
   between `<!-- github-only:start -->` and `<!-- github-only:end -->`
   (GitHub-only parts such as the screenshots section) and the badges block
   under the title (`<!-- aidevops:badges:start -->` to
-  `<!-- aidevops:badges:end -->`): CI, SonarCloud, Codacy, CodeFactor,
-  license, latest release, and the repository facts in `docs/metrics/` that
-  `.github/workflows/repo-metrics.yml` keeps up to date.
-  `scripts/rename-plugin.sh` rebuilds the block for the new repository; add
-  the Codacy and CodeFactor badges once those services have the repository
-  (`DEVELOPMENT.md` → Services setup), never before: a badge for a
-  repository they don't have is a broken image. The `Version: X.Y.Z` line
-  under the intro holds the version itself (GitHub shows it as written) and
-  changes with every release (`RELEASING.md`).
+  `<!-- aidevops:badges:end -->`). The `Version: X.Y.Z` line under the
+  intro holds the version itself (GitHub shows it as written) and changes
+  with every release (`RELEASING.md`).
+- The badges block is the starter's, the same in every plugin, and other
+  tools leave it alone: `scripts/readme-badges.sh` writes it
+  (`scripts/rename-plugin.sh` for a new repository). Three rows, one blank
+  line between them: status (CI, SonarCloud, Codacy, CodeFactor, OpenSSF
+  Scorecard, licence, latest release); requirements from `readme.txt`
+  (Requires WordPress, Tested up to, Requires PHP) and size (the facts in
+  `docs/metrics/` that `.github/workflows/repo-metrics.yml` keeps up to
+  date); then the languages chart alone. Add a service's badge
+  (`--add`, `--codacy`) once it has the repository (`DEVELOPMENT.md` →
+  Services setup), never before: it would be a broken image.
+  `scripts/preflight-release.sh` warns when the block differs.
 - Listing images are in `.wordpress-org/`. Screenshots are
   `.wordpress-org/screenshot-N.png` (WordPress.org's `assets/` names,
   captions in `readme.txt` → Screenshots), which the release zip leaves
@@ -128,6 +133,29 @@ How changes are made and checked: `DEVELOPMENT.md`. Releases: `RELEASING.md`.
   line is too long, shorten it rather than move or resize the lines.
   Each group is one `<g id=...>` line, its `<text>` lines and `</g>`,
   which is how `scripts/build-banner.sh` finds them.
+- Every wpallstars plugin's banner and icon show the same picture: the
+  stack of three isometric tiles under the arc of five stars, on the navy
+  background with red and cream stripes. Never replace the stack with
+  another picture.
+  - Vary only two things: the tiles' colours (with the matching stars and
+    glow) and the picture on the top tile. The starter has all red tiles
+    with the WordPress Plugins icon; other plugins have, say, rising bars,
+    or red, cream and blue tiles with a gold lightning bolt.
+  - Draw the top tile's picture on the tile's isometric axes, in a 20-unit
+    space (0 to 20 on both axes, centre 10,10) through the starter's face
+    matrix, `matrix(4.95 2.871 -4.95 2.871 1214 -57.42)` in the top tile's
+    `translate(0 238)` group of `.wordpress-org/banner.svg`. Picture x then
+    runs along the tile's top-right edge and y along its top-left edge, so
+    straight edges stay parallel to the tile's. Squashing upright art
+    (`scale(1 0.58)`) is not enough: its edges stay level and look wrong.
+    Strokes scale with the matrix: about 0.35 units draws a 2 px line.
+  - Raised art (optional, such as bars or a bolt standing on the tile):
+    a dark shadow copy offset `translate(5 3)`, then darker side copies
+    stepped up 1 px at a time, then the top copy with a light outline, all
+    in tile coordinates (a `<use>` translate applies outside the matrix).
+  - Keep `banner.svg` and `icon.svg` in step (the icon is the banner's
+    picture with no words), run `scripts/build-banner.sh`, and look at
+    `icon-128x128.png`: the top tile's picture must still read at that size.
 - Settings → {Name} is the settings screen. A plugin with its own top-level
   menu names it in `{Prefix}_Setup::MENU_PARENT`, and the screen is
   **Settings**, last in that menu (not also under Settings). Link to it with
@@ -395,10 +423,11 @@ which replaces Git Updater.
 - Tokens for private repositories come only from `wp-config.php`
   (`WPALLSTARS_GITHUB_TOKEN`) or the filter, go only to api.github.com and
   are never stored.
-- Release answers are cached for 12 hours (an hour after a failure). "Check
-  again" on the Updates screen, or a core check that starts without the
-  `update_plugins` site transient (cleared, say, with `wp transient delete
-  update_plugins --network`), asks GitHub again, at most once a minute.
+- Release answers are cached for 12 hours (an hour after a failure, which
+  keeps the release found before and shows its error on the Plugins and
+  Updates screens). "Check again" on the Updates screen, even when core
+  skips its own check, or a core check without the `update_plugins` site
+  transient asks GitHub again, at most once a minute.
 
 ## Releases
 
