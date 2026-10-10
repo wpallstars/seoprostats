@@ -130,44 +130,22 @@ final class SEOProStats_Experiments {
             return self::error('seoprostats_experiment', __('An experiment needs a name: the change and what it should do, in one line.', 'seoprostats'));
         }
 
-        $change_id = isset($input['change']) ? max(0, (int) $input['change']) : 0;
-        $pages     = self::paths($input['pages'] ?? ($input['page'] ?? ''));
-        if ($change_id) {
-            $change = SEOProStats_Changes::get($change_id);
-            if (!$change) {
-                /* translators: %d: change id */
-                return self::error('seoprostats_not_found', sprintf(__('There is no change %d.', 'seoprostats'), $change_id), 404);
-            }
-            $start = (int) strtotime((string) $change['t']);
-            if (!$pages && $change['path'] !== null) {
-                $pages = array((string) $change['path']);
-            }
-        } else {
-            $start = SEOProStats_Changes::when(isset($input['start']) ? $input['start'] : '');
-            if (is_wp_error($start)) {
-                return $start;
-            }
+        $begun = self::start_and_pages($input);
+        if (is_wp_error($begun)) {
+            return $begun;
         }
-        if (!$pages) {
-            return self::error('seoprostats_experiment_pages', __('Name the page or pages the experiment is about (a site-wide change touches every page, so it has no unchanged pages to compare with).', 'seoprostats'));
-        }
-        if (count($pages) > self::MAX_PAGES) {
-            /* translators: %d: most pages */
-            return self::error('seoprostats_experiment_pages', sprintf(__('An experiment can have up to %d pages.', 'seoprostats'), self::MAX_PAGES));
+        list($change_id, $start, $pages) = $begun;
+        $wrong = self::pages_error($pages);
+        if ($wrong) {
+            return $wrong;
         }
 
         $fields = self::fields($input);
         if (is_wp_error($fields)) {
             return $fields;
         }
-        $ids     = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $pages);
-        $path_id = count($pages) === 1 && isset($ids[SEOProStats_Dict::clean($pages[0])]) ? (int) $ids[SEOProStats_Dict::clean($pages[0])] : 0;
-        $meta    = array_filter(array(
-            'pages'      => count($pages) > 1 ? $pages : array(),
-            'goal'       => $fields['goal'],
-            'hypothesis' => self::long_text(isset($input['hypothesis']) ? $input['hypothesis'] : ''),
-            'note'       => self::long_text(isset($input['note']) ? $input['note'] : ''),
-        ));
+        $path_id = self::single_path_id($pages);
+        $meta    = self::new_meta($pages, $fields['goal'], $input);
         $windows = self::windows($start, $fields['days'], $fields['engine'], $fields['metric']);
 
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery -- writing our own table.
@@ -198,7 +176,100 @@ final class SEOProStats_Experiments {
             return self::error('seoprostats_experiment_failed', __('The experiment could not be saved.', 'seoprostats'), 500);
         }
 
-        // Its start on the timeline: on its page, or site-wide for several.
+        self::mark_start($id, $start, $pages, $name, $fields['metric'], $meta);
+        self::$through = array();
+        return self::get($id);
+    }
+
+    /**
+     * A new experiment's change, start and pages: the change's time, and
+     * its page when no pages are named; or the start given (default now).
+     *
+     * @param array<string,mixed> $input change (a change id) or start; page or pages.
+     * @return array{0:int,1:int,2:string[]}|WP_Error Change id (0: none), start (Unix) and pages.
+     */
+    private static function start_and_pages(array $input) {
+        $change_id = isset($input['change']) ? max(0, (int) $input['change']) : 0;
+        $pages     = self::paths($input['pages'] ?? ($input['page'] ?? ''));
+        if ($change_id) {
+            $change = SEOProStats_Changes::get($change_id);
+            if (!$change) {
+                /* translators: %d: change id */
+                return self::error('seoprostats_not_found', sprintf(__('There is no change %d.', 'seoprostats'), $change_id), 404);
+            }
+            $start = (int) strtotime((string) $change['t']);
+            if (!$pages && $change['path'] !== null) {
+                $pages = array((string) $change['path']);
+            }
+            return array($change_id, $start, $pages);
+        }
+        $start = SEOProStats_Changes::when(isset($input['start']) ? $input['start'] : '');
+        if (is_wp_error($start)) {
+            return $start;
+        }
+        return array($change_id, $start, $pages);
+    }
+
+    /**
+     * Why a new experiment's pages will not do (none, or too many), or null.
+     *
+     * @param string[] $pages Paths.
+     * @return WP_Error|null
+     */
+    private static function pages_error(array $pages) {
+        if (!$pages) {
+            return self::error('seoprostats_experiment_pages', __('Name the page or pages the experiment is about (a site-wide change touches every page, so it has no unchanged pages to compare with).', 'seoprostats'));
+        }
+        if (count($pages) > self::MAX_PAGES) {
+            /* translators: %d: most pages */
+            return self::error('seoprostats_experiment_pages', sprintf(__('An experiment can have up to %d pages.', 'seoprostats'), self::MAX_PAGES));
+        }
+        return null;
+    }
+
+    /**
+     * The pages' dictionary ids (added when new), and the one page's id
+     * for an experiment of one page (else 0: its pages are in its meta).
+     *
+     * @param string[] $pages Paths.
+     * @return int
+     */
+    private static function single_path_id(array $pages) {
+        $ids = SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $pages);
+        return count($pages) === 1 && isset($ids[SEOProStats_Dict::clean($pages[0])]) ? (int) $ids[SEOProStats_Dict::clean($pages[0])] : 0;
+    }
+
+    /**
+     * A new experiment's meta: its pages (when several), goal, hypothesis
+     * and note, the empty ones left out.
+     *
+     * @param string[]            $pages Paths.
+     * @param string              $goal  Goal id ('' for none).
+     * @param array<string,mixed> $input hypothesis, note.
+     * @return array<string,mixed>
+     */
+    private static function new_meta(array $pages, $goal, array $input) {
+        return array_filter(array(
+            'pages'      => count($pages) > 1 ? $pages : array(),
+            'goal'       => $goal,
+            'hypothesis' => self::long_text(isset($input['hypothesis']) ? $input['hypothesis'] : ''),
+            'note'       => self::long_text(isset($input['note']) ? $input['note'] : ''),
+        ));
+    }
+
+    /**
+     * A new experiment's start on the timeline (on its page, or site-wide
+     * for several), kept in its meta as its marker.
+     *
+     * @param int                 $id     Experiment id.
+     * @param int                 $start  Start (Unix).
+     * @param string[]            $pages  Paths.
+     * @param string              $name   Its name.
+     * @param int                 $metric Metric code.
+     * @param array<string,mixed> $meta   Its meta.
+     */
+    private static function mark_start($id, $start, array $pages, $name, $metric, array $meta) {
+        global $wpdb;
         $marked = SEOProStats_Changes::write(array(
             'ts'          => $start,
             'kind'        => SEOProStats_Changes::EXPERIMENT,
@@ -207,7 +278,7 @@ final class SEOProStats_Experiments {
             'object_id'   => $id,
             'old'         => '',
             'new'         => $name,
-            'meta'        => array('metric' => self::METRICS[$fields['metric']], 'pages' => count($pages)),
+            'meta'        => array('metric' => self::METRICS[$metric], 'pages' => count($pages)),
             'source'      => SEOProStats_Changes::source(),
             'user_id'     => get_current_user_id(),
         ));
@@ -215,8 +286,6 @@ final class SEOProStats_Experiments {
             $meta['marker'] = (int) $wpdb->insert_id;
             self::save_meta($id, $meta);
         }
-        self::$through = array();
-        return self::get($id);
     }
 
     /**
