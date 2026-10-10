@@ -31,6 +31,8 @@ final class SEOProStats_Admin_Period {
      * @return bool
      */
     private static function valid($range, $compare) {
+        // Admin-ajax does not load the REST report engine.
+        require_once SEOPROSTATS_DIR . 'includes/stats/class-seoprostats-query.php';
         return in_array($range, SEOProStats_Query::RANGES, true)
             && !in_array($range, array('custom', 'realtime'), true)
             && in_array($compare, SEOProStats_Query::COMPARE, true);
