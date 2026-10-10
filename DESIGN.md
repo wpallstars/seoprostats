@@ -182,7 +182,7 @@ The Overview's Map card sits beside Locations: countries in the border grey, tho
 
 ### Tiles and tables
 
-Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with ↓ (most first) and `aria-sort`; other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
+Tiles that pick the chart's metric are buttons (accent underline when chosen); tiles that only report totals, as in Search → Content, look the same but do not react to hover. A table that can be sorted shows its sortable headers as plain-text buttons, the active one in the accent colour with an arrow and `aria-sort`: ↓ highest (or newest) at the top, ↑ lowest (or oldest). A header's first click sorts its natural way: most first, newest first for days, lowest first for position (a lower position is better); clicking the sorted header again reverses it, and the button's tooltip says what the next click does. Search tables open sorted by impressions, most first (Rankings' Days by day, newest first); the choice is kept in the address. On paper the headers are plain text, with the arrow on the sorted column. Other headers are plain text. A change against the comparison sits under its number, green when it is good news for that metric, red when bad.
 
 ### Info & ideas
 

@@ -774,6 +774,25 @@ final class SEOProStats_CLI {
      * [--query=<query>]
      * : Only this search query (* for any text).
      *
+     * [--sort=<sort>]
+     * : Order of the rows: impressions, clicks, ctr or position; days also by day. Impressions when left out (days: day, newest first).
+     * ---
+     * options:
+     *   - impressions
+     *   - clicks
+     *   - ctr
+     *   - position
+     *   - day
+     * ---
+     *
+     * [--order=<order>]
+     * : desc (most first) or asc. Left out: lowest first for position, most (or newest) first for the rest.
+     * ---
+     * options:
+     *   - desc
+     *   - asc
+     * ---
+     *
      * [--engine=<engine>]
      * : google (Search Console), bing (Bing Webmaster Tools; no countries or devices) or all (Combined: every engine with data added up; no countries or devices).
      * ---
@@ -838,6 +857,7 @@ final class SEOProStats_CLI {
      *     wp seoprostats search days --range=30d --limit=100
      *     wp seoprostats search queries --page=/pricing/
      *     wp seoprostats search pages --query="seo pro stats" --format=json
+     *     wp seoprostats search pages --sort=position
      *     wp seoprostats search --engine=bing
      *     wp seoprostats search --engine=all
      *
@@ -849,9 +869,11 @@ final class SEOProStats_CLI {
         $page   = isset($assoc['page']) ? (string) $assoc['page'] : '';
         $query  = isset($assoc['query']) ? (string) $assoc['query'] : '';
         $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
+        $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : '';
+        $order  = isset($assoc['order']) ? (string) $assoc['order'] : '';
         $req    = $this->request($assoc + array('range' => '30d'));
-        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page, $query, $engine) {
-            return SEOProStats_Search::report($req, $kind, $page, $query, $engine);
+        $answer = $this->on_data($assoc, static function () use ($req, $kind, $page, $query, $engine, $sort, $order) {
+            return SEOProStats_Search::report($req, $kind, $page, $query, $engine, $sort, $order);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -1124,6 +1146,24 @@ final class SEOProStats_CLI {
      * [--finding=<finding>]
      * : Only pages with this finding: noindex, canonical, thin, title_missing, title_duplicate, title_long, description_missing, description_duplicate, description_long, h1_none, h1_several or images_alt.
      *
+     * [--sort=<sort>]
+     * : Order of the pages (list): impressions (when left out), clicks, ctr or position.
+     * ---
+     * options:
+     *   - impressions
+     *   - clicks
+     *   - ctr
+     *   - position
+     * ---
+     *
+     * [--order=<order>]
+     * : desc (most first) or asc. Left out: lowest first for position, most first for the rest.
+     * ---
+     * options:
+     *   - desc
+     *   - asc
+     * ---
+     *
      * [--engine=<engine>]
      * : google (Search Console) or bing (Bing Webmaster Tools), for the search figures.
      * ---
@@ -1191,9 +1231,11 @@ final class SEOProStats_CLI {
         }
         $engine  = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $finding = isset($assoc['finding']) ? (string) $assoc['finding'] : '';
+        $sort    = isset($assoc['sort']) ? (string) $assoc['sort'] : '';
+        $order   = isset($assoc['order']) ? (string) $assoc['order'] : '';
         $req     = $this->request($assoc + array('range' => '30d', 'limit' => '20'));
-        $answer  = $this->on_data($assoc, static function () use ($req, $engine, $finding) {
-            return SEOProStats_Audit::report($req, $engine, $finding);
+        $answer  = $this->on_data($assoc, static function () use ($req, $engine, $finding, $sort, $order) {
+            return SEOProStats_Audit::report($req, $engine, $finding, $sort, $order);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -2156,13 +2198,26 @@ final class SEOProStats_CLI {
      * ## OPTIONS
      *
      * [--sort=<sort>]
-     * : Order, most first.
+     * : Order of the pages; impressions when left out. Conversions and conversion_rate need a goal.
      * ---
-     * default: clicks
      * options:
+     *   - impressions
      *   - clicks
+     *   - ctr
+     *   - position
      *   - visits
+     *   - bounce_rate
+     *   - visit_duration
      *   - conversions
+     *   - conversion_rate
+     * ---
+     *
+     * [--order=<order>]
+     * : desc (most first) or asc. Left out: lowest first for position, most first for the rest.
+     * ---
+     * options:
+     *   - desc
+     *   - asc
      * ---
      *
      * [--goal=<id>]
@@ -2230,12 +2285,13 @@ final class SEOProStats_CLI {
      * @param array<string,string> $assoc Options.
      */
     public function content($args, $assoc) {
-        $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : 'clicks';
+        $sort   = isset($assoc['sort']) ? (string) $assoc['sort'] : '';
+        $order  = isset($assoc['order']) ? (string) $assoc['order'] : '';
         $goal   = isset($assoc['goal']) ? (string) $assoc['goal'] : '';
         $engine = isset($assoc['engine']) ? (string) $assoc['engine'] : 'google';
         $req    = $this->request($assoc + array('range' => '30d', 'compare' => 'none'));
-        $answer = $this->on_data($assoc, static function () use ($req, $sort, $goal, $engine) {
-            return SEOProStats_Content::report($req, $sort, $goal, $engine);
+        $answer = $this->on_data($assoc, static function () use ($req, $sort, $goal, $engine, $order) {
+            return SEOProStats_Content::report($req, $sort, $goal, $engine, $order);
         });
         if ($this->format($assoc) === 'json') {
             WP_CLI::line((string) wp_json_encode($answer, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));

@@ -27,7 +27,11 @@ import {
 	SEARCH_ENGINE_CHOICES,
 	SEARCH_KINDS,
 	SEARCH_REPORTS,
+	SEARCH_SORTS,
+	SORT_ORDERS,
 	TARGET_FILTERS,
+	naturalOrder,
+	searchSorts,
 	singleEngine,
 	type AuditFinding,
 	type BacklinkKind,
@@ -44,7 +48,9 @@ import {
 	type SearchEngineChoice,
 	type SearchKind,
 	type SearchMetricKey,
+	type SearchDaySort,
 	type SearchReport,
+	type SortOrder,
 	type TargetFilter,
 } from './types';
 import { CHART_METRICS, SEARCH_METRICS } from './metrics';
@@ -131,8 +137,10 @@ export interface ViewState {
 	index?: IndexationKind;
 	/** Search: the engine, or all for Combined (Google when left out); kept across its reports. */
 	engine?: SearchEngineChoice;
-	/** Search → Content: the order of the pages. */
-	sort?: ContentSort;
+	/** Search → Rankings, Content and Audit: the column the table is sorted by (the table's default when left out). */
+	sort?: ContentSort | SearchDaySort;
+	/** The sorted table's direction (the column's natural one when left out: lowest first for position, most first for the rest). */
+	order?: SortOrder;
 	/** Search → Content and Audit (internal links): the goal counted; Search → Plan: the goal giving value (its ID); the first when left out. */
 	goal?: string;
 	/** Search → Plan: the items shown (open when left out). */
@@ -152,7 +160,7 @@ export interface ViewState {
 }
 
 /** The single-value section choices (Overview's tabs are a map); everything else is shared by every section. */
-const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'goal', 'status', 'targets', 'backlinks', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
+const SECTION_VALUES = ['kind', 'report', 'engine', 'sort', 'order', 'goal', 'status', 'targets', 'backlinks', 'finding', 'links', 'index', 'tab', 'chart', 'key', 'event', 'page', 'query', 'change', 'group', 'test'] as const;
 
 export const DEFAULT_STATE: ViewState = {
 	view: 'overview',
@@ -188,6 +196,16 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			state[name] = value;
 		}
 	};
+	// A sorted table: its column (the first is the default) and direction (the column's natural one is the default).
+	const sorted = (sorts: readonly (ContentSort | SearchDaySort)[]): void => {
+		const asked = params.get('sort');
+		const sort = oneOf(sorts, asked, sorts[0]!);
+		set('sort', sort === sorts[0] ? undefined : sort);
+		// A direction belongs to its column: a column this table does not have takes the default's natural one.
+		const natural = naturalOrder(sort);
+		const order = asked === null || asked === sort ? oneOf(SORT_ORDERS, params.get('order'), natural) : natural;
+		set('order', order === natural ? undefined : order);
+	};
 	if (state.view === 'clicks') {
 		const kind = oneOf(CLICK_KINDS, params.get('kind'), 'elements');
 		set('kind', kind === 'elements' ? undefined : kind);
@@ -208,8 +226,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		const engine = oneOf(SEARCH_ENGINE_CHOICES, params.get('engine'), 'google');
 		set('engine', engine === 'google' ? undefined : engine);
 		if (report === 'content') {
-			const sort = oneOf(CONTENT_SORTS, params.get('sort'), 'clicks');
-			set('sort', sort === 'clicks' ? undefined : sort);
+			sorted(CONTENT_SORTS);
 			set('goal', text(params.get('goal')));
 		}
 		if (report === 'plan') {
@@ -233,6 +250,7 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 			const index = oneOf(INDEXATION_KINDS, params.get('index'), 'pages');
 			set('index', index === 'pages' ? undefined : index);
 			set('goal', text(params.get('goal')));
+			sorted(SEARCH_SORTS);
 		}
 		if (report === 'experiments') {
 			const change = params.get('change') ?? '';
@@ -244,6 +262,10 @@ function sectionParams(state: ViewState, params: URLSearchParams): void {
 		const chart = oneOf(Object.keys(SEARCH_METRICS) as SearchMetricKey[], params.get('chart'), 'clicks');
 		set('tab', tab === 'queries' ? undefined : tab);
 		set('chart', chart === 'clicks' ? undefined : chart);
+		// Rankings' top searches: the orders of the table shown (days also by day).
+		if (report === 'rankings') {
+			sorted(searchSorts(tab));
+		}
 		set('page', text(params.get('page')));
 		set('query', text(params.get('query')));
 	} else if (state.view === 'overview') {
