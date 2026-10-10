@@ -108,6 +108,10 @@ final class SEOProStats_Query {
     /** Seconds an answer is kept. */
     const CACHE_TTL = 300;
 
+    /** DateTime modifiers: the next day, and a year back. */
+    private const NEXT_DAY    = '+1 day';
+    private const YEAR_BEFORE = '-1 year';
+
     /** Most rows in a breakdown. */
     const MAX_LIMIT = 1000;
 
@@ -127,27 +131,17 @@ final class SEOProStats_Query {
      * @return array<string,mixed>|WP_Error
      */
     public static function request(array $args) {
-        $range = isset($args['range']) && $args['range'] !== '' ? (string) $args['range'] : '7d';
-        if (!in_array($range, self::RANGES, true)) {
-            return new WP_Error('seoprostats_range', sprintf(/* translators: %s: list of ranges */ __('Range must be one of: %s.', 'seoprostats'), implode(', ', self::RANGES)), array('status' => 400));
-        }
-        $compare = isset($args['compare']) && $args['compare'] !== '' ? (string) $args['compare'] : 'none';
-        if (!in_array($compare, self::COMPARE, true)) {
-            return new WP_Error('seoprostats_compare', sprintf(/* translators: %s: list of comparisons */ __('Comparison must be one of: %s.', 'seoprostats'), implode(', ', self::COMPARE)), array('status' => 400));
-        }
-        $grain = isset($args['grain']) && $args['grain'] !== '' ? (string) $args['grain'] : 'auto';
-        if (!in_array($grain, self::GRAINS, true)) {
-            return new WP_Error('seoprostats_grain', sprintf(/* translators: %s: list of grains */ __('Grain must be one of: %s.', 'seoprostats'), implode(', ', self::GRAINS)), array('status' => 400));
-        }
-        $dimension = isset($args['dimension']) ? (string) $args['dimension'] : '';
-        if ($dimension !== '' && !isset(self::DIMENSIONS[$dimension])) {
-            return new WP_Error('seoprostats_dimension', sprintf(/* translators: %s: list of dimensions */ __('Dimension must be one of: %s.', 'seoprostats'), implode(', ', array_keys(self::DIMENSIONS))), array('status' => 400));
-        }
-
-        $from = isset($args['from']) ? (string) $args['from'] : '';
-        $to   = isset($args['to']) ? (string) $args['to'] : '';
-        if ($range === 'custom' && (!self::is_date($from) || !self::is_date($to) || $from > $to)) {
-            return new WP_Error('seoprostats_custom', __('A custom range needs from and to dates (YYYY-MM-DD), from not after to.', 'seoprostats'), array('status' => 400));
+        $req = array(
+            'range'     => self::option_arg($args, 'range', '7d'),
+            'from'      => self::option_arg($args, 'from', ''),
+            'to'        => self::option_arg($args, 'to', ''),
+            'compare'   => self::option_arg($args, 'compare', 'none'),
+            'grain'     => self::option_arg($args, 'grain', 'auto'),
+            'dimension' => self::option_arg($args, 'dimension', ''),
+        );
+        $invalid = self::request_invalid($req);
+        if ($invalid) {
+            return $invalid;
         }
 
         $filters = self::parse_filters(isset($args['filters']) ? $args['filters'] : array());
@@ -155,20 +149,68 @@ final class SEOProStats_Query {
             return $filters;
         }
 
-        $limit  = isset($args['limit']) ? (int) $args['limit'] : 10;
-        $offset = isset($args['offset']) ? (int) $args['offset'] : 0;
-
+        $custom = $req['range'] === 'custom';
         return array(
-            'range'     => $range,
-            'from'      => $range === 'custom' ? $from : '',
-            'to'        => $range === 'custom' ? $to : '',
-            'compare'   => $compare,
-            'grain'     => $grain,
+            'range'     => $req['range'],
+            'from'      => $custom ? $req['from'] : '',
+            'to'        => $custom ? $req['to'] : '',
+            'compare'   => $req['compare'],
+            'grain'     => $req['grain'],
             'filters'   => $filters,
-            'dimension' => $dimension,
-            'limit'     => max(1, min(self::MAX_LIMIT, $limit)),
-            'offset'    => max(0, $offset),
+            'dimension' => $req['dimension'],
+            'limit'     => max(1, min(self::MAX_LIMIT, self::number_arg($args, 'limit', 10))),
+            'offset'    => max(0, self::number_arg($args, 'offset', 0)),
         );
+    }
+
+    /**
+     * A text option of a request; empty takes the default.
+     *
+     * @param array<string,mixed> $args    Request arguments.
+     * @param string              $key     Option.
+     * @param string              $default Default.
+     * @return string
+     */
+    private static function option_arg(array $args, $key, $default) {
+        return isset($args[$key]) && $args[$key] !== '' ? (string) $args[$key] : $default;
+    }
+
+    /**
+     * A whole-number option of a request.
+     *
+     * @param array<string,mixed> $args    Request arguments.
+     * @param string              $key     Option.
+     * @param int                 $default Default when missing.
+     * @return int
+     */
+    private static function number_arg(array $args, $key, $default) {
+        return isset($args[$key]) ? (int) $args[$key] : $default;
+    }
+
+    /**
+     * The first error in a request's options, in the order they are
+     * checked (range, comparison, grain, dimension, custom dates), or null.
+     *
+     * @param array{range:string,from:string,to:string,compare:string,grain:string,dimension:string} $req Options.
+     * @return WP_Error|null
+     */
+    private static function request_invalid(array $req) {
+        if (!in_array($req['range'], self::RANGES, true)) {
+            return new WP_Error('seoprostats_range', sprintf(/* translators: %s: list of ranges */ __('Range must be one of: %s.', 'seoprostats'), implode(', ', self::RANGES)), array('status' => 400));
+        }
+        if (!in_array($req['compare'], self::COMPARE, true)) {
+            return new WP_Error('seoprostats_compare', sprintf(/* translators: %s: list of comparisons */ __('Comparison must be one of: %s.', 'seoprostats'), implode(', ', self::COMPARE)), array('status' => 400));
+        }
+        if (!in_array($req['grain'], self::GRAINS, true)) {
+            return new WP_Error('seoprostats_grain', sprintf(/* translators: %s: list of grains */ __('Grain must be one of: %s.', 'seoprostats'), implode(', ', self::GRAINS)), array('status' => 400));
+        }
+        if ($req['dimension'] !== '' && !isset(self::DIMENSIONS[$req['dimension']])) {
+            return new WP_Error('seoprostats_dimension', sprintf(/* translators: %s: list of dimensions */ __('Dimension must be one of: %s.', 'seoprostats'), implode(', ', array_keys(self::DIMENSIONS))), array('status' => 400));
+        }
+        if ($req['range'] === 'custom' && (!self::is_date($req['from']) || !self::is_date($req['to']) || $req['from'] > $req['to'])) {
+            return new WP_Error('seoprostats_custom', __('A custom range needs from and to dates (YYYY-MM-DD), from not after to.', 'seoprostats'), array('status' => 400));
+        }
+        return null;
     }
 
     /**
@@ -414,61 +456,17 @@ final class SEOProStats_Query {
         $tz    = wp_timezone();
         $now   = new DateTimeImmutable('now', $tz);
         $today = $now->setTime(0, 0);
-        $next  = $today->modify('+1 day');
         $key   = (string) $req['range'];
 
-        switch ($key) {
-            case 'realtime':
-                $start = $now->modify('-30 minutes');
-                $end   = $now;
-                break;
-            case 'today':
-                $start = $today;
-                $end   = $next;
-                break;
-            case 'yesterday':
-                $start = $today->modify('-1 day');
-                $end   = $today;
-                break;
-            case '24h':
-                $end   = $now->setTime((int) $now->format('G'), 0)->modify('+1 hour');
-                $start = $end->modify('-24 hours');
-                break;
-            case '7d':
-            case '30d':
-            case '90d':
-                $end   = $next;
-                $start = $end->modify('-' . (int) $key . ' days');
-                break;
-            case 'week':
-                $back  = ((int) $today->format('w') - (int) get_option('start_of_week', 1) + 7) % 7;
-                $start = $today->modify("-$back days");
-                $end   = $next;
-                break;
-            case 'month':
-                $start = $today->modify('first day of this month');
-                $end   = $next;
-                break;
-            case 'year':
-                $start = $today->setDate((int) $today->format('Y'), 1, 1);
-                $end   = $next;
-                break;
-            case '12mo':
-                $start = $today->modify('-1 year')->modify('+1 day');
-                $end   = $next;
-                break;
-            case 'lastyear':
-                $end   = $today->setDate((int) $today->format('Y'), 1, 1);
-                $start = $end->modify('-1 year');
-                break;
-            case 'all':
-                $first = self::first_visit();
-                $start = $first ? $now->setTimestamp($first)->setTime(0, 0) : $today;
-                $end   = $next;
-                break;
-            default:
-                $start = new DateTimeImmutable((string) $req['from'], $tz);
-                $end   = (new DateTimeImmutable((string) $req['to'], $tz))->modify('+1 day');
+        if ($key === 'realtime' || $key === '24h') {
+            list($start, $end) = self::clock_range($key, $now);
+        } elseif (in_array($key, array('today', 'yesterday', '7d', '30d', '90d', '12mo'), true)) {
+            list($start, $end) = self::day_range($key, $today);
+        } elseif (in_array($key, array('week', 'month', 'year', 'lastyear', 'all'), true)) {
+            list($start, $end) = self::calendar_range($key, $now, $today);
+        } else {
+            $start = new DateTimeImmutable((string) $req['from'], $tz);
+            $end   = (new DateTimeImmutable((string) $req['to'], $tz))->modify(self::NEXT_DAY);
         }
 
         return array(
@@ -478,6 +476,73 @@ final class SEOProStats_Query {
             'from'  => $start->getTimestamp(),
             'to'    => $end->getTimestamp(),
         );
+    }
+
+    /**
+     * Ranges by the clock: the last 30 minutes, or the 24 hours to the end
+     * of this hour.
+     *
+     * @param string            $key realtime or 24h.
+     * @param DateTimeImmutable $now Now, site time.
+     * @return array{0:DateTimeImmutable,1:DateTimeImmutable} Start, end.
+     */
+    private static function clock_range($key, DateTimeImmutable $now) {
+        if ($key === 'realtime') {
+            return array($now->modify('-30 minutes'), $now);
+        }
+        $end = $now->setTime((int) $now->format('G'), 0)->modify('+1 hour');
+        return array($end->modify('-24 hours'), $end);
+    }
+
+    /**
+     * Ranges of whole days counted back from today.
+     *
+     * @param string            $key   today, yesterday, 7d, 30d, 90d or 12mo.
+     * @param DateTimeImmutable $today Today's midnight, site time.
+     * @return array{0:DateTimeImmutable,1:DateTimeImmutable} Start, end.
+     */
+    private static function day_range($key, DateTimeImmutable $today) {
+        $next = $today->modify(self::NEXT_DAY);
+        switch ($key) {
+            case 'today':
+                return array($today, $next);
+            case 'yesterday':
+                return array($today->modify('-1 day'), $today);
+            case '12mo':
+                return array($today->modify(self::YEAR_BEFORE)->modify(self::NEXT_DAY), $next);
+            default:
+                // 7d, 30d, 90d.
+                return array($next->modify('-' . (int) $key . ' days'), $next);
+        }
+    }
+
+    /**
+     * Calendar ranges: this week, month or year to date, last year, and
+     * all time (from the first visit).
+     *
+     * @param string            $key   week, month, year, lastyear or all.
+     * @param DateTimeImmutable $now   Now, site time.
+     * @param DateTimeImmutable $today Today's midnight, site time.
+     * @return array{0:DateTimeImmutable,1:DateTimeImmutable} Start, end.
+     */
+    private static function calendar_range($key, DateTimeImmutable $now, DateTimeImmutable $today) {
+        $next = $today->modify(self::NEXT_DAY);
+        $jan  = $today->setDate((int) $today->format('Y'), 1, 1);
+        switch ($key) {
+            case 'week':
+                $back = ((int) $today->format('w') - (int) get_option('start_of_week', 1) + 7) % 7;
+                return array($today->modify("-$back days"), $next);
+            case 'month':
+                return array($today->modify('first day of this month'), $next);
+            case 'year':
+                return array($jan, $next);
+            case 'lastyear':
+                return array($jan->modify(self::YEAR_BEFORE), $jan);
+            default:
+                // all.
+                $first = self::first_visit();
+                return array($first ? $now->setTimestamp($first)->setTime(0, 0) : $today, $next);
+        }
     }
 
     /**
@@ -499,8 +564,8 @@ final class SEOProStats_Query {
         $end = $range['end'];
 
         if ($compare === 'year') {
-            $other_start = $start->modify('-1 year');
-            $other_end   = $end->modify('-1 year');
+            $other_start = $start->modify(self::YEAR_BEFORE);
+            $other_end   = $end->modify(self::YEAR_BEFORE);
         } elseif (in_array($range['key'], array('realtime', '24h'), true)) {
             $length      = $range['to'] - $range['from'];
             $other_start = $start->modify("-$length seconds");
@@ -556,82 +621,146 @@ final class SEOProStats_Query {
      * @return array{where:string,args:array<int,mixed>,pages:int[]|null,summary:int[]|null}
      */
     public static function compile(array $filters, array $range) {
-        $where   = array();
-        $args    = array();
-        $pages   = null;
-        $summary = $filters ? null : array(0, 0);
-
+        $out = array(
+            'where'   => array(),
+            'args'    => array(),
+            'pages'   => null,
+            'summary' => $filters ? null : array(0, 0),
+        );
         foreach ($filters as $filter) {
-            list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
-            $flag                        = isset(self::DIMENSIONS[$filter['dimension']][3]) ? self::DIMENSIONS[$filter['dimension']][3] : 0;
-            $negate                      = $filter['op'] === 'is_not';
-            // One visit value: its daily row (-1: no value matches).
-            $single = count($filters) === 1 && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1 && isset(SEOProStats_Rollup::DIMS[$filter['dimension']]);
-
-            if ($kind === 'text') {
-                if ($single) {
-                    $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], SEOProStats_Rollup::country_value($filter['values'][0]));
-                }
-                $condition = self::compile_text($filter, $column);
-                $where[]   = $condition['where'];
-                $args      = array_merge($args, $condition['args']);
-                continue;
-            }
-
-            if ($kind === 'variant') {
-                $condition = self::compile_variant($filter, $range);
-                if ($condition['where'] !== '') {
-                    $where[] = $condition['where'];
-                }
-                $args = array_merge($args, $condition['args']);
-                continue;
-            }
-
-            if ($kind === 'content') {
-                // Authors, categories, post types: the addresses that show them.
-                $ids    = self::content_paths($column, $filter);
-                $column = 'path_id';
-            } else {
-                $ids = $kind === 'enum' ? self::codes($filter) : self::dict_ids($kind, $filter);
-            }
-            if ($single) {
-                $summary = array(SEOProStats_Rollup::DIMS[$filter['dimension']], $ids ? (int) $ids[0] : -1);
-            }
-            if (!$ids) {
-                // Nothing matches: "is" selects nothing, "is not" everything.
-                if (!$negate) {
-                    $where[] = '1 = 0';
-                }
-                continue;
-            }
-            $holders = implode(', ', array_fill(0, count($ids), '%d'));
-
-            if ($level === 'session') {
-                $where[] = "s.%i " . ($negate ? 'NOT IN' : 'IN') . " ($holders)";
-                $args    = array_merge($args, array($column), $ids);
-                continue;
-            }
-
-            // Pages and events select the visits that have one (with the
-            // dimension's flag: a page not found, a search).
-            $table   = SEOProStats_Schema::table($level === 'page' ? 'pageviews' : 'events');
-            $cond    = $flag ? ' AND (f.flags & %d) > 0' : '';
-            $where[] = 's.id ' . ($negate ? 'NOT IN' : 'IN') . " (SELECT f.session_id FROM %i f WHERE f.%i IN ($holders)$cond AND f.ts >= %d AND f.ts < %d)";
-            $args    = array_merge($args, array($table, $column), $ids, $flag ? array($flag) : array(), self::fact_window($range));
-            // Pageviews then count views of these addresses only.
-            if ($level === 'page' && !$negate && $column === 'path_id') {
-                $pages = $pages === null ? $ids : array_values(array_intersect($pages, $ids));
-            }
+            self::compile_filter($out, $filter, count($filters) === 1, $range);
         }
-
-        $sql = $where ? ' AND ' . implode(' AND ', $where) : '';
         return array(
             // Placeholders only; values are in args.
-            'where'   => $sql,
-            'args'    => $args,
-            'pages'   => $pages,
-            'summary' => $summary,
+            'where'   => $out['where'] ? ' AND ' . implode(' AND ', $out['where']) : '',
+            'args'    => $out['args'],
+            'pages'   => $out['pages'],
+            'summary' => $out['summary'],
         );
+    }
+
+    /**
+     * Add one filter's condition, arguments, pages and summary key.
+     *
+     * @param array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out    Compiled so far.
+     * @param array{dimension:string,op:string,values:string[]}                             $filter Filter.
+     * @param bool                                                                           $only   Whether it is the only filter.
+     * @param array<string,mixed>                                                            $range  From range().
+     * @param-out array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out
+     * @return void
+     */
+    private static function compile_filter(array &$out, array $filter, $only, array $range) {
+        list($level, $column, $kind) = self::DIMENSIONS[$filter['dimension']];
+        // One visit value: its daily row (-1: no value matches).
+        $single = $only && $level === 'session' && $filter['op'] === 'is' && count($filter['values']) === 1 && isset(SEOProStats_Rollup::DIMS[$filter['dimension']]);
+
+        if ($kind === 'text') {
+            if ($single) {
+                $out['summary'] = array(SEOProStats_Rollup::DIMS[$filter['dimension']], SEOProStats_Rollup::country_value($filter['values'][0]));
+            }
+            self::add_condition($out, self::compile_text($filter, $column));
+            return;
+        }
+        if ($kind === 'variant') {
+            self::add_condition($out, self::compile_variant($filter, $range));
+            return;
+        }
+
+        $ids = self::filter_ids($kind, $column, $filter);
+        if ($kind === 'content') {
+            // Authors, categories, post types: the addresses that show them.
+            $column = 'path_id';
+        }
+        if ($single) {
+            $out['summary'] = array(SEOProStats_Rollup::DIMS[$filter['dimension']], $ids ? (int) $ids[0] : -1);
+        }
+        if (!$ids) {
+            // Nothing matches: "is" selects nothing, "is not" everything.
+            if ($filter['op'] !== 'is_not') {
+                $out['where'][] = '1 = 0';
+            }
+            return;
+        }
+        if ($level === 'session') {
+            $holders = implode(', ', array_fill(0, count($ids), '%d'));
+            self::add_condition($out, array(
+                'where' => 's.%i ' . self::in_op($filter['op'] === 'is_not') . " ($holders)",
+                'args'  => array_merge(array($column), $ids),
+            ));
+            return;
+        }
+        self::compile_facts($out, $filter, $level, $column, $ids, $range);
+    }
+
+    /**
+     * Add a condition and its arguments; an empty condition adds only its
+     * arguments.
+     *
+     * @param array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out       Compiled so far.
+     * @param array{where:string,args:array<int,mixed>}                                      $condition Condition.
+     * @param-out array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out
+     * @return void
+     */
+    private static function add_condition(array &$out, array $condition) {
+        if ($condition['where'] !== '') {
+            $out['where'][] = $condition['where'];
+        }
+        $out['args'] = array_merge($out['args'], $condition['args']);
+    }
+
+    /**
+     * Ids an enum, dictionary or content filter selects.
+     *
+     * @param int|string                                        $kind   Dictionary kind, enum or content.
+     * @param string                                            $column Column (content: of the pages table).
+     * @param array{dimension:string,op:string,values:string[]} $filter Filter.
+     * @return int[]
+     */
+    private static function filter_ids($kind, $column, array $filter) {
+        if ($kind === 'content') {
+            return self::content_paths($column, $filter);
+        }
+        return $kind === 'enum' ? self::codes($filter) : self::dict_ids((int) $kind, $filter);
+    }
+
+    /**
+     * IN or NOT IN.
+     *
+     * @param bool $negate Whether the filter is "is not".
+     * @return string
+     */
+    private static function in_op($negate) {
+        return $negate ? 'NOT IN' : 'IN';
+    }
+
+    /**
+     * Pages and events select the visits that have one (with the
+     * dimension's flag: a page not found, a search); a page filter also
+     * limits the pageviews counted to its addresses.
+     *
+     * @param array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out    Compiled so far.
+     * @param array{dimension:string,op:string,values:string[]}                             $filter Filter.
+     * @param string                                                                         $level  page or event.
+     * @param string                                                                         $column Fact column.
+     * @param int[]                                                                          $ids    Ids selected.
+     * @param array<string,mixed>                                                            $range  From range().
+     * @param-out array{where:string[],args:array<int,mixed>,pages:int[]|null,summary:int[]|null} $out
+     * @return void
+     */
+    private static function compile_facts(array &$out, array $filter, $level, $column, array $ids, array $range) {
+        $flag    = isset(self::DIMENSIONS[$filter['dimension']][3]) ? self::DIMENSIONS[$filter['dimension']][3] : 0;
+        $negate  = $filter['op'] === 'is_not';
+        $holders = implode(', ', array_fill(0, count($ids), '%d'));
+        $table   = SEOProStats_Schema::table($level === 'page' ? 'pageviews' : 'events');
+        $cond    = $flag ? ' AND (f.flags & %d) > 0' : '';
+        self::add_condition($out, array(
+            'where' => 's.id ' . self::in_op($negate) . " (SELECT f.session_id FROM %i f WHERE f.%i IN ($holders)$cond AND f.ts >= %d AND f.ts < %d)",
+            'args'  => array_merge(array($table, $column), $ids, $flag ? array($flag) : array(), self::fact_window($range)),
+        ));
+        // Pageviews then count views of these addresses only.
+        if ($level === 'page' && !$negate && $column === 'path_id') {
+            $out['pages'] = $out['pages'] === null ? $ids : array_values(array_intersect($out['pages'], $ids));
+        }
     }
 
     /**
@@ -639,14 +768,14 @@ final class SEOProStats_Query {
      *
      * @param array{dimension:string,op:string,values:string[]} $filter Filter.
      * @param string $column Visit column.
-     * @return array{where:string,args:array<mixed>} Condition and its placeholder arguments.
+     * @return array{where:string,args:array<int,mixed>} Condition and its placeholder arguments.
      */
     private static function compile_text(array $filter, $column) {
         $values = array_map('strtoupper', $filter['values']);
         if (in_array($filter['op'], array('is', 'is_not'), true)) {
             $holders = implode(', ', array_fill(0, count($values), '%s'));
             return array(
-                'where' => "s.%i " . ($filter['op'] === 'is_not' ? 'NOT IN' : 'IN') . " ($holders)",
+                'where' => 's.%i ' . self::in_op($filter['op'] === 'is_not') . " ($holders)",
                 'args'  => array_merge(array($column), $values),
             );
         }
@@ -680,7 +809,7 @@ final class SEOProStats_Query {
             $sub   = array_merge($sub, array($pair[0]), $days, array($pair[1]));
         }
         return array(
-            'where' => 's.id ' . ($negate ? 'NOT IN' : 'IN') . ' (SELECT x.session_id FROM %i x WHERE ' . implode(' OR ', $ors) . ')',
+            'where' => 's.id ' . self::in_op($negate) . ' (SELECT x.session_id FROM %i x WHERE ' . implode(' OR ', $ors) . ')',
             'args'  => $sub,
         );
     }
@@ -708,7 +837,7 @@ final class SEOProStats_Query {
             return null;
         }
         $tz    = wp_timezone();
-        $after = (new DateTimeImmutable($through, $tz))->modify('+1 day');
+        $after = (new DateTimeImmutable($through, $tz))->modify(self::NEXT_DAY);
         $end   = (new DateTimeImmutable('@' . (int) $range['to']))->setTimezone($tz)->setTime(0, 0);
         $stop  = $end < $after ? $end : $after;
         if ($stop->getTimestamp() <= $range['from']) {
@@ -806,8 +935,7 @@ final class SEOProStats_Query {
         }
         $metrics = self::metrics($row);
         if ($compiled['pages'] !== null) {
-            $metrics['pageviews']       = (int) self::page_counts($range, $compiled, '')[''];
-            $metrics['views_per_visit'] = $metrics['visits'] ? round($metrics['pageviews'] / $metrics['visits'], 2) : 0;
+            $metrics = self::with_page_views($metrics, (int) self::page_counts($range, $compiled, '')['']);
         }
         return $metrics;
     }
@@ -853,56 +981,115 @@ final class SEOProStats_Query {
      * @return array<int,array<string,mixed>>
      */
     private static function series(array $range, $grain, array $compiled) {
-        global $wpdb;
-        if ($grain === 'hour') {
-            $group      = 'FLOOR((s.started - %d) / 3600)';
-            $group_args = array($range['from']);
-        } elseif ($grain === 'month') {
-            $group      = 'LEFT(s.day, 7)';
-            $group_args = array();
-        } else {
-            $group      = 's.day';
-            $group_args = array();
-        }
-        $part = $grain === 'hour' ? null : self::summary_part($range, $compiled);
-        $by   = $part ? self::daily_sums($part, $grain) : array();
-        $from = $part ? $part['split'] : $range['from'];
-        if ($from < $range['to']) {
-            $where = $compiled['where'];
-            $cols  = self::VISIT_METRICS;
-            $args  = array_merge($group_args, array(SEOProStats_Schema::table('sessions'), $from, $range['to']), $compiled['args']);
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT $group AS b, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY b", $args), ARRAY_A);
-            foreach ((array) $rows as $row) {
-                $key      = (string) $row['b'];
-                $by[$key] = isset($by[$key]) ? self::add($by[$key], $row) : $row;
-            }
-        }
+        list($group, $group_args) = self::series_group($grain, $range);
+        $by          = self::series_sums($range, $grain, $compiled, $group, $group_args);
         $page_counts = $compiled['pages'] !== null ? self::page_counts($range, $compiled, $group, $group_args) : null;
 
         /** @var DateTimeImmutable $at */
         $at     = $range['start'];
         $end    = min($range['to'], time() + 1);
-        $step   = array('hour' => '+1 hour', 'day' => '+1 day', 'month' => 'first day of next month')[$grain];
         $points = array();
         for ($i = 0; $at->getTimestamp() < $end && $i < 5000; $i++) {
-            if ($grain === 'hour') {
-                $key = (string) intdiv($at->getTimestamp() - $range['from'], 3600);
-            } else {
-                $key = $at->format($grain === 'month' ? 'Y-m' : 'Y-m-d');
-            }
+            $key     = self::series_key($at, $grain, $range);
             $metrics = self::metrics(isset($by[$key]) ? $by[$key] : array());
             if ($page_counts !== null) {
-                $metrics['pageviews']       = isset($page_counts[$key]) ? $page_counts[$key] : 0;
-                $metrics['views_per_visit'] = $metrics['visits'] ? round($metrics['pageviews'] / $metrics['visits'], 2) : 0;
+                $metrics = self::with_page_views($metrics, isset($page_counts[$key]) ? $page_counts[$key] : 0);
             }
             $points[] = array('t' => $at->format('c')) + $metrics;
-            $at       = $grain === 'hour' ? $at->setTimestamp($at->getTimestamp() + HOUR_IN_SECONDS) : $at->modify($step);
-            if ($grain === 'month') {
-                $at = $at->setTime(0, 0);
-            }
+            $at       = self::series_next($at, $grain);
         }
         return $points;
+    }
+
+    /**
+     * The visits table's group expression for a grain, and its arguments.
+     *
+     * @param string              $grain hour, day or month.
+     * @param array<string,mixed> $range From range().
+     * @return array{0:string,1:array<int,mixed>}
+     */
+    private static function series_group($grain, array $range) {
+        if ($grain === 'hour') {
+            return array('FLOOR((s.started - %d) / 3600)', array($range['from']));
+        }
+        return array($grain === 'month' ? 'LEFT(s.day, 7)' : 's.day', array());
+    }
+
+    /**
+     * Summed metrics per point: the daily table over the summarised days
+     * (not for hours), then the visits table over the rest.
+     *
+     * @param array<string,mixed> $range      From range().
+     * @param string              $grain      hour, day or month.
+     * @param array<string,mixed> $compiled   From compile().
+     * @param string              $group      From series_group().
+     * @param array<int,mixed>    $group_args Its arguments.
+     * @return array<string,array<string,mixed>> Point key => sums.
+     */
+    private static function series_sums(array $range, $grain, array $compiled, $group, array $group_args) {
+        global $wpdb;
+        $part = $grain === 'hour' ? null : self::summary_part($range, $compiled);
+        $by   = $part ? self::daily_sums($part, $grain) : array();
+        $from = $part ? $part['split'] : $range['from'];
+        if ($from >= $range['to']) {
+            return $by;
+        }
+        $where = $compiled['where'];
+        $cols  = self::VISIT_METRICS;
+        $args  = array_merge($group_args, array(SEOProStats_Schema::table('sessions'), $from, $range['to']), $compiled['args']);
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $group, $cols and $where are fixed SQL and placeholders.
+        $rows = $wpdb->get_results($wpdb->prepare("SELECT $group AS b, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY b", $args), ARRAY_A);
+        foreach ((array) $rows as $row) {
+            $key      = (string) $row['b'];
+            $by[$key] = isset($by[$key]) ? self::add($by[$key], $row) : $row;
+        }
+        return $by;
+    }
+
+    /**
+     * A point's key: hours since the range's start, or its day or month.
+     *
+     * @param DateTimeImmutable   $at    The point's start.
+     * @param string              $grain hour, day or month.
+     * @param array<string,mixed> $range From range().
+     * @return string
+     */
+    private static function series_key(DateTimeImmutable $at, $grain, array $range) {
+        if ($grain === 'hour') {
+            return (string) intdiv($at->getTimestamp() - $range['from'], 3600);
+        }
+        return $at->format($grain === 'month' ? 'Y-m' : 'Y-m-d');
+    }
+
+    /**
+     * The next point's start.
+     *
+     * @param DateTimeImmutable $at    The point's start.
+     * @param string            $grain hour, day or month.
+     * @return DateTimeImmutable
+     */
+    private static function series_next(DateTimeImmutable $at, $grain) {
+        if ($grain === 'hour') {
+            return $at->setTimestamp($at->getTimestamp() + HOUR_IN_SECONDS);
+        }
+        if ($grain === 'month') {
+            return $at->modify('first day of next month')->setTime(0, 0);
+        }
+        return $at->modify(self::NEXT_DAY);
+    }
+
+    /**
+     * Metrics with the pageviews of the filtered pages, and pages per
+     * visit from them.
+     *
+     * @param array<string,int|float> $metrics From metrics().
+     * @param int                     $views   Pageviews of the filtered pages.
+     * @return array<string,int|float>
+     */
+    private static function with_page_views(array $metrics, $views) {
+        $metrics['pageviews']       = $views;
+        $metrics['views_per_visit'] = $metrics['visits'] ? round($metrics['pageviews'] / $metrics['visits'], 2) : 0;
+        return $metrics;
     }
 
     /**
@@ -917,76 +1104,15 @@ final class SEOProStats_Query {
      * @return array<int,array<string,mixed>>
      */
     private static function rows($dimension, array $range, array $compiled, $limit, $offset, $total_visits) {
-        global $wpdb;
-        list($level, $column, $kind) = self::DIMENSIONS[$dimension];
-        $s     = SEOProStats_Schema::table('sessions');
-        $where = $compiled['where'];
-        $base  = array($range['from'], $range['to']);
-        $part  = $compiled['summary'] === array(0, 0) && isset(SEOProStats_Rollup::DIMS[$dimension]) ? self::summary_part($range, $compiled) : null;
-
-        if ($part) {
-            $rows = self::daily_rows($dimension, $range, $part, $limit, $offset);
-        } elseif ($level === 'session') {
-            $cols = self::VISIT_METRICS;
-            $args = array_merge(array($column, $s), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT s.%i AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY visits DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
-        } elseif ($level === 'page') {
-            $holders = '';
-            $pages   = array();
-            if ($compiled['pages'] !== null) {
-                $pages   = $compiled['pages'] ? $compiled['pages'] : array(0);
-                $holders = ' AND p.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
-            }
-            // Content: through the pages table by its primary key. A flag: those views only.
-            $flag    = isset(self::DIMENSIONS[$dimension][3]) ? self::DIMENSIONS[$dimension][3] : 0;
-            $content = $kind === 'content';
-            $value   = $content ? 'pg.%i' : 'p.%i';
-            $join    = $content ? ' INNER JOIN %i pg ON pg.path_id = p.path_id' : '';
-            $cond    = $flag ? ' AND (p.flags & %d) > 0' : '';
-            $args    = array_merge(array($column, $s, SEOProStats_Schema::table('pageviews')), $content ? array(SEOProStats_Schema::table('pages')) : array(), self::fact_window($range), $base, $flag ? array($flag) : array(), $compiled['args'], $pages, array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary keys; $value, $join, $cond, $where and $holders are fixed SQL and placeholders.
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT $value AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id$join WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$cond$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
-        } elseif ($level === 'variant') {
-            $args = array_merge(array($s, SEOProStats_Schema::table('ab_exposures')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT x.test_id AS t, x.variant_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT x.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(x.clicks), 0) AS clicks FROM %i s INNER JOIN %i x ON x.session_id = s.id WHERE x.ts >= %d AND x.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY t, v ORDER BY visits DESC, t, v LIMIT %d OFFSET %d", $args), ARRAY_A);
-            $text = self::texts(array_merge(array_column((array) $rows, 't'), array_column((array) $rows, 'v')));
-            foreach ((array) $rows as $i => $row) {
-                $rows[$i]['v'] = (isset($text[(int) $row['t']]) ? $text[(int) $row['t']] : '') . ':' . (isset($text[(int) $row['v']]) ? $text[(int) $row['v']] : '');
-            }
-        } else {
-            $args = array_merge(array($s, SEOProStats_Schema::table('events')), self::fact_window($range), $base, $compiled['args'], array($limit, $offset));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
-            $rows = $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
-        }
-
-        $rows    = (array) $rows;
-        $text    = is_int($kind) ? self::texts(array_column($rows, 'v')) : ($kind === 'content' ? self::content_names($dimension, array_column($rows, 'v')) : array());
+        list($level, , $kind) = self::DIMENSIONS[$dimension];
+        $rows    = self::fetch_rows($dimension, $range, $compiled, $limit, $offset);
+        $text    = self::row_texts($dimension, $kind, $rows);
         $running = $dimension === 'page' && $rows && class_exists('SEOProStats_AB_Report') ? SEOProStats_AB_Report::running_paths() : array();
         $out     = array();
         foreach ($rows as $row) {
             list($value, $label) = self::label($dimension, $kind, $row['v'], $text);
-            if ($level === 'session') {
-                $item = self::metrics($row);
-            } else {
-                $item = array(
-                    'visitors' => (int) $row['visitors'],
-                    'visits'   => (int) $row['visits'],
-                );
-                if ($level === 'page') {
-                    $item['pageviews']    = (int) $row['pageviews'];
-                    $item['time_on_page'] = (int) round((float) $row['time_on_page'] / 1000);
-                    $item['scroll']       = (int) round((float) $row['scroll']);
-                } elseif ($level === 'variant') {
-                    $item['pageviews'] = (int) $row['pageviews'];
-                    $item['clicks']    = (int) $row['clicks'];
-                } else {
-                    $item['events']          = (int) $row['events'];
-                    $item['conversion_rate'] = $total_visits ? round($row['visits'] / $total_visits, 4) : 0;
-                }
-            }
-            $item += array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
+            $item                = self::row_metrics($level, $row, $total_visits);
+            $item               += array('share' => $total_visits ? round($item['visits'] / $total_visits, 4) : 0);
             if (isset($running[$value])) {
                 // The page has a running A/B test.
                 $item['ab_test'] = true;
@@ -994,6 +1120,172 @@ final class SEOProStats_Query {
             $out[] = array('value' => $value, 'label' => $label) + $item;
         }
         return $out;
+    }
+
+    /**
+     * A breakdown's rows from the daily and fact tables, or the fact
+     * tables alone, by the dimension's level.
+     *
+     * @param string              $dimension Dimension name.
+     * @param array<string,mixed> $range     From range().
+     * @param array<string,mixed> $compiled  From compile().
+     * @param int                 $limit     Rows.
+     * @param int                 $offset    Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function fetch_rows($dimension, array $range, array $compiled, $limit, $offset) {
+        $level = self::DIMENSIONS[$dimension][0];
+        $part  = $compiled['summary'] === array(0, 0) && isset(SEOProStats_Rollup::DIMS[$dimension]) ? self::summary_part($range, $compiled) : null;
+        if ($part) {
+            return self::daily_rows($dimension, $range, $part, $limit, $offset);
+        }
+        if ($level === 'session') {
+            return self::session_rows($dimension, $range, $compiled, $limit, $offset);
+        }
+        if ($level === 'page') {
+            return self::page_rows($dimension, $range, $compiled, $limit, $offset);
+        }
+        if ($level === 'variant') {
+            return self::variant_rows($range, $compiled, $limit, $offset);
+        }
+        return self::event_rows($range, $compiled, $limit, $offset);
+    }
+
+    /**
+     * Breakdown rows of a visit column.
+     *
+     * @param string              $dimension Dimension name.
+     * @param array<string,mixed> $range     From range().
+     * @param array<string,mixed> $compiled  From compile().
+     * @param int                 $limit     Rows.
+     * @param int                 $offset    Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function session_rows($dimension, array $range, array $compiled, $limit, $offset) {
+        global $wpdb;
+        $where = $compiled['where'];
+        $cols  = self::VISIT_METRICS;
+        $args  = array_merge(array(self::DIMENSIONS[$dimension][1], SEOProStats_Schema::table('sessions'), $range['from'], $range['to']), $compiled['args'], array($limit, $offset));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by index `started`; $cols is fixed SQL, $where holds only placeholders from compile().
+        return (array) $wpdb->get_results($wpdb->prepare("SELECT s.%i AS v, $cols FROM %i s WHERE s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY visits DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+    }
+
+    /**
+     * Breakdown rows of a pageview column, or (content) a pages-table
+     * column through the pageview's path.
+     *
+     * @param string              $dimension Dimension name.
+     * @param array<string,mixed> $range     From range().
+     * @param array<string,mixed> $compiled  From compile().
+     * @param int                 $limit     Rows.
+     * @param int                 $offset    Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function page_rows($dimension, array $range, array $compiled, $limit, $offset) {
+        global $wpdb;
+        list(, $column, $kind) = self::DIMENSIONS[$dimension];
+        $where   = $compiled['where'];
+        $holders = '';
+        $pages   = array();
+        if ($compiled['pages'] !== null) {
+            $pages   = $compiled['pages'] ? $compiled['pages'] : array(0);
+            $holders = ' AND p.path_id IN (' . implode(', ', array_fill(0, count($pages), '%d')) . ')';
+        }
+        // Content: through the pages table by its primary key. A flag: those views only.
+        $flag    = isset(self::DIMENSIONS[$dimension][3]) ? self::DIMENSIONS[$dimension][3] : 0;
+        $content = $kind === 'content';
+        $value   = $content ? 'pg.%i' : 'p.%i';
+        $join    = $content ? ' INNER JOIN %i pg ON pg.path_id = p.path_id' : '';
+        $cond    = $flag ? ' AND (p.flags & %d) > 0' : '';
+        $args    = array_merge(array($column, SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('pageviews')), $content ? array(SEOProStats_Schema::table('pages')) : array(), self::fact_window($range), array($range['from'], $range['to']), $flag ? array($flag) : array(), $compiled['args'], $pages, array($limit, $offset));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary keys; $value, $join, $cond, $where and $holders are fixed SQL and placeholders.
+        return (array) $wpdb->get_results($wpdb->prepare("SELECT $value AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT p.session_id) AS visits, COUNT(*) AS pageviews, AVG(p.engaged_ms) AS time_on_page, AVG(p.scroll) AS scroll FROM %i s INNER JOIN %i p ON p.session_id = s.id$join WHERE p.ts >= %d AND p.ts < %d AND s.started >= %d AND s.started < %d$cond$where$holders GROUP BY v ORDER BY pageviews DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+    }
+
+    /**
+     * Breakdown rows of A/B test variants seen, valued "test-id:variant-slug".
+     *
+     * @param array<string,mixed> $range    From range().
+     * @param array<string,mixed> $compiled From compile().
+     * @param int                 $limit    Rows.
+     * @param int                 $offset   Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function variant_rows(array $range, array $compiled, $limit, $offset) {
+        global $wpdb;
+        $where = $compiled['where'];
+        $args  = array_merge(array(SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('ab_exposures')), self::fact_window($range), array($range['from'], $range['to']), $compiled['args'], array($limit, $offset));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT x.test_id AS t, x.variant_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT x.session_id) AS visits, COUNT(*) AS pageviews, COALESCE(SUM(x.clicks), 0) AS clicks FROM %i s INNER JOIN %i x ON x.session_id = s.id WHERE x.ts >= %d AND x.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY t, v ORDER BY visits DESC, t, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+        $text = self::texts(array_merge(array_column($rows, 't'), array_column($rows, 'v')));
+        foreach ($rows as $i => $row) {
+            $rows[$i]['v'] = (isset($text[(int) $row['t']]) ? $text[(int) $row['t']] : '') . ':' . (isset($text[(int) $row['v']]) ? $text[(int) $row['v']] : '');
+        }
+        return $rows;
+    }
+
+    /**
+     * Breakdown rows of event names.
+     *
+     * @param array<string,mixed> $range    From range().
+     * @param array<string,mixed> $compiled From compile().
+     * @param int                 $limit    Rows.
+     * @param int                 $offset   Rows skipped.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function event_rows(array $range, array $compiled, $limit, $offset) {
+        global $wpdb;
+        $where = $compiled['where'];
+        $args  = array_merge(array(SEOProStats_Schema::table('sessions'), SEOProStats_Schema::table('events')), self::fact_window($range), array($range['from'], $range['to']), $compiled['args'], array($limit, $offset));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own tables by index `ts` and the primary key; $where holds only placeholders from compile().
+        return (array) $wpdb->get_results($wpdb->prepare("SELECT e.name_id AS v, COUNT(DISTINCT s.day, s.visitor) AS visitors, COUNT(DISTINCT e.session_id) AS visits, COUNT(*) AS events FROM %i s INNER JOIN %i e ON e.session_id = s.id WHERE e.ts >= %d AND e.ts < %d AND s.started >= %d AND s.started < %d$where GROUP BY v ORDER BY events DESC, v LIMIT %d OFFSET %d", $args), ARRAY_A);
+    }
+
+    /**
+     * Texts the rows' values need: dictionary texts, or content names.
+     *
+     * @param string                         $dimension Dimension name.
+     * @param int|string                     $kind      Dictionary kind, enum, text, content or variant.
+     * @param array<int,array<string,mixed>> $rows      Rows.
+     * @return array<int|string,string>
+     */
+    private static function row_texts($dimension, $kind, array $rows) {
+        if (is_int($kind)) {
+            return self::texts(array_column($rows, 'v'));
+        }
+        return $kind === 'content' ? self::content_names($dimension, array_column($rows, 'v')) : array();
+    }
+
+    /**
+     * A row's metrics by level: visit metrics, or visitors and visits with
+     * the level's own (pages: views, time and scroll; variants: views and
+     * clicks; events: events and conversion rate).
+     *
+     * @param string              $level        session, page, variant or event.
+     * @param array<string,mixed> $row          Row.
+     * @param int                 $total_visits Visits in the range.
+     * @return array<string,int|float>
+     */
+    private static function row_metrics($level, array $row, $total_visits) {
+        if ($level === 'session') {
+            return self::metrics($row);
+        }
+        $item = array(
+            'visitors' => (int) $row['visitors'],
+            'visits'   => (int) $row['visits'],
+        );
+        if ($level === 'page') {
+            $item['pageviews']    = (int) $row['pageviews'];
+            $item['time_on_page'] = (int) round((float) $row['time_on_page'] / 1000);
+            $item['scroll']       = (int) round((float) $row['scroll']);
+        } elseif ($level === 'variant') {
+            $item['pageviews'] = (int) $row['pageviews'];
+            $item['clicks']    = (int) $row['clicks'];
+        } else {
+            $item['events']          = (int) $row['events'];
+            $item['conversion_rate'] = $total_visits ? round($row['visits'] / $total_visits, 4) : 0;
+        }
+        return $item;
     }
 
     /**
