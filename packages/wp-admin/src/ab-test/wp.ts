@@ -136,6 +136,12 @@ export function editor(select: Select = wp.data.select): EditorSelectors | null 
 	return store && typeof store.getCurrentPostType === 'function' ? (store as EditorSelectors) : null;
 }
 
+/** The post's title as edited; '' without a post or a text title. */
+export function postTitle(select: Select = wp.data.select): string {
+	const title = editor(select)?.getEditedPostAttribute('title');
+	return typeof title === 'string' ? title : '';
+}
+
 export interface NoticeAction {
 	label: string;
 	onClick(): void;

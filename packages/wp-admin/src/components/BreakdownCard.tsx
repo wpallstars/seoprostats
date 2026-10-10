@@ -30,17 +30,20 @@ interface Props {
 	wide?: boolean;
 }
 
-const PAGE_DIMENSIONS: Dimension[] = ['page', 'entry', 'exit', 'not_found'];
+const PAGE_DIMENSIONS: ReadonlySet<Dimension> = new Set<Dimension>(['page', 'entry', 'exit', 'not_found']);
 
 /** Dimensions of pageviews: their rows count views (searches, for site search). */
-const VIEW_DIMENSIONS: Dimension[] = ['page', 'not_found', 'search', 'no_results', 'author', 'category', 'post_type'];
+const VIEW_DIMENSIONS: ReadonlySet<Dimension> = new Set<Dimension>(['page', 'not_found', 'search', 'no_results', 'author', 'category', 'post_type']);
 
 /** Dimensions whose values are IDs: a row filters by its name, which the API also takes, so the filter reads well. */
-const NAMED_DIMENSIONS: Dimension[] = ['author', 'category'];
+const NAMED_DIMENSIONS: ReadonlySet<Dimension> = new Set<Dimension>(['author', 'category']);
 
 /** What a row counts: pageviews for pages and content, events for events, otherwise visits. */
 function countOf(dimension: Dimension): 'pageviews' | 'events' | 'visits' {
-	return VIEW_DIMENSIONS.includes(dimension) ? 'pageviews' : dimension === 'event' ? 'events' : 'visits';
+	if (VIEW_DIMENSIONS.has(dimension)) {
+		return 'pageviews';
+	}
+	return dimension === 'event' ? 'events' : 'visits';
 }
 
 /** What an empty list says. */
@@ -67,7 +70,7 @@ function emptyText(dimension: Dimension): string {
 
 /** The value a row filters by. */
 function filterValue(dimension: Dimension, row: { value: string; label: string }): string {
-	return NAMED_DIMENSIONS.includes(dimension) && row.value !== '0' && row.label ? row.label : row.value;
+	return NAMED_DIMENSIONS.has(dimension) && row.value !== '0' && row.label ? row.label : row.value;
 }
 
 function Rows({ dimension, state, update }: Readonly<{ dimension: Dimension; state: ViewState; update: Props['update'] }>) {
@@ -100,7 +103,7 @@ function Rows({ dimension, state, update }: Readonly<{ dimension: Dimension; sta
 	}
 	const countRow = (r: (typeof answer.rows)[number]) => (metric === 'visits' ? r.visits : r[metric] ?? 0);
 	const top = Math.max(...answer.rows.map(countRow), 1);
-	const isPath = PAGE_DIMENSIONS.includes(dimension);
+	const isPath = PAGE_DIMENSIONS.has(dimension);
 
 	return (
 		<>
@@ -113,7 +116,8 @@ function Rows({ dimension, state, update }: Readonly<{ dimension: Dimension; sta
 					const count = countRow(row);
 					const label = valueLabel(dimension, row.value, row.label);
 					// Events: the share of visits with the event (its conversion rate).
-					const share = byPageviews ? '' : formatPercent(isEvent ? row.conversion_rate ?? row.share : row.share, locale);
+					const rate = isEvent ? (row.conversion_rate ?? row.share) : row.share;
+					const share = byPageviews ? '' : formatPercent(rate, locale);
 					// A second click on a row that is already a filter takes it out.
 					const value = filterValue(dimension, row);
 					const active = hasFilterValue(state.filters, dimension, value);
@@ -176,7 +180,8 @@ export function BreakdownCard({ card, title, tabs: all, state, update, wide = fa
 			return;
 		}
 		event.preventDefault();
-		const target = tabs[next > last ? 0 : next < 0 ? last : next];
+		// Past either end wraps round (next is -1 to tabs.length).
+		const target = tabs[(next + tabs.length) % tabs.length];
 		if (!target) {
 			return;
 		}

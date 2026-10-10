@@ -123,7 +123,7 @@ export function EngineSwitch({
 		return null;
 	}
 	return (
-		<div className="spst-engines" role="group" aria-label={__('Search engine', 'seoprostats')}>
+		<div className="spst-engines" role="group" aria-label={__('Search engine', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 			{shown.map((e) => (
 				<Button key={e} size="small" variant={e === chosen ? 'primary' : 'secondary'} aria-pressed={e === chosen} onClick={() => choose(e)}>
 					{engineName(e)}

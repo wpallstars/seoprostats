@@ -89,7 +89,8 @@ export function get<T>(route: string, args: Args = {}): Promise<T> {
 }
 
 export async function shareFetch<T>(route: string, method: 'GET' | 'POST', args: Record<string, unknown> = {}): Promise<T> {
-    let url = `${shareAccess.root}share/${shareAccess.token}${route ? `/${route}` : ''}`;
+    const tail = route ? '/' + route : '';
+    let url = `${shareAccess.root}share/${shareAccess.token}${tail}`;
     if (method === 'GET') {
         url = addQueryArgs(url, args);
     }
@@ -106,6 +107,17 @@ export async function shareFetch<T>(route: string, method: 'GET' | 'POST', args:
         throw answer;
     }
     return answer as T;
+}
+
+/**
+ * A table's paging scope: one string that changes when anything that picks
+ * its rows changes, so paging goes back to the first rows. Parts are
+ * arrays, strings and apiArgs() objects, whose keys are always added in
+ * the same order, so equal choices give equal strings. Compared only with
+ * the previous scope, never stored or used as an object key.
+ */
+export function scopeKey(...parts: unknown[]): string {
+	return JSON.stringify(parts); // nosemgrep: javascript.lang.correctness.no-stringify-keys.no-stringify-keys -- parts are built in a fixed key order (see above).
 }
 
 function send<T>(route: string, method: 'POST' | 'DELETE', data: Record<string, unknown> = {}): Promise<T> {

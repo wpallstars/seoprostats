@@ -58,13 +58,25 @@ function verdictLabel(verdict: AbVariantVerdict): string {
 	return labels[verdict];
 }
 
+const VERDICT_TONES: Partial<Record<AbVariantVerdict, string>> = { better: 'is-good', worse: 'is-bad' };
+
 function verdictTone(verdict: AbVariantVerdict): string {
-	return verdict === 'better' ? 'is-good' : verdict === 'worse' ? 'is-bad' : 'is-flat';
+	return VERDICT_TONES[verdict] ?? 'is-flat';
 }
+
+const NOTICE_STATUSES: Partial<Record<AbTestVerdictCode, 'success' | 'warning'>> = { winner: 'success', control: 'warning' };
 
 /** The test verdict's notice: a winner is good news, the rest is information. */
 function noticeStatus(code: AbTestVerdictCode): 'success' | 'info' | 'warning' {
-	return code === 'winner' ? 'success' : code === 'control' ? 'warning' : 'info';
+	return NOTICE_STATUSES[code] ?? 'info';
+}
+
+/** good when the whole interval is above zero, bad when below, else flat. */
+function intervalTone(interval: AbComparison['interval']): string {
+	if (interval && interval[0] > 0) {
+		return 'is-good';
+	}
+	return interval && interval[1] < 0 ? 'is-bad' : 'is-flat';
 }
 
 /** A probability as a whole percentage, never 0% or 100% (nothing is certain; 0 and 1 are rounded). */
@@ -89,7 +101,7 @@ function Uplift({ value, control }: Readonly<{ value: AbComparison; control: boo
 	if (value.uplift === null) {
 		return <span className="spst-muted">—</span>;
 	}
-	const tone = value.interval && value.interval[0] > 0 ? 'is-good' : value.interval && value.interval[1] < 0 ? 'is-bad' : 'is-flat';
+	const tone = intervalTone(value.interval);
 	return (
 		<>
 			<span className={`spst-change ${tone}`}>{formatChange(value.uplift, locale)}</span>

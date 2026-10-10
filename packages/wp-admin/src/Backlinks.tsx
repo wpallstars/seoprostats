@@ -18,7 +18,7 @@ import { useState } from 'react';
 import { Button, Card, CardBody, CardHeader, Notice, SelectControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import { BACKLINK_SOURCES, formatNumber, type BacklinkDomainRow, type BacklinkKind, type BacklinkPageRow, type BacklinkRow, type BacklinksAnswer } from '@seoprostats/core';
-import { errorMessage, useBacklinks } from './api';
+import { errorMessage, scopeKey, useBacklinks } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
 import type { SearchPick, SearchReportProps } from './components/SearchSetup';
@@ -41,7 +41,7 @@ export function backlinkKindName(kind: BacklinkKind): string {
 
 /** A list's count, from the totals. */
 function count(kind: BacklinkKind, totals: BacklinksAnswer['totals']): number {
-	return kind === 'domains' ? totals.domains : kind === 'pages' ? totals.pages : kind === 'lost' ? totals.lost : totals.links;
+	return totals[kind];
 }
 
 /** The tiles, which pick the list: sites first. */
@@ -76,7 +76,7 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 	const kind: BacklinkKind = state.backlinks ?? 'links';
 	const [source, setSource] = useState<(typeof BACKLINK_SOURCES)[number] | ''>('');
 	// Back to the first rows when the period or list change.
-	const scope = JSON.stringify([state.range, state.from, state.to, kind, source]);
+	const scope = scopeKey(state.range, state.from, state.to, kind, source);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -91,7 +91,7 @@ export function Backlinks({ state, update, open }: Readonly<BacklinksProps>) {
 			<CardHeader className="spst-card__header">
 				<h2 className="spst-card__title">{__('Backlinks', 'seoprostats')}</h2>
 			</CardHeader>
-			<div className="spst-tiles" role="group" aria-label={__('Show', 'seoprostats')}>
+			<div className="spst-tiles" role="group" aria-label={__('Show', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
 				{TILE_ORDER.map((k) => (
 					<button
 						key={k}
@@ -182,8 +182,7 @@ function empty(kind: BacklinkKind, answer: BacklinksAnswer): string {
 
 /** Notes under the list: what was checked, and how. */
 function Notes({ answer }: Readonly<{ answer: BacklinksAnswer }>) {
-	const notes: string[] = [];
-	notes.push(
+	const notes: string[] = [
 		sprintf(
 			/* translators: 1: pages checked, 2: pages known. */
 			_n('%1$s of %2$s page that sent visits checked.', '%1$s of %2$s pages that sent visits checked.', answer.read.pages, 'seoprostats'),
@@ -197,16 +196,14 @@ function Notes({ answer }: Readonly<{ answer: BacklinksAnswer }>) {
 						__('Last run %s.', 'seoprostats'),
 						day(answer.read.last)
 					)
-				: '')
-	);
-	notes.push(
+				: ''),
 		sprintf(
 			/* translators: 1: number of days, 2: number of checks. */
 			__('Found from visits and imported link exports. While the check is on, referring pages are opened daily and each again every %1$s days. A link missing on %2$s checks in a row, or on a page that is gone, is lost. Exports are samples: missing rows never mean lost links.', 'seoprostats'),
 			number(answer.rules.recheck_days),
 			number(answer.rules.misses)
-		)
-	);
+		),
+	];
 	return (
 		<div className="spst-note">
 			{notes.map((note) => (

@@ -31,7 +31,7 @@ import {
 } from './model';
 import { ResultsPanel, WinnerPanel } from './results';
 import { useVariants, VariantSwitcher } from './switcher';
-import { blockActions, editor, wp, type BlockEditorSelectors, type BlockInstance, type EditProps } from './wp';
+import { blockActions, postTitle, wp, type BlockEditorSelectors, type BlockInstance, type EditProps } from './wp';
 
 interface AbBoot {
 	goals: { id: string; name: string }[];
@@ -214,7 +214,7 @@ export function TestEdit({ clientId, attributes, setAttributes }: Readonly<EditP
 	const variants = useVariants(clientId);
 	useIds(clientId, attributes, setAttributes, variants);
 	const shown = useShown(clientId, attributes.winner, variants);
-	const title = wp.data.useSelect((select) => String(editor(select)?.getEditedPostAttribute('title') ?? ''), []);
+	const title = wp.data.useSelect((select) => postTitle(select), []);
 	const { useBlockProps, useInnerBlocksProps, BlockControls, InspectorControls } = wp.blockEditor;
 
 	const shownIndex = Math.max(0, variants.findIndex((b) => b.clientId === shown));

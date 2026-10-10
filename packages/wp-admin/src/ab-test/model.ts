@@ -53,7 +53,7 @@ export function validId(id: unknown): id is string {
 
 /** variant-a … variant-z, then variant-27 …, as the server names them. */
 export function slugAt(i: number): string {
-	return `variant-${i < 26 ? String.fromCharCode(97 + i) : String(i + 1)}`;
+	return `variant-${i < 26 ? String.fromCodePoint(97 + i) : String(i + 1)}`;
 }
 
 /** The first slug not taken, from position `from` on. */

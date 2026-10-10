@@ -16,9 +16,7 @@
 /** SEOProStats_Dashboard::WIDGET. */
 const WIDGET_ID = 'seoprostats_widget';
 
-interface JQueryLike {
-	(target: Document): { on: (event: string, handler: () => void) => void };
-}
+type JQueryLike = (target: Document) => { on: (event: string, handler: () => void) => void };
 
 declare global {
 	interface Window {

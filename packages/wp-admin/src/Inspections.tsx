@@ -26,7 +26,7 @@ import {
 	type SearchSitemap,
 	type SitemapProblem,
 } from '@seoprostats/core';
-import { errorMessage, useInspections } from './api';
+import { errorMessage, scopeKey, useInspections } from './api';
 import { locale } from './boot';
 import { findingName } from './Audit';
 import { longLabel } from './dates';
@@ -89,7 +89,7 @@ type InspectionsProps = SearchReportProps & {
 export function Inspections({ state, open }: Readonly<InspectionsProps>) {
 	const [verdict, setVerdict] = useState<InspectionVerdict | ''>('');
 	// Back to the first rows when the filters or verdict change.
-	const scope = JSON.stringify([state.filters.map(serializeFilter), verdict]);
+	const scope = scopeKey(state.filters.map(serializeFilter), verdict);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -131,7 +131,7 @@ export function Inspections({ state, open }: Readonly<InspectionsProps>) {
 						<p>{__('Connect Google Search Console on the Connections tab to see its sitemaps and how Google indexed each page.', 'seoprostats')}</p>
 					</div>
 				)}
-				{answer && answer.connected && (
+				{answer?.connected && (
 					<>
 						<Sitemaps answer={answer} />
 						<h3 className="spst-subtitle">{__('Pages inspected', 'seoprostats')}</h3>
@@ -153,13 +153,7 @@ export function Inspections({ state, open }: Readonly<InspectionsProps>) {
 						)}
 						{!rows.length && (
 							<div className="spst-empty">
-								<p>
-									{answer.inspected
-										? __('No page inspected has this verdict.', 'seoprostats')
-										: answer.progress.daily
-											? __('No page has been inspected yet. Pages are inspected in the hourly import, within the daily cap.', 'seoprostats')
-											: __('Inspections are off. Set how many pages to inspect a day in Settings → Data.', 'seoprostats')}
-								</p>
+								<p>{emptyText(answer)}</p>
 							</div>
 						)}
 						{rows.length > 0 && <PagesTable rows={rows} open={open} refreshing={query.isFetching} />}
@@ -277,12 +271,21 @@ function SitemapsTable({ rows }: Readonly<{ rows: SearchSitemap[] }>) {
 	);
 }
 
+/** With no rows: no match, none inspected yet, or inspections off. */
+function emptyText(answer: InspectionsAnswer): string {
+	if (answer.inspected) {
+		return __('No page inspected has this verdict.', 'seoprostats');
+	}
+	return answer.progress.daily
+		? __('No page has been inspected yet. Pages are inspected in the hourly import, within the daily cap.', 'seoprostats')
+		: __('Inspections are off. Set how many pages to inspect a day in Settings → Data.', 'seoprostats');
+}
+
 /** Notes under the list: the daily cap, today's use and the last run. */
 function Notes({ answer }: Readonly<{ answer: InspectionsAnswer }>) {
 	const p = answer.progress;
 	const r = answer.rules;
-	const notes: string[] = [];
-	notes.push(
+	const notes: string[] = [
 		sprintf(
 			/* translators: 1: pages inspected, 2: inspections today, 3: daily cap. */
 			_n(
@@ -294,16 +297,14 @@ function Notes({ answer }: Readonly<{ answer: InspectionsAnswer }>) {
 			number(answer.inspected),
 			number(p.used),
 			number(p.daily)
-		)
-	);
-	notes.push(
+		),
 		sprintf(
 			/* translators: 1: number of days, 2: most inspections a day. */
 			__('Pages are inspected in the hourly import: first those Indexation lists, then those with most search impressions, each again after %1$s days. The cap is set in Settings → Data, up to %2$s a day (Google’s own limit).', 'seoprostats'),
 			number(r.recheck_days),
 			number(r.max_daily)
-		)
-	);
+		),
+	];
 	if (p.last) {
 		/* translators: %s: a day. */
 		notes.push(sprintf(__('Last run %s.', 'seoprostats'), day(p.last)));
@@ -339,7 +340,7 @@ function PagesTable({ rows, open, refreshing }: Readonly<{ rows: InspectionRow[]
 							</td>
 							<td>
 								<GoogleCell google={row} />
-								{row.link && /^https:\/\//.test(row.link) && (
+								{row.link?.startsWith('https://') && (
 									<span className="spst-meta">
 										<ExternalLink href={row.link}>{__('Open in Search Console', 'seoprostats')}</ExternalLink>
 									</span>

@@ -44,7 +44,7 @@ import {
 } from '@seoprostats/core';
 import { CoverageBadges } from './components/CoverageBadges';
 import { ResearchMenu } from './components/ResearchMenu';
-import { errorMessage, useOpportunities } from './api';
+import { errorMessage, scopeKey, useOpportunities } from './api';
 import { locale } from './boot';
 import { longLabel } from './dates';
 import type { ViewProps } from './App';
@@ -176,9 +176,23 @@ function kindIntro(answer: OpportunitiesAnswer): string {
 	);
 }
 
+/** What an empty card says, once there is search data. */
+function emptyText(kind: OpportunityKind): string {
+	switch (kind) {
+		case 'decay':
+			return __('No page lost clicks this way in this period.', 'seoprostats');
+		case 'missing':
+			return __('The pages read have the words of every query they show for.', 'seoprostats');
+		case 'overlap':
+			return __('No query is shared by pages this way in this period.', 'seoprostats');
+		default:
+			return __('Nothing of this kind in this period.', 'seoprostats');
+	}
+}
+
 function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; kind: OpportunityKind; open: OpportunitiesProps['open'] }>) {
 	// Back to the first rows when the period, filters or engine change.
-	const scope = JSON.stringify({ ...apiArgs(state), engine: state.engine ?? 'google' });
+	const scope = scopeKey(apiArgs(state), state.engine ?? 'google');
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -189,16 +203,16 @@ function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; k
 
 	let table: ReactNode = null;
 	if (answer && rows.length > 0) {
-		table =
-			kind === 'decay' ? (
-				<DecayTable rows={rows as OpportunityDecay[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
-			) : kind === 'missing' ? (
-				<MissingTable rows={rows as OpportunityMissing[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
-			) : kind === 'overlap' ? (
-				<OverlapTable rows={rows as OpportunityOverlap[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
-			) : (
-				<PairTable kind={kind} rows={rows as OpportunityPair[]} open={open} refreshing={query.isFetching} label={kindTitle(kind)} />
-			);
+		const common = { open, refreshing: query.isFetching, label: kindTitle(kind) };
+		if (kind === 'decay') {
+			table = <DecayTable rows={rows as OpportunityDecay[]} {...common} />;
+		} else if (kind === 'missing') {
+			table = <MissingTable rows={rows as OpportunityMissing[]} {...common} />;
+		} else if (kind === 'overlap') {
+			table = <OverlapTable rows={rows as OpportunityOverlap[]} {...common} />;
+		} else {
+			table = <PairTable kind={kind} rows={rows as OpportunityPair[]} {...common} />;
+		}
 	}
 
 	return (
@@ -208,7 +222,7 @@ function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; k
 					<h2 className="spst-card__title" id={titleId}>
 						{kindTitle(kind)}
 					</h2>
-					{answer && answer.through && answer.days > 0 && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
+					{answer?.through && answer.days > 0 && <PeriodLine range={answer.range} compare={answer.compare?.range} />}
 				</div>
 			</CardHeader>
 			<CardBody className="spst-card__body">
@@ -218,24 +232,14 @@ function KindCard({ state, kind, open }: Readonly<{ state: ViewProps['state']; k
 					</Notice>
 				)}
 				{!answer && !query.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-				{answer && answer.through && <p className="spst-note spst-opportunities__intro">{kindIntro(answer)}</p>}
+				{answer?.through && <p className="spst-note spst-opportunities__intro">{kindIntro(answer)}</p>}
 				{answer && !rows.length && (
 					<div className="spst-empty">
-						<p>
-							{!answer.through
-								? __('No search data yet.', 'seoprostats')
-								: kind === 'decay'
-									? __('No page lost clicks this way in this period.', 'seoprostats')
-									: kind === 'missing'
-										? __('The pages read have the words of every query they show for.', 'seoprostats')
-										: kind === 'overlap'
-											? __('No query is shared by pages this way in this period.', 'seoprostats')
-											: __('Nothing of this kind in this period.', 'seoprostats')}
-						</p>
+						<p>{answer.through ? emptyText(kind) : __('No search data yet.', 'seoprostats')}</p>
 					</div>
 				)}
 				{table}
-				{answer && answer.through && <Notes answer={answer} />}
+				{answer?.through && <Notes answer={answer} />}
 				{answer && answer.total > PER_PAGE && (
 					<nav className="spst-changes__pager" aria-label={sprintf(/* translators: %s: card title, e.g. "Low CTR". */ __('Pages of %s', 'seoprostats'), kindTitle(kind))}>
 						<span className="spst-muted">
@@ -522,23 +526,7 @@ function OverlapTable({ rows, open, refreshing, label }: Readonly<OverlapTablePr
 							<td className="num">{number(row.impressions)}</td>
 							<td className="num">{number(row.clicks)}</td>
 							<td>
-								{row.switched ? (
-									<>
-										<strong className="spst-cause is-position">{__('Switched', 'seoprostats')}</strong>
-										<span className="spst-meta">
-											{sprintf(
-												/* translators: 1: page path in the first half of the period, 2: page path in the second half. */
-												__('%1$s, then %2$s', 'seoprostats'),
-												row.leaders[0] ?? '–',
-												row.leaders[1] ?? '–'
-											)}
-										</span>
-									</>
-								) : row.leaders[0] || row.leaders[1] ? (
-									<span className="spst-muted">{__('The same in both halves', 'seoprostats')}</span>
-								) : (
-									<span className="spst-muted">–</span>
-								)}
+								<Leaders switched={row.switched} leaders={row.leaders} />
 							</td>
 						</tr>
 					))}
@@ -546,6 +534,26 @@ function OverlapTable({ rows, open, refreshing, label }: Readonly<OverlapTablePr
 			</table>
 		</TableScroll>
 	);
+}
+
+/** The page search showed most in each half: switched, the same, or none. */
+function Leaders({ switched, leaders }: Readonly<{ switched: boolean; leaders: [string | null, string | null] }>) {
+	if (switched) {
+		return (
+			<>
+				<strong className="spst-cause is-position">{__('Switched', 'seoprostats')}</strong>
+				<span className="spst-meta">
+					{sprintf(
+						/* translators: 1: page path in the first half of the period, 2: page path in the second half. */
+						__('%1$s, then %2$s', 'seoprostats'),
+						leaders[0] ?? '–',
+						leaders[1] ?? '–'
+					)}
+				</span>
+			</>
+		);
+	}
+	return <span className="spst-muted">{leaders[0] || leaders[1] ? __('The same in both halves', 'seoprostats') : '–'}</span>;
 }
 
 interface DecayTableProps {

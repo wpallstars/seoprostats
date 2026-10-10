@@ -35,7 +35,7 @@ import {
 	type SearchEngine,
 	type SearchSort,
 } from '@seoprostats/core';
-import { errorMessage, useAudit } from './api';
+import { errorMessage, scopeKey, useAudit } from './api';
 import { locale } from './boot';
 import { Indexation } from './Indexation';
 import { Inspections } from './Inspections';
@@ -77,7 +77,7 @@ export function findingName(finding: AuditFinding): string {
 }
 
 /** Which findings stop a page showing in search, rather than weaken it. */
-const SERIOUS: readonly AuditFinding[] = ['noindex', 'canonical', 'robots_blocked', 'not_indexed', 'google_canonical'];
+const SERIOUS: ReadonlySet<AuditFinding> = new Set<AuditFinding>(['noindex', 'canonical', 'robots_blocked', 'not_indexed', 'google_canonical']);
 
 /** The fact behind a finding on a page, in a few words. */
 function findingDetail(finding: AuditFinding, row: AuditRow): string {
@@ -140,7 +140,7 @@ export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) 
 	// Most impressions first unless a header was chosen.
 	const by = tableSort(SEARCH_SORTS, state.sort, state.order);
 	// Back to the first rows when the period, filters, engine, finding or order change.
-	const scope = JSON.stringify([apiArgs({ ...state, compare: 'none' }), engine, finding, by]);
+	const scope = scopeKey(apiArgs({ ...state, compare: 'none' }), engine, finding, by);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -167,7 +167,7 @@ export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) 
 				<CardHeader className="spst-card__header">
 					<div>
 						<h2 className="spst-card__title">{__('Content audit', 'seoprostats')}</h2>
-						{answer && answer.through && answer.days > 0 && <PeriodLine range={answer.range} />}
+						{answer?.through && answer.days > 0 && <PeriodLine range={answer.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
@@ -206,13 +206,7 @@ export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) 
 					)}
 					{answer && !rows.length && (
 						<div className="spst-empty">
-							<p>
-								{!answer.checked.pages
-									? __('No page has been read yet. Pages are read when they are saved, and in a daily batch.', 'seoprostats')
-									: finding
-										? __('No page has this finding.', 'seoprostats')
-										: __('No page read has a finding.', 'seoprostats')}
-							</p>
+							<p>{emptyMessage(answer.checked.pages > 0, finding !== '')}</p>
 						</div>
 					)}
 					{rows.length > 0 && answer && (
@@ -250,12 +244,19 @@ export function Audit({ state, update, open, onEngines }: Readonly<AuditProps>) 
 	);
 }
 
+/** The empty list's message: nothing read yet, nothing with the finding chosen, or nothing found. */
+function emptyMessage(read: boolean, filtered: boolean): string {
+	if (!read) {
+		return __('No page has been read yet. Pages are read when they are saved, and in a daily batch.', 'seoprostats');
+	}
+	return filtered ? __('No page has this finding.', 'seoprostats') : __('No page read has a finding.', 'seoprostats');
+}
+
 /** Notes under the list: what was read and when, and the rules. */
 function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 	const r = answer.rules;
-	const notes: string[] = [];
 	const plugin = pluginName(answer.plugin);
-	notes.push(
+	const notes: string[] = [
 		answer.checked.oldest && answer.checked.newest
 			? sprintf(
 					/* translators: 1: number of pages, 2: a day, 3: a day. */
@@ -268,22 +269,16 @@ function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 					/* translators: %s: number of pages. */
 					_n('%s page read.', '%s pages read.', answer.checked.pages, 'seoprostats'),
 					number(answer.checked.pages)
-				)
-	);
-	notes.push(
+				),
 		plugin
 			? sprintf(/* translators: %s: an SEO plugin's name, e.g. "Yoast SEO". */ __('Titles, descriptions, noindex and canonical addresses are read from %s.', 'seoprostats'), plugin)
-			: __('No SEO plugin was found, so titles and descriptions are the post’s own title and excerpt.', 'seoprostats')
-	);
-	notes.push(
+			: __('No SEO plugin was found, so titles and descriptions are the post’s own title and excerpt.', 'seoprostats'),
 		sprintf(
 			/* translators: 1: number of pages, 2: number of days. */
 			__('A page is read again when it is saved; others in a daily batch of %1$s, each at least every %2$s days.', 'seoprostats'),
 			number(r.batch),
 			number(r.stale_days)
-		)
-	);
-	notes.push(
+		),
 		sprintf(
 			/* translators: 1: most characters of a title, 2: most characters of a description, 3: fewest words, 4: impressions. */
 			__('Titles over %1$s characters and descriptions over %2$s are long. Thin content is under %3$s words with %4$s or more impressions and no clicks. Not indexed and canonical are listed only for pages that still show in search.', 'seoprostats'),
@@ -291,14 +286,12 @@ function Notes({ answer }: Readonly<{ answer: AuditAnswer }>) {
 			number(r.description_max),
 			number(r.thin_words),
 			number(r.thin_impressions)
-		)
-	);
-	notes.push(
+		),
 		__(
 			'Blocked by robots.txt, crawled but not indexed, Google picked another canonical and rich result errors come from Google’s URL Inspection of the page (the version in Google’s index), while Search Console is connected; see Indexation below for the daily inspections.',
 			'seoprostats'
-		)
-	);
+		),
+	];
 	if (answer.cut) {
 		notes.push(
 			sprintf(
@@ -361,7 +354,7 @@ function AuditTable({ rows, open, refreshing, sort, order, onSort }: Readonly<Au
 										const detail = findingDetail(f, row);
 										return (
 											<li key={f}>
-												<strong className={`spst-cause${SERIOUS.includes(f) ? ' is-gone' : ''}`}>{findingName(f)}</strong>
+												<strong className={`spst-cause${SERIOUS.has(f) ? ' is-gone' : ''}`}>{findingName(f)}</strong>
 												{detail && <span className="spst-meta">{detail}</span>}
 											</li>
 										);

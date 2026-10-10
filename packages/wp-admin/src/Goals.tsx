@@ -86,6 +86,14 @@ export async function confirmDelete(data: ReturnType<typeof useDataSet>, type: '
 	}
 }
 
+/** With no goals: who can add one. */
+function emptyHint(): string {
+	if (shareAccess.token) {
+		return __('No goals are set up on this site yet.', 'seoprostats');
+	}
+	return boot.canManage ? __('Add one to see how many visits reach it, and what they are worth.', 'seoprostats') : __('An administrator can add goals here.', 'seoprostats');
+}
+
 export function Goals({ state, update }: Readonly<ViewProps>) {
 	const data = useDataSet();
 	const query = useGoals(state);
@@ -119,13 +127,7 @@ export function Goals({ state, update }: Readonly<ViewProps>) {
 					{answer && !answer.goals.length && (
 						<div className="spst-empty">
 							<p>{__('A goal is a page or event that counts as a conversion: a thank-you page, a sign-up, a purchase.', 'seoprostats')}</p>
-							<p>
-								{shareAccess.token
-									? __('No goals are set up on this site yet.', 'seoprostats')
-									: boot.canManage
-										? __('Add one to see how many visits reach it, and what they are worth.', 'seoprostats')
-										: __('An administrator can add goals here.', 'seoprostats')}
-							</p>
+							<p>{emptyHint()}</p>
 						</div>
 					)}
 					{answer && answer.goals.length > 0 && (

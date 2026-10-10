@@ -95,10 +95,14 @@ function readBlock(): PageText | null {
 	if (!store) {
 		return null;
 	}
+	const text = (name: string) => {
+		const value = store.getEditedPostAttribute(name);
+		return typeof value === 'string' ? value : '';
+	};
 	return {
-		title: String(store.getEditedPostAttribute('title') ?? ''),
+		title: text('title'),
 		content: store.getEditedPostContent(),
-		excerpt: String(store.getEditedPostAttribute('excerpt') ?? ''),
+		excerpt: text('excerpt'),
 	};
 }
 
@@ -164,7 +168,7 @@ function searchUrl(page: string): string {
 	if (!boot.dashboardUrl) {
 		return '';
 	}
-	return boot.dashboardUrl.replace(/#.*$/, '') + buildHash({ ...DEFAULT_STATE, view: 'search', range: '90d', compare: 'none', page });
+	return (boot.dashboardUrl.split('#')[0] ?? '') + buildHash({ ...DEFAULT_STATE, view: 'search', range: '90d', compare: 'none', page });
 }
 
 /** A row checked against the words in the editor now (as the server checked the saved ones). */

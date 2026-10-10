@@ -48,7 +48,7 @@ import {
 	type SearchEngine,
 	type TargetFinding,
 } from '@seoprostats/core';
-import { errorMessage, updateQueueItem, useQueue } from './api';
+import { errorMessage, scopeKey, updateQueueItem, useQueue } from './api';
 import { boot, locale } from './boot';
 import { useDataSet } from './data';
 import { longLabel } from './dates';
@@ -140,27 +140,35 @@ function indexList(item: QueueItem): IndexationKind | null {
 	return item.kind === 'index' && item.finding && (INDEXATION_KINDS as readonly string[]).includes(item.finding) ? (item.finding as IndexationKind) : null;
 }
 
+/** The detail after an item's kind: its finding, list or proposal; '' for none. */
+function itemDetail(item: QueueItem): string {
+	const finding = auditFinding(item);
+	if (finding) {
+		return findingName(finding);
+	}
+	const list = linksList(item);
+	if (list) {
+		return linksName(list);
+	}
+	const index = indexList(item);
+	if (index) {
+		return indexationName(index);
+	}
+	const proposal = refreshProposal(item);
+	if (proposal) {
+		return proposalName(proposal);
+	}
+	const target = targetFinding(item);
+	if (target) {
+		return targetFindingName(target);
+	}
+	const problem = sitemapProblem(item);
+	return problem ? sitemapProblemName(problem) : '';
+}
+
 /** An item's kind, with the finding for an audit item, the list for an internal links or indexation one and the proposal for a refresh one. */
 function itemKind(item: QueueItem): string {
-	const finding = auditFinding(item);
-	const list = linksList(item);
-	const index = indexList(item);
-	const proposal = refreshProposal(item);
-	const target = targetFinding(item);
-	const problem = sitemapProblem(item);
-	const detail = finding
-		? findingName(finding)
-		: list
-			? linksName(list)
-			: index
-				? indexationName(index)
-				: proposal
-					? proposalName(proposal)
-					: target
-						? targetFindingName(target)
-						: problem
-							? sitemapProblemName(problem)
-							: '';
+	const detail = itemDetail(item);
 	return detail
 		? sprintf(/* translators: 1: a kind, e.g. "Content audit", 2: a finding, e.g. "No description". */ __('%1$s: %2$s', 'seoprostats'), kindName(item.kind), detail)
 		: kindName(item.kind);
@@ -201,6 +209,16 @@ function filterCount(answer: QueueAnswer, filter: QueueFilter): number {
 	}
 }
 
+/** What an empty plan says: no data yet, nothing to do, or nothing in the state picked. */
+function emptyText(hasData: boolean, status: QueueFilter): string {
+	if (!hasData) {
+		return __('No search data yet.', 'seoprostats');
+	}
+	return status === 'open'
+		? __('Nothing to do in this period: no opportunity was found, or every one is done or dismissed.', 'seoprostats')
+		: __('No item in this state.', 'seoprostats');
+}
+
 type PlanProps = SearchReportProps & {
 	open: (pick: SearchPick) => void;
 };
@@ -210,7 +228,7 @@ export function Plan({ state, update, open, onEngines }: Readonly<PlanProps>) {
 	const goal = state.goal ?? '';
 	const engine: SearchEngine = singleEngine(state.engine);
 	// Back to the first items when the period, filters, engine, state or goal change.
-	const scope = JSON.stringify([apiArgs(state), engine, status, goal]);
+	const scope = scopeKey(apiArgs(state), engine, status, goal);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
@@ -238,7 +256,7 @@ export function Plan({ state, update, open, onEngines }: Readonly<PlanProps>) {
 				<CardHeader className="spst-card__header">
 					<div>
 						<h2 className="spst-card__title">{__('Plan', 'seoprostats')}</h2>
-						{answer && answer.through && answer.days > 0 && <PeriodLine range={answer.range} />}
+						{answer?.through && answer.days > 0 && <PeriodLine range={answer.range} />}
 						{answer?.through && (
 							<p className="spst-meta">
 								{sprintf(
@@ -273,7 +291,7 @@ export function Plan({ state, update, open, onEngines }: Readonly<PlanProps>) {
 				</CardHeader>
 				<CardBody className="spst-card__body">
 					{!answer && !query.isError && <div className="spst-skeleton spst-skeleton--table" aria-busy="true" />}
-					{answer && answer.through && (
+					{answer?.through && (
 						<p className="spst-note spst-opportunities__intro">
 							{__(
 								'What to do next, best first. Score = potential clicks per 28 days × value (how well the page’s visits from search convert, against the site) × confidence (the kind’s, weighed by impressions) ÷ effort. Choose a score to see its parts.',
@@ -283,19 +301,13 @@ export function Plan({ state, update, open, onEngines }: Readonly<PlanProps>) {
 					)}
 					{answer && !items.length && (
 						<div className="spst-empty">
-							<p>
-								{!answer.through
-									? __('No search data yet.', 'seoprostats')
-									: status === 'open'
-										? __('Nothing to do in this period: no opportunity was found, or every one is done or dismissed.', 'seoprostats')
-										: __('No item in this state.', 'seoprostats')}
-							</p>
+							<p>{emptyText(!!answer.through, status)}</p>
 						</div>
 					)}
 					{answer && items.length > 0 && (
 						<ItemTable answer={answer} items={items} offset={offset} state={state} goal={goal} open={open} refreshing={query.isFetching} onError={setError} showExperiments={() => update({ report: 'experiments', status: undefined, goal: undefined })} />
 					)}
-					{answer && answer.through && <Notes answer={answer} />}
+					{answer?.through && <Notes answer={answer} />}
 					{answer && answer.total > PER_PAGE && (
 						<nav className="spst-changes__pager" aria-label={__('Pages of the plan', 'seoprostats')}>
 							<span className="spst-muted">
@@ -354,9 +366,7 @@ function Notes({ answer }: Readonly<{ answer: QueueAnswer }>) {
 					__('Value: conversions of “%s” by visits from search to the page, against the site’s rate (1 for a page without them).', 'seoprostats'),
 					answer.goal.name
 				)
-			: __('Without a goal, every page has value 1. Add a goal so pages that convert rank higher.', 'seoprostats')
-	);
-	notes.push(
+			: __('Without a goal, every page has value 1. Add a goal so pages that convert rank higher.', 'seoprostats'),
 		sprintf(
 			/* translators: %s: number of days. */
 			__('Dismissed items come back after %s days if they are still found. Items accepted or done stay listed when they are no longer found (marked “no longer found”).', 'seoprostats'),
@@ -479,7 +489,10 @@ function StateCell({ item, showExperiments }: Readonly<{ item: QueueItem; showEx
 			result = sprintf(__('Measuring until %s', 'seoprostats'), longLabel(exp.review, 'day'));
 		}
 	}
-	const effect = exp && exp.effect !== null ? (exp.unit === 'places' ? formatPlaces(-exp.effect, locale) : formatChange(exp.effect, locale)) : '';
+	let effect = '';
+	if (exp && exp.effect !== null) {
+		effect = exp.unit === 'places' ? formatPlaces(-exp.effect, locale) : formatChange(exp.effect, locale);
+	}
 	return (
 		<>
 			{statusName(item.status)}
@@ -528,23 +541,29 @@ function useAct({ item, state, goal, onError }: ActProps) {
 	return { busy, act };
 }
 
+/** The confirmation before Done: what marking it done starts, if anything. */
+function doneQuestion(item: QueueItem): string {
+	if (item.kind === 'sitemap') {
+		return __('Mark it done? A sitemap is about the whole site, so no experiment starts; the item is listed again if Search Console still shows the problem.', 'seoprostats');
+	}
+	if (refreshProposal(item) === 'leave') {
+		return __('Mark it done? The page stays as it is, so no experiment starts.', 'seoprostats');
+	}
+	const pages = item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path;
+	return sprintf(
+		/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
+		__('Mark it done? An experiment starts now on %2$s and measures %1$s over the days before and after. Mark it done once the change is live.', 'seoprostats'),
+		metricLabel(item.metric),
+		pages
+	);
+}
+
 function Actions(props: Readonly<ActProps>) {
 	const { item } = props;
 	const { busy, act } = useAct(props);
 	const done = () => {
-		const question =
-			item.kind === 'sitemap'
-				? __('Mark it done? A sitemap is about the whole site, so no experiment starts; the item is listed again if Search Console still shows the problem.', 'seoprostats')
-				: refreshProposal(item) === 'leave'
-				? __('Mark it done? The page stays as it is, so no experiment starts.', 'seoprostats')
-				: sprintf(
-						/* translators: 1: a measure, e.g. "CTR", 2: a page path. */
-						__('Mark it done? An experiment starts now on %2$s and measures %1$s over the days before and after. Mark it done once the change is live.', 'seoprostats'),
-						metricLabel(item.metric),
-						item.figures.pages?.length ? item.figures.pages.map((page) => page.path).join(', ') : item.path
-					);
 		// eslint-disable-next-line no-alert -- a plain confirmation, as WordPress uses.
-		if (window.confirm(question)) {
+		if (window.confirm(doneQuestion(item))) {
 			void act('done');
 		}
 	};
@@ -577,6 +596,26 @@ function Actions(props: Readonly<ActProps>) {
 /** A position, or a dash when there is none. */
 const place = (value: number | null | undefined) => (value === null || value === undefined ? '–' : decimal(value));
 
+/** A refresh item's content: when it changed, its size and links in, and whether it is old or changed lately. */
+function contentFact(f: QueueItem['figures'], oldDays: number): string {
+	if (f.age === null || f.age === undefined) {
+		return __('Content: when it last changed is not known yet.', 'seoprostats');
+	}
+	const facts = sprintf(
+		/* translators: 1: a day, 2: days ago, 3: words, 4: pages linking to it. */
+		__('Content: changed %1$s (%2$s days ago), %3$s words, %4$s pages link to it.', 'seoprostats'),
+		f.modified ? longLabel(f.modified.slice(0, 10), 'day') : '–',
+		number(f.age),
+		number(f.words ?? 0),
+		number(f.links_in ?? 0)
+	);
+	if (f.old) {
+		/* translators: %s: days. */
+		return `${facts} ${sprintf(__('Old: over %s days.', 'seoprostats'), number(oldDays))}`;
+	}
+	return f.changed ? `${facts} ${__('Changed within the periods compared.', 'seoprostats')}` : facts;
+}
+
 /** A refresh item's facts: how proposals are chosen, the content, conversions and the searches lost most. */
 function RefreshFacts({ answer, item }: Readonly<{ answer: QueueAnswer; item: QueueItem }>) {
 	const f = item.figures;
@@ -591,18 +630,7 @@ function RefreshFacts({ answer, item }: Readonly<{ answer: QueueAnswer; item: Qu
 					number(rules?.protect_conversions ?? 3)
 				)}
 			</li>
-			<li>
-				{f.age !== null && f.age !== undefined
-					? sprintf(
-							/* translators: 1: a day, 2: days ago, 3: words, 4: pages linking to it. */
-							__('Content: changed %1$s (%2$s days ago), %3$s words, %4$s pages link to it.', 'seoprostats'),
-							f.modified ? longLabel(f.modified.slice(0, 10), 'day') : '–',
-							number(f.age),
-							number(f.words ?? 0),
-							number(f.links_in ?? 0)
-						) + (f.old ? ` ${sprintf(/* translators: %s: days. */ __('Old: over %s days.', 'seoprostats'), number(rules?.old_days ?? 365))}` : f.changed ? ` ${__('Changed within the periods compared.', 'seoprostats')}` : '')
-					: __('Content: when it last changed is not known yet.', 'seoprostats')}
-			</li>
+			<li>{contentFact(f, rules?.old_days ?? 365)}</li>
 			{f.visits !== null && f.visits !== undefined && (
 				<li>
 					{sprintf(
@@ -637,29 +665,130 @@ function RefreshFacts({ answer, item }: Readonly<{ answer: QueueAnswer; item: Qu
 	);
 }
 
+/** The effort set for an item's finding, list or proposal; undefined for the kind's own. */
+function detailEffort(rules: QueueAnswer['rules'], item: QueueItem): number | undefined {
+	const finding = auditFinding(item);
+	if (finding) {
+		return rules.audit_effort?.[finding];
+	}
+	const list = linksList(item);
+	if (list) {
+		return rules.links_effort?.[list];
+	}
+	const index = indexList(item);
+	if (index) {
+		return rules.index_effort?.[index];
+	}
+	const proposal = refreshProposal(item);
+	if (proposal) {
+		return rules.refresh_effort?.[proposal];
+	}
+	const problem = sitemapProblem(item);
+	return problem ? rules.sitemap_effort?.[problem] : undefined;
+}
+
+/** A share (0–1) as a whole percentage, e.g. "20%". */
+const percent = (share: number) => `${number(share * 100)}%`;
+
+/** How an item's potential clicks are worked out, by kind. */
+function potentialNote(answer: QueueAnswer, item: QueueItem): string {
+	const f = item.figures;
+	const share = percent(f.share ?? 0);
+	switch (item.kind) {
+		case 'decay':
+			return sprintf(
+				/* translators: 1: clicks before, 2: clicks now. */
+				__('Potential clicks: those lost, scaled to 28 days (%1$s → %2$s clicks).', 'seoprostats'),
+				number(f.then_clicks ?? 0),
+				number(f.clicks)
+			);
+		case 'missing':
+			return sprintf(
+				/* translators: 1: share, e.g. 30%. */
+				__('Potential clicks: impressions × the site’s CTR at its position × %1$s, scaled to 28 days.', 'seoprostats'),
+				percent(answer.rules.missing_share)
+			);
+		case 'overlap':
+			return __('Potential clicks: those the search would have if all its pages’ impressions had the best of their CTRs, scaled to 28 days.', 'seoprostats');
+		case 'audit':
+			return sprintf(
+				/* translators: 1: share, e.g. 15%. */
+				__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what this finding puts at stake), scaled to 28 days.', 'seoprostats'),
+				share
+			);
+		case 'links':
+			return linksList(item) === 'missing'
+				? sprintf(
+						/* translators: 1: share, e.g. 20%. */
+						__('Potential clicks: the impressions of the searches on the page that should link × the site’s CTR at this page’s position × %1$s, scaled to 28 days.', 'seoprostats'),
+						share
+					)
+				: sprintf(
+						/* translators: 1: share, e.g. 20%. */
+						__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what links in could add), scaled to 28 days.', 'seoprostats'),
+						share
+					);
+		case 'sitemap':
+			return sprintf(
+				/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
+				__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s (what this sitemap problem puts at stake for the pages Google finds through it).', 'seoprostats'),
+				decimal(f.typical ?? 0),
+				share
+			);
+		case 'index':
+			return sprintf(
+				/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
+				__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s.', 'seoprostats'),
+				decimal(f.typical ?? 0),
+				share
+			);
+		case 'refresh':
+			return sprintf(
+				/* translators: 1: clicks before, 2: clicks now, 3: share, e.g. 20%. */
+				__('Potential clicks: those lost (%1$s → %2$s clicks) × %3$s (what this proposal can win back), scaled to 28 days.', 'seoprostats'),
+				number(f.then_clicks ?? 0),
+				number(f.clicks),
+				share
+			);
+		case 'target':
+			return targetFinding(item) === 'wrong_page'
+				? sprintf(
+						/* translators: 1: share, e.g. 50%, 2: the target's priority, 3: the default priority. */
+						__('Potential clicks: the search’s impressions × the site’s CTR at its position × %1$s (what the wrong page puts at stake), × priority %2$s ÷ %3$s, scaled to 28 days.', 'seoprostats'),
+						percent(answer.rules.target?.share ?? 0.5),
+						number(f.priority ?? 50),
+						number(answer.rules.target?.priority ?? 50)
+					)
+				: sprintf(
+						/* translators: 1: the target's priority, 2: the default priority. */
+						__('Potential clicks: those of the top three less those now, × priority %1$s ÷ %2$s, scaled to 28 days.', 'seoprostats'),
+						number(f.priority ?? 50),
+						number(answer.rules.target?.priority ?? 50)
+					);
+		default:
+			return __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats');
+	}
+}
+
+/** What Done does for an item: records a sitemap fix, a page left as it is, or opens an experiment. */
+function doneNote(item: QueueItem): string {
+	if (item.kind === 'sitemap') {
+		return __('Done records the sitemap as fixed; no experiment starts, as a sitemap is about the whole site.', 'seoprostats');
+	}
+	if (refreshProposal(item) === 'leave') {
+		return __('Done records that the page stays as it is; no experiment starts.', 'seoprostats');
+	}
+	/* translators: %s: a measure, e.g. "CTR". */
+	return sprintf(__('Done opens an experiment measuring %s.', 'seoprostats'), metricLabel(item.metric));
+}
+
 /** The score's parts, the item's figures, and (administrators) its effort and note. */
 function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: QueueAnswer } & ActProps>) {
 	const { busy, act } = useAct({ item, state, goal, onError });
 	const [note, setNote] = useState(item.note);
 	const p = item.parts;
-	const finding = auditFinding(item);
-	const list = linksList(item);
-	const index = indexList(item);
 	const proposal = refreshProposal(item);
-	const problem = sitemapProblem(item);
-	const kindEffort =
-		(finding
-			? answer.rules.audit_effort?.[finding]
-			: list
-				? answer.rules.links_effort?.[list]
-				: index
-					? answer.rules.index_effort?.[index]
-					: proposal
-						? answer.rules.refresh_effort?.[proposal]
-						: problem
-							? answer.rules.sitemap_effort?.[problem]
-							: undefined) ?? answer.rules.effort[item.kind];
-	const f = item.figures;
+	const kindEffort = detailEffort(answer.rules, item) ?? answer.rules.effort[item.kind];
 	return (
 		<div className="spst-plan__parts">
 			<p>
@@ -674,75 +803,7 @@ function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: Queue
 				)}
 			</p>
 			<ul className="spst-experiment__facts">
-				<li>
-					{item.kind === 'decay'
-						? sprintf(
-								/* translators: 1: clicks before, 2: clicks now. */
-								__('Potential clicks: those lost, scaled to 28 days (%1$s → %2$s clicks).', 'seoprostats'),
-								number(f.then_clicks ?? 0),
-								number(f.clicks)
-							)
-						: item.kind === 'missing'
-							? sprintf(
-									/* translators: 1: share, e.g. 30%. */
-									__('Potential clicks: impressions × the site’s CTR at its position × %1$s, scaled to 28 days.', 'seoprostats'),
-									`${number(answer.rules.missing_share * 100)}%`
-								)
-							: item.kind === 'overlap'
-								? __('Potential clicks: those the search would have if all its pages’ impressions had the best of their CTRs, scaled to 28 days.', 'seoprostats')
-								: item.kind === 'audit'
-									? sprintf(
-											/* translators: 1: share, e.g. 15%. */
-											__('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what this finding puts at stake), scaled to 28 days.', 'seoprostats'),
-											`${number((f.share ?? 0) * 100)}%`
-										)
-									: item.kind === 'links'
-										? sprintf(
-												/* translators: 1: share, e.g. 20%. */
-												list === 'missing'
-													? __('Potential clicks: the impressions of the searches on the page that should link × the site’s CTR at this page’s position × %1$s, scaled to 28 days.', 'seoprostats')
-													: __('Potential clicks: the page’s impressions × the site’s CTR at its position × %1$s (what links in could add), scaled to 28 days.', 'seoprostats'),
-												`${number((f.share ?? 0) * 100)}%`
-											)
-										: item.kind === 'sitemap'
-											? sprintf(
-													/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
-													__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s (what this sitemap problem puts at stake for the pages Google finds through it).', 'seoprostats'),
-													decimal(f.typical ?? 0),
-													`${number((f.share ?? 0) * 100)}%`
-												)
-										: item.kind === 'index'
-											? sprintf(
-													/* translators: 1: a typical page's clicks per 28 days, 2: share, e.g. 50%. */
-													__('Potential clicks: what a page search shows earns here, %1$s clicks per 28 days on average, × %2$s.', 'seoprostats'),
-													decimal(f.typical ?? 0),
-													`${number((f.share ?? 0) * 100)}%`
-												)
-											: item.kind === 'refresh'
-												? sprintf(
-														/* translators: 1: clicks before, 2: clicks now, 3: share, e.g. 20%. */
-														__('Potential clicks: those lost (%1$s → %2$s clicks) × %3$s (what this proposal can win back), scaled to 28 days.', 'seoprostats'),
-														number(f.then_clicks ?? 0),
-														number(f.clicks),
-														`${number((f.share ?? 0) * 100)}%`
-													)
-												: item.kind === 'target' && targetFinding(item) === 'wrong_page'
-													? sprintf(
-															/* translators: 1: share, e.g. 50%, 2: the target's priority, 3: the default priority. */
-															__('Potential clicks: the search’s impressions × the site’s CTR at its position × %1$s (what the wrong page puts at stake), × priority %2$s ÷ %3$s, scaled to 28 days.', 'seoprostats'),
-															`${number((answer.rules.target?.share ?? 0.5) * 100)}%`,
-															number(f.priority ?? 50),
-															number(answer.rules.target?.priority ?? 50)
-														)
-													: item.kind === 'target'
-														? sprintf(
-																/* translators: 1: the target's priority, 2: the default priority. */
-																__('Potential clicks: those of the top three less those now, × priority %1$s ÷ %2$s, scaled to 28 days.', 'seoprostats'),
-																number(f.priority ?? 50),
-																number(answer.rules.target?.priority ?? 50)
-															)
-														: __('Potential clicks: those the opportunity names, scaled to 28 days.', 'seoprostats')}
-				</li>
+				<li>{potentialNote(answer, item)}</li>
 				<li>
 					{answer.site_rate !== null
 						? __('Value: the page’s conversion rate of visits from search against the site’s, from 1 to 5.', 'seoprostats')
@@ -767,17 +828,7 @@ function Detail({ answer, item, state, goal, onError }: Readonly<{ answer: Queue
 						? sprintf(/* translators: %s: the kind's effort. */ __('Effort: set by hand (the kind’s is %s).', 'seoprostats'), number(kindEffort))
 						: __('Effort: the kind’s, from 1 (least) to 5.', 'seoprostats')}
 				</li>
-				<li>
-					{item.kind === 'sitemap'
-						? __('Done records the sitemap as fixed; no experiment starts, as a sitemap is about the whole site.', 'seoprostats')
-						: proposal === 'leave'
-						? __('Done records that the page stays as it is; no experiment starts.', 'seoprostats')
-						: sprintf(
-								/* translators: %s: a measure, e.g. "CTR". */
-								__('Done opens an experiment measuring %s.', 'seoprostats'),
-								metricLabel(item.metric)
-							)}
-				</li>
+				<li>{doneNote(item)}</li>
 				{proposal && <RefreshFacts answer={answer} item={item} />}
 			</ul>
 			{boot.canManage && item.status !== 'done' && (

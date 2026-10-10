@@ -24,6 +24,31 @@ interface Props {
 	previous?: string;
 }
 
+/** Which way is good news: places climbed always are; then the prop, then the metric's own. */
+function goodWay({ metric, better, places }: Readonly<Pick<Props, 'metric' | 'better' | 'places'>>): 'up' | 'down' {
+	if (places) {
+		return 'up';
+	}
+	if (better) {
+		return better;
+	}
+	return metric ? METRICS[metric].better : 'up';
+}
+
+function arrowOf(value: number | null | undefined): string {
+	if (typeof value !== 'number' || value === 0) {
+		return '';
+	}
+	return value > 0 ? '↑' : '↓';
+}
+
+function placesTitle(places: boolean | undefined, value: number | null | undefined): string {
+	if (!places || typeof value !== 'number') {
+		return '';
+	}
+	return value >= 0 ? __('Places climbed', 'seoprostats') : __('Places dropped', 'seoprostats');
+}
+
 export function Change({ metric, better, change, places, previous }: Readonly<Props>) {
 	// A position falling from 8 to 5 is 3 places climbed.
 	const value = places && typeof change === 'number' ? -change : change;
@@ -31,11 +56,11 @@ export function Change({ metric, better, change, places, previous }: Readonly<Pr
 	let tone = 'is-flat';
 	if (typeof value === 'number' && Math.abs(value) >= (places ? 0.05 : 0.005)) {
 		const up = value > 0;
-		tone = up === ((places ? 'up' : better ?? (metric ? METRICS[metric].better : 'up')) === 'up') ? 'is-good' : 'is-bad';
+		tone = up === (goodWay({ metric, better, places }) === 'up') ? 'is-good' : 'is-bad';
 	}
-	const arrow = typeof value === 'number' && value !== 0 ? (value > 0 ? '↑' : '↓') : '';
+	const arrow = arrowOf(value);
 	const titles = [
-		places && typeof value === 'number' ? (value >= 0 ? __('Places climbed', 'seoprostats') : __('Places dropped', 'seoprostats')) : '',
+		placesTitle(places, value),
 		previous ? sprintf(/* translators: %s: the metric's value in the comparison period. */ __('Before: %s', 'seoprostats'), previous) : '',
 	].filter(Boolean);
 	return (

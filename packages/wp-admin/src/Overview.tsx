@@ -32,9 +32,9 @@ export function Overview({ state, update }: Readonly<ViewProps>) {
 	const series = useTimeseries(state);
 	const markers = useMarkers(state, filteredPage(state.filters));
 	const changes = useChangesModal(update, filteredPage(state.filters));
-	const failed = stats.isError ? stats.error : series.isError ? series.error : null;
+	const failed = (stats.isError && stats.error) || (series.isError && series.error) || null;
 	const answer = stats.data;
-	const empty = answer && answer.metrics.visits === 0;
+	const empty = answer?.metrics.visits === 0;
 	const realtime = useRealtimeShown();
 
 	return (

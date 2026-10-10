@@ -24,6 +24,10 @@
 .spst-share .spst-report {
 	--spst-accent: var(--spst-share-accent);
 	--wp-admin-theme-color: var(--spst-share-accent);
+
+	/* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
+	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
+	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 76%, #000);
 	--spst-background: #fff;
 	--spst-grid: rgb(127 127 127 / 18%);
 
@@ -325,12 +329,7 @@
 	text-transform: none;
 }
 
-/* Hover and press stay in the report's accent (WordPress darkens its own admin colour). */
-.spst-share .spst-report {
-	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 88%, #000);
-	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 76%, #000);
-}
-
+/* Hover and press stay in the report's accent in dark mode too (light: on .spst-report above). */
 .spst-share .spst-report.is-dark {
 	--wp-admin-theme-color-darker-10: color-mix(in srgb, var(--spst-share-accent) 85%, #fff);
 	--wp-admin-theme-color-darker-20: color-mix(in srgb, var(--spst-share-accent) 70%, #fff);

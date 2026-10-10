@@ -61,7 +61,7 @@ const path = '/seoprostats/v1/shares';
 const MAX_SECTIONS = 10;
 const DEFAULT_BRANDING: ShareBranding = { title: '', logo: 0, agency: '', agency_logo: 0, website: '', byline: '', accent: '#2271b1', mode: 'system', credit: true };
 /** Sections only page filters can narrow (search data and the change log have no visits). */
-const PAGE_ONLY = ['search', 'changes'];
+const PAGE_ONLY: ReadonlySet<string> = new Set(['search', 'changes']);
 
 /** WordPress's Media Library frame (wp_enqueue_media() on this screen). */
 interface MediaFrame {
@@ -362,7 +362,7 @@ export function ShareEditor({ state, share, close, saved }: Readonly<{ state: Vi
         }
     };
     const lockable = share?.locked_filters.length ? share.locked_filters : first.filters;
-    const pageOnlyClash = locked.some((f) => f.dimension !== 'page') && views.some((v) => PAGE_ONLY.includes(v.view));
+    const pageOnlyClash = locked.some((f) => f.dimension !== 'page') && views.some((v) => PAGE_ONLY.has(v.view));
     const settingsLink = boot.settingsUrl ? addQueryArgs(boot.settingsUrl, { tab: 'shared-reports' }) : '';
 
     const submit = async (event: FormEvent) => {
@@ -482,7 +482,7 @@ export function ShareEditor({ state, share, close, saved }: Readonly<{ state: Vi
                         choose={() => chooseImage(__('Agency logo', 'seoprostats'), (id, url) => { setLogos((was) => ({ ...was, [id]: url })); brand('agency_logo', id); })}
                         clear={() => brand('agency_logo', 0)}
                     />
-                    <div className="spst-share-accent" role="group" aria-label={__('Accent colour', 'seoprostats')}>
+                    <div className="spst-share-accent" role="group" aria-label={__('Accent colour', 'seoprostats')}>{/* NOSONAR: a group of buttons; a fieldset would bring its own border, padding and min-width. */}
                         <span className="spst-share-accent__label">{__('Accent colour', 'seoprostats')}</span>
                         <div className="spst-share-accent__swatches">
                             {boot.sharePalette.map((swatch) => (

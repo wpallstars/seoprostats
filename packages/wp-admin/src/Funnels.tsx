@@ -64,7 +64,7 @@ function FunnelEditor({ funnel, onClose }: Readonly<{ funnel: FunnelRow | null; 
 			</p>
 			<ol className="spst-steps-editor">
 				{steps.map((step, i) => (
-					<li key={i} className="spst-steps-editor__step">
+					<li key={i} className="spst-steps-editor__step">{/* NOSONAR: a step's place is its identity (steps have no id); its controlled fields follow the list. */}
 						<div className="spst-steps-editor__head">
 							<strong>{sprintf(/* translators: %d: step number. */ __('Step %d', 'seoprostats'), i + 1)}</strong>
 							<span className="spst-steps-editor__tools">
@@ -137,7 +137,7 @@ function FunnelCard({ funnel, comparing, onEdit, onDelete, props }: Readonly<{ f
 					{funnel.steps.map((step, i) => {
 						const active = hasStep(state.filters, step);
 						return (
-							<li key={i} className="spst-funnel__step">
+							<li key={i} className="spst-funnel__step">{/* NOSONAR: a step's place is its identity (steps have no id, and the list is never reordered here). */}
 								<div className="spst-funnel__label">
 									<span className="spst-funnel__number" aria-hidden="true">
 										{i + 1}
@@ -183,6 +183,14 @@ function FunnelCard({ funnel, comparing, onEdit, onDelete, props }: Readonly<{ f
 	);
 }
 
+/** With no funnels: who can add one. */
+function emptyHint(): string {
+	if (shareAccess.token) {
+		return __('No funnels are set up on this site yet.', 'seoprostats');
+	}
+	return boot.canManage ? __('Add one with 2 to 12 steps.', 'seoprostats') : __('An administrator can add funnels here.', 'seoprostats');
+}
+
 export function Funnels(props: Readonly<ViewProps>) {
 	const { state } = props;
 	const data = useDataSet();
@@ -216,13 +224,7 @@ export function Funnels(props: Readonly<ViewProps>) {
 				<Card className="spst-card is-wide" size="small">
 					<CardBody className="spst-empty">
 						<p>{__('A funnel follows visits through steps in order, such as product, cart, checkout and thank-you, and shows where they leave.', 'seoprostats')}</p>
-						<p>
-							{shareAccess.token
-								? __('No funnels are set up on this site yet.', 'seoprostats')
-								: boot.canManage
-									? __('Add one with 2 to 12 steps.', 'seoprostats')
-									: __('An administrator can add funnels here.', 'seoprostats')}
-						</p>
+						<p>{emptyHint()}</p>
 					</CardBody>
 				</Card>
 			)}
