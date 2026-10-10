@@ -41,6 +41,23 @@ final class SEOProStats_Search {
     /** Kinds every engine, page and query has (the others are Google's whole site only). */
     const ANY_KINDS = array('queries', 'pages', 'days');
 
+    /**
+     * Orders of the rows; the first is the default. Days also sort by day
+     * (their default, newest first).
+     */
+    const SORTS = array('impressions', 'clicks', 'ctr', 'position');
+
+    /** Sorts whose natural order is lowest first (a lower position is better); the others are most first. */
+    const ASCENDING = array('position');
+
+    /** Each sort's figure in SQL, from the sums of a group. */
+    const SORT_SQL = array(
+        'impressions' => 'SUM(impressions)',
+        'clicks'      => 'SUM(clicks)',
+        'ctr'         => 'LEAST(1, SUM(clicks) / NULLIF(SUM(impressions), 0))',
+        'position'    => 'SUM(pos_impr) / NULLIF(SUM(impressions), 0)',
+    );
+
     /** Daily points up to this many days, else monthly. */
     const DAILY_DAYS = 120;
 
@@ -89,17 +106,22 @@ final class SEOProStats_Search {
      * @param string              $page   Only this page (path; * for any text); '' for all.
      * @param string              $query  Only this query (* for any text); '' for all.
      * @param string              $engine google, bing (ENGINES) or all (ALL).
+     * @param string              $sort   One of SORTS, or day for days; '' for the kind's default (impressions; days: day).
+     * @param string              $order  asc or desc; '' for the sort's natural order (sort_order()).
      * @return array<string,mixed>
      */
-    public static function report(array $req, $kind = 'queries', $page = '', $query = '', $engine = 'google') {
+    public static function report(array $req, $kind = 'queries', $page = '', $query = '', $engine = 'google', $sort = '', $order = '') {
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         $kind   = in_array($kind, self::KINDS, true) ? (string) $kind : 'queries';
         $page   = trim((string) $page);
         $query  = SEOProStats_Dict::clean(trim((string) preg_replace('/\s+/u', ' ', (string) $query)));
         $engine = self::report_engine($engine);
         $live   = SEOProStats_Schema::set() === 'live';
+        $sorts  = $kind === 'days' ? array_merge(array('day'), self::SORTS) : self::SORTS;
+        $sort   = in_array($sort, $sorts, true) ? (string) $sort : $sorts[0];
+        $order  = self::sort_order($sort, $order);
 
-        $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'imports' => self::version()), static function () use ($req, $kind, $page, $query, $engine) {
+        $answer = SEOProStats_Query::cached('search', $req + array('kind' => $kind, 'page' => $page, 'query' => $query, 'engine' => $engine, 'sort' => $sort, 'order' => $order, 'imports' => self::version()), static function () use ($req, $kind, $page, $query, $engine, $sort, $order) {
             $code    = self::codes($engine);
             $bounds  = self::span($engine);
             $range   = SEOProStats_Query::range($req);
@@ -114,11 +136,12 @@ final class SEOProStats_Search {
             $anchor  = $grain !== 'week' || !$now ? '' : ($engine === self::ALL ? (string) $now['day_to'] : self::week_end($code, $bounds));
             $totals  = self::totals($scope);
             $points  = $now ? self::series($scope, $now, $grain, $anchor) : array();
+            $by      = array('sort' => $sort, 'order' => $order);
             if ($kind !== 'days') {
-                $rows = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals);
+                $rows = self::rows($scope, $kind, (int) $req['limit'], (int) $req['offset'], $totals, $by);
             } else {
                 // No search data yet: no rows of zeros (as the chart, which is not drawn then).
-                $rows = $bounds['to'] !== '' ? self::day_rows($points, $now, $grain, $anchor, (int) $req['limit'], (int) $req['offset'], $totals) : array();
+                $rows = $bounds['to'] !== '' ? self::day_rows($points, $now, $grain, $anchor, (int) $req['limit'], (int) $req['offset'], $totals, $by) : array();
             }
             $more    = count($rows) > (int) $req['limit'];
             $rows    = array_slice($rows, 0, (int) $req['limit']);
@@ -131,6 +154,8 @@ final class SEOProStats_Search {
                 'through'   => $bounds['to'],
                 'first'     => $bounds['from'],
                 'kind'      => $kind,
+                'sort'      => $sort,
+                'order'     => $order,
                 'page'      => $page,
                 'query'     => $query,
                 'page_info' => SEOProStats_Clicks::page_info($page),
@@ -620,6 +645,63 @@ final class SEOProStats_Search {
     }
 
     /**
+     * The order of a sort: asc or desc as asked, else the sort's natural
+     * one: lowest first for position (ASCENDING), most first (and newest
+     * first for days) for the others. Search, Content and Audit share it.
+     *
+     * @param string $sort  The column sorted.
+     * @param string $order asc, desc, or '' for the natural order.
+     * @return string asc or desc.
+     */
+    public static function sort_order($sort, $order = '') {
+        $order = strtolower((string) $order);
+        if ($order === 'asc' || $order === 'desc') {
+            return $order;
+        }
+        return in_array((string) $sort, self::ASCENDING, true) ? 'asc' : 'desc';
+    }
+
+    /**
+     * Compare two rows' figures in an order, for usort(): null (a
+     * position or CTR without impressions) last whichever the order.
+     *
+     * @param int|float|string|null $a     A's figure.
+     * @param int|float|string|null $b     B's figure.
+     * @param string                $order asc or desc.
+     * @return int
+     */
+    public static function compare($a, $b, $order) {
+        if ($a === null || $b === null) {
+            return ($a === null) <=> ($b === null);
+        }
+        return $order === 'asc' ? $a <=> $b : $b <=> $a;
+    }
+
+    /**
+     * A row's figure for a sort, from its sums (c clicks, i impressions,
+     * p position × impressions × 100): null for CTR and position without
+     * impressions, so they sort last.
+     *
+     * @param array<string,int|string> $sums c, i and p.
+     * @param string                   $sort One of SORTS.
+     * @return int|float|null
+     */
+    public static function sort_value(array $sums, $sort) {
+        $clicks      = isset($sums['c']) ? (int) $sums['c'] : 0;
+        $impressions = isset($sums['i']) ? (int) $sums['i'] : 0;
+        if ($sort === 'clicks') {
+            return $clicks;
+        }
+        if ($sort === 'ctr') {
+            return $impressions ? self::ctr($clicks, $impressions) : null;
+        }
+        if ($sort === 'position') {
+            return $impressions ? (float) (isset($sums['p']) ? $sums['p'] : 0) / $impressions : null;
+        }
+        return $impressions;
+    }
+
+    /**
      * Totals of a period.
      *
      * @param array<string,mixed>|null $scope From scope().
@@ -711,32 +793,39 @@ final class SEOProStats_Search {
     }
 
     /**
-     * Rows of one kind, one more than the limit (to tell whether there are
-     * more).
+     * Rows of one kind in the order asked, one more than the limit (to
+     * tell whether there are more). Ties go most impressions, then most
+     * clicks, first; CTR and position without impressions go last.
      *
      * @param array<string,mixed>|null $scope  From scope().
      * @param string                   $kind   One of KINDS.
      * @param int                      $limit  Rows.
      * @param int                      $offset Rows skipped.
      * @param array<string,int|float>  $totals From totals(), for shares.
+     * @param array{sort:string,order:string} $by The sort (SORTS) and its order (asc or desc).
      * @return array<int,array<string,mixed>>
      */
-    private static function rows($scope, $kind, $limit, $offset, array $totals) {
+    private static function rows($scope, $kind, $limit, $offset, array $totals, array $by) {
         global $wpdb;
         $read = self::row_source($scope, $kind);
         if ($read === null) {
             return array();
         }
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by its primary key or path_day / query_day; $read holds fixed SQL and placeholders.
-        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT {$read['by']} AS v, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$read['sql']} GROUP BY {$read['by']} ORDER BY c DESC, i DESC, v LIMIT %d OFFSET %d", array_merge($read['args'], array($limit + 1, $offset))), ARRAY_A);
+        // A fixed expression and direction from SORT_SQL, never the request's text.
+        $sort  = isset(self::SORT_SQL[$by['sort']]) ? $by['sort'] : self::SORTS[0];
+        $dir   = $by['order'] === 'asc' ? 'ASC' : 'DESC';
+        $order = (in_array($sort, array('ctr', 'position'), true) ? 'SUM(impressions) = 0, ' : '') . self::SORT_SQL[$sort] . ' ' . $dir;
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, PluginCheck.Security.DirectDB.UnescapedDBParameter -- our own table by its primary key or path_day / query_day; $read and $order hold fixed SQL and placeholders.
+        $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT {$read['by']} AS v, SUM(clicks) AS c, SUM(impressions) AS i, SUM(pos_impr) AS p {$read['sql']} GROUP BY {$read['by']} ORDER BY $order, i DESC, c DESC, v LIMIT %d OFFSET %d", array_merge($read['args'], array($limit + 1, $offset))), ARRAY_A);
         return self::label_rows($kind, $rows, $totals);
     }
 
     /**
      * Rows of the days kind: the chart's points (day, week or month, as
-     * its grain), newest first, so the table always agrees with the chart.
-     * Each has the days it covers (from and to, both included, Y-m-d);
-     * one more than the limit, to tell whether there are more.
+     * its grain), newest first unless sorted by a figure or oldest first,
+     * so the table always agrees with the chart. Each has the days it
+     * covers (from and to, both included, Y-m-d); one more than the limit,
+     * to tell whether there are more.
      *
      * @param array<int,array<string,mixed>> $points From series().
      * @param array<string,mixed>|null       $days   From days().
@@ -745,9 +834,10 @@ final class SEOProStats_Search {
      * @param int                            $limit  Rows.
      * @param int                            $offset Rows skipped.
      * @param array<string,int|float>        $totals From totals(), for shares.
+     * @param array{sort:string,order:string} $by    day or one of SORTS, and its order (asc or desc).
      * @return array<int,array<string,mixed>>
      */
-    private static function day_rows(array $points, $days, $grain, $anchor, $limit, $offset, array $totals) {
+    private static function day_rows(array $points, $days, $grain, $anchor, $limit, $offset, array $totals, array $by) {
         $last    = $days ? (string) $days['day_to'] : '';
         $weekday = static function ($day) {
             return (int) gmdate('w', (int) strtotime($day . ' 00:00:00 UTC'));
@@ -781,7 +871,21 @@ final class SEOProStats_Search {
                 'to'    => $to,
             ) + $row;
         }
-        return array_slice(array_reverse($out), max(0, $offset), $limit + 1);
+        // Newest first; ties of a figure stay newest first.
+        $out = array_reverse($out);
+        if (isset(self::SORT_SQL[$by['sort']])) {
+            $sort  = $by['sort'];
+            $value = static function (array $row) use ($sort) {
+                return $sort === 'ctr' || $sort === 'position' ? ($row['impressions'] ? $row[$sort] : null) : $row[$sort];
+            };
+            $at = array_flip(array_column($out, 'id'));
+            usort($out, static function ($a, $b) use ($value, $by, $at) {
+                return self::compare($value($a), $value($b), $by['order']) ?: $at[$a['id']] <=> $at[$b['id']];
+            });
+        } elseif ($by['order'] === 'asc') {
+            $out = array_reverse($out);
+        }
+        return array_slice($out, max(0, $offset), $limit + 1);
     }
 
     /**

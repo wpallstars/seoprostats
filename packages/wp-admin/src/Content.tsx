@@ -6,8 +6,8 @@
  * content or a clearer next step; one that converts but gets few clicks is
  * worth ranking higher.
  *
- * Totals as tiles, then the pages, sorted by clicks, visits or
- * conversions (the column headers). Choosing a page opens it in Rankings.
+ * Totals as tiles, then the pages, most impressions first; any figure's
+ * header sorts by it, a second click reverses. Choosing a page opens it in Rankings.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Marcus Quinn
@@ -22,7 +22,9 @@ import {
 	formatDuration,
 	formatNumber,
 	formatPercent,
+	CONTENT_SORTS,
 	SEARCH_METRICS,
+	tableSort,
 	type ContentAnswer,
 	type ContentMetrics,
 	type ContentRow,
@@ -36,6 +38,7 @@ import { PageCell } from './Opportunities';
 import { PeriodLine } from './Overview';
 import { Change } from './components/Change';
 import { SearchSetup, sourceName, useReportEngines, type SearchPick, type SearchReportProps } from './components/SearchSetup';
+import { SortHeader, type TableSortProps } from './components/SortHeader';
 import { TableScroll } from './components/TableScroll';
 
 const PER_PAGE = 25;
@@ -49,15 +52,16 @@ type ContentProps = SearchReportProps & {
 };
 
 export function Content({ state, update, open, onEngines }: Readonly<ContentProps>) {
-	const sort: ContentSort = state.sort ?? 'clicks';
+	// Most impressions first unless a header was chosen.
+	const by = tableSort(CONTENT_SORTS, state.sort, state.order);
 	const goal = state.goal ?? '';
 	const engine: SearchEngineChoice = state.engine ?? 'google';
 	// Back to the first rows when the period, filters, engine, order or goal change.
-	const scope = JSON.stringify([apiArgs(state), engine, sort, goal]);
+	const scope = JSON.stringify([apiArgs(state), engine, by, goal]);
 	const [at, setAt] = useState({ scope, offset: 0 });
 	const offset = at.scope === scope ? at.offset : 0;
 	const setOffset = (next: number) => setAt({ scope, offset: next });
-	const query = useContent(state, sort, goal, PER_PAGE, offset);
+	const query = useContent(state, by, goal, PER_PAGE, offset);
 	const answer = query.data;
 	useReportEngines(answer, onEngines);
 	// The engine answered for: Combined with fewer than two engines with data answers as the one with data.
@@ -133,7 +137,8 @@ export function Content({ state, update, open, onEngines }: Readonly<ContentProp
 						</div>
 					)}
 					{answer && rows.length > 0 && (
-						<PageTable answer={answer} sort={sort} setSort={(next) => update({ sort: next === 'clicks' ? undefined : next })} open={open} refreshing={query.isFetching} />
+						// The order the answer has (a goal's column falls back to the default without goals).
+						<PageTable answer={answer} {...tableSort(CONTENT_SORTS, answer.sort, answer.order)} onSort={(sort, order) => update({ sort, order })} open={open} refreshing={query.isFetching} />
 					)}
 					{answer && answer.through && (
 						<div className="spst-note">
@@ -236,55 +241,30 @@ function Tiles({ answer, engine }: Readonly<{ answer: ContentAnswer | undefined;
 	);
 }
 
-interface PageTableProps {
+interface PageTableProps extends TableSortProps<ContentSort> {
 	answer: ContentAnswer;
-	sort: ContentSort;
-	setSort: (sort: ContentSort) => void;
 	open: ContentProps['open'];
 	refreshing: boolean;
 }
 
-function PageTable({ answer, sort, setSort, open, refreshing }: Readonly<PageTableProps>) {
+function PageTable({ answer, sort, order, onSort, open, refreshing }: Readonly<PageTableProps>) {
 	const goal = answer.goal !== null;
-	const sortable = (key: ContentSort, label: string) => (
-		<th scope="col" className="num" aria-sort={sort === key ? 'descending' : undefined}>
-			<button
-				type="button"
-				className={`spst-sort${sort === key ? ' is-active' : ''}`}
-				title={sprintf(/* translators: %s: column name, e.g. "Clicks". */ __('Sort by %s, most first', 'seoprostats'), label)}
-				onClick={() => setSort(key)}
-			>
-				{label}
-				{sort === key && <span aria-hidden="true"> ↓</span>}
-			</button>
-		</th>
-	);
+	const header = (column: ContentSort, label: string) => <SortHeader column={column} label={label} sort={sort} order={order} onSort={onSort} />;
 	return (
 		<TableScroll label={__('Pages', 'seoprostats')}>
 			<table className={`widefat striped spst-table spst-content${refreshing ? ' is-refreshing' : ''}`}>
 				<thead>
 					<tr>
 						<th scope="col">{__('Page', 'seoprostats')}</th>
-						{sortable('clicks', __('Clicks', 'seoprostats'))}
-						<th scope="col" className="num">
-							{__('Position', 'seoprostats')}
-						</th>
-						<th scope="col" className="num">
-							{__('CTR', 'seoprostats')}
-						</th>
-						{sortable('visits', __('Visits from search', 'seoprostats'))}
-						<th scope="col" className="num">
-							{__('Bounce rate', 'seoprostats')}
-						</th>
-						<th scope="col" className="num">
-							{__('Visit duration', 'seoprostats')}
-						</th>
-						{goal && sortable('conversions', __('Conversions', 'seoprostats'))}
-						{goal && (
-							<th scope="col" className="num">
-								{__('Conversion rate', 'seoprostats')}
-							</th>
-						)}
+						{header('impressions', __('Impressions', 'seoprostats'))}
+						{header('clicks', __('Clicks', 'seoprostats'))}
+						{header('position', __('Position', 'seoprostats'))}
+						{header('ctr', __('CTR', 'seoprostats'))}
+						{header('visits', __('Visits from search', 'seoprostats'))}
+						{header('bounce_rate', __('Bounce rate', 'seoprostats'))}
+						{header('visit_duration', __('Visit duration', 'seoprostats'))}
+						{goal && header('conversions', __('Conversions', 'seoprostats'))}
+						{goal && header('conversion_rate', __('Conversion rate', 'seoprostats'))}
 					</tr>
 				</thead>
 				<tbody>
@@ -304,6 +284,10 @@ function PageRow({ row, goal, open }: Readonly<{ row: ContentRow; goal: boolean;
 		<tr>
 			<td>
 				<PageCell row={row} query="" open={open} />
+			</td>
+			<td className="num">
+				{number(row.impressions)}
+				{change && <Change change={change.impressions} better={SEARCH_METRICS.impressions.better} previous={then ? number(then.impressions) : undefined} />}
 			</td>
 			<td className="num">
 				{number(row.clicks)}

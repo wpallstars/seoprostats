@@ -53,6 +53,7 @@ import {
 	type RealtimeAnswer,
 	type SearchAnswer,
 	type SearchKind,
+	type SortOrder,
 	type StatsAnswer,
 	type TargetFilter,
 	type TargetsAnswer,
@@ -248,10 +249,16 @@ function engineArg(scope: SearchScope, combined = false): Args {
 	return engine !== 'google' ? { engine } : {};
 }
 
-/** Search (an engine's imported days): totals, points and rows of one kind; optionally one page's or one query's. */
-export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50, offset = 0) {
+/** A sorted table's column and direction, as the API takes them. */
+export interface Sorted {
+	sort: string;
+	order: SortOrder;
+}
+
+/** Search (an engine's imported days): totals, points and rows of one kind in an order (the kind's default when left out); optionally one page's or one query's. */
+export function useSearch(scope: SearchScope, kind: SearchKind, page: string, query: string, limit = 50, offset = 0, by?: Sorted) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(offset ? { offset } : {}), ...(page ? { page } : {}), ...(query ? { query } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), kind, limit, ...(offset ? { offset } : {}), ...(page ? { page } : {}), ...(query ? { query } : {}), ...(by ?? {}) }, data);
 	return useQuery({
 		queryKey: ['search', args],
 		queryFn: () => get<SearchAnswer>('search', args),
@@ -272,10 +279,10 @@ export function useOpportunities(scope: SearchScope, kind: OpportunityKind, limi
 	});
 }
 
-/** The content audit: pages with findings ('' for all), most impressions first; the comparison does not apply. */
-export function useAudit(scope: SearchScope, finding: AuditFinding | '', limit = 25, offset = 0) {
+/** The content audit: pages with findings ('' for all), in an order (most impressions first when left out); the comparison does not apply. */
+export function useAudit(scope: SearchScope, finding: AuditFinding | '', limit = 25, offset = 0, by?: Sorted) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), limit, offset, ...(finding ? { finding } : {}) }, data);
+	const args: Args = withData({ ...apiArgs({ ...scope, compare: 'none' }), ...engineArg(scope), limit, offset, ...(finding ? { finding } : {}), ...(by ?? {}) }, data);
 	return useQuery({
 		queryKey: ['audit', args],
 		queryFn: () => get<AuditAnswer>('audit', args),
@@ -365,10 +372,10 @@ export async function deleteTargets(data: DataSet, queries: string[], all = fals
 	return done;
 }
 
-/** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first). */
-export function useContent(scope: SearchScope, sort: ContentSort, goal: string, limit = 25, offset = 0) {
+/** Content performance: each page's search figures, visits from search and conversions of a goal ('' for the first), in an order. */
+export function useContent(scope: SearchScope, by: Sorted & { sort: ContentSort }, goal: string, limit = 25, offset = 0) {
 	const { data, enabled } = useReportData();
-	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), sort, limit, offset, ...(goal ? { goal } : {}) }, data);
+	const args: Args = withData({ ...apiArgs(scope), ...engineArg(scope, true), sort: by.sort, order: by.order, limit, offset, ...(goal ? { goal } : {}) }, data);
 	return useQuery({
 		queryKey: ['content', args],
 		queryFn: () => get<ContentAnswer>('content', args),

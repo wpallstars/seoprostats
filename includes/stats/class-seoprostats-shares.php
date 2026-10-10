@@ -66,7 +66,7 @@ final class SEOProStats_Shares {
         if (!is_array($view) || !isset($view['view']) || !in_array($view['view'], self::SECTIONS, true)) {
             return self::invalid();
         }
-        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page', 'query', 'key', 'event', 'engine', 'report', 'tab', 'chart', 'sort', 'goal', 'finding', 'links', 'index') as $key) {
+        foreach (array('range', 'from', 'to', 'compare', 'metric', 'kind', 'page', 'query', 'key', 'event', 'engine', 'report', 'tab', 'chart', 'sort', 'order', 'goal', 'finding', 'links', 'index') as $key) {
             if (isset($view[$key]) && (!is_string($view[$key]) || strlen($view[$key]) > 2048 || preg_match('/[\x00-\x1f\x7f]/', $view[$key]) || $view[$key] !== trim($view[$key]))) {
                 return self::invalid();
             }
@@ -170,8 +170,14 @@ final class SEOProStats_Shares {
                 $out[$key] = $view[$key];
             }
         }
-        if ($report === 'content' && in_array($view['sort'] ?? '', array_diff(SEOProStats_Content::SORTS, array('clicks')), true)) {
-            $out['sort'] = $view['sort'];
+        // A sorted table's column and direction, as the address reads them (packages/core/src/state.ts sectionParams()).
+        $sorts = array(
+            'rankings' => ($out['tab'] ?? 'queries') === 'days' ? array_merge(array('day'), SEOProStats_Search::SORTS) : SEOProStats_Search::SORTS,
+            'content'  => SEOProStats_Content::SORTS,
+            'audit'    => SEOProStats_Search::SORTS,
+        );
+        if (isset($sorts[$report])) {
+            $out += self::sort_view($view, $sorts[$report]);
         }
         if ($report === 'audit') {
             if (in_array($view['finding'] ?? '', SEOProStats_Audit::FINDINGS, true)) {
@@ -186,6 +192,29 @@ final class SEOProStats_Shares {
         }
         if (in_array($report, array('content', 'audit'), true) && ($view['goal'] ?? '') !== '') {
             $out['goal'] = $view['goal'];
+        }
+        return $out;
+    }
+
+    /**
+     * A sorted table's choice: the column if the table has it (the first
+     * is the default, left out) and its direction (left out when the
+     * column's natural one; a column the table lacks takes the default's).
+     *
+     * @param array              $view  Checked strings.
+     * @param array<int,string>  $sorts The table's columns; the first is the default.
+     * @return array<string,string>
+     */
+    private static function sort_view(array $view, array $sorts) {
+        $out    = array();
+        $asked  = $view['sort'] ?? null;
+        $sort   = in_array($asked, $sorts, true) ? (string) $asked : $sorts[0];
+        $order  = $asked === null || $asked === $sort ? SEOProStats_Search::sort_order($sort, in_array($view['order'] ?? '', array('asc', 'desc'), true) ? $view['order'] : '') : SEOProStats_Search::sort_order($sort);
+        if ($sort !== $sorts[0]) {
+            $out['sort'] = $sort;
+        }
+        if ($order !== SEOProStats_Search::sort_order($sort)) {
+            $out['order'] = $order;
         }
         return $out;
     }

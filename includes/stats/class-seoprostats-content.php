@@ -36,25 +36,29 @@ if (!defined('ABSPATH')) {
 
 final class SEOProStats_Content {
 
-    /** Orders of the rows (most first). */
-    const SORTS = array('clicks', 'visits', 'conversions');
+    /**
+     * Orders of the rows; the first is the default. Each sorts most first
+     * unless asked otherwise, except position, lowest first
+     * (SEOProStats_Search::sort_order()). Conversions need a goal.
+     */
+    const SORTS = array('impressions', 'clicks', 'ctr', 'position', 'visits', 'bounce_rate', 'visit_duration', 'conversions', 'conversion_rate');
 
     /**
      * The content report.
      *
-     * @param array<string,mixed> $req  From SEOProStats_Query::request().
-     * @param string              $sort One of SORTS.
+     * @param array<string,mixed> $req    From SEOProStats_Query::request().
+     * @param string              $sort   One of SORTS; '' for the default.
      * @param string              $goal   Goal id; '' for the first goal.
      * @param string              $engine google, bing (SEOProStats_Search::ENGINES) or all (Combined).
+     * @param string              $order  asc or desc; '' for the sort's natural order.
      * @return array<string,mixed>
      */
-    public static function report(array $req, $sort = 'clicks', $goal = '', $engine = 'google') {
+    public static function report(array $req, $sort = '', $goal = '', $engine = 'google', $order = '') {
         require_once __DIR__ . '/class-seoprostats-search.php';
         require_once __DIR__ . '/class-seoprostats-clicks.php';
         require_once __DIR__ . '/class-seoprostats-goals.php';
         require_once __DIR__ . '/class-seoprostats-conversions.php';
         require_once __DIR__ . '/class-seoprostats-rollup.php';
-        $sort   = in_array($sort, self::SORTS, true) ? (string) $sort : 'clicks';
         $goals  = SEOProStats_Goals::goals();
         $chosen = $goals ? $goals[0] : null;
         foreach ($goals as $item) {
@@ -62,18 +66,22 @@ final class SEOProStats_Content {
                 $chosen = $item;
             }
         }
+        // Without a goal there are no conversions to sort by.
+        $sort   = in_array($sort, self::SORTS, true) && ($chosen !== null || strpos((string) $sort, 'conversion') !== 0) ? (string) $sort : self::SORTS[0];
+        $order  = SEOProStats_Search::sort_order($sort, $order);
         $live   = SEOProStats_Schema::set() === 'live';
         $engine = SEOProStats_Search::report_engine($engine);
 
         $key    = array(
             'sort'     => $sort,
+            'order'    => $order,
             'goal'     => $chosen,
             'engine'   => $engine,
             'imports'  => SEOProStats_Search::version(),
             'landings' => SEOProStats_Rollup::landings_from(),
         );
-        $answer = SEOProStats_Query::cached('content', $req + $key, static function () use ($req, $sort, $chosen, $engine) {
-            return self::build($req, $sort, $chosen, $engine);
+        $answer = SEOProStats_Query::cached('content', $req + $key, static function () use ($req, $sort, $order, $chosen, $engine) {
+            return self::build($req, array('sort' => $sort, 'order' => $order), $chosen, $engine);
         });
 
         $answer['connected'] = !$live || SEOProStats_Search::connected($engine);
@@ -91,13 +99,13 @@ final class SEOProStats_Content {
     /**
      * The shared part of the answer (cached).
      *
-     * @param array<string,mixed>      $req  From SEOProStats_Query::request().
-     * @param string                   $sort One of SORTS.
-     * @param array<string,mixed>|null $goal Goal, or null without goals.
-     * @param string                   $name Engine name.
+     * @param array<string,mixed>             $req  From SEOProStats_Query::request().
+     * @param array{sort:string,order:string} $by   The sort (SORTS) and its order (asc or desc).
+     * @param array<string,mixed>|null        $goal Goal, or null without goals.
+     * @param string                          $name Engine name.
      * @return array<string,mixed>
      */
-    private static function build(array $req, $sort, $goal, $name) {
+    private static function build(array $req, array $by, $goal, $name) {
         $engine  = SEOProStats_Search::codes($name);
         $bounds  = SEOProStats_Search::span($name);
         $range   = SEOProStats_Query::range($req);
@@ -117,7 +125,8 @@ final class SEOProStats_Content {
             'through'       => $bounds['to'],
             'first'         => $bounds['from'],
             'ignored'       => array_values(array_unique($ignored)),
-            'sort'          => $sort,
+            'sort'          => $by['sort'],
+            'order'         => $by['order'],
             'goal'          => $goal ? array('id' => $goal['id'], 'name' => $goal['name'], 'kind' => $goal['kind'], 'match' => $goal['match']) : null,
             'landings_from' => $filled,
             'partial'       => false,
@@ -143,7 +152,7 @@ final class SEOProStats_Content {
         $answer['partial'] = $floor !== '' && ($filled === '' || $filled > max($oldest, $floor));
         $answer['totals']  = self::metrics(self::sum($list), $goal !== null);
 
-        $order = self::order($list, $sort);
+        $order = self::order($list, $by['sort'], $by['order']);
         $shown = array_slice($order, $offset, $limit);
         $text  = SEOProStats_Query::texts($shown);
         foreach ($shown as $path_id) {
@@ -239,24 +248,60 @@ final class SEOProStats_Content {
     }
 
     /**
-     * Path ids, most first by the sort, then by clicks, search visits and id.
+     * Path ids in the sort's order, then most impressions, clicks and
+     * search visits first, then by id. A rate without its base (CTR or
+     * position without impressions, a visit rate without visits) goes
+     * last whichever the order.
      *
-     * @param array<int,array<string,int>> $list From period().
-     * @param string                       $sort One of SORTS.
+     * @param array<int,array<string,int>> $list  From period().
+     * @param string                       $sort  One of SORTS.
+     * @param string                       $order asc or desc.
      * @return int[]
      */
-    private static function order(array $list, $sort) {
-        $col = $sort === 'visits' ? 'visits' : ($sort === 'conversions' ? 'conversions' : 'c');
+    private static function order(array $list, $sort, $order) {
+        $value = array();
+        foreach ($list as $id => $sums) {
+            $value[$id] = self::sort_value($sums, $sort);
+        }
         $ids = array_keys($list);
-        usort($ids, static function ($a, $b) use ($list, $col) {
-            foreach (array($col, 'c', 'visits', 'i') as $by) {
-                if ($list[$a][$by] !== $list[$b][$by]) {
-                    return $list[$b][$by] <=> $list[$a][$by];
+        usort($ids, static function ($a, $b) use ($list, $value, $order) {
+            $by = SEOProStats_Search::compare($value[$a], $value[$b], $order);
+            if ($by) {
+                return $by;
+            }
+            foreach (array('i', 'c', 'visits') as $col) {
+                if ($list[$a][$col] !== $list[$b][$col]) {
+                    return $list[$b][$col] <=> $list[$a][$col];
                 }
             }
             return $a <=> $b;
         });
         return $ids;
+    }
+
+    /**
+     * A page's figure for a sort, from its sums.
+     *
+     * @param array<string,int> $sums From period().
+     * @param string            $sort One of SORTS.
+     * @return int|float|null Null for a rate without its base.
+     */
+    private static function sort_value(array $sums, $sort) {
+        $visits = $sums['visits'];
+        switch ($sort) {
+            case 'visits':
+                return $visits;
+            case 'bounce_rate':
+                return $visits ? $sums['bounces'] / $visits : null;
+            case 'visit_duration':
+                return $visits ? $sums['engaged_ms'] / $visits : null;
+            case 'conversions':
+                return $sums['conversions'];
+            case 'conversion_rate':
+                return $visits ? $sums['conversions'] / $visits : null;
+            default:
+                return SEOProStats_Search::sort_value($sums, $sort);
+        }
     }
 
     /**
