@@ -840,8 +840,37 @@ final class SEOProStats_Search_Import {
      * @return array<string,array<string,array<int,int|string>>> Kind => key => [keys…, clicks, impressions, pos_impr].
      */
     public static function rows(array $data) {
-        $paths   = array();
-        $queries = array();
+        $paths   = self::mark_paths($data);
+        $queries = self::mark_queries($data);
+        $ids     = array(
+            'path'  => $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $paths) : array(),
+            'query' => $queries ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, $queries) : array(),
+        );
+        $appearances       = isset($data['appearance']) ? array_map('strval', array_column(array_column($data['appearance'], 'keys'), 0)) : array();
+        $ids['appearance'] = $appearances ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, $appearances) : array();
+
+        $out = array_fill_keys(array_keys(self::TABLES), array());
+        foreach (array_keys(self::TABLES) as $kind) {
+            foreach (isset($data[$kind]) ? $data[$kind] : array() as $row) {
+                $keys = self::row_keys($kind, $row, $ids);
+                if (in_array(0, array_slice($keys, 0, $kind === 'totals' ? 0 : 2), true)) {
+                    continue;
+                }
+                self::add_row($out[$kind], $keys, $row);
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Give page and pair rows their path, and leave out those of other
+     * sites.
+     *
+     * @param array<string,array<int,array<string,mixed>>> $data Kind => the source's rows; changed.
+     * @return string[] The paths, in row order.
+     */
+    private static function mark_paths(array &$data) {
+        $paths = array();
         foreach (array('pages', 'pairs') as $kind) {
             foreach (isset($data[$kind]) ? $data[$kind] : array() as $i => $row) {
                 $path = self::path(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
@@ -853,6 +882,18 @@ final class SEOProStats_Search_Import {
                 $paths[]                 = $path;
             }
         }
+        return $paths;
+    }
+
+    /**
+     * Give query and pair rows their query, and leave out those without
+     * one.
+     *
+     * @param array<string,array<int,array<string,mixed>>> $data Kind => the source's rows; changed.
+     * @return string[] The queries, in row order.
+     */
+    private static function mark_queries(array &$data) {
+        $queries = array();
         foreach (array('queries' => 0, 'pairs' => 1) as $kind => $at) {
             foreach (isset($data[$kind]) ? $data[$kind] : array() as $i => $row) {
                 $query = self::query(isset($row['keys'][$at]) ? (string) $row['keys'][$at] : '');
@@ -864,51 +905,71 @@ final class SEOProStats_Search_Import {
                 $queries[]                = $query;
             }
         }
-        $path_ids  = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $paths) : array();
-        $query_ids = $queries ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_QUERY, $queries) : array();
-        $appearances = isset($data['appearance']) ? array_map('strval', array_column(array_column($data['appearance'], 'keys'), 0)) : array();
-        $appearance_ids = $appearances ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_APPEARANCE, $appearances) : array();
+        return $queries;
+    }
 
-        $out = array_fill_keys(array_keys(self::TABLES), array());
-        foreach (array_keys(self::TABLES) as $kind) {
-            foreach (isset($data[$kind]) ? $data[$kind] : array() as $row) {
-                if ($kind === 'pages') {
-                    $keys = array(isset($path_ids[SEOProStats_Dict::clean($row['path'])]) ? $path_ids[SEOProStats_Dict::clean($row['path'])] : 0);
-                } elseif ($kind === 'queries') {
-                    $keys = array(isset($query_ids[SEOProStats_Dict::clean($row['query'])]) ? $query_ids[SEOProStats_Dict::clean($row['query'])] : 0);
-                } elseif ($kind === 'appearance') {
-                    $value = SEOProStats_Dict::clean(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
-                    $keys = array(isset($appearance_ids[$value]) ? $appearance_ids[$value] : 0);
-                } elseif ($kind === 'pairs') {
-                    $keys = array(
-                        isset($path_ids[SEOProStats_Dict::clean($row['path'])]) ? $path_ids[SEOProStats_Dict::clean($row['path'])] : 0,
-                        isset($query_ids[SEOProStats_Dict::clean($row['query'])]) ? $query_ids[SEOProStats_Dict::clean($row['query'])] : 0,
-                    );
-                } else {
-                    $device  = strtoupper(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
-                    $country = strtolower(isset($row['keys'][1]) ? (string) $row['keys'][1] : '');
-                    $keys    = array(
-                        isset(SEOProStats_Schema::GSC_DEVICES[$device]) ? SEOProStats_Schema::GSC_DEVICES[$device] : 0,
-                        preg_match('/^[a-z]{3}$/', $country) ? $country : '',
-                    );
-                }
-                if (in_array(0, array_slice($keys, 0, $kind === 'totals' ? 0 : 2), true)) {
-                    continue;
-                }
-                $id          = implode("\t", $keys);
-                $clicks      = isset($row['clicks']) ? max(0, (int) round((float) $row['clicks'])) : 0;
-                $impressions = isset($row['impressions']) ? max(0, (int) round((float) $row['impressions'])) : 0;
-                $pos_impr    = isset($row['position']) ? max(0, (int) round((float) $row['position'] * $impressions * 100)) : 0;
-                if (!isset($out[$kind][$id])) {
-                    $out[$kind][$id] = array_merge($keys, array(0, 0, 0));
-                }
-                $n                      = count($keys);
-                $out[$kind][$id][$n]     += $clicks;
-                $out[$kind][$id][$n + 1] += $impressions;
-                $out[$kind][$id][$n + 2] += $pos_impr;
-            }
+    /**
+     * A row's key columns for its kind (0 for a text without an id).
+     *
+     * @param string                              $kind A key of TABLES.
+     * @param array<string,mixed>                 $row  The source's row, with path and query from mark_paths() and mark_queries().
+     * @param array<string,array<string,int>>     $ids  path, query and appearance: text => dictionary id.
+     * @return array<int,int|string>
+     */
+    private static function row_keys($kind, array $row, array $ids) {
+        if ($kind === 'pages') {
+            return array(self::dict_id($ids['path'], $row['path']));
         }
-        return $out;
+        if ($kind === 'queries') {
+            return array(self::dict_id($ids['query'], $row['query']));
+        }
+        if ($kind === 'appearance') {
+            return array(self::dict_id($ids['appearance'], isset($row['keys'][0]) ? (string) $row['keys'][0] : ''));
+        }
+        if ($kind === 'pairs') {
+            return array(self::dict_id($ids['path'], $row['path']), self::dict_id($ids['query'], $row['query']));
+        }
+        $device  = strtoupper(isset($row['keys'][0]) ? (string) $row['keys'][0] : '');
+        $country = strtolower(isset($row['keys'][1]) ? (string) $row['keys'][1] : '');
+        return array(
+            isset(SEOProStats_Schema::GSC_DEVICES[$device]) ? SEOProStats_Schema::GSC_DEVICES[$device] : 0,
+            preg_match('/^[a-z]{3}$/', $country) ? $country : '',
+        );
+    }
+
+    /**
+     * A text's dictionary id from SEOProStats_Dict::ids(), or 0.
+     *
+     * @param array<string,int> $ids  Text => id.
+     * @param string            $text Text.
+     * @return int
+     */
+    private static function dict_id(array $ids, $text) {
+        $text = SEOProStats_Dict::clean($text);
+        return isset($ids[$text]) ? $ids[$text] : 0;
+    }
+
+    /**
+     * Add a row's clicks, impressions and position × impressions × 100 to
+     * the table row with its keys.
+     *
+     * @param array<string,array<int,int|string>> $sums Key => table row; added to.
+     * @param array<int,int|string>               $keys row_keys().
+     * @param array<string,mixed>                 $row  The source's row.
+     * @return void
+     */
+    private static function add_row(array &$sums, array $keys, array $row) {
+        $id          = implode("\t", $keys);
+        $clicks      = isset($row['clicks']) ? max(0, (int) round((float) $row['clicks'])) : 0;
+        $impressions = isset($row['impressions']) ? max(0, (int) round((float) $row['impressions'])) : 0;
+        $pos_impr    = isset($row['position']) ? max(0, (int) round((float) $row['position'] * $impressions * 100)) : 0;
+        if (!isset($sums[$id])) {
+            $sums[$id] = array_merge($keys, array(0, 0, 0));
+        }
+        $n                   = count($keys);
+        $sums[$id][$n]     += $clicks;
+        $sums[$id][$n + 1] += $impressions;
+        $sums[$id][$n + 2] += $pos_impr;
     }
 
     /**
