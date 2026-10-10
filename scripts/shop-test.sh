@@ -279,6 +279,9 @@ check_results() {
 	local doctor
 	wp_cli seoprostats process
 	wp_cli eval 'seoprostats_shop_test_assert();' || fail 'purchase counts, amounts, currencies or visit joins'
+	# This site never loads an admin page, where admin_init schedules the
+	# cron events; schedule them the same way so doctor checks a real site.
+	wp_cli eval 'SEOProStats_Collection::schedule();'
 	doctor="$(wp_cli seoprostats doctor --format=json --quiet)"
 	jq -e 'any(.[]; .check == "purchases" and (.detail | contains("1 ThriveCart orders without a known page load")))' <<<"$doctor" >/dev/null || fail 'doctor: expected 1 ThriveCart order not joined'
 	# Read through PHP so the fixture can group notice + backtrace lines and
