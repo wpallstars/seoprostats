@@ -52,6 +52,7 @@ Connect Google Search Console and Bing Webmaster Tools (Settings → Connections
 * **Import** history from Burst Statistics, Koko Analytics, Statify, WP Statistics, Independent Analytics, Slimstat, Matomo for WordPress and Jetpack Stats, then remove what the old plugin left behind (Settings → Import).
 * **Shared reports**: a private link for a client, with optional password, expiry and branding.
 * **Demo data**: a year of made-up visits to try every report before your site has any.
+* **Dark mode** for its screens: Light, Dark or System, for each person.
 
 The full guide is in the Read Me tab (SEO Pro Stats → Settings → Read Me).
 

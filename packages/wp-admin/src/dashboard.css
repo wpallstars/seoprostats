@@ -230,7 +230,7 @@
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 	margin-top: 8px;
-	border-bottom: 1px solid #f0f0f1;
+	border-bottom: 1px solid var(--spst-divider, #f0f0f1);
 }
 
 .spst-tile {
@@ -313,8 +313,9 @@
 	z-index: 10;
 	padding: 8px 10px;
 	border-radius: 2px;
-	background: #1d2327;
-	color: #fff;
+	background: var(--spst-tip-bg, #1d2327);
+	color: var(--spst-tip-text, #fff);
+	box-shadow: var(--spst-tip-ring, none);
 	font-size: 12px;
 	line-height: 1.5;
 	white-space: nowrap;
@@ -338,7 +339,7 @@
 
 .spst-chart-tip__when {
 	flex: 1;
-	color: #c3c4c7;
+	color: var(--spst-tip-muted, #c3c4c7);
 }
 
 /* Markers lane: the changes in the range, under the plot. */
@@ -372,7 +373,7 @@
 	transform: translateX(-50%);
 	border: 1px solid var(--spst-border);
 	border-radius: 10px;
-	background: #fff;
+	background: var(--spst-background, #fff);
 	color: var(--spst-text);
 	font-size: 11px;
 	line-height: 1;
@@ -434,12 +435,12 @@
 }
 
 .spst-chart-lane__tip .spst-chart-lane__dot {
-	box-shadow: 0 0 0 1px #fff;
+	box-shadow: 0 0 0 1px var(--spst-tip-text, #fff);
 }
 
 .spst-chart-lane__when,
 .spst-chart-lane__more {
-	color: #c3c4c7;
+	color: var(--spst-tip-muted, #c3c4c7);
 }
 
 .spst-chart-guide {
@@ -801,11 +802,6 @@
 	min-height: 0;
 }
 
-.spst-skeleton--table {
-	display: block;
-	height: 160px;
-}
-
 /* Tables of goals and properties: WordPress's list table look. */
 .spst-table {
 	transition: opacity 0.15s;
@@ -945,7 +941,7 @@ code.spst-meta {
 	gap: 8px 16px;
 	margin: 0;
 	padding: 8px 0;
-	border-bottom: 1px solid #f0f0f1;
+	border-bottom: 1px solid var(--spst-divider, #f0f0f1);
 }
 
 .spst-funnel__step:last-child {
@@ -1211,7 +1207,7 @@ code.spst-meta {
 
 .spst-sort:hover,
 .spst-sort.is-active {
-	color: var(--wp-admin-theme-color, #2271b1);
+	color: var(--spst-accent, var(--wp-admin-theme-color, #2271b1));
 }
 
 .spst-sort:focus-visible {
@@ -1333,7 +1329,7 @@ code.spst-meta {
 
 .spst-form .spst-note {
 	margin: 0;
-	color: #646970;
+	color: var(--spst-subtle, #646970);
 }
 
 .spst-form__actions {
@@ -1351,7 +1347,7 @@ code.spst-meta {
 	margin: 0;
 	padding: 16px 0 0;
 	border: 0;
-	border-top: 1px solid #dcdcde;
+	border-top: 1px solid var(--spst-border, #dcdcde);
 }
 
 .spst-fieldset > legend {
@@ -1392,9 +1388,9 @@ code.spst-meta {
 	gap: 8px;
 	margin: 0;
 	padding: 4px;
-	border: 1px solid #dcdcde;
+	border: 1px solid var(--spst-border, #dcdcde);
 	border-radius: 2px;
-	background: #fff;
+	background: var(--spst-background, #fff);
 	counter-increment: spst-section;
 }
 
@@ -1418,7 +1414,7 @@ code.spst-meta {
 
 .spst-share-sections__name::before {
 	content: counter(spst-section) ". ";
-	color: #646970;
+	color: var(--spst-subtle, #646970);
 }
 
 /* The drag handle: a 32px target, grabbed by mouse, pen or touch, or Space from the keyboard. */
@@ -1432,7 +1428,7 @@ code.spst-meta {
 	border: 0;
 	border-radius: 2px;
 	background: none;
-	color: #50575e;
+	color: var(--spst-muted, #50575e);
 	fill: currentcolor;
 	cursor: grab;
 	touch-action: none;
@@ -1476,7 +1472,7 @@ code.spst-meta {
 	max-width: 160px;
 	max-height: 64px;
 	padding: 4px;
-	border: 1px solid #dcdcde;
+	border: 1px solid var(--spst-border, #dcdcde);
 	border-radius: 2px;
 	object-fit: contain;
 }
@@ -1489,7 +1485,7 @@ code.spst-meta {
 
 .spst-share-logo__help {
 	margin: 0;
-	color: #757575;
+	color: var(--spst-subtle, #757575);
 	font-size: 12px;
 	font-style: normal;
 }
@@ -1518,7 +1514,7 @@ code.spst-meta {
 }
 
 .spst-share-accent__swatch[aria-pressed="true"] {
-	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%), 0 0 0 2px #fff, 0 0 0 4px #1d2327;
+	box-shadow: inset 0 0 0 1px rgb(0 0 0 / 20%), 0 0 0 2px var(--spst-background, #fff), 0 0 0 4px var(--spst-text, #1d2327);
 }
 
 .spst-share-accent__swatch:focus-visible {
@@ -1570,8 +1566,9 @@ code.spst-meta {
 	padding: 0 8px;
 	font-family: Consolas, Monaco, monospace;
 	font-size: 13px;
-	background: #fff;
-	border: 1px solid #8c8f94;
+	color: var(--spst-text, #1d2327);
+	background: var(--spst-background, #fff);
+	border: 1px solid var(--spst-field-border, #8c8f94);
 	border-radius: 2px;
 }
 
@@ -1597,8 +1594,8 @@ code.spst-meta {
 	padding: 0 6px;
 	font-size: 12px;
 	line-height: 20px;
-	color: #50575e;
-	background: #f0f0f1;
+	color: var(--spst-muted, #50575e);
+	background: var(--spst-divider, #f0f0f1);
 	border-radius: 2px;
 }
 
@@ -1644,7 +1641,7 @@ code.spst-meta {
 .spst-steps-editor__step {
 	margin: 0;
 	padding: 12px;
-	border: 1px solid #dcdcde;
+	border: 1px solid var(--spst-border, #dcdcde);
 	border-radius: 2px;
 }
 
