@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.4.0
+Version: 1.4.1
 
 <!-- github-only:start -->
 ## Screenshots
@@ -521,6 +521,13 @@ Administrators read stored status with `GET /seoprostats/v1/indexnow` (no submis
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.4.1
+
+- Fixed: a links import no longer waits for good at "0 of N rows" when its background run is lost (for example while the plugin's files are being updated). With Settings → Import open, each progress check moves the import on; an hourly check restarts a stopped one. The tab shows it is uploading, keeps trying when a progress check gets an error page instead of stopping on "The response is not a valid JSON response.", and checks whether the file arrived before saying an upload failed.
+- Changed: a reported page whose check found no link reads "Visit the link to check for backlinks": links added by scripts or hidden from automated visits are not seen by the check.
+- Changed: the dashboard opens on Last 91 days, and on Search, Last 30 days, Last 90 days and Last 12 months keep their full length, ending on the newest day with search data.
+- Fixed: deleting SEO Pro Stats while it is loaded (such as from WP-CLI's eval) no longer ends in a fatal error.
 
 ### 1.4.0
 
