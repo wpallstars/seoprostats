@@ -36,7 +36,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Links {
+final class SEOProStats_Links { // NOSONAR: one internal links model for the audit, REST, WP-CLI and abilities; private helpers decompose its writes and lists.
 
     /** Lists. */
     const KINDS = array('orphans', 'converting', 'missing');
@@ -151,26 +151,48 @@ final class SEOProStats_Links {
         }
         require_once __DIR__ . '/class-seoprostats-dict.php';
         $table   = SEOProStats_Schema::table('page_links');
+        $changed = self::delete_from($table, $ids);
+        $rows    = self::link_rows($from);
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key (from_path); $groups holds only placeholders.
+        foreach (array_chunk($rows, 500) as $chunk) {
+            $groups = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d)'));
+            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (from_path, to_path, text_id, links) VALUES $groups", array_merge(array($table), array_merge(...$chunk))));
+        }
+        // phpcs:enable
+        return array_values(array_unique(array_merge($changed, array_column($rows, 1))));
+    }
+
+    /**
+     * Delete pages' links, by the primary key (from_path).
+     *
+     * @param string $table page_links.
+     * @param int[]  $ids   Path ids.
+     * @return int[] Path ids they linked to.
+     */
+    private static function delete_from($table, array $ids) {
+        global $wpdb;
         $changed = array();
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key (from_path); $holders and $groups hold only placeholders.
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key (from_path); $holders holds only placeholders.
         foreach (array_chunk($ids, 500) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '%d'));
             $args    = array_merge(array($table), $chunk);
             $changed = array_merge($changed, array_map('intval', (array) $wpdb->get_col($wpdb->prepare("SELECT to_path FROM %i WHERE from_path IN ($holders)", $args))));
             $wpdb->query($wpdb->prepare("DELETE FROM %i WHERE from_path IN ($holders)", $args));
         }
+        // phpcs:enable
+        return $changed;
+    }
 
-        $paths = array();
-        $texts = array();
-        foreach ($from as $links) {
-            foreach ((array) $links as $to => $link) {
-                $paths[] = (string) $to;
-                $texts[] = (string) $link['text'];
-            }
-        }
-        $path_ids = $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $paths) : array();
-        $text_ids = $texts ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, $texts) : array();
-        $rows     = array();
+    /**
+     * Rows of page_links for pages' links: from, to, text id and links;
+     * links to the page itself or to a path without an id are left out.
+     *
+     * @param array<int,array<string,array{text:string,links:int}>> $from Path id => its links, from parse().
+     * @return array<int,int[]>
+     */
+    private static function link_rows(array $from) {
+        list($path_ids, $text_ids) = self::dict_ids($from);
+        $rows = array();
         foreach ($from as $from_id => $links) {
             foreach ((array) $links as $to => $link) {
                 $to_id = isset($path_ids[SEOProStats_Dict::clean((string) $to)]) ? (int) $path_ids[SEOProStats_Dict::clean((string) $to)] : 0;
@@ -179,15 +201,30 @@ final class SEOProStats_Links {
                 }
                 $text   = SEOProStats_Dict::clean((string) $link['text']);
                 $rows[] = array((int) $from_id, $to_id, isset($text_ids[$text]) ? (int) $text_ids[$text] : 0, max(1, min(65535, (int) $link['links'])));
-                $changed[] = $to_id;
             }
         }
-        foreach (array_chunk($rows, 500) as $chunk) {
-            $groups = implode(', ', array_fill(0, count($chunk), '(%d, %d, %d, %d)'));
-            $wpdb->query($wpdb->prepare("INSERT IGNORE INTO %i (from_path, to_path, text_id, links) VALUES $groups", array_merge(array($table), array_merge(...$chunk))));
+        return $rows;
+    }
+
+    /**
+     * Ids of the pages' links' target paths and texts (added when new).
+     *
+     * @param array<int,array<string,array{text:string,links:int}>> $from Path id => its links, from parse().
+     * @return array{0:array<string,int>,1:array<string,int>} Path ids and text ids by cleaned value.
+     */
+    private static function dict_ids(array $from) {
+        $paths = array();
+        $texts = array();
+        foreach ($from as $links) {
+            foreach ((array) $links as $to => $link) {
+                $paths[] = (string) $to;
+                $texts[] = (string) $link['text'];
+            }
         }
-        // phpcs:enable
-        return array_values(array_unique($changed));
+        return array(
+            $paths ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_PATH, $paths) : array(),
+            $texts ? SEOProStats_Dict::ids(SEOProStats_Schema::DICT_LABEL, $texts) : array(),
+        );
     }
 
     /**
@@ -325,11 +362,50 @@ final class SEOProStats_Links {
         $answer['goals'] = $value['goals'];
         $facts           = self::few($pages);
         $sums            = $now ? SEOProStats_Opportunities::sums('gsc_pages', $engine, $now, $pages) : array();
-        // Demo pages' paths are the site's own from its root.
-        $front           = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array(SEOProStats_Schema::set() === 'demo' ? '/' : SEOProStats_Changes::path(home_url('/'))));
-        $front           = $front ? (int) $front[0] : 0;
-        $zero            = array('c' => 0, 'i' => 0, 'p' => 0);
+        list($orphans, $converting) = self::page_lists($facts, $sums, $value, self::front());
+        $missing = $now ? self::missing($engine, $now, $pages, $rules) : array();
 
+        $answer['counts'] = array(
+            'orphans'    => count($orphans),
+            'converting' => count($converting),
+            'missing'    => count($missing),
+        );
+        $orphans    = array_slice($orphans, 0, self::KEEP);
+        $converting = array_slice($converting, 0, self::KEEP);
+        $missing    = array_slice($missing, 0, self::KEEP);
+        $has_goal   = (bool) $value['goal'];
+        $answer['lists'] = array(
+            'orphans'    => self::page_rows($orphans, $has_goal),
+            'converting' => self::page_rows($converting, $has_goal),
+            'missing'    => self::missing_rows($missing),
+        );
+        return $answer;
+    }
+
+    /**
+     * The front page's path id, or 0 when it has none.
+     *
+     * @return int
+     */
+    private static function front() {
+        // Demo pages' paths are the site's own from its root.
+        $front = SEOProStats_Dict::find(SEOProStats_Schema::DICT_PATH, array(SEOProStats_Schema::set() === 'demo' ? '/' : SEOProStats_Changes::path(home_url('/'))));
+        return $front ? (int) $front[0] : 0;
+    }
+
+    /**
+     * The orphan and converting pages, sorted: orphans by most
+     * impressions, visits and clicks; converting by most conversions,
+     * fewest links in and most visits.
+     *
+     * @param array<int,int>                  $facts From few().
+     * @param array<string,array<string,int>> $sums  Search sums by path id.
+     * @param array<string,mixed>             $value From conversions().
+     * @param int                             $front The front page's path id.
+     * @return array{0:array<int,array<string,mixed>>,1:array<int,array<string,mixed>>}
+     */
+    private static function page_lists(array $facts, array $sums, array $value, $front) {
+        $zero       = array('c' => 0, 'i' => 0, 'p' => 0);
         $orphans    = array();
         $converting = array();
         foreach ($facts as $path_id => $links_in) {
@@ -353,23 +429,7 @@ final class SEOProStats_Links {
         usort($converting, static function ($a, $b) {
             return array($b['conversions'], $a['links_in'], $b['visits'], $a['path_id']) <=> array($a['conversions'], $b['links_in'], $a['visits'], $b['path_id']);
         });
-        $missing = $now ? self::missing($engine, $now, $pages, $rules) : array();
-
-        $answer['counts'] = array(
-            'orphans'    => count($orphans),
-            'converting' => count($converting),
-            'missing'    => count($missing),
-        );
-        $orphans    = array_slice($orphans, 0, self::KEEP);
-        $converting = array_slice($converting, 0, self::KEEP);
-        $missing    = array_slice($missing, 0, self::KEEP);
-        $has_goal   = (bool) $value['goal'];
-        $answer['lists'] = array(
-            'orphans'    => self::page_rows($orphans, $has_goal),
-            'converting' => self::page_rows($converting, $has_goal),
-            'missing'    => self::missing_rows($missing),
-        );
-        return $answer;
+        return array($orphans, $converting);
     }
 
     /**
@@ -443,7 +503,28 @@ final class SEOProStats_Links {
             $by_query[(int) $row['q']][] = array('path_id' => (int) $row['pg'], 'c' => (int) $row['c'], 'i' => (int) $row['i'], 'p' => (int) $row['p']);
         }
 
-        // Each search's page with most clicks (then impressions), and the other pages showing for it.
+        $wanted = self::wanted($by_query, $least);
+        if (!$wanted) {
+            return array();
+        }
+        // Only pages whose links were read, and links that are not there.
+        $known = self::links_known($wanted);
+        $list  = array_values(self::grouped($wanted, $known['read'], $known['linked']));
+        usort($list, static function ($a, $b) {
+            return array($b['sum']['i'], $b['target']['c'], $a['from'], $a['to']) <=> array($a['sum']['i'], $a['target']['c'], $b['from'], $b['to']);
+        });
+        return $list;
+    }
+
+    /**
+     * Each search's page with most clicks (then impressions), and the
+     * other pages showing for it with at least $least impressions.
+     *
+     * @param array<int,array<int,array<string,int>>> $by_query Query id => its pages' figures.
+     * @param int                                     $least    Impressions at least.
+     * @return array<int,array<string,mixed>> from, to, query_id, pair and target.
+     */
+    private static function wanted(array $by_query, $least) {
         $wanted = array();
         foreach ($by_query as $query_id => $pairs) {
             if (count($pairs) < 2) {
@@ -462,17 +543,24 @@ final class SEOProStats_Links {
                 }
             }
         }
-        if (!$wanted) {
-            return array();
-        }
+        return $wanted;
+    }
 
-        // Only pages whose links were read, and links that are not there.
-        $from    = array_values(array_unique(array_column($wanted, 'from')));
-        $to      = array_values(array_unique(array_column($wanted, 'to')));
-        $read    = array();
-        $linked  = array();
-        $facts   = SEOProStats_Schema::table('page_facts');
-        $links   = SEOProStats_Schema::table('page_links');
+    /**
+     * Of the wanted links' pages, those whose links were read, and the
+     * links there are, by the tables' primary keys.
+     *
+     * @param array<int,array<string,mixed>> $wanted From wanted().
+     * @return array{read:array<int,bool>,linked:array<string,bool>}
+     */
+    private static function links_known(array $wanted) {
+        global $wpdb;
+        $from   = array_values(array_unique(array_column($wanted, 'from')));
+        $to     = array_values(array_unique(array_column($wanted, 'to')));
+        $read   = array();
+        $linked = array();
+        $facts  = SEOProStats_Schema::table('page_facts');
+        $links  = SEOProStats_Schema::table('page_links');
         // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own tables by their primary keys; $holders and $to_holders hold only placeholders.
         foreach (array_chunk($from, 500) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '%d'));
@@ -485,7 +573,19 @@ final class SEOProStats_Links {
             }
         }
         // phpcs:enable
+        return array('read' => $read, 'linked' => $linked);
+    }
 
+    /**
+     * The missing links, one per page and page it should link to, with
+     * both pages' figures summed over the searches.
+     *
+     * @param array<int,array<string,mixed>> $wanted From wanted().
+     * @param array<int,bool>                $read   Pages whose links were read.
+     * @param array<string,bool>             $linked "from:to" links there are.
+     * @return array<string,array<string,mixed>>
+     */
+    private static function grouped(array $wanted, array $read, array $linked) {
         $grouped = array();
         foreach ($wanted as $one) {
             $key = $one['from'] . ':' . $one['to'];
@@ -507,11 +607,7 @@ final class SEOProStats_Links {
             }
             $grouped[$key]['queries'][] = array('query_id' => $one['query_id'], 'pair' => $one['pair'], 'target' => $one['target']);
         }
-        $list = array_values($grouped);
-        usort($list, static function ($a, $b) {
-            return array($b['sum']['i'], $b['target']['c'], $a['from'], $a['to']) <=> array($a['sum']['i'], $a['target']['c'], $b['from'], $b['to']);
-        });
-        return $list;
+        return $grouped;
     }
 
     /**

@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_IndexNow {
+final class SEOProStats_IndexNow { // NOSONAR: one notifier for its hooks, settings, WP-CLI and cron; private helpers decompose a send.
 
     const KEY = 'seoprostats_indexnow_key';
     const STATE = 'seoprostats_indexnow';
@@ -237,17 +237,8 @@ final class SEOProStats_IndexNow {
 
     /** Submit eligible addresses; failed attempts are retried after an hour. */
     private static function submit() {
-        $state = self::state();
-        $batch = array();
         $now = time();
-        foreach ($state['queue'] as $url => $ids) {
-            if (self::url($url) !== '' && ($state['recent'][$url] ?? 0) <= $now - HOUR_IN_SECONDS) {
-                $batch[$url] = $ids;
-                if (count($batch) === self::LIMIT) {
-                    break;
-                }
-            }
-        }
+        $batch = self::eligible(self::state(), $now);
         if (!$batch) {
             return;
         }
@@ -259,11 +250,7 @@ final class SEOProStats_IndexNow {
         // Reserve the hourly allowance before contacting the service, even if
         // the process dies after the POST. The pending queue remains durable.
         if (!self::mutate(static function ($latest) use ($batch, $now) {
-            $latest['recent'] = array_filter($latest['recent'], static function ($ts) use ($now) { return $ts > $now - HOUR_IN_SECONDS; });
-            foreach (array_keys($batch) as $url) {
-                $latest['recent'][$url] = $now;
-            }
-            return $latest;
+            return self::reserve($latest, $batch, $now);
         }) || !self::enabled()) {
             return;
         }
@@ -276,23 +263,77 @@ final class SEOProStats_IndexNow {
         $code = is_wp_error($response) ? 0 : (int) wp_remote_retrieve_response_code($response);
         $sent = in_array($code, array(200, 202), true);
         $receipt = array('time' => $now, 'count' => count($batch), 'code' => $code, 'sent' => $sent);
-        self::mutate(static function ($latest) use ($batch, $receipt, $sent, $now) {
-            $latest['recent'] = array_filter($latest['recent'], static function ($ts) use ($now) { return $ts > $now - HOUR_IN_SECONDS; });
-            foreach ($batch as $url => $ids) {
-                $latest['recent'][$url] = $now;
-                if ($sent) {
-                    $remaining = array_values(array_diff($latest['queue'][$url] ?? array(), $ids));
-                    if ($remaining) {
-                        $latest['queue'][$url] = $remaining;
-                    } else {
-                        unset($latest['queue'][$url]);
-                    }
+        self::mutate(static function ($latest) use ($batch, $receipt, $now) {
+            return self::settle($latest, $batch, $receipt, $now);
+        });
+        self::receipts($batch, $receipt);
+    }
+
+    /**
+     * Up to LIMIT valid queued addresses not sent in the last hour.
+     * @param array<string,mixed> $state State.
+     * @param int $now Time.
+     * @return array<string,array<int,int|string>> Address => its change IDs or tokens.
+     */
+    private static function eligible(array $state, $now) {
+        $batch = array();
+        foreach ($state['queue'] as $url => $ids) {
+            if (self::url($url) !== '' && ($state['recent'][$url] ?? 0) <= $now - HOUR_IN_SECONDS) {
+                $batch[$url] = $ids;
+                if (count($batch) === self::LIMIT) {
+                    break;
                 }
             }
-            array_unshift($latest['log'], $receipt);
-            $latest['log'] = array_slice($latest['log'], 0, 100);
-            return $latest;
-        });
+        }
+        return $batch;
+    }
+
+    /**
+     * State with sends older than an hour dropped and the batch marked sent now.
+     * @param array<string,mixed> $latest State.
+     * @param array<string,array<int,int|string>> $batch From eligible().
+     * @param int $now Time.
+     * @return array<string,mixed>
+     */
+    private static function reserve(array $latest, array $batch, $now) {
+        $latest['recent'] = array_filter($latest['recent'], static function ($ts) use ($now) { return $ts > $now - HOUR_IN_SECONDS; });
+        foreach (array_keys($batch) as $url) {
+            $latest['recent'][$url] = $now;
+        }
+        return $latest;
+    }
+
+    /**
+     * State after a send: the batch reserved again, sent IDs dequeued, and the receipt logged.
+     * @param array<string,mixed> $latest State.
+     * @param array<string,array<int,int|string>> $batch From eligible().
+     * @param array<string,mixed> $receipt time, count, code and sent.
+     * @param int $now Time.
+     * @return array<string,mixed>
+     */
+    private static function settle(array $latest, array $batch, array $receipt, $now) {
+        $latest = self::reserve($latest, $batch, $now);
+        if ($receipt['sent']) {
+            foreach ($batch as $url => $ids) {
+                $remaining = array_values(array_diff($latest['queue'][$url] ?? array(), $ids));
+                if ($remaining) {
+                    $latest['queue'][$url] = $remaining;
+                } else {
+                    unset($latest['queue'][$url]);
+                }
+            }
+        }
+        array_unshift($latest['log'], $receipt);
+        $latest['log'] = array_slice($latest['log'], 0, 100);
+        return $latest;
+    }
+
+    /**
+     * Record the receipt on each change in the batch (not manual notifications).
+     * @param array<string,array<int,int|string>> $batch From eligible().
+     * @param array<string,mixed> $receipt time, count, code and sent.
+     */
+    private static function receipts(array $batch, array $receipt) {
         require_once __DIR__ . '/class-seoprostats-changes.php';
         foreach ($batch as $ids) {
             foreach ($ids as $id) {

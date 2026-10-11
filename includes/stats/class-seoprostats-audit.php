@@ -126,6 +126,9 @@ final class SEOProStats_Audit {
     /** A hash key for no text. */
     const NONE = '0000000000000000';
 
+    /** The facts columns a report reads. */
+    const FACTS_COLS = 'path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, LOWER(HEX(title_hash)) AS th, LOWER(HEX(desc_hash)) AS dh, h1, words, images, images_no_alt, noindex, canonical_away, flags';
+
     /** @var array<int,bool> Posts saved or deleted in this request, read at its end. */
     private static $saved = array();
 
@@ -197,16 +200,48 @@ final class SEOProStats_Audit {
      * @return array{read:int,looked:int,done:bool} Posts read and looked at; done: the end of the posts was reached.
      */
     public static function batch($limit = self::BATCH, $budget = self::BUDGET) {
-        global $wpdb;
         $out = array('read' => 0, 'looked' => 0, 'done' => false);
         if (SEOProStats_Schema::set() !== 'live' || !SEOProStats_Schema::is_current()) {
             return $out;
         }
         self::load();
-        $start = microtime(true);
-        $limit = max(1, (int) $limit);
-        $state = self::state();
-        $seo   = SEOProStats_Coverage::seo_plugin();
+        $until = array('start' => microtime(true), 'limit' => max(1, (int) $limit), 'budget' => $budget);
+        $state = self::restart(self::state());
+        $types = self::post_types();
+        $old   = max((int) $state['since'], time() - self::STALE_DAYS * DAY_IN_SECONDS);
+        $stop  = !$types;
+        while (!$stop) {
+            $rows = self::scan($types, (int) $state['cursor']);
+            $scan = self::read_rows($rows, $old, $until, $state, $out);
+            if ($scan['stop']) {
+                break;
+            }
+            if (count($rows) < self::SCAN) {
+                // The end of the posts: from the first again next time.
+                $state['cursor'] = 0;
+                $out['done']     = true;
+                break;
+            }
+            $state['cursor'] = $scan['last'];
+            $stop            = !SEOProStats_Feature::more_time($until['start'], $until['budget']);
+        }
+        if ($out['read']) {
+            $state['version'] = time();
+        }
+        $state['last'] = time();
+        update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
+        return $out;
+    }
+
+    /**
+     * Progress with every page to be read again, from the first, when the
+     * SEO plugin changed or links or published times came with an update.
+     *
+     * @param array<string,mixed> $state From state().
+     * @return array<string,mixed>
+     */
+    private static function restart(array $state) {
+        $seo = SEOProStats_Coverage::seo_plugin();
         if ($state['plugin'] !== $seo) {
             // Another SEO plugin's fields: every page is read again.
             $state['plugin'] = $seo;
@@ -225,57 +260,90 @@ final class SEOProStats_Audit {
             $state['since']     = $state['published'];
             $state['cursor']    = 0;
         }
-        $types = self::post_types();
-        $old   = max((int) $state['since'], time() - self::STALE_DAYS * DAY_IN_SECONDS);
-        $stop  = !$types;
-        while (!$stop) {
-            $holders = implode(', ', array_fill(0, count($types), '%s'));
-            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- WordPress's posts by their primary key, in its order, from the cursor; $holders holds only placeholders.
-            $rows = (array) $wpdb->get_results($wpdb->prepare("SELECT ID, post_modified_gmt AS m FROM %i FORCE INDEX (`PRIMARY`) WHERE ID > %d AND post_status = 'publish' AND post_type IN ($holders) ORDER BY ID LIMIT %d", array_merge(array($wpdb->posts, (int) $state['cursor']), $types, array(self::SCAN))), ARRAY_A);
-            $known   = self::known(array_map('intval', array_column($rows, 'ID')));
-            $pending = array();
-            $last    = (int) $state['cursor'];
-            foreach ($rows as $row) {
-                $post_id = (int) $row['ID'];
-                ++$out['looked'];
-                $was = isset($known[$post_id]) ? $known[$post_id] : null;
-                if (!$was || $was['modified'] !== self::time($row['m']) || $was['checked'] < $old) {
-                    $pending[] = $post_id;
-                }
-                $last = $post_id;
-                if ($pending && (count($pending) >= self::CHUNK || $out['read'] + count($pending) >= $limit)) {
-                    self::read_posts($pending);
-                    $out['read']    += count($pending);
-                    $pending         = array();
-                    $state['cursor'] = $last;
-                    if ($out['read'] >= $limit || !SEOProStats_Feature::more_time($start, $budget)) {
-                        $stop = true;
-                        break;
-                    }
-                }
+        return $state;
+    }
+
+    /**
+     * The next SCAN published posts of the types after the cursor, by the
+     * posts table's primary key: ID and m (modified, GMT).
+     *
+     * @param string[] $types  Post types.
+     * @param int      $cursor Last post ID looked at.
+     * @return array<int,array<string,string>>
+     */
+    private static function scan(array $types, $cursor) {
+        global $wpdb;
+        $holders = implode(', ', array_fill(0, count($types), '%s'));
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- WordPress's posts by their primary key, in its order, from the cursor; $holders holds only placeholders.
+        return (array) $wpdb->get_results($wpdb->prepare("SELECT ID, post_modified_gmt AS m FROM %i FORCE INDEX (`PRIMARY`) WHERE ID > %d AND post_status = 'publish' AND post_type IN ($holders) ORDER BY ID LIMIT %d", array_merge(array($wpdb->posts, (int) $cursor), $types, array(self::SCAN))), ARRAY_A);
+    }
+
+    /**
+     * Read the scanned posts whose facts are missing, changed or old, in
+     * chunks of CHUNK, moving the cursor after each chunk; stop at the
+     * limit or the end of the time budget.
+     *
+     * @param array<int,array<string,string>>         $rows  From scan().
+     * @param int                                     $old   Facts read before this are old.
+     * @param array{start:float,limit:int,budget:int} $until Start, posts read at most and seconds.
+     * @param array<string,mixed>                     $state Progress (cursor).
+     * @param array{read:int,looked:int,done:bool}    $out   Posts read and looked at.
+     * @return array{stop:bool,last:int} Whether to stop, and the last post looked at.
+     */
+    private static function read_rows(array $rows, $old, array $until, array &$state, array &$out) {
+        $known   = self::known(array_map('intval', array_column($rows, 'ID')));
+        $pending = array();
+        $last    = (int) $state['cursor'];
+        foreach ($rows as $row) {
+            $post_id = (int) $row['ID'];
+            ++$out['looked'];
+            if (self::stale($known, $post_id, $row['m'], $old)) {
+                $pending[] = $post_id;
             }
-            if ($stop) {
-                break;
-            }
-            if ($pending) {
+            $last = $post_id;
+            if (self::chunk_full($pending, $out['read'], $until['limit'])) {
                 self::read_posts($pending);
-                $out['read'] += count($pending);
+                $out['read']    += count($pending);
+                $pending         = array();
+                $state['cursor'] = $last;
+                if ($out['read'] >= $until['limit'] || !SEOProStats_Feature::more_time($until['start'], $until['budget'])) {
+                    return array('stop' => true, 'last' => $last);
+                }
             }
-            if (count($rows) < self::SCAN) {
-                // The end of the posts: from the first again next time.
-                $state['cursor'] = 0;
-                $out['done']     = true;
-                break;
-            }
-            $state['cursor'] = $last;
-            $stop            = !SEOProStats_Feature::more_time($start, $budget);
         }
-        if ($out['read']) {
-            $state['version'] = time();
+        if ($pending) {
+            self::read_posts($pending);
+            $out['read'] += count($pending);
         }
-        $state['last'] = time();
-        update_option(SEOProStats_Schema::option(self::OPTION), $state, false);
-        return $out;
+        return array('stop' => false, 'last' => $last);
+    }
+
+    /**
+     * Whether a post's facts are missing, older than its last change, or
+     * read before $old.
+     *
+     * @param array<int,array{modified:int,checked:int}> $known    From known().
+     * @param int                                        $post_id  Post.
+     * @param string                                     $modified Its post_modified_gmt.
+     * @param int                                        $old      Facts read before this are old.
+     * @return bool
+     */
+    private static function stale(array $known, $post_id, $modified, $old) {
+        $was = isset($known[$post_id]) ? $known[$post_id] : null;
+        return !$was || $was['modified'] !== self::time($modified) || $was['checked'] < $old;
+    }
+
+    /**
+     * Whether the pending posts are to be read now: a full chunk, or
+     * enough to reach the limit.
+     *
+     * @param int[] $pending Posts to read.
+     * @param int   $read    Posts read so far.
+     * @param int   $limit   Posts read at most.
+     * @return bool
+     */
+    private static function chunk_full(array $pending, $read, $limit) {
+        return $pending && (count($pending) >= self::CHUNK || $read + count($pending) >= $limit);
     }
 
     /**
@@ -320,7 +388,6 @@ final class SEOProStats_Audit {
      * @return int Rows written.
      */
     public static function write(array $facts) {
-        global $wpdb;
         if (!$facts) {
             return 0;
         }
@@ -345,6 +412,25 @@ final class SEOProStats_Audit {
         if (!$n) {
             return 0;
         }
+        self::insert_facts($table, $args, $n);
+        // A post's rows at its old addresses go (a changed slug or parent), with their links.
+        $gone = self::old_addresses($table, $keep);
+
+        // The pages' links, and the pages linking to the pages they link to (and to them: new rows).
+        $changed = SEOProStats_Links::replace($links, $gone);
+        SEOProStats_Links::recount(array_merge($changed, array_keys($links)));
+        return $n;
+    }
+
+    /**
+     * Insert or update facts rows, by the primary key.
+     *
+     * @param string                $table page_facts.
+     * @param array<int,int|string> $args  Each row's 17 values, in the columns' order.
+     * @param positive-int          $n     Rows.
+     */
+    private static function insert_facts($table, array $args, $n) {
+        global $wpdb;
         $groups = implode(', ', array_fill(0, $n, '(%d, %d, %d, %d, %d, %d, %d, UNHEX(%s), UNHEX(%s), %d, %d, %d, %d, %d, %d, %d, %d)'));
         $update = array();
         foreach (array('post_id', 'checked', 'modified', 'title_len', 'seo_title_len', 'desc_len', 'title_hash', 'desc_hash', 'h1', 'words', 'images', 'images_no_alt', 'noindex', 'canonical_away', 'flags', 'published') as $col) {
@@ -353,8 +439,17 @@ final class SEOProStats_Audit {
         $update = implode(', ', $update);
         // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $groups holds only placeholder groups and $update fixed column names.
         $wpdb->query($wpdb->prepare("INSERT INTO %i (path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, title_hash, desc_hash, h1, words, images, images_no_alt, noindex, canonical_away, flags, published) VALUES $groups ON DUPLICATE KEY UPDATE $update", array_merge(array($table), $args)));
+    }
 
-        // A post's rows at its old addresses go (a changed slug or parent), with their links.
+    /**
+     * Delete posts' rows at addresses other than those just written.
+     *
+     * @param string            $table page_facts.
+     * @param array<int,int[]>  $keep  Post id => its path ids written now.
+     * @return int[] Path ids deleted.
+     */
+    private static function old_addresses($table, array $keep) {
+        global $wpdb;
         $gone = array();
         foreach ($keep as $post_id => $paths) {
             if (!$post_id) {
@@ -370,11 +465,7 @@ final class SEOProStats_Audit {
             }
             // phpcs:enable
         }
-
-        // The pages' links, and the pages linking to the pages they link to (and to them: new rows).
-        $changed = SEOProStats_Links::replace($links, $gone);
-        SEOProStats_Links::recount(array_merge($changed, array_keys($links)));
-        return $n;
+        return $gone;
     }
 
     /**
@@ -438,54 +529,20 @@ final class SEOProStats_Audit {
      */
     public static function facts(array $text, $path) {
         require_once __DIR__ . self::LINKS_FILE;
-        $html = (string) preg_replace('/\[\/?[a-zA-Z][^\[\]]*\]/', ' ', isset($text['content']) ? (string) $text['content'] : '');
-        if (strlen($html) > SEOProStats_Coverage::MAX_TEXT) {
-            $html = function_exists('mb_strcut') ? mb_strcut($html, 0, SEOProStats_Coverage::MAX_TEXT, 'UTF-8') : substr($html, 0, SEOProStats_Coverage::MAX_TEXT);
-        }
+        $html      = self::html($text);
         $title     = self::line(isset($text['title']) ? (string) $text['title'] : '');
-        $seo_title = '';
-        if (empty($text['seo_title_vars']) && isset($text['seo_title'])) {
-            $seo_title = self::line((string) $text['seo_title']);
-        }
+        $seo_title = self::seo_title($text);
         $shown     = $seo_title !== '' ? $seo_title : $title;
-        $desc      = self::line(isset($text['description']) ? (string) $text['description'] : '');
-        if ($desc === '') {
-            // SEO plugins describe a page by its excerpt when it has no description of its own.
-            $desc = self::line(SEOProStats_Coverage::plain(isset($text['excerpt']) ? (string) $text['excerpt'] : ''));
-        }
-        $h1     = (int) preg_match_all('/<h1[\s>]/i', $html);
-        $images = 0;
-        $no_alt = 0;
-        if (preg_match_all('/<img\b[^>]*>/i', $html, $found)) {
-            foreach ($found[0] as $tag) {
-                ++$images;
-                if (!preg_match('/\salt\s*=\s*(?:"\s*[^"\s][^"]*"|\'\s*[^\'\s][^\']*\')/i', $tag)) {
-                    ++$no_alt;
-                }
-            }
-        }
+        $desc      = self::description($text);
+        $h1        = (int) preg_match_all('/<h1[\s>]/i', $html);
+        $images    = self::images($html);
         $words     = count(SEOProStats_Coverage::words(SEOProStats_Coverage::plain($html)));
         $noindex   = !empty($text['noindex']);
         $canonical = isset($text['canonical']) ? trim((string) $text['canonical']) : '';
         $away      = $canonical !== '' && self::away($canonical, (string) $path);
 
-        $flags = 0;
-        if ($shown === '') {
-            $flags |= self::FLAGS['title_missing'];
-        } elseif (self::length($shown) > self::TITLE_MAX) {
-            $flags |= self::FLAGS['title_long'];
-        }
-        if ($desc === '') {
-            $flags |= self::FLAGS['description_missing'];
-        } elseif (self::length($desc) > self::DESCRIPTION_MAX) {
-            $flags |= self::FLAGS['description_long'];
-        }
-        if ($h1 === 0 && $title === '') {
-            $flags |= self::FLAGS['h1_none'];
-        } elseif ($h1 > 1 || ($h1 === 1 && $title !== '')) {
-            $flags |= self::FLAGS['h1_several'];
-        }
-        $flags |= $no_alt ? self::FLAGS['images_alt'] : 0;
+        $flags  = self::text_flags($shown, $desc) | self::h1_flags($h1, $title);
+        $flags |= $images['no_alt'] ? self::FLAGS['images_alt'] : 0;
         $flags |= $noindex ? self::FLAGS['noindex'] : 0;
         $flags |= $away ? self::FLAGS['canonical'] : 0;
         $flags |= $words < self::THIN_WORDS ? self::FLAGS['short'] : 0;
@@ -498,13 +555,114 @@ final class SEOProStats_Audit {
             'desc_hash'      => self::hash($desc),
             'h1'             => min(255, $h1),
             'words'          => $words,
-            'images'         => min(65535, $images),
-            'images_no_alt'  => min(65535, $no_alt),
+            'images'         => min(65535, $images['images']),
+            'images_no_alt'  => min(65535, $images['no_alt']),
             'noindex'        => $noindex ? 1 : 0,
             'canonical_away' => $away ? 1 : 0,
             'flags'          => $flags,
             'links'          => SEOProStats_Links::parse($html),
         );
+    }
+
+    /**
+     * A text's content without shortcodes, at most MAX_TEXT bytes.
+     *
+     * @param array<string,mixed> $text Text.
+     * @return string
+     */
+    private static function html(array $text) {
+        $html = (string) preg_replace('/\[\/?[a-zA-Z][^\[\]]*\]/', ' ', isset($text['content']) ? (string) $text['content'] : '');
+        if (strlen($html) > SEOProStats_Coverage::MAX_TEXT) {
+            $html = function_exists('mb_strcut') ? mb_strcut($html, 0, SEOProStats_Coverage::MAX_TEXT, 'UTF-8') : substr($html, 0, SEOProStats_Coverage::MAX_TEXT);
+        }
+        return $html;
+    }
+
+    /**
+     * The SEO title as written, or '' when there is none or it is made of
+     * its plugin's variables (the post's title is shown then).
+     *
+     * @param array<string,mixed> $text Text.
+     * @return string
+     */
+    private static function seo_title(array $text) {
+        if (empty($text['seo_title_vars']) && isset($text['seo_title'])) {
+            return self::line((string) $text['seo_title']);
+        }
+        return '';
+    }
+
+    /**
+     * The description, or the excerpt when there is none.
+     *
+     * @param array<string,mixed> $text Text.
+     * @return string
+     */
+    private static function description(array $text) {
+        $desc = self::line(isset($text['description']) ? (string) $text['description'] : '');
+        if ($desc === '') {
+            // SEO plugins describe a page by its excerpt when it has no description of its own.
+            $desc = self::line(SEOProStats_Coverage::plain(isset($text['excerpt']) ? (string) $text['excerpt'] : ''));
+        }
+        return $desc;
+    }
+
+    /**
+     * Images in the content, and those without alt text.
+     *
+     * @param string $html Content.
+     * @return array{images:int,no_alt:int}
+     */
+    private static function images($html) {
+        $out = array('images' => 0, 'no_alt' => 0);
+        if (preg_match_all('/<img\b[^>]*>/i', $html, $found)) {
+            foreach ($found[0] as $tag) {
+                ++$out['images'];
+                if (!preg_match('/\salt\s*=\s*(?:"\s*[^"\s][^"]*"|\'\s*[^\'\s][^\']*\')/i', $tag)) {
+                    ++$out['no_alt'];
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Flags of the title shown and the description: missing or long.
+     *
+     * @param string $shown The title shown.
+     * @param string $desc  The description.
+     * @return int
+     */
+    private static function text_flags($shown, $desc) {
+        $flags = 0;
+        if ($shown === '') {
+            $flags |= self::FLAGS['title_missing'];
+        } elseif (self::length($shown) > self::TITLE_MAX) {
+            $flags |= self::FLAGS['title_long'];
+        }
+        if ($desc === '') {
+            $flags |= self::FLAGS['description_missing'];
+        } elseif (self::length($desc) > self::DESCRIPTION_MAX) {
+            $flags |= self::FLAGS['description_long'];
+        }
+        return $flags;
+    }
+
+    /**
+     * Flags of the H1s: none, or several (themes show the post title as one).
+     *
+     * @param int    $h1    H1s in the content.
+     * @param string $title The post's title.
+     * @return int
+     */
+    private static function h1_flags($h1, $title) {
+        if ($h1 === 0 && $title === '') {
+            return self::FLAGS['h1_none'];
+        }
+        if ($h1 > 1 || ($h1 === 1 && $title !== '')) {
+            return self::FLAGS['h1_several'];
+        }
+        return 0;
     }
 
     /**
@@ -633,6 +791,25 @@ final class SEOProStats_Audit {
 
         $read = self::read($pages);
         $sums = $now ? SEOProStats_Opportunities::sums('gsc_pages', $engine, $now, $pages) : array();
+        $list = self::sorted(self::judge($read, $sums, $rules, $finding, $answer), $by);
+        $answer['total'] = count($list);
+        $answer['more']  = $offset + $limit < count($list);
+        $answer['rows']  = self::rows(array_slice($list, $offset, $limit), $read);
+        return $answer;
+    }
+
+    /**
+     * Judge each page read: count the pages with findings and each
+     * finding in the answer, and list those with the finding asked for.
+     *
+     * @param array<string,mixed>                $read    From read().
+     * @param array<string,array{c:int,i:int,p:int}> $sums Search sums by path id.
+     * @param array<string,int>                  $rules   Rules.
+     * @param string                             $finding Finding asked for, or ''.
+     * @param array<string,mixed>                $answer  The answer (pages and counts).
+     * @return array<int,array<string,mixed>> path_id, row, findings and sum of each page listed.
+     */
+    private static function judge(array $read, array $sums, array $rules, $finding, array &$answer) {
         $zero = array('c' => 0, 'i' => 0, 'p' => 0);
         $list = array();
         foreach ($read['rows'] as $path_id => $row) {
@@ -649,15 +826,22 @@ final class SEOProStats_Audit {
                 $list[] = array('path_id' => (int) $path_id, 'row' => $row, 'findings' => $found, 'sum' => $sum);
             }
         }
-        // The sort, then most impressions, clicks and findings first.
+        return $list;
+    }
+
+    /**
+     * Pages in the sort, then most impressions, clicks and findings first.
+     *
+     * @param array<int,array<string,mixed>>  $list From judge().
+     * @param array{sort:string,order:string} $by   The sort and its order.
+     * @return array<int,array<string,mixed>>
+     */
+    private static function sorted(array $list, array $by) {
         usort($list, static function ($a, $b) use ($by) {
             return SEOProStats_Search::compare(SEOProStats_Search::sort_value($a['sum'], $by['sort']), SEOProStats_Search::sort_value($b['sum'], $by['sort']), $by['order'])
                 ?: array($b['sum']['i'], $b['sum']['c'], count($b['findings']), $a['path_id']) <=> array($a['sum']['i'], $a['sum']['c'], count($a['findings']), $b['path_id']);
         });
-        $answer['total'] = count($list);
-        $answer['more']  = $offset + $limit < count($list);
-        $answer['rows']  = self::rows(array_slice($list, $offset, $limit), $read);
-        return $answer;
+        return $list;
     }
 
     /**
@@ -672,17 +856,42 @@ final class SEOProStats_Audit {
     private static function read($pages) {
         global $wpdb;
         $table = SEOProStats_Schema::table('page_facts');
-        $cols  = 'path_id, post_id, checked, modified, title_len, seo_title_len, desc_len, LOWER(HEX(title_hash)) AS th, LOWER(HEX(desc_hash)) AS dh, h1, words, images, images_no_alt, noindex, canonical_away, flags';
+        $cols  = self::FACTS_COLS;
         $only  = $pages === null ? null : array_flip(array_map('intval', $pages));
         $rows  = array();
-        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its flags, title_hash, desc_hash and primary keys; $cols is a fixed column list, $key a fixed key name and $holders only placeholders.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- our own table, by its flags key; $cols is a fixed column list.
         foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i FORCE INDEX (`flags`) WHERE flags > 0 LIMIT %d", $table, self::MAX_ROWS), ARRAY_A) as $row) {
             $rows[(int) $row['path_id']] = $row;
         }
 
         // Pages sharing a title or description.
+        $dupes = self::duplicates($table, $only);
+        // Pages with a finding of Google's (only the pages with facts are judged: published posts).
+        $google = SEOProStats_Inspections::flagged();
+        if ($only !== null) {
+            $google = array_intersect_key($google, $only);
+        }
+        $need  = array_values(array_diff(array_unique(array_merge(array_keys($dupes['same']), array_keys($google))), array_keys($rows)));
+        $rows += self::rows_of($table, $need);
+        if ($only !== null) {
+            $rows = array_intersect_key($rows, $only);
+        }
+        return array('rows' => $rows, 'same' => self::shared($dupes['same'], $dupes['groups']), 'groups' => $dupes['groups'], 'google' => $google);
+    }
+
+    /**
+     * Pages sharing a title or description (by the hash keys), within the
+     * pages asked for: each page's shared hashes, and each group's pages.
+     *
+     * @param string                $table page_facts.
+     * @param array<int,int>|null   $only  Path ids asked for (as keys), or null for every page.
+     * @return array{same:array<int,array<string,string>>,groups:array<string,int[]>}
+     */
+    private static function duplicates($table, $only) {
+        global $wpdb;
         $same   = array();
         $groups = array();
+        // phpcs:disable WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table, by its title_hash and desc_hash keys; $key is a fixed key name and $holders only placeholders.
         foreach (array('title' => 'title_hash', 'description' => 'desc_hash') as $what => $key) {
             $hashes = (array) $wpdb->get_col($wpdb->prepare("SELECT LOWER(HEX($key)) FROM %i FORCE INDEX (`$key`) WHERE $key > UNHEX(%s) GROUP BY $key HAVING COUNT(*) > 1 LIMIT %d", $table, self::NONE, self::MAX_GROUPS));
             if (!$hashes) {
@@ -698,23 +907,40 @@ final class SEOProStats_Audit {
                 $groups[$what . ':' . $row['h']][] = $path_id;
             }
         }
-        // Pages with a finding of Google's (only the pages with facts are judged: published posts).
-        $google = SEOProStats_Inspections::flagged();
-        if ($only !== null) {
-            $google = array_intersect_key($google, $only);
-        }
-        $need = array_values(array_diff(array_unique(array_merge(array_keys($same), array_keys($google))), array_keys($rows)));
-        foreach (array_chunk($need, 500) as $chunk) {
+        // phpcs:enable
+        return array('same' => $same, 'groups' => $groups);
+    }
+
+    /**
+     * Facts rows of pages, by the primary key.
+     *
+     * @param string $table page_facts.
+     * @param int[]  $ids   Path ids.
+     * @return array<int,array<string,mixed>> By path id.
+     */
+    private static function rows_of($table, array $ids) {
+        global $wpdb;
+        $cols = self::FACTS_COLS;
+        $rows = array();
+        foreach (array_chunk($ids, 500) as $chunk) {
             $holders = implode(', ', array_fill(0, count($chunk), '%d'));
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- our own table by its primary key; $cols is a fixed column list and $holders only placeholders.
             foreach ((array) $wpdb->get_results($wpdb->prepare("SELECT $cols FROM %i WHERE path_id IN ($holders)", array_merge(array($table), $chunk)), ARRAY_A) as $row) {
                 $rows[(int) $row['path_id']] = $row;
             }
         }
-        // phpcs:enable
-        if ($only !== null) {
-            $rows = array_intersect_key($rows, $only);
-        }
-        // A group needs two pages left after the page filter.
+        return $rows;
+    }
+
+    /**
+     * Shared titles and descriptions whose group still has two pages
+     * after the page filter.
+     *
+     * @param array<int,array<string,string>> $same   Each page's shared hashes.
+     * @param array<string,int[]>             $groups Each group's pages.
+     * @return array<int,array<string,string>>
+     */
+    private static function shared(array $same, array $groups) {
         foreach ($same as $path_id => $both) {
             foreach ($both as $what => $hash) {
                 if (count($groups[$what . ':' . $hash]) < 2) {
@@ -722,7 +948,7 @@ final class SEOProStats_Audit {
                 }
             }
         }
-        return array('rows' => $rows, 'same' => $same, 'groups' => $groups, 'google' => $google);
+        return $same;
     }
 
     /**
@@ -773,15 +999,7 @@ final class SEOProStats_Audit {
      * @return array<int,array<string,mixed>>
      */
     private static function rows(array $list, array $read) {
-        $ids = array_column($list, 'path_id');
-        foreach ($list as $item) {
-            foreach (array('title', 'description') as $what) {
-                if (isset($read['same'][$item['path_id']][$what])) {
-                    $ids = array_merge($ids, array_slice($read['groups'][$what . ':' . $read['same'][$item['path_id']][$what]], 0, self::SAME + 1));
-                }
-            }
-        }
-        $text   = SEOProStats_Query::texts(array_unique($ids));
+        $text   = SEOProStats_Query::texts(self::shown_ids($list, $read));
         $live   = SEOProStats_Schema::set() === 'live';
         $google = SEOProStats_Inspections::of_pages(array_column($list, 'path_id'));
         $out    = array();
@@ -789,17 +1007,7 @@ final class SEOProStats_Audit {
             $row  = $item['row'];
             $id   = (int) $item['path_id'];
             $path = isset($text[$id]) ? (string) $text[$id] : '';
-            $same = array('title' => array(), 'description' => array());
-            foreach (array_keys($same) as $what) {
-                if (!isset($read['same'][$id][$what])) {
-                    continue;
-                }
-                foreach ($read['groups'][$what . ':' . $read['same'][$id][$what]] as $other) {
-                    if ($other !== $id && isset($text[$other]) && count($same[$what]) < self::SAME) {
-                        $same[$what][] = (string) $text[$other];
-                    }
-                }
-            }
+            $same = self::same_paths($id, $read, $text);
             $out[] = array(
                 'path_id'  => $id,
                 'path'     => $path,
@@ -809,19 +1017,7 @@ final class SEOProStats_Audit {
                 'edit_url' => null,
             ) + SEOProStats_Search::metrics($item['sum']['c'], $item['sum']['i'], $item['sum']['p']) + array(
                 'findings'         => $item['findings'],
-                'facts'            => array(
-                    'title_length'       => (int) $row['title_len'],
-                    'seo_title_length'   => (int) $row['seo_title_len'],
-                    'description_length' => (int) $row['desc_len'],
-                    'h1'                 => (int) $row['h1'],
-                    'words'              => (int) $row['words'],
-                    'images'             => (int) $row['images'],
-                    'images_no_alt'      => (int) $row['images_no_alt'],
-                    'noindex'            => (bool) (int) $row['noindex'],
-                    'canonical_away'     => (bool) (int) $row['canonical_away'],
-                    'modified'           => (int) $row['modified'] ? gmdate('c', (int) $row['modified']) : null,
-                    'checked'            => gmdate('c', (int) $row['checked']),
-                ),
+                'facts'            => self::facts_out($row),
                 'same_title'       => $same['title'],
                 'same_description' => $same['description'],
                 // Google's URL Inspection of the page; null until inspected.
@@ -829,6 +1025,72 @@ final class SEOProStats_Audit {
             );
         }
         return $out;
+    }
+
+    /**
+     * Path ids whose addresses the answer shows: the pages shown and up to
+     * SAME + 1 of each group they share a title or description with.
+     *
+     * @param array<int,array<string,mixed>> $list The pages shown.
+     * @param array<string,mixed>            $read From read().
+     * @return int[]
+     */
+    private static function shown_ids(array $list, array $read) {
+        $ids = array_column($list, 'path_id');
+        foreach ($list as $item) {
+            foreach (array('title', 'description') as $what) {
+                if (isset($read['same'][$item['path_id']][$what])) {
+                    $ids = array_merge($ids, array_slice($read['groups'][$what . ':' . $read['same'][$item['path_id']][$what]], 0, self::SAME + 1));
+                }
+            }
+        }
+        return array_unique($ids);
+    }
+
+    /**
+     * Up to SAME other pages' addresses sharing a page's title, and its
+     * description.
+     *
+     * @param int                 $id   Path id.
+     * @param array<string,mixed> $read From read().
+     * @param array<int,string>   $text Addresses by path id.
+     * @return array{title:string[],description:string[]}
+     */
+    private static function same_paths($id, array $read, array $text) {
+        $same = array('title' => array(), 'description' => array());
+        foreach (array_keys($same) as $what) {
+            if (!isset($read['same'][$id][$what])) {
+                continue;
+            }
+            foreach ($read['groups'][$what . ':' . $read['same'][$id][$what]] as $other) {
+                if ($other !== $id && isset($text[$other]) && count($same[$what]) < self::SAME) {
+                    $same[$what][] = (string) $text[$other];
+                }
+            }
+        }
+        return $same;
+    }
+
+    /**
+     * A facts row as the answer gives it.
+     *
+     * @param array<string,mixed> $row Facts row.
+     * @return array<string,mixed>
+     */
+    private static function facts_out(array $row) {
+        return array(
+            'title_length'       => (int) $row['title_len'],
+            'seo_title_length'   => (int) $row['seo_title_len'],
+            'description_length' => (int) $row['desc_len'],
+            'h1'                 => (int) $row['h1'],
+            'words'              => (int) $row['words'],
+            'images'             => (int) $row['images'],
+            'images_no_alt'      => (int) $row['images_no_alt'],
+            'noindex'            => (bool) (int) $row['noindex'],
+            'canonical_away'     => (bool) (int) $row['canonical_away'],
+            'modified'           => (int) $row['modified'] ? gmdate('c', (int) $row['modified']) : null,
+            'checked'            => gmdate('c', (int) $row['checked']),
+        );
     }
 
     /**
