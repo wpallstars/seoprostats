@@ -14,7 +14,7 @@ export function ResearchMenu({ query }: Readonly<{ query: string }>) {
 		query: __('Search the query', 'seoprostats'),
 		allintitle: __('All words in titles', 'seoprostats'),
 		intitle: __('Phrase in titles', 'seoprostats'),
-		inurl: __('First word in addresses', 'seoprostats'),
+		inurl: __('Longest word in addresses', 'seoprostats'),
 		competitors: __('Pages outside this site', 'seoprostats'),
 		site: __('This site’s pages', 'seoprostats'),
 		forum: __('Forum questions', 'seoprostats'),
