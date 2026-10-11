@@ -29,7 +29,7 @@ It counts visits in your own WordPress database, with no cookies, no stored IP a
 
 If this saves you time, headaches and costs, feel free to [buy me a coffee](https://buymeacoffee.com/marcusquinn), or whatever you like, to invest in making more things open-source.
 
-Version: 1.4.3
+Version: 1.4.4
 
 <!-- github-only:start -->
 ## Screenshots
@@ -195,7 +195,7 @@ Plan lists each open target (candidate, targeted, live) where another page ranks
 
 #### Research and the Keyword Golden Ratio
 
-**Research** beside queries in Rankings, Opportunities, Targets and the editor's query coverage opens Google, Bing, Brave or DuckDuckGo in a new tab. Nothing is fetched or scraped by the plugin. The ordinary query explores intent; `intitle:"query"` finds titles using the phrase; Google's `allintitle:"query"` explores title competition; `inurl:` searches the first word in addresses; `"query" -site:your-domain` looks outside your site; `site:your-domain "query"` finds your own answers, possible overlap and internal link sources. Google's forum search keeps the phrase on both sides of `OR`, to find questions without returning unrelated forums.
+**Research** beside queries in Rankings, Opportunities, Targets and the editor's query coverage opens Google, Bing, Brave or DuckDuckGo in a new tab. Nothing is fetched or scraped by the plugin. The ordinary query explores intent; `intitle:"query"` finds titles using the phrase; Google's `allintitle:query words` finds titles with every word in any order, the title competition the Keyword Golden Ratio counts (no quotes, which would count only the exact phrase, and no space after the colon); `inurl:` searches the longest word in addresses, which skips short words such as "how" or "the"; `"query" -site:your-domain` looks outside your site; `site:your-domain "query"` finds your own answers, possible overlap and internal link sources. Google's forum search, `"query" (intitle:forum OR inurl:forum)`, requires the phrase and groups the `OR`, which otherwise binds only the words beside it, to find questions without returning unrelated forums.
 
 Operators differ by engine: allintitle is enabled only on Google; inurl only on Google and DuckDuckGo. Unsupported choices are marked and disabled, not silently sent as ordinary text. Brave's operators are experimental; DuckDuckGo may show related results. Search result counts are approximate, incomplete and can change by date and location. These searches do not prove indexation or ranking difficulty.
 
@@ -541,6 +541,16 @@ Hits are counted, and search data, summaries and checks run, by WordPress's sche
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### 1.4.4
+
+- New: search targets from the SEO plugin. Search → Targets → **Suggest from SEO plugin** lists the focus keyword each published page has in Rank Math, Yoast SEO, SEOPress or All in One SEO, to import as targets with their page; keywords set on more than one page are listed but never imported. REST `/targets/suggestions`, `wp seoprostats targets suggest` and the `seoprostats/targets-suggest` ability.
+- New: **Add as target** after a search in Rankings and in Opportunities → Striking distance and Overlapping pages adds it as a candidate target; a search that is a target already shows **Target**.
+- Changed: with no search targets yet, Search → Targets explains where targets come from, with a button for each.
+- New: the dashboard remembers each person's last named period and comparison when opened from the admin menu. New users start on Last 13 weeks against the previous period; links and bookmarks keep their own choices. Custom dates are not remembered, and shared reports and the editor are unchanged.
+- New: colour mode shares its saved preference with SEO Pro Stack's admin bar toggle; either control updates the other live. The header button still works on its own, and existing choices are kept.
+- Fixed: research links search as their labels say. All words in titles and Targets' Check allintitle search `allintitle:best chocolate chip cookies` without quotes, as the Keyword Golden Ratio counts it; the quotes made Google count only titles with the exact phrase. Google's forum search groups its OR, `"query" (intitle:forum OR inurl:forum)`. The address search uses the query's longest word, not its first. Saved allintitle counts stay as they are: check them again with the new link.
+- Fixed (GitHub builds): Check again on the Updates screen offers a release published since the last check, and a failed check for updates on GitHub is shown on the Plugins and Updates screens instead of failing silently.
 
 ### 1.4.3
 

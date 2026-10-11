@@ -19,26 +19,41 @@ export function researchUrl(engine: ResearchEngine, query: string): string {
 	return `${SEARCH_URLS[engine]}?q=${encodeURIComponent(query)}`;
 }
 
-/** The first lexical word is an explicit, predictable URL-word seed. */
-export function researchLinks(engine: ResearchEngine, text: string, site: string): ResearchLink[] {
-	const query = Array.from(text, (character) => {
+/** Control characters become spaces and quotes are dropped, so the text cannot break out of a phrase. */
+function cleanQuery(text: string): string {
+	return Array.from(text, (character) => {
 		const code = character.codePointAt(0) ?? 0;
 		return code < 32 || code === 127 ? ' ' : character;
-	}).join('').replace(/["“”]/g, ' ').trim();
+	}).join('').replace(/["“”]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Google's allintitle search for every word of the query, in any order, as the
+ * Keyword Golden Ratio counts it. Unquoted: quotes would make it an exact-phrase
+ * title search and undercount the competition. No space after the colon.
+ */
+export function allintitleQuery(text: string): string {
+	return `allintitle:${cleanQuery(text)}`;
+}
+
+/** The longest lexical word (the first on a tie) is a predictable URL-word seed that skips short filler words such as "how" or "the". */
+export function researchLinks(engine: ResearchEngine, text: string, site: string): ResearchLink[] {
+	const query = cleanQuery(text);
 	if (!query) return [];
 	const phrase = `"${query}"`;
-	const word = /[\p{L}\p{N}]+/u.exec(query)?.[0] ?? '';
+	const word = (query.match(/[\p{L}\p{N}]+/gu) ?? []).reduce((longest, next) => (next.length > longest.length ? next : longest), '');
 	const host = /^[a-z0-9.-]+$/i.test(site) ? site : '';
 	const templates: [string, string, string, boolean][] = [
 		['query', 'Search the query', query, true],
-		['allintitle', 'All words in page titles (Google only)', `allintitle:${phrase}`, engine === 'google'],
+		['allintitle', 'All words in page titles, in any order (Google only)', allintitleQuery(query), engine === 'google'],
 		['intitle', 'Find the phrase in page titles', `intitle:${phrase}`, true],
-		['inurl', 'Find the first word in page addresses', `inurl:${word}`, !!word && (engine === 'google' || engine === 'duckduckgo')],
+		['inurl', 'Find the longest word in page addresses', `inurl:${word}`, !!word && (engine === 'google' || engine === 'duckduckgo')],
 	];
 	if (host) templates.push(
 		['competitors', 'Find pages outside this site', `${phrase} -site:${host}`, true],
 		['site', 'Find this site’s pages and internal link sources', `site:${host} ${phrase}`, true],
 	);
-	if (engine === 'google') templates.push(['forum', 'Find forum questions and discussions', `${phrase} intitle:forum OR ${phrase} inurl:forum`, true]);
+	// Google's OR binds only its neighbours: group it, or every result needs "forum" in its address.
+	if (engine === 'google') templates.push(['forum', 'Find forum questions and discussions', `${phrase} (intitle:forum OR inurl:forum)`, true]);
 	return templates.map(([kind, description, search, supported]) => ({ kind, description, query: search, url: researchUrl(engine, search), supported }));
 }
