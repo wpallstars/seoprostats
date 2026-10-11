@@ -101,7 +101,7 @@ html:is(.sps-dark, .spst-dark) .spst-widget {
 }
 
 /* Outweigh WordPress's postbox heading colour in either dark mode. */
-html:is(.sps-dark, .spst-dark) .spst-widget__heading {
+html:is(.sps-dark, .spst-dark) #dashboard-widgets .spst-widget__heading {
 	color: var(--spst-muted);
 }
 
