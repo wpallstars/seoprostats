@@ -124,6 +124,7 @@
 		/* translators: %s: the colour mode, Light, Dark or System. */
 		speak(sprintf(__('Colour mode: %s', 'seoprostats'), modes[which].label));
 		save(which, previous);
+		document.dispatchEvent(new CustomEvent('wpallstars-admin-theme', { detail: { mode: which, source: 'seoprostats' } }));
 	}
 
 	function open() {
@@ -270,6 +271,15 @@
 			media.addListener(follow);
 		}
 	}
+
+	// Another control already saves and announces; only update this screen.
+	document.addEventListener('wpallstars-admin-theme', function (event) {
+		var detail = event.detail;
+		if (!detail || detail.source === 'seoprostats' || order.indexOf(detail.mode) === -1) {
+			return;
+		}
+		apply(detail.mode);
+	});
 
 	function start() {
 		build();

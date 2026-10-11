@@ -3,6 +3,7 @@
 Every change to SEO Pro Stats. readme.txt lists the latest version in short.
 
 = Unreleased =
+* New: colour mode shares its saved preference with SEO Pro Stack's admin bar toggle; either control updates the other live, without an extra save. The header button still works on its own, and existing choices are kept (GH#251).
 * New: the dashboard remembers each person's last named period and comparison when opened from the admin menu. New users start on Last 13 weeks (91 days) against the previous period; links and bookmarks keep their own choices. Custom dates are not remembered, and shared reports and the editor are unchanged (GH#227).
 * Developers: Experiments, the A/B test blocks and the A/B report split their long functions into named private helpers: an experiment's start and pages, saved row, list reads, measurement goal, comparison group and noise band, and checked fields; a test's goals, renewed ids, saved rows and times, the winner's checks and ending, and timeline markers; and a report's variants, visits and their totals, goal counts, comparisons and verdict. Tests saved, rendered and picked, experiments recorded, listed and decided, and the demo data's reports gave the same answers, stored data and markers before and after (GH#160, GH#207).
 * Developers: DEVELOPMENT.md keeps Qlty among the organization's review apps, and says to merge without its check when the monthly minutes run out and never to make it required, as in WP Plugin Starter (GH#261).
