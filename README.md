@@ -103,6 +103,8 @@ At the bottom of each section (and each Search tab), **Info & ideas** answers tw
 
 Goals and funnels belong to the data you are looking at: demo data has example ones of its own. The period, comparison and filters stay as you move between sections. The address keeps the view, so it can be bookmarked and the back button undoes a change. A **Dashboard widget** shows today so far and the last 7 days; it starts at the top of the right-most column, and stays where you put it once you move a box.
 
+When SEO Pro Stack makes wp-admin dark, the widget's headings, labels and unchanged, positive and negative figures use readable light colours. Its light-mode colours are unchanged.
+
 ### Search
 
 **Search → Rankings** shows search clicks, impressions, click-through rate (CTR) and average position from Google Search Console (and Bing Webmaster Tools, below) for the period, against the previous one, with a chart of the one you pick (and the changes lane under it), then the search queries, pages, countries and devices, most impressions first. Choose a column's header to sort by it (the first click puts the most first, or the best position; a second click reverses it); the address keeps the order. Choose a page to list the queries it showed for, or a query to list the pages it showed; choose it again to go back. The period stops at the newest day Search Console has made final (about three days ago), and the comparison has as many days, so days not imported yet never look like a drop. A lower position is better. Until Search Console is connected, it links to Settings → Connections; demo data has made-up search data to try it with. With Bing Webmaster Tools connected too, **Google** and **Bing** buttons at the end of the tabs switch every Search tab to that engine (the address keeps the choice). Bing gives its pages and queries by week and no countries or devices, so with Bing the period is whole weeks ending on Bing's newest week, and a page's or query's chart is by week. With both, a **Combined** button adds them up on Rankings, Opportunities and Content: clicks and impressions summed, CTR and position over both, a query or page shown on both as one row, and the period ending at the earlier of their newest days, in whole weeks (each engine counts its own days: Google's in Pacific time, Bing's in UTC).
@@ -541,6 +543,10 @@ Hits are counted, and search data, summaries and checks run, by WordPress's sche
 Deleting the plugin removes its settings, its connections and their encrypted keys, its statistics (with the days imported from other statistics plugins), imported search data and demo data, its list of A/B tests (the test blocks stay in posts), its cached data, its notes on shops' orders (checkout visit, recorded), each person's Live or Demo choice and colour mode, who hid lines of the Plugins screen notice about replaced plugins, and the cached GitHub releases.
 
 ## Changelog
+
+### Unreleased
+
+- Fixed: the Dashboard widget's labels and unchanged, positive and negative figures stay readable when SEO Pro Stack makes wp-admin dark; its light colours are unchanged.
 
 ### 1.4.4
 

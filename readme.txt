@@ -31,6 +31,7 @@ Actionable analytics: connect your content to the data that shows you how to gro
 * **Purchases**: paid orders from WooCommerce, Easy Digital Downloads, FluentCart and ThriveCart, with refunds and subscription renewals. No order numbers or customer details are kept.
 * **Clicks**: what people click, dead clicks, links followed (affiliate links too), files and forms sent. Never what anyone types.
 * **Changes**: a log of what changed on the site (posts, SEO titles, prices, plugins, settings), Google's search updates if you switch them on, and your own notes, marked under every chart.
+* **Dashboard widget**: readable in dark wp-admin; light colours unchanged.
 
 = Search =
 
