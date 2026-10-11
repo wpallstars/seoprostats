@@ -20,6 +20,7 @@ import { useState } from 'react';
 import { Button, Card, CardBody, CardHeader, CheckboxControl, Notice, SelectControl, TextareaControl, TextControl } from '@wordpress/components';
 import { __, _n, sprintf } from '@wordpress/i18n';
 import {
+	allintitleQuery,
 	apiArgs,
 	formatDecimal,
 	formatNumber,
@@ -363,7 +364,7 @@ function RowsTable({ rows, compared, open, refreshing, onError }: Readonly<RowsT
 							<td>
 								{row.allintitle === null ? '–' : number(row.allintitle)}
 								<span className="spst-meta">{row.measured.allintitle ?? __('Not measured', 'seoprostats')}</span>
-								<a href={researchUrl('google', `allintitle:"${row.query.replace(/"/g, '')}"`)} target="_blank" rel="noopener noreferrer">{__('Check allintitle (new tab)', 'seoprostats')}</a>
+								<a href={researchUrl('google', allintitleQuery(row.query))} target="_blank" rel="noopener noreferrer">{__('Check allintitle (new tab)', 'seoprostats')}</a>
 							</td>
 							<td>{row.volume === null ? '–' : number(row.volume)}<span className="spst-meta">{row.measured.volume ?? __('Not measured', 'seoprostats')}</span></td>
 							<td>{row.kgr === null ? '–' : decimal(row.kgr)}<span className="spst-meta">{kgrName(row.kgr_band)}</span></td>
