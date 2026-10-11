@@ -168,6 +168,8 @@ Open (new window).
 
 The Statistics and Settings screens have a per-person colour mode: **Light** (default, WordPress's own colours), **Dark** or **System** (follows `prefers-color-scheme` live). An icon button right of **Buy me a coffee** (sun, moon, or a half-filled circle for System) opens a three-item `menuitemradio` menu with a tick on the chosen mode; arrows, Home, End and Escape work, and the change is announced. The choice is user meta (`seoprostats_admin_theme`), like the admin colour scheme. A `<head>` script sets `spst-theme-{mode}` and, when dark, `spst-dark` on `<html>` before first paint; every dark rule waits for `html.spst-dark` (`admin/css/seoprostats-theme.css`), so Light is WordPress's own, apart from the scheme colour's brightness (Primary, above). Only the plugin's screens load it.
 
+The shared `wpallstars_admin_theme` preference takes priority over `seoprostats_admin_theme` (both are saved), and the `wpallstars-admin-theme` document event keeps this button and SEO Pro Stack's admin bar toggle in sync without another save or announcement.
+
 Dark palette (WordPress admin greys, `--spst-ui-*`, defined once):
 
 - **Canvas (`#101517`)**: the page behind cards; also field backgrounds and inset panels.

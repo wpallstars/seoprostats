@@ -365,6 +365,8 @@ At the top right of the screen, **Source code** opens the plugin’s [GitHub rep
 
 **Colour mode**, the sun or moon button after it, sets how the Statistics and Settings screens look for you: **Light** (WordPress’s own colours, the default), **Dark**, or **System**, which follows your computer’s light or dark setting as it changes. Each person chooses for themselves, and the choice follows them to any browser. Primary buttons keep your admin colour scheme’s colour; links and highlights use a lighter shade of it so they stay readable. The rest of wp-admin, the Dashboard widget and the post editor keep WordPress’s colours. Shared reports have their own light and dark switch (Shared reports above).
 
+When SEO Pro Stack is installed, its admin bar colour toggle and this button share your preference and update each other live. The header button still works without SEO Pro Stack, and an existing choice is kept until you choose a shared mode.
+
 ### Connecting Google Search Console and Bing
 
 **Google Search Console** (off until you connect it under Settings → Connections): clicks, impressions and average position for each page and search query, by day, kept with the visits so search and traffic can sit on one timeline.
