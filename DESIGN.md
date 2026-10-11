@@ -170,6 +170,8 @@ The Statistics and Settings screens have a per-person colour mode: **Light** (de
 
 The shared `wpallstars_admin_theme` preference takes priority over `seoprostats_admin_theme` (both are saved), and the `wpallstars-admin-theme` document event keeps this button and SEO Pro Stack's admin bar toggle in sync without another save or announcement.
 
+SEO Pro Stack owns dark mode on the core Dashboard; the Statistics widget uses the dark text, muted, change and accent colours below under either `html.sps-dark` or `html.spst-dark`, while its light colours stay unchanged.
+
 Dark palette (WordPress admin greys, `--spst-ui-*`, defined once):
 
 - **Canvas (`#101517`)**: the page behind cards; also field backgrounds and inset panels.

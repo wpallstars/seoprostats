@@ -8,6 +8,29 @@
 
 @import url("./common.css");
 
+/* SEO Pro Stack owns Dashboard dark mode; keep the widget's text readable. */
+html:is(.sps-dark, .spst-dark) .spst-widget {
+	--spst-text: #f0f0f1;
+	--spst-muted: #c3c4c7;
+	--spst-subtle: #c3c4c7;
+	--spst-good: #68de7c;
+	--spst-bad: #ff8085;
+	--spst-accent: #72aee6;
+
+	color: var(--spst-text);
+}
+
+@supports (color: oklch(from red l c h)) {
+
+	html:is(.sps-dark, .spst-dark) .spst-widget {
+		--spst-accent: oklch(from var(--wp-admin-theme-color, #2271b1) max(l, 0.75) min(c, 0.15) h);
+	}
+}
+
+html:is(.sps-dark, .spst-dark) .spst-widget__week {
+	border-top-color: #3c434a;
+}
+
 .spst-widget__heading {
 	margin: 0 0 8px;
 	color: var(--spst-muted);
