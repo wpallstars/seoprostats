@@ -36,7 +36,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_Links {
+final class SEOProStats_Links { // NOSONAR: one internal links model for the audit, REST, WP-CLI and abilities; private helpers decompose its writes and lists.
 
     /** Lists. */
     const KINDS = array('orphans', 'converting', 'missing');

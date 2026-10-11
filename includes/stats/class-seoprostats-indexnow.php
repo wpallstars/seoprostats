@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-final class SEOProStats_IndexNow {
+final class SEOProStats_IndexNow { // NOSONAR: one notifier for its hooks, settings, WP-CLI and cron; private helpers decompose a send.
 
     const KEY = 'seoprostats_indexnow_key';
     const STATE = 'seoprostats_indexnow';
