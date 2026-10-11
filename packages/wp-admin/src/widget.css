@@ -20,9 +20,7 @@ html:is(.sps-dark, .spst-dark) .spst-widget {
 	color: var(--spst-text);
 }
 
-@supports (color: oklch(from red l c h)) {
-
-	/* Keep the person's admin colour scheme hue while lifting text contrast. */
+@supports (color: oklch(from red l c h)) { /* Keep the scheme hue. */
 	html:is(.sps-dark, .spst-dark) .spst-widget {
 		--spst-accent: oklch(from var(--wp-admin-theme-color, #2271b1) max(l, 0.75) min(c, 0.15) h);
 	}
