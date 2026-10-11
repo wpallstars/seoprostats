@@ -5,7 +5,7 @@ Tags: analytics, statistics, privacy, search console, seo
 Requires at least: 6.2
 Tested up to: 7.1
 Requires PHP: 7.4
-Stable tag: 1.4.3
+Stable tag: 1.4.4
 License: GPLv3 or later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -120,11 +120,9 @@ Use **Support** on the settings screen, or ask aidevops.
 
 == Changelog ==
 
-= 1.4.3 =
-* New: on Search → Backlinks → Reported pages, a page's link count opens its links: the page of this site each links to, its text and rel.
-* Changed: the period menu is in groups (Days, Weeks, Calendar); Last 30 and 90 days leave the menu, and the default is named Last 13 weeks.
-* Changed: Edit links open the editor in a new tab, so the report stays open.
-* Fixed: Search → Plan and the search reports read the chosen period up to a year, not only its newest 91 days.
-* Fixed: in light mode, lighter admin colour schemes keep their colour at a readable contrast.
+= 1.4.4 =
+* New: search targets from your SEO plugin's focus keywords, and Add as target after a search in Rankings and Opportunities.
+* New: the dashboard remembers each person's last named period and comparison.
+* Fixed: research links search as labelled: allintitle without quotes, as the Keyword Golden Ratio counts it.
 
 Every change: changelog.txt.
