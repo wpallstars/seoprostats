@@ -29,6 +29,9 @@ final class SEOProStats_Admin_Theme {
     /** User meta holding the person's mode. */
     const META = 'seoprostats_admin_theme';
 
+    /** Shared preference for wpallstars plugins with dark screens. */
+    const SHARED_META = 'wpallstars_admin_theme';
+
     /** The admin-ajax action and nonce action that save it. */
     const ACTION = 'seoprostats_admin_theme';
 
@@ -52,6 +55,20 @@ final class SEOProStats_Admin_Theme {
         add_action('admin_enqueue_scripts', array(__CLASS__, 'enqueue'), 20);
         add_action('admin_head', array(__CLASS__, 'head'), 1);
         add_action('wp_ajax_' . self::ACTION, array(__CLASS__, 'save'));
+        add_filter('wpallstars_admin_theme_participants', array(__CLASS__, 'participants'));
+    }
+
+    /**
+     * Register for people who can open Statistics or Settings.
+     *
+     * @param array<string, bool> $participants Participating plugin slugs.
+     * @return array<string, bool>
+     */
+    public static function participants($participants) {
+        if (current_user_can(SEOProStats_API::CAP) || current_user_can('manage_options')) {
+            $participants['seoprostats'] = true;
+        }
+        return $participants;
     }
 
     /**
@@ -62,7 +79,10 @@ final class SEOProStats_Admin_Theme {
      */
     public static function mode($user_id = 0) {
         $user_id = $user_id ? (int) $user_id : get_current_user_id();
-        $mode    = $user_id ? get_user_meta($user_id, self::META, true) : '';
+        $mode    = $user_id ? get_user_meta($user_id, self::SHARED_META, true) : '';
+        if (!in_array($mode, self::MODES, true)) {
+            $mode = $user_id ? get_user_meta($user_id, self::META, true) : '';
+        }
         return in_array($mode, self::MODES, true) ? $mode : self::MODES[0];
     }
 
@@ -129,6 +149,7 @@ final class SEOProStats_Admin_Theme {
             wp_send_json_error(array('message' => __('Unknown colour mode.', 'seoprostats')), 400);
         }
         update_user_meta(get_current_user_id(), self::META, $mode);
+        update_user_meta(get_current_user_id(), self::SHARED_META, $mode);
         wp_send_json_success(array('mode' => self::mode()));
     }
 }
